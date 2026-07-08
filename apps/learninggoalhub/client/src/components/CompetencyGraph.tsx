@@ -306,6 +306,9 @@ function Row({
         const approved = node.goal.status === "APPROVED";
         const dimmed =
           highlight != null && (highlight === "approved") !== approved;
+        // Once a sibling is selected, the rest recede a little — still readable and clickable
+        // (one-click switching), hover brings a box back to full strength.
+        const receded = activeId != null && node.goal.id !== activeId;
         return (
           <Box
             key={node.goal.id}
@@ -319,6 +322,7 @@ function Row({
             actions={actions}
             stuck={sticky && scrolled}
             dimmed={dimmed}
+            receded={receded}
             fluid={grid}
           />
         );
@@ -340,6 +344,7 @@ function Box({
   actions,
   stuck,
   dimmed,
+  receded = false,
   fluid = false,
 }: {
   node: CompetencyNode;
@@ -350,6 +355,8 @@ function Box({
   actions: GoalActions;
   stuck: boolean;
   dimmed: boolean;
+  /** Unselected sibling of the tier's active box — softened but still clickable. */
+  receded?: boolean;
   /** In the grid overview the box fills its cell; in a row it keeps the fixed connector width. */
   fluid?: boolean;
 }) {
@@ -382,7 +389,7 @@ function Box({
         stuck
           ? "sticky left-0 z-10 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.35)]"
           : ""
-      } ${dimmed ? "opacity-30" : ""}`}
+      } ${dimmed ? "opacity-30" : receded ? "opacity-50 hover:opacity-100" : ""}`}
       style={{
         borderTopColor: meta.color,
         ...(active
