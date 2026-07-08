@@ -110,8 +110,10 @@ public class CompetencyTreeSynthesizer {
             Do three things:
 
             1. ATTACH each knowledge goal under the ONE sub-skill it most directly underpins. Return a
-               knowledge link {knowledgeIndex, subSkillIndex} for each. If a knowledge goal underpins
-               none of these sub-skills, omit it.
+               knowledge link {knowledgeIndex, subSkillIndex} for each. Attach EVERY knowledge goal to
+               its best fit: these sub-skills are the only places it can live, so prefer the closest
+               match over dropping it. Only omit a knowledge goal when it genuinely underpins none of
+               these sub-skills — that should be the rare exception, not a convenient default.
 
             2. MISSING SUB-SKILLS. A competency is an APPLIED capability — students should be able to DO
                it, not merely know about it. Name a doing-capability the competency clearly requires that
