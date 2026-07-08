@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
  *       goal to the single terminal competency it belongs under, giving the tree full coverage (the
  *       terminal clustering only saw the higher-Bloom goals and left its {@code supporting} hints
  *       sparse). The caller then splits each competency's goals by Bloom into sub-skills
- *       ({@code APPLY}/{@code CREATE}) and candidate knowledge (lower Bloom).</li>
+ *       ({@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE}) and candidate knowledge
+ *       ({@code REMEMBER}/{@code UNDERSTAND}).</li>
  *   <li><b>Expansion</b> ({@link #expand}) — per competency: attaches each knowledge goal under the
  *       sub-skill it supports and, since the lowest node must always be a knowledge aspect, names the
  *       knowledge a sub-skill needs but the material does not cover (the gap analysis).</li>
@@ -39,9 +40,9 @@ public class CompetencyTreeSynthesizer {
             level in parentheses.
 
             Assign EVERY learning goal to the SINGLE terminal competency whose capability it most
-            directly serves — a "doing" goal as a sub-skill of that competency, a lower-level
-            "understand/remember/compare" goal as supporting knowledge for it. Judge by topic and
-            capability, not by wording.
+            directly serves — a "doing/judgement" goal (apply, analyze, evaluate, create) as a
+            sub-skill of that competency, a lower-level "understand/remember" goal as supporting
+            knowledge for it. Judge by topic and capability, not by wording.
 
             Rules:
               - Assign each goal to exactly ONE competency: the best fit. Do not assign a goal to several.
@@ -176,8 +177,10 @@ public class CompetencyTreeSynthesizer {
      * and names the knowledge missing beneath each sub-skill.
      *
      * @param competencyText the terminal competency being expanded.
-     * @param subSkills      its {@code APPLY}/{@code CREATE} goals, in order; links index into this.
-     * @param knowledge      its lower-Bloom candidate knowledge goals, in order; links index into this.
+     * @param subSkills      its {@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE} goals,
+     *                       in order; links index into this.
+     * @param knowledge      its {@code REMEMBER}/{@code UNDERSTAND} candidate knowledge goals, in
+     *                       order; links index into this.
      * @param modelOverride  optional SAIA model id; falls back to the configured default when blank.
      * @return the knowledge attachments and gaps; never null.
      */
