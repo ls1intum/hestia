@@ -85,6 +85,12 @@ export default function CompetencyGraph({
   // Each tier's incoming connector rides inside its container, so it scrolls with its children.
   return (
     <div className="flex flex-col">
+      {/* First-glance affordance: only in the overview — once drilled in it has done its job. */}
+      {path.length === 0 && (
+        <p className="px-1 text-sm text-hestia-text-muted">
+          Click a skill to drill into its sub-skills and knowledge.
+        </p>
+      )}
       <Tier
         items={forest}
         activeId={path[0] ?? null}
