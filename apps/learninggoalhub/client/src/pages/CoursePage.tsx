@@ -161,8 +161,10 @@ export default function CoursePage() {
       status: goal.status === "APPROVED" ? "PENDING" : "APPROVED",
     });
 
+  // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
+  // the pipeline still synthesises and stores them, only the client filters.
   const goals: LearningGoal[] = useMemo(
-    () => goalsQuery.data?.content ?? [],
+    () => (goalsQuery.data?.content ?? []).filter((g) => g.origin !== "GAP"),
     [goalsQuery.data],
   );
 
@@ -251,7 +253,10 @@ export default function CoursePage() {
   const showToc = goalsView === "list" && groups.length > 0;
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
-  const totalGoals = courseQuery.data?.goalCount ?? goals.length;
+  // Count the loaded (gap-filtered) goals — the server-side goalCount still includes gap goals.
+  const totalGoals = goalsQuery.data
+    ? goals.length
+    : (courseQuery.data?.goalCount ?? 0);
   const approvedGoals = useMemo(
     () => goals.filter((g) => g.status === "APPROVED").length,
     [goals],

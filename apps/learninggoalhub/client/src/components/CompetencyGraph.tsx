@@ -18,13 +18,14 @@ const HALF = BOX_W / 2;
 const CONNECTOR_H = 40;
 
 /**
- * Competency map: a progressive, row-by-row drill-in laid out like a tree. The first row shows
- * every terminal competency. Click one and it glides to the left, its siblings line up to its
- * right, and a new row of its sub-skills unfolds beneath — joined to it by tree connectors. Click
- * a sub-skill and the same happens one tier down, revealing its knowledge and gaps. The whole map
- * shares one horizontal scroll so the boxes and connectors stay aligned; all motion (reorder +
- * unfolding) is handled by auto-animate. Plain, readable DOM — no canvas, zoom or pan. Clicking a
- * leaf (knowledge/gap), or the ⓘ on a branch box, opens the goal detail modal.
+ * Competency map: a progressive drill-in laid out like a tree. The overview shows every terminal
+ * competency at once in a wrapped grid (up to four per row). Click one and the grid gathers into
+ * a single horizontal row — the selected competency glides to the left, its siblings line up to
+ * its right — and a new row of its sub-skills unfolds beneath, joined to it by tree connectors.
+ * Click a sub-skill and the same happens one tier down, revealing its knowledge. The expanded
+ * tiers scroll horizontally so the boxes and connectors stay aligned; all motion (grid↔row +
+ * reorder + unfolding) is handled by auto-animate. Plain, readable DOM — no canvas, zoom or pan.
+ * Clicking a leaf, or the ⓘ on a branch box, opens the goal detail modal.
  */
 export default function CompetencyGraph({
   goals,
@@ -73,7 +74,7 @@ export default function CompetencyGraph({
     return (
       <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
         No competency tree for this course yet. Re-run the extraction to
-        synthesise terminal competencies, sub-skills and knowledge gaps.
+        synthesise terminal competencies, sub-skills and knowledge.
       </p>
     );
   }
@@ -92,6 +93,7 @@ export default function CompetencyGraph({
         actions={actions}
         highlight={highlight}
         isRoot
+        layout={path.length > 0 ? "row" : "grid"}
       />
       {competency && (
         <Tier
@@ -125,6 +127,11 @@ export default function CompetencyGraph({
  * One scroll-independent tier: its own horizontal scroll container holding the incoming connector
  * (unless it is the root) and the row of boxes. It tracks its own scroll offset so the connector
  * trunk and the sticky left-most box stay glued to the visible left edge while the rest scrolls.
+ *
+ * The root tier alternates between two layouts: a wrapped `grid` while nothing is selected (every
+ * competency visible at once) and the horizontal `row` once one is. The elements stay the same
+ * across the switch — only classes change — so auto-animate FLIPs the boxes from their grid spots
+ * into the row (the selection reorders the children, which triggers the animation).
  */
 function Tier({
   items,
@@ -135,6 +142,7 @@ function Tier({
   highlight,
   connectorColor,
   isRoot = false,
+  layout = "row",
 }: {
   items: CompetencyNode[];
   activeId: number | null;
@@ -144,14 +152,18 @@ function Tier({
   highlight: "approved" | "unapproved" | null;
   connectorColor?: string;
   isRoot?: boolean;
+  layout?: "grid" | "row";
 }) {
   const [scrollLeft, setScrollLeft] = useState(0);
+  const grid = layout === "grid";
   return (
     <div
-      className={`overflow-x-auto px-1 pb-2 ${isRoot ? "pt-2" : ""}`}
+      className={`px-1 pb-2 ${grid ? "" : "overflow-x-auto"} ${isRoot ? "pt-2" : ""}`}
       onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
     >
-      <div className={`flex w-max flex-col ${isRoot ? "" : "comp-unfold"}`}>
+      <div
+        className={`flex flex-col ${grid ? "" : "w-max"} ${isRoot ? "" : "comp-unfold"}`}
+      >
         {connectorColor && (
           <Connector
             count={items.length}
@@ -167,6 +179,7 @@ function Tier({
           actions={actions}
           highlight={highlight}
           scrolled={scrollLeft > 0}
+          grid={grid}
         />
       </div>
     </div>
@@ -248,6 +261,7 @@ function Row({
   actions,
   highlight,
   scrolled,
+  grid = false,
 }: {
   items: CompetencyNode[];
   activeId: number | null;
@@ -256,6 +270,7 @@ function Row({
   actions: GoalActions;
   highlight: "approved" | "unapproved" | null;
   scrolled: boolean;
+  grid?: boolean;
 }) {
   const [rowRef] = useAutoAnimate<HTMLDivElement>();
 
@@ -268,7 +283,14 @@ function Row({
   }, [items, activeId]);
 
   return (
-    <div ref={rowRef} className="flex gap-3">
+    <div
+      ref={rowRef}
+      className={
+        grid
+          ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          : "flex gap-3"
+      }
+    >
       {ordered.map((node, i) => {
         const expandable = onPick != null && node.children.length > 0;
         // The left-most box is pinned only when it is the selected node (selection moves it to the
@@ -291,6 +313,7 @@ function Row({
             actions={actions}
             stuck={sticky && scrolled}
             dimmed={dimmed}
+            fluid={grid}
           />
         );
       })}
@@ -311,6 +334,7 @@ function Box({
   actions,
   stuck,
   dimmed,
+  fluid = false,
 }: {
   node: CompetencyNode;
   active: boolean;
@@ -320,6 +344,8 @@ function Box({
   actions: GoalActions;
   stuck: boolean;
   dimmed: boolean;
+  /** In the grid overview the box fills its cell; in a row it keeps the fixed connector width. */
+  fluid?: boolean;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
@@ -338,7 +364,9 @@ function Box({
         }
       }}
       title={expandable ? "Unfold" : "View goal details"}
-      className={`group relative flex w-56 shrink-0 cursor-pointer flex-col gap-1.5 rounded-lg border-t-4 border p-3 text-left shadow-sm transition ${
+      className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border-t-4 border p-3 text-left shadow-sm transition ${
+        fluid ? "" : "w-56 shrink-0"
+      } ${
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"

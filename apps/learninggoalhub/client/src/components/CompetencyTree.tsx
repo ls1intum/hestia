@@ -8,9 +8,9 @@ import {
 
 /**
  * Collapsible top-down rendering of the competency tree: terminal competencies → sub-skills →
- * knowledge/gap leaves. Gap leaves (knowledge the course does not yet cover) are styled in the
- * danger colour so an instructor spots them at a glance. Clicking a node opens the goal detail
- * modal. Each node carries a badge with its direct child count.
+ * knowledge leaves. Clicking a node opens the goal detail modal. Each node carries a badge with
+ * its direct child count. (Gap leaves are currently filtered out client-side — see CoursePage —
+ * but their danger styling below is kept for when they return from the backlog.)
  */
 export default function CompetencyTree({
   goals,
@@ -41,7 +41,7 @@ export default function CompetencyTree({
     return (
       <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
         No competency tree for this course yet. Re-run the extraction to synthesise terminal
-        competencies, sub-skills and knowledge gaps.
+        competencies, sub-skills and knowledge.
       </p>
     );
   }
@@ -201,13 +201,11 @@ function TreeNode({
   );
 }
 
-/** Colour-key for the four node roles, with the gap role called out as "not yet covered". */
+/** Colour-key for the node roles shown in the tree (gaps are filtered out for now). */
 function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-hestia-text-muted">
-      {(
-        ["competency", "sub-skill", "knowledge", "gap"] as const
-      ).map((role) => {
+      {(["competency", "sub-skill", "knowledge"] as const).map((role) => {
         const meta = COMPETENCY_ROLE_META[role];
         return (
           <span key={role} className="inline-flex items-center gap-1.5">
@@ -215,7 +213,7 @@ function Legend() {
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: meta.color }}
             />
-            {role === "gap" ? "Gap (not yet covered)" : meta.label}
+            {meta.label}
           </span>
         );
       })}
