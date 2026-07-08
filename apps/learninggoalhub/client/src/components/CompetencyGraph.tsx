@@ -383,7 +383,7 @@ function Box({
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"
-      } ${active ? "ring-2 ring-offset-2 ring-offset-hestia-bg shadow-md" : ""} ${
+      } ${
         // Only pin once the row is actually scrolled — at scroll 0 sticky has no visible effect but
         // would race auto-animate's FLIP measurement and break the slide-to-front animation.
         stuck
@@ -392,12 +392,12 @@ function Box({
       } ${dimmed ? "opacity-30" : receded ? "opacity-50 hover:opacity-100" : ""}`}
       style={{
         borderTopColor: meta.color,
+        // The selected box keeps only this quiet tint — the receding siblings do the highlighting.
         ...(active
-          ? ({
-              "--tw-ring-color": meta.color,
+          ? {
               backgroundColor: `color-mix(in srgb, ${meta.color} 12%, var(--hestia-surface))`,
               borderColor: meta.color,
-            } as React.CSSProperties)
+            }
           : {}),
       }}
     >
