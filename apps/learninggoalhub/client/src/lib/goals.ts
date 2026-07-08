@@ -173,8 +173,10 @@ export const COMPETENCY_ROLE_META: Record<
  * Tree depth is capped at three tiers (terminal → sub-skill → knowledge/gap) and traversal
  * tracks the current path so a stray edge can never produce a cycle or revisit a node within
  * its own branch. Roles are assigned by position: depth 0 = competency; a depth-1 node is a
- * sub-skill when it has children, otherwise leftover knowledge attached directly to the
- * terminal; deeper nodes are knowledge; any GAP-origin goal renders as a gap leaf.
+ * sub-skill when it has children OR carries a doing/judgement Bloom level (a childless
+ * apply/analyze/evaluate/create goal is still a capability, not knowledge), otherwise it is
+ * leftover knowledge attached directly to the terminal; deeper nodes are knowledge; any
+ * GAP-origin goal renders as a gap leaf.
  */
 export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   const byId = new Map<number, LearningGoal>();
@@ -193,6 +195,9 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   }
 
   const MAX_DEPTH = 2; // depth 0/1/2 = competency / sub-skill / knowledge|gap
+
+  // Bloom levels that make a goal a capability (mirrors the server's SUB_SKILL_BLOOM split).
+  const DOING_BLOOM = new Set(["APPLY", "ANALYZE", "EVALUATE", "CREATE"]);
 
   const build = (
     goal: LearningGoal,
@@ -213,7 +218,8 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
         ? "gap"
         : depth === 0
           ? "competency"
-          : children.length > 0
+          : depth === 1 &&
+              (children.length > 0 || DOING_BLOOM.has(goal.bloomLevel ?? ""))
             ? "sub-skill"
             : "knowledge";
     return { goal, role, children };
