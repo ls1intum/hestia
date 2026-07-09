@@ -168,20 +168,30 @@ export default function CompetencyGraph({
                 {competency.children.map((child) => {
                   const expandable = child.children.length > 0;
                   return (
-                    <Box
+                    // Column cell: the box plus, when knowledge waits beneath, the mini leaf
+                    // indicator branching off below it. Stub width < box width, so the cell
+                    // keeps the box's footprint and the connector above stays aligned.
+                    <div
                       key={child.goal.id}
-                      node={child}
-                      active={false}
-                      expandable={expandable}
-                      onClick={() =>
-                        expandable
-                          ? pickSubSkill(child.goal.id!)
-                          : onOpenDetail(child.goal)
-                      }
-                      onOpenDetail={() => onOpenDetail(child.goal)}
-                      actions={actions}
-                      dimmed={isDimmed(child, highlight)}
-                    />
+                      className="flex flex-col items-center"
+                    >
+                      <Box
+                        node={child}
+                        active={false}
+                        expandable={expandable}
+                        onClick={() =>
+                          expandable
+                            ? pickSubSkill(child.goal.id!)
+                            : onOpenDetail(child.goal)
+                        }
+                        onOpenDetail={() => onOpenDetail(child.goal)}
+                        actions={actions}
+                        dimmed={isDimmed(child, highlight)}
+                      />
+                      {expandable && (
+                        <LeafStub count={child.children.length} />
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -700,6 +710,50 @@ function Stub({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Mini leaf indicator under an unfocused sub-skill box: stub lines branching into a few
+ * knowledge dots, hinting that another tier unfolds beneath it. Dots = knowledge, the same
+ * visual language as the overview schematic; the count is suggestive (capped at three), the
+ * exact number already sits in the box's "N items" line.
+ */
+function LeafStub({ count }: { count: number }) {
+  const xs = count >= 3 ? [12, 30, 48] : count === 2 ? [21, 39] : [30];
+  const lineColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, transparent)`;
+  const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, var(--hestia-surface))`;
+  return (
+    <div className="pointer-events-none" aria-hidden="true">
+      <svg width={60} height={12} className="mx-auto block">
+        <g
+          stroke={lineColor}
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        >
+          {xs.map((x) =>
+            x === 30 ? (
+              <path key={x} d="M 30 0 V 12" />
+            ) : (
+              <path
+                key={x}
+                d={`M 30 0 V 3 Q 30 6 ${x < 30 ? 26 : 34} 6 H ${x < 30 ? x + 4 : x - 4} Q ${x} 6 ${x} 9 V 12`}
+              />
+            ),
+          )}
+        </g>
+      </svg>
+      <div className="mt-px flex justify-center gap-2">
+        {xs.map((x) => (
+          <span
+            key={x}
+            className="h-[7px] w-[7px] rounded-full"
+            style={{ backgroundColor: dotColor }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
