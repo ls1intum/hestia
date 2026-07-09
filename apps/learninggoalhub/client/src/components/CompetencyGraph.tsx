@@ -9,11 +9,11 @@ import {
 } from "../lib/goals.ts";
 
 // Box geometry, kept in sync with the Tailwind classes below so the SVG connectors can be drawn
-// from the layout alone (no DOM measuring): w-56 = 14rem and gap-3 = 0.75rem at a 16px root.
+// from the layout alone (no DOM measuring): w-56 = 14rem, w-80 = 20rem and gap-3 = 0.75rem at a
+// 16px root.
 const BOX_W = 224;
+const WIDE_W = 320; // drill-path boxes and the knowledge row under a focused sub-skill
 const GAP = 12;
-const PITCH = BOX_W + GAP; // centre-to-centre distance between adjacent boxes
-const HALF = BOX_W / 2;
 const CONNECTOR_H = 40;
 
 /**
@@ -158,6 +158,7 @@ export default function CompetencyGraph({
                 onOpenDetail={() => onOpenDetail(competency.goal)}
                 actions={actions}
                 dimmed={isDimmed(competency, highlight)}
+                wide
               />
               <Connector
                 count={competency.children.length}
@@ -198,6 +199,7 @@ export default function CompetencyGraph({
                 actions={actions}
                 dimmed={isDimmed(competency, highlight)}
                 subdued
+                wide
               />
               {otherSubs.length > 0 ? (
                 <>
@@ -226,8 +228,13 @@ export default function CompetencyGraph({
                 onOpenDetail={() => onOpenDetail(subSkill.goal)}
                 actions={actions}
                 dimmed={isDimmed(subSkill, highlight)}
+                wide
               />
-              <Connector count={subSkill.children.length} color={subColor} />
+              <Connector
+                count={subSkill.children.length}
+                color={subColor}
+                childW={WIDE_W}
+              />
               <div className="flex justify-center gap-3">
                 {subSkill.children.map((leaf) => (
                   <Box
@@ -239,6 +246,7 @@ export default function CompetencyGraph({
                     onOpenDetail={() => onOpenDetail(leaf.goal)}
                     actions={actions}
                     dimmed={isDimmed(leaf, highlight)}
+                    wide
                   />
                 ))}
               </div>
@@ -303,24 +311,33 @@ function Shelf({
         {label}
       </span>
       {items.map((node) => (
-        <button
-          key={node.goal.id}
-          type="button"
-          title={node.goal.text}
-          onClick={() =>
-            node.children.length > 0
-              ? onPick(node.goal.id!)
-              : onOpenDetail(node.goal)
-          }
-          className={`max-w-52 truncate rounded-full border border-hestia-border bg-hestia-surface py-1 pl-2 pr-2.5 text-xs font-medium shadow-sm transition hover:shadow ${
-            isDimmed(node, highlight)
-              ? "opacity-30"
-              : "opacity-80 hover:opacity-100"
-          }`}
-          style={{ borderLeftWidth: 3, borderLeftColor: color }}
-        >
-          {node.goal.text}
-        </button>
+        // Chips truncate, so each carries a styled tooltip with the full goal text (same look
+        // as the BoxAction tooltips; instant, unlike the browser's native title delay).
+        <span key={node.goal.id} className="group/chip relative inline-flex">
+          <button
+            type="button"
+            onClick={() =>
+              node.children.length > 0
+                ? onPick(node.goal.id!)
+                : onOpenDetail(node.goal)
+            }
+            className={`max-w-52 truncate rounded-full border border-hestia-border bg-hestia-surface py-1 pl-2 pr-2.5 text-xs font-medium shadow-sm transition hover:shadow ${
+              isDimmed(node, highlight)
+                ? "opacity-30"
+                : "opacity-80 hover:opacity-100"
+            }`}
+            style={{ borderLeftWidth: 3, borderLeftColor: color }}
+          >
+            {node.goal.text}
+          </button>
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 hidden w-64 -translate-x-1/2 rounded-lg border border-hestia-border border-l-[3px] bg-hestia-surface p-2 text-left text-[0.7rem] font-normal leading-snug text-hestia-text shadow-lg group-hover/chip:block"
+            style={{ borderLeftColor: color }}
+          >
+            {node.goal.text}
+          </span>
+        </span>
       ))}
     </div>
   );
@@ -344,9 +361,19 @@ function VLine({ color }: { color: string }) {
  * corners. Geometry comes from the shared box constants, so no DOM measuring is needed: parent
  * and children are centred in the same column, which puts the trunk at the row's midpoint.
  */
-function Connector({ count, color }: { count: number; color: string }) {
+function Connector({
+  count,
+  color,
+  childW = BOX_W,
+}: {
+  count: number;
+  color: string;
+  /** Width of the child boxes below — matches their `wide`/default Tailwind width. */
+  childW?: number;
+}) {
   if (count === 0) return null;
-  const width = (count - 1) * PITCH + BOX_W;
+  const pitch = childW + GAP; // centre-to-centre distance between adjacent children
+  const width = (count - 1) * pitch + childW;
   const trunk = width / 2;
   const mid = CONNECTOR_H / 2;
   const r = 8; // corner radius for the rounded joins
@@ -360,7 +387,7 @@ function Connector({ count, color }: { count: number; color: string }) {
     >
       <g stroke={color} strokeWidth={1.5} fill="none" strokeLinecap="round">
         {Array.from({ length: count }, (_, i) => {
-          const cx = HALF + i * PITCH;
+          const cx = childW / 2 + i * pitch;
           const dx = cx - trunk;
           // Too close to the trunk for the rail-and-corners route: a gentle S-curve instead
           // (straight drop when the child sits exactly under the trunk).
@@ -407,6 +434,7 @@ function Box({
   actions,
   dimmed,
   fluid = false,
+  wide = false,
   subdued = false,
   deepKnowledge = null,
   stub = false,
@@ -422,6 +450,10 @@ function Box({
   dimmed: boolean;
   /** In the grid overview the box fills its cell; in the tree it keeps the fixed connector width. */
   fluid?: boolean;
+  /** Boxes on the drill path are wider (w-80) so long goal texts stay shallow and the tiers
+   * below remain in view. Safe for the connectors: parent and children are centred in the same
+   * column, so the trunk stays at the parent's centre regardless of its width. */
+  wide?: boolean;
   /** The drill path's parent box: readable but quieter than the focus node. */
   subdued?: boolean;
   /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
@@ -447,7 +479,7 @@ function Box({
       }}
       title={expandable ? "Unfold" : "View goal details"}
       className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border-t-4 border p-3 text-left shadow-sm transition ${
-        fluid ? "" : "w-56 shrink-0"
+        fluid ? "" : wide ? "w-80 shrink-0" : "w-56 shrink-0"
       } ${
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
