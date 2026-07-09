@@ -20,13 +20,14 @@ const CONNECTOR_H = 40;
  * Competency map: a focus-and-context tree. The overview shows every terminal competency as a
  * collapsed tree — a card with sub-skill/knowledge counts and a small root-to-leaves schematic
  * hinting that three tiers unfold beneath it. Click one and it becomes the focused tree: the
- * card moves to the centre with its sub-skills fanned out below it, while its siblings shrink
- * into a chip shelf above for one-click switching. Click a sub-skill and the same happens one
- * tier down — its sibling sub-skills gather into a second shelf that sits at its own tree depth,
- * between the parent skill and the focused sub-skill, with short trunk segments keeping the
- * skill → sub-skill edge continuous. The centre column is always the drill path. The whole tree
- * shares one horizontal scroll container so boxes and connectors stay aligned; each focus change
- * re-centres it. Clicking a leaf, or the ⓘ on a branch box, opens the goal detail modal.
+ * card moves to the centre with its sub-skills fanned out below it. Its siblings collapse into
+ * a quiet pill above ("Other skills · 7"); one tier down, the focused sub-skill's siblings
+ * collapse into a pill sitting ON the skill → sub-skill edge, joined by short trunk segments.
+ * Clicking a pill opens an overlay with the overview-style card grid (cards staggering in) to
+ * switch the focus at that tier; any navigation closes it. The centre column is always the
+ * drill path. The whole tree shares one horizontal scroll container so boxes and connectors
+ * stay aligned; each focus change re-centres it. Clicking a leaf, or the ⓘ on a branch box,
+ * opens the goal detail modal.
  */
 export default function CompetencyGraph({
   goals,
@@ -48,6 +49,10 @@ export default function CompetencyGraph({
 
   // Drill path: [selected competency id, selected sub-skill id]. Empty = overview only.
   const [path, setPath] = useState<number[]>([]);
+
+  // Which sibling picker overlay is open; any focus change closes it again.
+  const [picker, setPicker] = useState<"skills" | "subs" | null>(null);
+  useEffect(() => setPicker(null), [path]);
 
   const competency = useMemo(
     () => forest.find((n) => n.goal.id === path[0]) ?? null,
@@ -135,14 +140,16 @@ export default function CompetencyGraph({
   // animation; `w-max` + `mx-auto` centre it when it fits and let it scroll as one unit when not.
   return (
     <div className="flex flex-col gap-2 px-1 pt-1">
-      <Shelf
-        label="Other skills"
-        color={skillColor}
-        items={otherSkills}
-        onPick={pickCompetency}
-        onOpenDetail={onOpenDetail}
-        highlight={highlight}
-      />
+      {otherSkills.length > 0 && (
+        <div className="flex justify-center">
+          <ShelfPill
+            label="Other skills"
+            count={otherSkills.length}
+            color={skillColor}
+            onClick={() => setPicker("skills")}
+          />
+        </div>
+      )}
       <div ref={scrollRef} className="overflow-x-auto pb-2">
         <div
           key={`tree-${competency.goal.id}-${subSkill?.goal.id ?? "none"}`}
@@ -213,17 +220,14 @@ export default function CompetencyGraph({
               />
               {otherSubs.length > 0 ? (
                 <>
-                  {/* Sibling sub-skills sit at their own tree depth, between parent and focus;
-                      the trunk segments keep the skill → sub-skill edge readable through them. */}
+                  {/* The sibling picker pill sits at its own tree depth, ON the edge between
+                      parent and focus; the trunk segments keep that edge readable through it. */}
                   <VLine color={skillColor} />
-                  <Shelf
+                  <ShelfPill
                     label="Other sub-skills"
+                    count={otherSubs.length}
                     color={subColor}
-                    items={otherSubs}
-                    onPick={pickSubSkill}
-                    onOpenDetail={onOpenDetail}
-                    highlight={highlight}
-                    between
+                    onClick={() => setPicker("subs")}
                   />
                   <VLine color={skillColor} />
                 </>
@@ -264,6 +268,32 @@ export default function CompetencyGraph({
           )}
         </div>
       </div>
+      {picker === "skills" && (
+        <ShelfOverlay
+          label="Other skills"
+          color={skillColor}
+          items={otherSkills}
+          kind="skills"
+          onPick={pickCompetency}
+          onOpenDetail={onOpenDetail}
+          actions={actions}
+          highlight={highlight}
+          onClose={() => setPicker(null)}
+        />
+      )}
+      {picker === "subs" && subSkill != null && (
+        <ShelfOverlay
+          label="Other sub-skills"
+          color={subColor}
+          items={otherSubs}
+          kind="subs"
+          onPick={pickSubSkill}
+          onOpenDetail={onOpenDetail}
+          actions={actions}
+          highlight={highlight}
+          onClose={() => setPicker(null)}
+        />
+      )}
     </div>
   );
 }
@@ -282,73 +312,156 @@ function countGrandchildren(node: CompetencyNode) {
 }
 
 /**
- * Sibling shelf: the nodes not currently focused at a tier, shrunk to one-click chips. The top
- * shelf holds the other skills; with a sub-skill focused, a second shelf holds its sibling
- * sub-skills and sits `between` the parent skill and the focus node — at its own tree depth.
+ * Collapsed sibling picker: one quiet pill naming the tier and how many siblings wait behind
+ * it. Clicking opens the ShelfOverlay to switch the focus at that tier.
  */
-function Shelf({
+function ShelfPill({
+  label,
+  count,
+  color,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2.5 py-1 text-[0.6rem] font-semibold uppercase tracking-wider shadow-sm transition hover:shadow"
+      style={{
+        borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${color} 4%, transparent)`,
+        color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))`,
+      }}
+    >
+      {label} · {count}
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="h-2.5 w-2.5"
+      >
+        <path d="M7 5l6 5-6 5" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Sibling picker overlay: the same cards as the page-one overview (skills keep their counts and
+ * collapsed-tree schematic), staggering onto the page over the tree. Picking one focuses it —
+ * the path change closes the overlay; backdrop click, Escape and the ✕ close it without picking.
+ * Sits at z-40 so the goal detail modal (z-50, reachable via a card's ⓘ) stacks above it.
+ */
+function ShelfOverlay({
   label,
   color,
   items,
+  kind,
   onPick,
   onOpenDetail,
+  actions,
   highlight,
-  between = false,
+  onClose,
 }: {
   label: string;
   color: string;
   items: CompetencyNode[];
+  kind: "skills" | "subs";
   onPick: (id: number) => void;
   onOpenDetail: (goal: LearningGoal) => void;
+  actions: GoalActions;
   highlight: "approved" | "unapproved" | null;
-  between?: boolean;
+  onClose: () => void;
 }) {
-  if (items.length === 0) return null;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
-      className={`flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed px-2.5 py-1.5 ${
-        between ? "max-w-[44rem] justify-center" : ""
-      }`}
-      style={{
-        borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
-        backgroundColor: `color-mix(in srgb, ${color} 4%, transparent)`,
-      }}
+      onClick={onClose}
+      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
     >
-      <span
-        className="mr-1 whitespace-nowrap text-[0.6rem] font-semibold uppercase tracking-wider"
-        style={{ color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))` }}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex w-full max-w-4xl flex-col gap-3 rounded-xl border border-hestia-border bg-hestia-bg p-4 shadow-xl"
       >
-        {label}
-      </span>
-      {items.map((node) => (
-        // Chips truncate, so each carries a styled tooltip with the full goal text (same look
-        // as the BoxAction tooltips; instant, unlike the browser's native title delay).
-        <span key={node.goal.id} className="group/chip relative inline-flex">
-          <button
-            type="button"
-            onClick={() =>
-              node.children.length > 0
-                ? onPick(node.goal.id!)
-                : onOpenDetail(node.goal)
-            }
-            className={`max-w-52 truncate rounded-full border border-hestia-border bg-hestia-surface py-1 pl-2 pr-2.5 text-xs font-medium shadow-sm transition hover:shadow ${
-              isDimmed(node, highlight)
-                ? "opacity-30"
-                : "opacity-80 hover:opacity-100"
-            }`}
-            style={{ borderLeftWidth: 3, borderLeftColor: color }}
-          >
-            {node.goal.text}
-          </button>
+        <div className="flex items-center justify-between">
           <span
-            role="tooltip"
-            className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 hidden w-64 -translate-x-1/2 rounded-lg border border-hestia-border border-l-[3px] bg-hestia-surface p-2 text-left text-[0.7rem] font-normal leading-snug text-hestia-text shadow-lg group-hover/chip:block"
-            style={{ borderLeftColor: color }}
+            className="text-[0.6rem] font-semibold uppercase tracking-wider"
+            style={{
+              color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))`,
+            }}
           >
-            {node.goal.text}
+            {label}
           </span>
-        </span>
-      ))}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-surface hover:text-hestia-text"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((node, i) => {
+            const expandable = node.children.length > 0;
+            return (
+              // Single-cell grid wrapper: carries the staggered entrance without disturbing
+              // the box's own layout, and stretches it to the row height.
+              <div
+                key={node.goal.id}
+                className="comp-unfold grid"
+                style={{
+                  animationDelay: `${i * 35}ms`,
+                  animationFillMode: "backwards",
+                }}
+              >
+                <Box
+                  node={node}
+                  active={false}
+                  expandable={expandable}
+                  onClick={() =>
+                    expandable ? onPick(node.goal.id!) : onOpenDetail(node.goal)
+                  }
+                  onOpenDetail={() => onOpenDetail(node.goal)}
+                  actions={actions}
+                  dimmed={isDimmed(node, highlight)}
+                  fluid
+                  deepKnowledge={
+                    kind === "skills" ? countGrandchildren(node) : null
+                  }
+                  stub={kind === "skills"}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
