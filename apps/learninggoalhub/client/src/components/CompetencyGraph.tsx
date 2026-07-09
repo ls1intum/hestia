@@ -163,24 +163,36 @@ export default function CompetencyGraph({
         <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {forest.map((node) => {
             const expandable = node.children.length > 0;
+            const deep = countGrandchildren(node);
             return (
-              <Box
-                key={node.goal.id}
-                node={node}
-                active={false}
-                expandable={expandable}
-                onClick={() =>
-                  expandable
-                    ? pickCompetency(node.goal.id!)
-                    : onOpenDetail(node.goal)
-                }
-                onOpenDetail={() => onOpenDetail(node.goal)}
-                actions={actions}
-                dimmed={isDimmed(node, highlight)}
-                fluid
-                deepKnowledge={countGrandchildren(node)}
-                stub
-              />
+              // Two-row cell: the card stretches to the row height, and the collapsed-tree
+              // schematic branches off UNDERNEATH it — outside the card, like a folded-up
+              // version of the connectors that unfold on click.
+              <div key={node.goal.id} className="grid grid-rows-[1fr_auto]">
+                <Box
+                  node={node}
+                  active={false}
+                  expandable={expandable}
+                  onClick={() =>
+                    expandable
+                      ? pickCompetency(node.goal.id!)
+                      : onOpenDetail(node.goal)
+                  }
+                  onOpenDetail={() => onOpenDetail(node.goal)}
+                  actions={actions}
+                  dimmed={isDimmed(node, highlight)}
+                  fluid
+                  deepKnowledge={deep}
+                />
+                {expandable && (
+                  <div className="justify-self-center">
+                    <Stub
+                      childCount={node.children.length}
+                      hasKnowledge={deep > 0}
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -341,7 +353,6 @@ export default function CompetencyGraph({
       {picker === "skills" && (
         <ShelfOverlay
           label="Other skills"
-          color={skillColor}
           items={otherSkills}
           kind="skills"
           onPick={pickCompetency}
@@ -354,7 +365,6 @@ export default function CompetencyGraph({
       {picker === "subs" && subSkill != null && (
         <ShelfOverlay
           label="Other sub-skills"
-          color={subColor}
           items={otherSubs}
           kind="subs"
           onPick={pickSubSkill}
@@ -432,7 +442,6 @@ function ShelfPill({
  */
 function ShelfOverlay({
   label,
-  color,
   items,
   kind,
   onPick,
@@ -442,7 +451,6 @@ function ShelfOverlay({
   onClose,
 }: {
   label: string;
-  color: string;
   items: CompetencyNode[];
   kind: "skills" | "subs";
   onPick: (id: number) => void;
@@ -467,23 +475,19 @@ function ShelfOverlay({
       aria-modal="true"
       aria-label={label}
     >
+      {/* No panel chrome — the cards float freely over the dimmed tree. */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-4xl flex-col gap-3 rounded-xl border border-hestia-border bg-hestia-bg p-4 shadow-xl"
+        className="flex w-full max-w-4xl flex-col gap-3"
       >
         <div className="flex items-center justify-between">
-          <span
-            className="text-[0.6rem] font-semibold uppercase tracking-wider"
-            style={{
-              color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))`,
-            }}
-          >
+          <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-white/90">
             {label}
           </span>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-surface hover:text-hestia-text"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-white/80 transition hover:bg-white/10 hover:text-white"
           >
             <svg
               viewBox="0 0 20 20"
@@ -500,12 +504,14 @@ function ShelfOverlay({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((node, i) => {
             const expandable = node.children.length > 0;
+            const deep = kind === "skills" ? countGrandchildren(node) : null;
             return (
-              // Single-cell grid wrapper: carries the staggered entrance without disturbing
-              // the box's own layout, and stretches it to the row height.
+              // Two-row grid wrapper: carries the staggered entrance without disturbing the
+              // box's own layout, stretches it to the row height, and hangs the collapsed-tree
+              // indicator underneath — the same footprint the card has in the tree/overview.
               <div
                 key={node.goal.id}
-                className="comp-unfold grid"
+                className="comp-unfold grid grid-rows-[1fr_auto]"
                 style={{
                   animationDelay: `${i * 35}ms`,
                   animationFillMode: "backwards",
@@ -522,11 +528,20 @@ function ShelfOverlay({
                   actions={actions}
                   dimmed={isDimmed(node, highlight)}
                   fluid
-                  deepKnowledge={
-                    kind === "skills" ? countGrandchildren(node) : null
-                  }
-                  stub={kind === "skills"}
+                  deepKnowledge={deep}
                 />
+                {expandable && (
+                  <div className="justify-self-center">
+                    {kind === "skills" ? (
+                      <Stub
+                        childCount={node.children.length}
+                        hasKnowledge={(deep ?? 0) > 0}
+                      />
+                    ) : (
+                      <LeafStub count={node.children.length} />
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -634,7 +649,6 @@ function Box({
   wide = false,
   subdued = false,
   deepKnowledge = null,
-  stub = false,
 }: {
   node: CompetencyNode;
   active: boolean;
@@ -655,8 +669,6 @@ function Box({
   subdued?: boolean;
   /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
   deepKnowledge?: number | null;
-  /** Overview only: render the collapsed-tree schematic under the counts. */
-  stub?: boolean;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
@@ -835,16 +847,14 @@ function Box({
           </BoxAction>
         </div>
       </div>
-      {stub && childCount > 0 && (
-        <Stub childCount={childCount} hasKnowledge={(deepKnowledge ?? 0) > 0} />
-      )}
     </div>
   );
 }
 
 /**
- * Collapsed-tree schematic on an overview card: connector stubs to unlabelled sub-skill bars,
- * then a fainter row of knowledge dots — a first-glance hint that three tiers unfold beneath.
+ * Collapsed-tree schematic hanging under an overview card: connector stubs to unlabelled
+ * sub-skill bars, then a fainter row of knowledge dots — a first-glance hint that three tiers
+ * unfold beneath.
  */
 function Stub({
   childCount,
@@ -858,7 +868,7 @@ function Stub({
   const barColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 45%, var(--hestia-surface))`;
   const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 60%, var(--hestia-surface))`;
   return (
-    <div className="pointer-events-none mt-0.5" aria-hidden="true">
+    <div className="pointer-events-none" aria-hidden="true">
       <svg width={120} height={14} className="mx-auto block">
         <g
           stroke={`color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 55%, transparent)`}
