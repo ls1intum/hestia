@@ -122,6 +122,36 @@
   animation: comp-unfold 220ms ease-out;
 }
 
+/* Competency-map focus transition, choreographed with the FLIP slide in CompetencyGraph:
+   the clicked box glides into place (0–300ms, WAAPI), the connector draws from the trunk toward
+   the children (140–380ms), and the children pop in underneath (180ms + stagger). The delays
+   live here; the FLIP cancels `comp-*` CSS animations on boxes that slide instead. */
+@keyframes comp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.comp-pop {
+  animation: comp-pop 200ms ease-out 180ms backwards;
+}
+
+@keyframes comp-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.comp-draw path {
+  /* Paths carry pathLength=1, so a unit dash covers each link exactly. */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: comp-draw 240ms ease-out 140ms forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

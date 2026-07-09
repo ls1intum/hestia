@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LearningGoal } from "../api/client.ts";
 import {
   COMPETENCY_ROLE_META,
@@ -64,25 +64,84 @@ export default function CompetencyGraph({
   );
 
   // A reload/re-extraction can drop a selected node; prune the path back to what still exists.
+  // Plain setPath — nothing was clicked, so nothing should animate.
   useEffect(() => {
     if (path.length === 0) return;
     if (!competency) setPath([]);
     else if (path.length > 1 && !subSkill) setPath([path[0]]);
   }, [competency, subSkill, path]);
 
-  // Keep the drill path (the centre column) in view: when the tree is wider than the viewport it
-  // scrolls, and a fresh focus should start centred on the focused node, not at the left edge.
+  // FLIP: `navigate` snapshots every visible box (by goal id) before the path changes; after the
+  // new layout is in, each box that survived the transition — the clicked one gliding into its
+  // focus slot, the parent rising onto the path, a card flying out of the picker overlay — is
+  // animated from its old viewport rect to its new one. Boxes without a previous rect simply
+  // appear (their `comp-pop` entrance), so a programmatic path change animates nothing.
+  const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+  const flipRects = useRef<Map<string, DOMRect> | null>(null);
+
+  const navigate = (next: number[]) => {
+    const map = new Map<string, DOMRect>();
+    containerRef.current
+      ?.querySelectorAll<HTMLElement>("[data-goal-id]")
+      .forEach((el) => map.set(el.dataset.goalId!, el.getBoundingClientRect()));
+    flipRects.current = map;
+    setPath(next);
+  };
+
+  useLayoutEffect(() => {
+    // Re-centre the tree first, so the boxes are measured in their final resting places.
+    const scroller = scrollRef.current;
+    if (scroller)
+      scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+
+    const prev = flipRects.current;
+    flipRects.current = null;
+    if (
+      !prev ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    containerRef.current
+      ?.querySelectorAll<HTMLElement>("[data-goal-id]")
+      .forEach((el) => {
+        const from = prev.get(el.dataset.goalId!);
+        if (!from) return;
+        const to = el.getBoundingClientRect();
+        const dx = from.left - to.left;
+        const dy = from.top - to.top;
+        const sx = from.width / to.width;
+        const sy = from.height / to.height;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01)
+          return;
+        // A surviving box slides — it must not ALSO play an entrance animation, neither its
+        // own nor an enclosing wrapper's (the state-2 cells carry `comp-pop`).
+        for (
+          let n: HTMLElement | null = el;
+          n && n !== containerRef.current;
+          n = n.parentElement
+        ) {
+          n.getAnimations().forEach((a) => {
+            if (a instanceof CSSAnimation && a.animationName.startsWith("comp-"))
+              a.cancel();
+          });
+        }
+        el.style.transformOrigin = "top left";
+        el.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+            { transform: "none" },
+          ],
+          { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
+        );
+      });
   }, [path]);
 
   // Toggle selection at a tier: re-selecting the active node collapses it (and everything below).
   const pickCompetency = (id: number) =>
-    setPath((p) => (p[0] === id ? [] : [id]));
+    navigate(path[0] === id ? [] : [id]);
   const pickSubSkill = (id: number) =>
-    setPath((p) => (p[1] === id ? [p[0]] : [p[0], id]));
+    navigate(path[1] === id ? [path[0]] : [path[0], id]);
 
   if (forest.length === 0) {
     return (
@@ -96,7 +155,7 @@ export default function CompetencyGraph({
   // Overview: every competency as a collapsed tree in a wrapped grid.
   if (!competency) {
     return (
-      <div className="flex flex-col gap-3 pt-1">
+      <div ref={containerRef} className="flex flex-col gap-3 pt-1">
         <p className="px-1 text-sm text-hestia-text-muted">
           Click a skill to focus its tree — sub-skills unfold below it, the
           other skills move to a shelf above.
@@ -139,7 +198,7 @@ export default function CompetencyGraph({
   // Focused tree. The canvas is keyed by the drill path so a focus change replays the unfold
   // animation; `w-max` + `mx-auto` centre it when it fits and let it scroll as one unit when not.
   return (
-    <div className="flex flex-col gap-2 px-1 pt-1">
+    <div ref={containerRef} className="flex flex-col gap-2 px-1 pt-1">
       {otherSkills.length > 0 && (
         <div className="flex justify-center">
           <ShelfPill
@@ -151,9 +210,11 @@ export default function CompetencyGraph({
         </div>
       )}
       <div ref={scrollRef} className="overflow-x-auto pb-2">
+        {/* Keyed by the drill path so every navigation remounts the tiers — the connectors
+            redraw and the children replay their entrance, while surviving boxes FLIP. */}
         <div
           key={`tree-${competency.goal.id}-${subSkill?.goal.id ?? "none"}`}
-          className="comp-unfold mx-auto flex w-max min-w-full flex-col items-center"
+          className="mx-auto flex w-max min-w-full flex-col items-center"
         >
           {subSkill == null ? (
             <>
@@ -172,15 +233,18 @@ export default function CompetencyGraph({
                 color={skillColor}
               />
               <div className="flex justify-center gap-3">
-                {competency.children.map((child) => {
+                {competency.children.map((child, i) => {
                   const expandable = child.children.length > 0;
                   return (
                     // Column cell: the box plus, when knowledge waits beneath, the mini leaf
                     // indicator branching off below it. Stub width < box width, so the cell
-                    // keeps the box's footprint and the connector above stays aligned.
+                    // keeps the box's footprint and the connector above stays aligned. The
+                    // cell pops in after the focused box has slid into place (FLIP cancels
+                    // this entrance on a box that survived the transition).
                     <div
                       key={child.goal.id}
-                      className="flex flex-col items-center"
+                      className="comp-pop flex flex-col items-center"
+                      style={{ animationDelay: `${180 + i * 30}ms` }}
                     >
                       <Box
                         node={child}
@@ -211,7 +275,7 @@ export default function CompetencyGraph({
                 active={false}
                 open
                 expandable
-                onClick={() => setPath([competency.goal.id!])}
+                onClick={() => navigate([competency.goal.id!])}
                 onOpenDetail={() => onOpenDetail(competency.goal)}
                 actions={actions}
                 dimmed={isDimmed(competency, highlight)}
@@ -250,18 +314,24 @@ export default function CompetencyGraph({
                 childW={WIDE_W}
               />
               <div className="flex justify-center gap-3">
-                {subSkill.children.map((leaf) => (
-                  <Box
+                {subSkill.children.map((leaf, i) => (
+                  // The knowledge pops in after the focused sub-skill has slid into place.
+                  <div
                     key={leaf.goal.id}
-                    node={leaf}
-                    active={false}
-                    expandable={false}
-                    onClick={() => onOpenDetail(leaf.goal)}
-                    onOpenDetail={() => onOpenDetail(leaf.goal)}
-                    actions={actions}
-                    dimmed={isDimmed(leaf, highlight)}
-                    wide
-                  />
+                    className="comp-pop"
+                    style={{ animationDelay: `${180 + i * 30}ms` }}
+                  >
+                    <Box
+                      node={leaf}
+                      active={false}
+                      expandable={false}
+                      onClick={() => onOpenDetail(leaf.goal)}
+                      onOpenDetail={() => onOpenDetail(leaf.goal)}
+                      actions={actions}
+                      dimmed={isDimmed(leaf, highlight)}
+                      wide
+                    />
+                  </div>
                 ))}
               </div>
             </>
@@ -501,11 +571,13 @@ function Connector({
   const mid = CONNECTOR_H / 2;
   const r = 8; // corner radius for the rounded joins
 
+  // `pathLength={1}` normalises every path so the comp-draw dash animation can draw each link
+  // from the trunk toward its child, whatever the actual path length.
   return (
     <svg
       width={width}
       height={CONNECTOR_H}
-      className="block shrink-0"
+      className="comp-draw block shrink-0"
       aria-hidden="true"
     >
       <g stroke={color} strokeWidth={1.5} fill="none" strokeLinecap="round">
@@ -518,6 +590,7 @@ function Connector({
             return (
               <path
                 key={i}
+                pathLength={1}
                 d={`M ${trunk} 0 C ${trunk} ${mid} ${cx} ${mid} ${cx} ${CONNECTOR_H}`}
               />
             );
@@ -526,6 +599,7 @@ function Connector({
           return (
             <path
               key={i}
+              pathLength={1}
               d={`M ${trunk} 0 V ${mid - r} Q ${trunk} ${mid} ${trunk + sg * r} ${mid} H ${cx - sg * r} Q ${cx} ${mid} ${cx} ${mid + r} V ${CONNECTOR_H}`}
             />
           );
@@ -593,6 +667,7 @@ function Box({
     <div
       role="button"
       tabIndex={0}
+      data-goal-id={node.goal.id}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
