@@ -1,0 +1,49 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# Eclipse / STS
+.classpath
+.project
+.settings/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (never commit secrets)
+.env
+.env.local
+
+# H2 / embedded database files (use Postgres in all envs)
+*.mv.db
+*.lock.db
+**/backend/data/
+
+# Lecture slide PDFs (copyright — keep out of public repo)
+apps/workshopper/Slides/
+
+# Claude Code local
+.claude/
+
+# Design assets (local reference only, not part of the repo)
+HESTIA_styleguide/
+LearningGoalHub Mockup*.png
+tmp/
+apps/workshopper/tmp/
+proposal.pdf
+
+# Thesis writing (never publish)
+thesis/

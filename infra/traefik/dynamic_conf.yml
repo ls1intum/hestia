@@ -1,0 +1,18 @@
+# Traefik dynamic (file-provider) configuration: the static RBG TLS certificate.
+#
+# The RBG cert service writes these files on the VM under /var/lib/rbg-cert/live/ (symlinks
+# into a timestamped sibling dir), mounted into the container at the same path (see compose.yaml).
+# The cert's SAN covers BOTH aetvm66.cit.tum.de and hestia-test.aet.cit.tum.de, so Traefik serves
+# it by SNI for either name. Filenames contain colons (RBG naming) — keep them quoted.
+#
+# On renewal `rbg-cert` repoints live/ to the new timestamped dir; `--providers.file.watch=true`
+# makes Traefik reload it without a restart.
+tls:
+  certificates:
+    - certFile: "/var/lib/rbg-cert/live/host:f:aetvm66.cit.tum.de.fullchain.pem"
+      keyFile: "/var/lib/rbg-cert/live/host:f:aetvm66.cit.tum.de.privkey.pem"
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/var/lib/rbg-cert/live/host:f:aetvm66.cit.tum.de.fullchain.pem"
+        keyFile: "/var/lib/rbg-cert/live/host:f:aetvm66.cit.tum.de.privkey.pem"

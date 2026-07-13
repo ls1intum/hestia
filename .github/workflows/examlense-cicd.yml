@@ -1,0 +1,103 @@
+name: examlense CI/CD
+
+# Build the two app images and (outside of PRs) deploy them, using the shared ls1intum
+# reusable workflows. Scoped to examlense via paths so other apps in the monorepo are
+# unaffected. Unlike learninggoalhub/workshopper, the examlense backend is a STANDALONE
+# Gradle project, so its build context is apps/examlense/backend (not the repo root) and
+# it has no dependency on libs/ or the root Gradle files.
+#
+#   PR                -> build images (pr-<N> tags), no deploy   [validation]
+#   push to main      -> build (latest) + deploy to Staging
+#   release published -> build (<tag>)  + deploy to Production (approval gate via the env)
+#   workflow_dispatch -> build + deploy to the chosen environment/tag (manual)
+#
+# Everything runs on GitHub-hosted runners. The VMs sit behind the LRZ VPN, so the deploy
+# reusable reaches them over SSH through the chair's shared deployment gateway/bastion
+# (DEPLOYMENT_GATEWAY_* — org-level secrets/vars pulled in via `secrets: inherit`). See DEPLOY.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/examlense/**"
+      - ".github/workflows/examlense-cicd.yml"
+  pull_request:
+    paths:
+      - "apps/examlense/**"
+      - ".github/workflows/examlense-cicd.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to deploy to"
+        type: choice
+        options: [Staging, Production]
+        default: Staging
+      image-tag:
+        description: "Image tag to deploy (must already exist in GHCR)"
+        type: string
+        default: latest
+
+concurrency:
+  group: examlense-cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Gate: run the backend test suite (unit + Testcontainers-Postgres integration)
+  # before anything is built or deployed, so a red test never reaches production.
+  # GitHub-hosted runners provide the Docker daemon Testcontainers needs.
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Run backend tests
+        working-directory: apps/examlense/backend
+        run: ./gradlew test --no-daemon
+
+  build-backend:
+    # Don't build/push a backend image that fails its tests.
+    needs: test-backend
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    with:
+      image-name: ${{ github.repository }}/examlense-backend
+      docker-file: apps/examlense/backend/Dockerfile
+      # Standalone Gradle project: build from the backend directory itself.
+      docker-context: apps/examlense/backend
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+
+  build-frontend:
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    with:
+      image-name: ${{ github.repository }}/examlense-frontend
+      docker-file: apps/examlense/frontend/Dockerfile
+      docker-context: apps/examlense/frontend
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+
+  deploy:
+    needs: [test-backend, build-backend, build-frontend]
+    # PRs only validate the build; everything else deploys.
+    if: github.event_name != 'pull_request'
+    # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment
+    # gateway. The reusable workflow applies the GitHub environment protection rules, so a
+    # deploy to the `Production` environment (required reviewer) pauses until approved.
+    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
+    with:
+      environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
+      docker-compose-file: apps/examlense/compose.prod.yaml
+      main-image-name: ${{ github.repository }}/examlense-backend
+      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
+      deployment-base-path: /opt/hestia/examlense
+    # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
+    # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars (POSTGRES_PASSWORD,
+    # AI_API_KEY, AI_BASE_URL, APP_HOST, APP_PATH_PREFIX, ...). The reusable workflow writes
+    # them into .env on the VM next to IMAGE_TAG, then runs docker compose pull && up -d.
+    secrets: inherit

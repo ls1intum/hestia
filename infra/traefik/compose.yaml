@@ -1,0 +1,59 @@
+# Shared edge reverse proxy for all thesis apps on this VM.
+#
+# This is the ONLY container that publishes host ports 80/443 and the ONLY place
+# TLS is terminated (with the RBG certificate). Each app stays private: it does NOT
+# publish host ports, it only attaches its `web` container to the external
+# `hestia-edge` network and declares Traefik routing labels. App databases/servers
+# never touch this network — apps are fully isolated from each other.
+#
+# One-time setup on the VM (creates the shared network the apps attach to):
+#   docker network create hestia-edge
+#
+# Then:
+#   sudo docker compose -f infra/traefik/compose.yaml up -d
+#
+# See README.md for how a new app registers itself.
+
+services:
+  traefik:
+    # v3.7+ required: older Traefik (e.g. v3.3) ships a Docker SDK whose API-version
+    # negotiation baseline is rejected by Docker Engine 29.x (min API 1.40) with
+    # "client version 1.24 is too old", which breaks the Docker (label) provider.
+    image: traefik:v3.7
+    container_name: hestia-traefik
+    command:
+      # Routing comes from container labels (Docker provider), but only for
+      # containers that opt in with `traefik.enable=true` — nothing is exposed by default.
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      # The shared network Traefik reaches the app web containers on.
+      - "--providers.docker.network=hestia-edge"
+      # TLS certificates are static files from the RBG cert service, loaded via the
+      # file provider (see dynamic_conf.yml). Watch so a cert renewal is picked up live.
+      - "--providers.file.directory=/configuration/"
+      - "--providers.file.watch=true"
+      # HTTP on :80, HTTPS on :443.
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Always redirect plain HTTP to HTTPS.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Read-only access to discover container labels.
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      # RBG certificates, mounted read-only at the SAME host path. The files in live/ are
+      # symlinks into a sibling timestamped dir (/var/lib/rbg-cert/<ts>/), so the whole parent
+      # must be mounted at its real path for those absolute symlinks to resolve in-container.
+      - "/var/lib/rbg-cert/:/var/lib/rbg-cert/:ro"
+      # Static TLS config (which cert files to load).
+      - "./dynamic_conf.yml:/configuration/dynamic_conf.yml:ro"
+    networks:
+      - hestia-edge
+    restart: unless-stopped
+
+networks:
+  hestia-edge:
+    external: true

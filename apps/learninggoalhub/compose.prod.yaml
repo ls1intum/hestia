@@ -1,0 +1,80 @@
+# Full-stack deployment for learninggoalhub: postgres + Spring server + nginx web.
+# Only the web container is reachable from outside (via the shared Traefik proxy);
+# postgres and server stay on the internal network.
+#
+# Images are built and pushed to GHCR by CI (.github/workflows/learninggoalhub-cicd.yml)
+# and deployed by tag — this file references them by ${IMAGE_TAG}, it does NOT build.
+# Manual deploy/refresh on the VM (CI does the same via the reusable deploy workflow):
+#
+#   docker compose -f compose.prod.yaml --env-file .env pull
+#   docker compose -f compose.prod.yaml --env-file .env up -d
+#
+# See DEPLOY.md. For local dev (DB only) use compose.yaml instead.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: learninggoalhub-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-learninggoalhub}
+      POSTGRES_USER: ${POSTGRES_USER:-learninggoalhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-learninggoalhub} -d ${POSTGRES_DB:-learninggoalhub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    image: ghcr.io/ls1intum/hestia/learninggoalhub-server:${IMAGE_TAG:-latest}
+    container_name: learninggoalhub-server
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-learninggoalhub}
+      POSTGRES_USER: ${POSTGRES_USER:-learninggoalhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SAIA_API_KEY: ${SAIA_API_KEY:?set SAIA_API_KEY in .env}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see server Dockerfile).
+    mem_limit: 1500m
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/ls1intum/hestia/learninggoalhub-client:${IMAGE_TAG:-latest}
+    container_name: learninggoalhub-web
+    # No host ports: the shared Traefik proxy (infra/traefik) owns 80/443 and terminates
+    # TLS. This container only needs to be reachable by Traefik on the shared edge network.
+    expose:
+      - "80"
+    depends_on:
+      - server
+    networks:
+      - default        # private: reach this app's own server (and via it, postgres)
+      - hestia-edge    # shared: receive traffic from Traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      # Route https://${APP_HOST}${APP_PATH_PREFIX}/... to this app; Traefik strips the
+      # prefix (and sends X-Forwarded-Prefix) so nginx stays prefix-agnostic.
+      - "traefik.http.routers.learninggoalhub.rule=Host(`${APP_HOST}`) && PathPrefix(`${APP_PATH_PREFIX}`)"
+      - "traefik.http.routers.learninggoalhub.entrypoints=websecure"
+      - "traefik.http.routers.learninggoalhub.tls=true"
+      - "traefik.http.routers.learninggoalhub.middlewares=learninggoalhub-strip"
+      - "traefik.http.middlewares.learninggoalhub-strip.stripprefix.prefixes=${APP_PATH_PREFIX}"
+      - "traefik.http.services.learninggoalhub.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+networks:
+  # Shared, created once on the VM: `docker network create hestia-edge`.
+  hestia-edge:
+    external: true
+
+volumes:
+  postgres-data:

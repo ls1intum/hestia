@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: workshopper-backend
+
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:workshopper}}
+    driver-class-name: org.postgresql.Driver
+    username: ${POSTGRES_USER:workshopper}
+    password: ${POSTGRES_PASSWORD:workshopper}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+server:
+  port: 8081
+
+# ── LLM Configuration ──────────────────────────────────────────────
+# We now use the shared Hestia LLM defaults (spring.ai.openai properties).
+spring.ai.openai.api-key: ${LLM_API_KEY}
+
+llm:
+  secondary-model: ${LLM_SECONDARY_MODEL:}
+
+logging:
+  level:
+    com.workshopper: INFO

@@ -1,0 +1,28 @@
+# Local infrastructure: the self-hosted PostgreSQL the backend runs against.
+# Brings up PostgreSQL; run the backend separately with
+# `cd backend && set -a; source .env; set +a; ./gradlew bootRun`
+# (its application.yml datasource defaults already point at localhost:5433).
+services:
+  postgres:
+    image: postgres:16
+    container_name: examlense-postgres
+    environment:
+      POSTGRES_DB: examlense
+      POSTGRES_USER: examlense
+      POSTGRES_PASSWORD: examlense
+    ports:
+      - "5433:5432"   # host 5433 → container 5432 (host 5432 is often taken by another local Postgres)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U examlense -d examlense"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Backend service is intentionally omitted — run it via Gradle for fast local
+  # iteration. For a containerized deploy, add a `backend` service here (with a
+  # Dockerfile) plus a volume for the local-FS file storage.
+
+volumes:
+  pgdata:

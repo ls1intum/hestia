@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: workshopper-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-workshopper}
+      POSTGRES_USER: ${POSTGRES_USER:-workshopper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workshopper} -d ${POSTGRES_DB:-workshopper}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ../..
+      dockerfile: apps/workshopper/backend/Dockerfile
+    container_name: workshopper-server
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-workshopper}
+      POSTGRES_USER: ${POSTGRES_USER:-workshopper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY in .env}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1500m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: workshopper-web
+    expose:
+      - "80"
+    depends_on:
+      - server
+    networks:
+      - default
+      - hestia-edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      - "traefik.http.routers.workshopper.rule=Host(`${APP_HOST}`) && PathPrefix(`${APP_PATH_PREFIX}`)"
+      - "traefik.http.routers.workshopper.entrypoints=websecure"
+      - "traefik.http.routers.workshopper.tls=true"
+      - "traefik.http.routers.workshopper.middlewares=workshopper-strip"
+      - "traefik.http.middlewares.workshopper-strip.stripprefix.prefixes=${APP_PATH_PREFIX}"
+      - "traefik.http.services.workshopper.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+networks:
+  hestia-edge:
+    external: true
+
+volumes:
+  postgres-data:

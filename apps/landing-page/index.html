@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Hestia — Gute Lehre im KI-Zeitalter</title>
+    <meta name="description" content="Hestia hilft dir, deine Lehre mit und an KI auszurichten — über Constructive Alignment: Lernziele, Lehraktivitäten und Prüfungen bewusst aufeinander abgestimmt." />
+    <meta name="author" content="HESTIA" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Hestia — Gute Lehre im KI-Zeitalter" />
+    <meta property="og:description" content="Bekomme als Erste:r Zugang zu einem KI-Werkzeug, das Lehrplanung einfach macht." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Hestia — Gute Lehre im KI-Zeitalter" />
+    <meta name="twitter:description" content="Bekomme als Erste:r Zugang zu einem KI-Werkzeug, das Lehrplanung einfach macht." />
+
+    <script>
+      // Set the theme before the app bundle loads to avoid a flash of the wrong theme.
+      // Explicit user choice (localStorage) wins; otherwise follow the OS preference.
+      (function () {
+        try {
+          var stored = localStorage.getItem("hestia-theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+
+      // Set the <html lang> before the app loads so it matches the resolved language.
+      // Explicit user choice (localStorage) wins; otherwise follow the browser locale.
+      (function () {
+        try {
+          var stored = localStorage.getItem("hestia-language");
+          var lang =
+            stored === "de" || stored === "en"
+              ? stored
+              : (navigator.language || "de").toLowerCase().indexOf("de") === 0
+                ? "de"
+                : "en";
+          document.documentElement.lang = lang;
+        } catch (e) {
+          document.documentElement.lang = "de";
+        }
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

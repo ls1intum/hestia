@@ -1,0 +1,133 @@
+/* HESTIA design foundation — see HESTIA_styleguide/HESTIA_STYLEGUIDE.md (local, gitignored).
+   Color/typography/spacing tokens live here as the single source of truth for the client. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+/* Make `dark:` utilities follow the explicit data-theme attribute (toggle), not only the OS preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Runtime color values. The light set is the default; dark overrides via attribute or OS preference. */
+:root {
+  --hestia-bg: #e9e5db;
+  --hestia-surface: #ffffff;
+  --hestia-primary: #865c1d;
+  --hestia-text: #2c2420;
+  --hestia-accent: #386570;
+  --hestia-warning: #d4880a;
+  --hestia-danger: #c0281f;
+}
+
+[data-theme="dark"] {
+  --hestia-bg: #121212;
+  --hestia-surface: #1e1e1e;
+  --hestia-primary: #d5b86c;
+  --hestia-text: #f0ece4;
+  --hestia-accent: #06d6a0;
+  --hestia-warning: #f5a623;
+  --hestia-danger: #f24b6a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --hestia-bg: #121212;
+    --hestia-surface: #1e1e1e;
+    --hestia-primary: #d5b86c;
+    --hestia-text: #f0ece4;
+    --hestia-accent: #06d6a0;
+    --hestia-warning: #f5a623;
+    --hestia-danger: #f24b6a;
+  }
+}
+
+/* Derived values — opacity-based, never new hex (per styleguide). */
+:root {
+  --hestia-primary-hover: color-mix(in srgb, var(--hestia-primary) 85%, black);
+  --hestia-primary-muted: color-mix(in srgb, var(--hestia-primary) 20%, var(--hestia-bg));
+  --hestia-border: color-mix(in srgb, var(--hestia-text) 15%, transparent);
+  --hestia-text-muted: color-mix(in srgb, var(--hestia-text) 65%, transparent);
+}
+
+/* Expose the runtime values as Tailwind utilities. `inline` keeps the var() reference
+   in generated utilities so `bg-hestia-bg` etc. react to the active theme. */
+@theme inline {
+  --color-hestia-bg: var(--hestia-bg);
+  --color-hestia-surface: var(--hestia-surface);
+  --color-hestia-primary: var(--hestia-primary);
+  --color-hestia-primary-hover: var(--hestia-primary-hover);
+  --color-hestia-primary-muted: var(--hestia-primary-muted);
+  --color-hestia-text: var(--hestia-text);
+  --color-hestia-text-muted: var(--hestia-text-muted);
+  --color-hestia-accent: var(--hestia-accent);
+  --color-hestia-warning: var(--hestia-warning);
+  --color-hestia-danger: var(--hestia-danger);
+  --color-hestia-border: var(--hestia-border);
+
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  /* HESTIA radius scale (overrides Tailwind defaults to match the styleguide). */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* HESTIA shadow scale. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background-color: var(--hestia-bg);
+    color: var(--hestia-text);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* Visible focus ring on every interactive element (styleguide accessibility rule). */
+  *:focus-visible {
+    outline: 2px solid var(--hestia-primary);
+    outline-offset: 2px;
+  }
+}
+
+/* Unfold a newly revealed competency-map tier (connector + row). Kept separate from the per-row
+   auto-animate reorder so the two never fight over the same element (see CompetencyGraph). */
+@keyframes comp-unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.comp-unfold {
+  animation: comp-unfold 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

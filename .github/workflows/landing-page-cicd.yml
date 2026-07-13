@@ -1,0 +1,75 @@
+name: landing-page CI/CD
+
+# Build the landing-page image and (outside of PRs) deploy it, using the shared ls1intum
+# reusable workflows. Scoped to the landing page via paths so other apps in the monorepo
+# are unaffected. The landing page is a static frontend-only app — a single image, no
+# backend, no database.
+#
+#   PR                -> build image (pr-<N> tag), no deploy   [validation]
+#   push to main      -> build (latest) + deploy to Staging
+#   release published -> build (<tag>)  + deploy to Production (approval gate via the env)
+#   workflow_dispatch -> build + deploy to the chosen environment/tag (manual)
+#
+# Everything runs on GitHub-hosted runners. The VMs sit behind the LRZ VPN, so the deploy
+# reusable reaches them over SSH through the chair's shared deployment gateway/bastion
+# (DEPLOYMENT_GATEWAY_* — org-level secrets/vars pulled in via `secrets: inherit`). See DEPLOY.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/landing-page/**"
+      - ".github/workflows/landing-page-cicd.yml"
+  pull_request:
+    paths:
+      - "apps/landing-page/**"
+      - ".github/workflows/landing-page-cicd.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to deploy to"
+        type: choice
+        options: [Staging, Production]
+        default: Staging
+      image-tag:
+        description: "Image tag to deploy (must already exist in GHCR)"
+        type: string
+        default: latest
+
+concurrency:
+  group: landing-page-cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    with:
+      image-name: ${{ github.repository }}/landing-page
+      docker-file: apps/landing-page/Dockerfile
+      docker-context: apps/landing-page
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+
+  deploy:
+    needs: [build]
+    # PRs only validate the build; everything else deploys.
+    if: github.event_name != 'pull_request'
+    # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment
+    # gateway. The reusable workflow applies the GitHub environment protection rules, so a
+    # deploy to the `Production` environment (required reviewer) pauses until approved.
+    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
+    with:
+      environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
+      docker-compose-file: apps/landing-page/compose.prod.yaml
+      main-image-name: ${{ github.repository }}/landing-page
+      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
+      deployment-base-path: /opt/hestia/landing-page
+    # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
+    # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and APP_HOST. The reusable workflow writes
+    # them into .env on the VM next to IMAGE_TAG, then runs docker compose pull && up -d.
+    secrets: inherit

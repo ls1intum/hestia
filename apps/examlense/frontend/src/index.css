@@ -1,0 +1,226 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* HESTIA Design System — single source of truth.
+   All colors in HSL. No raw hex outside this file. */
+
+@layer base {
+  :root {
+    /* HESTIA Light Mode — canonical brand palette (kept in sync with apps/landing-page) */
+    --hestia-bg: 40 30% 96%; /* #f5f2ec warm paper — the canvas cards lift off of */
+    --hestia-surface: 0 0% 100%; /* #ffffff */
+    --hestia-primary: 36 64% 35%; /* #946520 gold */
+    --hestia-text: 20 14% 17%; /* #322b26 — slightly softer than pure near-black */
+    --hestia-accent: 191 33% 40%; /* #447a86 teal */
+    --hestia-warning: 37 92% 43%; /* #D4880A */
+    --hestia-danger: 4 71% 44%; /* #C0281F */
+    --hestia-success: 152 50% 32%; /* #297a52 — sits next to gold primary without competing */
+
+    --hestia-primary-hover: 36 65% 30%; /* primary 85% + black */
+    --hestia-primary-muted: 36 36% 85%; /* 20% primary over bg */
+    /* Softer than before: with a deeper canvas + shadows, borders no longer
+       carry the separation, so they can be hairlines rather than hard lines. */
+    --hestia-border: 20 14% 17% / 0.10;
+    --hestia-border-strong: 20 14% 17% / 0.20;
+    --hestia-text-muted: 20 14% 17% / 0.62;
+
+    /* Spacing */
+    --hestia-space-1: 0.25rem;
+    --hestia-space-2: 0.5rem;
+    --hestia-space-3: 0.75rem;
+    --hestia-space-4: 1rem;
+    --hestia-space-5: 1.5rem;
+    --hestia-space-6: 2rem;
+    --hestia-space-8: 3rem;
+    --hestia-space-10: 4rem;
+
+    /* Radius */
+    --hestia-radius-sm: 0.375rem;
+    --hestia-radius-md: 0.5rem;
+    --hestia-radius-lg: 0.75rem;
+    --hestia-radius-xl: 1rem;
+    --hestia-radius-full: 9999px;
+
+    /* Shadows — warm-tinted (brown, not pure black) and layered so cards lift
+       softly off the paper canvas instead of relying on hard borders. */
+    --hestia-shadow-sm: 0 1px 2px hsl(20 14% 17% / 0.06), 0 1px 3px hsl(20 14% 17% / 0.05);
+    --hestia-shadow-md: 0 2px 4px hsl(20 14% 17% / 0.05), 0 6px 16px hsl(20 14% 17% / 0.09);
+    --hestia-shadow-lg: 0 4px 10px hsl(20 14% 17% / 0.07), 0 16px 32px hsl(20 14% 17% / 0.13);
+
+    /* Fonts */
+    --hestia-font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+    --hestia-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --hestia-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+    /* shadcn token bridge — keep primitives functional */
+    --background: var(--hestia-bg);
+    --foreground: var(--hestia-text);
+    --card: var(--hestia-surface);
+    --card-foreground: var(--hestia-text);
+    --popover: var(--hestia-surface);
+    --popover-foreground: var(--hestia-text);
+    --primary: var(--hestia-primary);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--hestia-surface);
+    --secondary-foreground: var(--hestia-text);
+    --muted: var(--hestia-surface);
+    --muted-foreground: 20 16% 15%;
+    --accent: var(--hestia-accent);
+    --accent-foreground: 0 0% 100%;
+    --destructive: var(--hestia-danger);
+    --destructive-foreground: 0 0% 100%;
+    --border: 20 14% 17% / 0.10;
+    --input: 20 14% 17% / 0.20;
+    --ring: var(--hestia-primary);
+    --radius: var(--hestia-radius-lg);
+
+    --sidebar-background: var(--hestia-surface);
+    --sidebar-foreground: var(--hestia-text);
+    --sidebar-primary: var(--hestia-primary);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: var(--hestia-bg);
+    --sidebar-accent-foreground: var(--hestia-text);
+    --sidebar-border: 20 14% 17% / 0.10;
+    --sidebar-ring: var(--hestia-primary);
+  }
+
+  [data-theme="dark"] {
+    --hestia-bg: 0 0% 7%; /* #121212 */
+    --hestia-surface: 0 0% 12%; /* #1e1e1e */
+    --hestia-primary: 41 56% 63%; /* #D5B86C */
+    --hestia-text: 39 27% 92%; /* #f0ece4 */
+    --hestia-accent: 162 94% 43%; /* #06D6A0 */
+    --hestia-warning: 36 92% 55%; /* #F5A623 */
+    --hestia-danger: 349 81% 53%; /* #E8284B */
+    --hestia-success: 152 55% 58%; /* slightly brighter for contrast on dark surface */
+
+    --hestia-primary-hover: 41 56% 55%;
+    --hestia-primary-muted: 42 23% 19%; /* 22% primary over bg */
+    --hestia-border: 39 27% 92% / 0.18;
+    --hestia-border-strong: 39 27% 92% / 0.3;
+    --hestia-text-muted: 39 27% 92% / 0.65;
+
+    /* Light gold / bright teal need dark text on top, not white. */
+    --primary-foreground: 36 63% 6%; /* #1a1206 */
+    --accent-foreground: 36 63% 6%;
+    --muted-foreground: 39 27% 92%;
+    --border: 39 27% 92% / 0.18;
+    --input: 39 27% 92% / 0.3;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --hestia-bg: 0 0% 7%;
+      --hestia-surface: 0 0% 12%;
+      --hestia-primary: 41 56% 63%;
+      --hestia-text: 39 27% 92%;
+      --hestia-accent: 162 94% 43%;
+      --hestia-warning: 36 92% 55%;
+      --hestia-danger: 349 81% 53%;
+      --hestia-success: 152 55% 58%;
+
+      --hestia-primary-hover: 41 56% 55%;
+      --hestia-primary-muted: 42 23% 19%;
+      --hestia-border: 39 27% 92% / 0.18;
+      --hestia-border-strong: 39 27% 92% / 0.3;
+      --hestia-text-muted: 39 27% 92% / 0.65;
+
+      --primary-foreground: 36 63% 6%;
+      --accent-foreground: 36 63% 6%;
+      --muted-foreground: 39 27% 92%;
+      --border: 39 27% 92% / 0.18;
+      --input: 39 27% 92% / 0.3;
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--hestia-border));
+  }
+
+  html {
+    background: hsl(var(--hestia-bg));
+  }
+
+  body {
+    background: hsl(var(--hestia-bg));
+    color: hsl(var(--hestia-text));
+    font-family: var(--hestia-font-body);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--hestia-font-display);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
+  *:focus-visible {
+    outline: 2px solid hsl(var(--hestia-primary));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Placeholder text: lighter than muted body text so empty fields
+     clearly read as a hint rather than entered content. */
+  ::placeholder {
+    color: hsl(var(--hestia-text) / 0.35) !important;
+    opacity: 1;
+  }
+}
+
+@layer components {
+  .hestia-card {
+    background: hsl(var(--hestia-surface));
+    border-radius: var(--hestia-radius-lg);
+    padding: var(--hestia-space-5);
+    box-shadow: var(--hestia-shadow-sm);
+    border: 1px solid hsl(var(--hestia-border));
+  }
+
+  /* Small uppercase mono label — eyebrows, card headers, micro-labels.
+     Color is set at the call site (text-hestia-text-muted / text-hestia-primary). */
+  .hestia-eyebrow {
+    font-family: var(--hestia-font-mono);
+    font-size: 0.6875rem; /* 11px */
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes hestia-pulse-flame {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.78;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-flame {
+    animation: hestia-pulse-flame 2.4s ease-in-out infinite;
+    transform-origin: center;
+  }
+}

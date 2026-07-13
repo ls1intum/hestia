@@ -1,0 +1,182 @@
+[
+  {
+    "text": "Manage course participation by understanding grading policies, following the schedule, using communication channels, and correctly submitting exercises.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Obtain, configure, and monitor free‑tier cloud accounts (AWS, GCP, Azure) to prevent unexpected costs.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Use tunneling services (e.g., ngrok, localtunnel, serveo) to expose locally running applications to the internet.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Analyze the advantages, cost model, and potential disadvantages of cloud computing, such as economic benefits, elasticity, rapid deployment, reduced capital investment, pay-per-use pricing, trust issues, vendor lock-in, and interoperability challenges.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Implement a lightweight Go web application with HTMX that provides CRUD operations and dynamic views for books, authors, and years.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Deploy the application to cloud environments, understanding cloud development requirements, deployment modes, transparent infrastructure management, and account login considerations.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Analyze memory hierarchy challenges and apply shared- and distributed-memory programming models, including NUMA and MPI.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Compare high-performance networking technologies and architectures, including Ethernet, VLANs, InfiniBand, and Software-Defined Networking.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Compare virtualization and containerization, describing multi‑tenancy, resource isolation, scalability, and cost differences.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Build, push, and orchestrate containerized applications using Docker commands and Docker Compose, including multi‑container setups and submission of artifacts.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Use OS‑level container technologies and Docker components—including namespaces, cgroups, images, union filesystems, registries, Compose, and Swarm—to deploy and manage isolated applications, and compare containers with virtual machines.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Operate VMware vSphere to provision, configure, monitor, and migrate virtual machines and resources, utilizing vCenter, storage networks, vMotion, DRS, and related management tasks.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Compare monolithic and microservice architectures, including their characteristics, advantages, disadvantages, and trade‑offs.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Compare AWS storage services (EBS, instance store, EFS, S3), their characteristics, and cost considerations.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Apply infrastructure-as-code tools (CloudFormation, Terraform) and understand multi‑cloud management, pricing, and cost‑optimization strategies.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Collect, store, and visualize metrics using common monitoring tools such as Amazon CloudWatch, Prometheus, and Grafana, and create custom metrics.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Manage and analyze log data with formats, the ELK stack, and CloudWatch Logs, applying common use cases like root‑cause analysis.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Instrument, collect, and interpret distributed tracing data, understanding spans, context propagation, sampling, overhead mitigation, and open‑source tracing tools.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Compare vertical and horizontal scaling, including their advantages, disadvantages, and the architectural requirements for horizontal scaling.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Apply AWS autoscaling features by identifying its core components and configuring target‑tracking, simple, step, and predictive scaling policies.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Deploy and manage application workloads in Kubernetes using Pods, Deployments, StatefulSets, Services, ConfigMaps, and Persistent Volumes, and understand their declarative configuration and lifecycle.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Apply Kubernetes autoscaling mechanisms—including Horizontal Pod Autoscaler, Vertical Pod Autoscaler, and Cluster Autoscaler—by selecting appropriate metrics and policies to adjust pod and node resources.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Implement monitoring and observability in Kubernetes with Prometheus (operator and ServiceMonitor) and recognize alternative monitoring solutions.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Compare major managed Kubernetes services, their features, billing models, and explain why Kubernetes serves as a cloud‑native platform for applications.",
+    "bloomLevel": "EVALUATE"
+  },
+  {
+    "text": "Compare lightweight sandbox technologies for FaaS such as gVisor, Firecracker, Kata Containers, and WebAssembly, and evaluate their isolation and performance trade-offs.",
+    "bloomLevel": "EVALUATE"
+  },
+  {
+    "text": "Configure and select container runtimes in Kubernetes using RuntimeClasses and related tools like Knative.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Write a simple Java handler for a FaaS function using a lightweight framework.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Explain the AWS Shared Responsibility Model and select appropriate AWS services to meet compliance and regulatory requirements.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Design and manage identity and access controls in AWS, including IAM roles, policies, federation, least‑privilege permissions, secrets handling, and authentication standards such as OAuth and Cognito.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Implement multi‑account governance using AWS Organizations, Control Tower, and guardrails to isolate workloads and enforce security policies across accounts.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Apply encryption and key management to protect data in transit and at rest, using TLS, ACM, Private CA, KMS, and service‑specific encryption options.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Architect and secure AWS network infrastructure, including VPC design, subnets, routing, NACLs, security groups, firewalls, WAF/Shield, and DDoS mitigation techniques.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Establish automated, continuous security operations with logging, monitoring, patch and configuration management, and managed security services.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Apply Terraform for Infrastructure‑as‑Code by interpreting configurations, provisioning AWS resources, and following the plan‑review‑apply workflow.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Use Policy‑as‑Code with OPA and Regula to define, evaluate, and enforce compliance policies on IaC files.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Outline the end‑to‑end cloud‑native application deployment automation pipeline, linking build, infrastructure provisioning, policy checks, and GitOps‑driven continuous delivery.",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Describe and configure core AWS serverless services (Lambda, API Gateway, S3 static hosting, Cognito, DynamoDB, IAM), including pricing, permissions, and building a simple end‑to‑end serverless application.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Utilize the Serverless Framework to define, deploy, and monitor serverless functions across multiple cloud providers.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Compare the three primary cloud storage service models (object, block, and file), their key characteristics, typical use cases, and the corresponding AWS offerings (S3, EBS, EFS).",
+    "bloomLevel": "ANALYZE"
+  },
+  {
+    "text": "Compare and evaluate IoT communication technologies and standards (e.g., Bluetooth, ZigBee, Wi‑Fi, LoRaWAN, Thread, Matter) and related ecosystem services for interoperability and performance.",
+    "bloomLevel": "EVALUATE"
+  },
+  {
+    "text": "Apply IoT design principles to develop and prototype a solution, including network topology design, simulation, digital twin modeling, and a monitoring application.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Design and implement infrastructure as code and automated CI/CD pipelines for cloud deployments.",
+    "bloomLevel": "CREATE"
+  },
+  {
+    "text": "Apply governance, security, and cost-management practices using policies, roles, tagging, and resource identifiers.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Implement observability, monitoring, and debugging techniques to ensure reliability of cloud-native systems.",
+    "bloomLevel": "APPLY"
+  },
+  {
+    "text": "Adopt cloud-native operational practices including environment segregation, DevOps integration, and managed service utilization.",
+    "bloomLevel": "APPLY"
+  }
+]

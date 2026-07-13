@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Hestia — Colors
+   Dual theme (light default, dark via [data-theme="dark"]).
+   Values are the canonical brand palette. Derive hover / muted /
+   border states with color-mix — never invent new hex values.
+   ============================================================ */
+
+:root {
+  /* --- Base palette (Light Mode) --- */
+  --hestia-bg:       #faf8f4;  /* page background — warm paper */
+  --hestia-surface:  #ffffff;  /* cards, dialogs, raised containers */
+  --hestia-primary:  #946520;  /* gold — main accent, CTAs, links, active */
+  --hestia-text:     #2c2420;  /* default text + headings — warm near-black */
+  --hestia-accent:   #447a86;  /* teal — secondary accent, tags, badges */
+  --hestia-warning:  #d4880a;  /* amber — warnings, validation (non-text on bg) */
+  --hestia-danger:   #c0281f;  /* red — errors, destructive actions */
+
+  /* --- Derived states (Light) --- */
+  --hestia-primary-hover:  color-mix(in srgb, var(--hestia-primary) 85%, black);
+  --hestia-primary-muted:  color-mix(in srgb, var(--hestia-primary) 20%, var(--hestia-bg));
+  --hestia-accent-hover:   color-mix(in srgb, var(--hestia-accent) 85%, black);
+  --hestia-accent-muted:   color-mix(in srgb, var(--hestia-accent) 15%, transparent);
+  --hestia-danger-hover:   color-mix(in srgb, var(--hestia-danger) 85%, black);
+  --hestia-border:         color-mix(in srgb, var(--hestia-text) 15%, transparent);
+  --hestia-border-strong:  color-mix(in srgb, var(--hestia-text) 28%, transparent);
+  --hestia-text-muted:     color-mix(in srgb, var(--hestia-text) 65%, transparent);
+  --hestia-text-on-primary: #ffffff;
+}
+
+/* --- Dark Mode (explicit toggle) --- */
+[data-theme="dark"] {
+  --hestia-bg:       #121212;
+  --hestia-surface:  #1e1e1e;
+  --hestia-primary:  #d5b86c;
+  --hestia-text:     #f0ece4;
+  --hestia-accent:   #06d6a0;
+  --hestia-warning:  #f5a623;
+  --hestia-danger:   #e8284b;
+
+  --hestia-primary-hover:  color-mix(in srgb, var(--hestia-primary) 85%, white);
+  --hestia-primary-muted:  color-mix(in srgb, var(--hestia-primary) 22%, var(--hestia-bg));
+  --hestia-accent-hover:   color-mix(in srgb, var(--hestia-accent) 85%, white);
+  --hestia-accent-muted:   color-mix(in srgb, var(--hestia-accent) 18%, transparent);
+  --hestia-danger-hover:   color-mix(in srgb, var(--hestia-danger) 85%, white);
+  --hestia-border:         color-mix(in srgb, var(--hestia-text) 15%, transparent);
+  --hestia-border-strong:  color-mix(in srgb, var(--hestia-text) 28%, transparent);
+  --hestia-text-muted:     color-mix(in srgb, var(--hestia-text) 65%, transparent);
+  --hestia-text-on-primary: #1a1206;
+}
+
+/* ============================================================
+   Hestia — Typography
+   Display/headings: Playfair Display (700) for h1–h3 only.
+   Everything else: Inter. Code: JetBrains Mono.
+   ============================================================ */
+
+:root {
+  --hestia-font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --hestia-font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --hestia-font-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+}
+
+/* ============================================================
+   Hestia — Effects: radius, shadows, transitions
+   ============================================================ */
+
+:root {
+  --hestia-radius-sm:   0.375rem; /* 6px  — inputs, small elements */
+  --hestia-radius-md:   0.5rem;   /* 8px  — buttons, tags */
+  --hestia-radius-lg:   0.75rem;  /* 12px — cards, dialogs */
+  --hestia-radius-xl:   1rem;     /* 16px — large containers */
+
+  --hestia-shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.06);
+  --hestia-shadow-md:  0 4px 12px rgba(0, 0, 0, 0.08);
+  --hestia-shadow-lg:  0 8px 24px rgba(0, 0, 0, 0.12);
+
+  --hestia-transition: 150ms ease;
+
+  --hestia-focus-ring: 2px solid var(--hestia-primary);
+  --hestia-focus-offset: 2px;
+}
+
+/* ============================================================
+   Hestia — Base element styles & accessibility defaults
+   ============================================================ */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--hestia-bg);
+    color: var(--hestia-text);
+    font-family: var(--hestia-font-body);
+    font-size: 1rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--hestia-font-display);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--hestia-text);
+  }
+
+  h4, h5, h6 {
+    font-family: var(--hestia-font-body);
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--hestia-text);
+  }
+
+  a {
+    transition: color var(--hestia-transition);
+  }
+
+  /* Accessibility — visible focus on every interactive element */
+  *:focus-visible {
+    outline: var(--hestia-focus-ring);
+    outline-offset: var(--hestia-focus-offset);
+  }
+
+  /* Respect reduced-motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

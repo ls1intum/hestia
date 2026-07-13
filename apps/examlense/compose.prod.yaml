@@ -1,0 +1,117 @@
+# Full-stack deployment for ExamLense: postgres + Spring server + nginx web.
+# Only the web container is reachable from outside (via the shared Traefik proxy);
+# postgres and server stay on the internal network.
+#
+# Images are built and pushed to GHCR by CI (.github/workflows/examlense-cicd.yml)
+# and deployed by tag — this file references them by ${IMAGE_TAG}, it does NOT build.
+# Manual deploy/refresh on the VM (CI does the same via the reusable deploy workflow):
+#
+#   docker compose -f compose.prod.yaml --env-file .env pull
+#   docker compose -f compose.prod.yaml --env-file .env up -d
+#
+# See DEPLOY.md. For local dev (DB only) use docker-compose.yml instead.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: examlense-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-examlense}
+      POSTGRES_USER: ${POSTGRES_USER:-examlense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-examlense} -d ${POSTGRES_DB:-examlense}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    image: ghcr.io/ls1intum/hestia/examlense-backend:${IMAGE_TAG:-latest}
+    container_name: examlense-server
+    environment:
+      # application.yml reads DB_URL / DB_USER / DB_PASSWORD (Flyway owns the schema; a fresh
+      # DB is built on first boot). Postgres is reachable by service name on the private net.
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-examlense}
+      DB_USER: ${POSTGRES_USER:-examlense}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # AI providers (GWDG OpenAI-compatible). The shared deploy environment provides the
+      # GWDG key under the name SAIA_API_KEY (same key learninggoalhub uses); map it to the
+      # AI_API_KEY the ExamLense backend reads. The endpoint has no env var in that shared
+      # environment, so it is hardcoded (override by adding AI_BASE_URL if it ever changes).
+      AI_API_KEY: ${SAIA_API_KEY:?set SAIA_API_KEY in .env}
+      AI_BASE_URL: ${AI_BASE_URL:-https://chat-ai.academiccloud.de/v1}
+      # OpenAI native API — powers gpt-* parser/solver strategies.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # Anthropic native API — powers claude-* parser/solver strategies.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      # Google Gemini (native API) — powers the gemini-* PDF_DIRECT parser strategies.
+      # Optional: leave unset to disable those strategies (they 500 with a clear message
+      # if selected without a key). Base URL defaults to the public endpoint.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # LearningGoalHub base URL (goal derivation per exam task + course/goal reads).
+      # On the shared VM both apps sit behind the same proxy — default to the public URL.
+      LGH_BASE_URL: ${LGH_BASE_URL:-https://hestia-test.aet.cit.tum.de/learninggoalhub}
+      # Static bearer token — must match the value baked into the frontend build.
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-dev-local-token}
+      # Dedicated HMAC key for signed file URLs; falls back to API_AUTH_TOKEN
+      # (with a startup warning) when unset. Set it so token rotation doesn't
+      # invalidate outstanding figure/PDF URLs.
+      FILES_SIGNING_SECRET: ${FILES_SIGNING_SECRET:-}
+      # Behind Traefik: client IPs arrive via X-Forwarded-For, so let the rate
+      # limiter trust it here (never enable without a proxy in front).
+      API_RATELIMIT_BEHIND_PROXY: ${API_RATELIMIT_BEHIND_PROXY:-true}
+      # Same-origin behind Traefik; allow the public host for any non-proxied call.
+      CORS_ALLOWED_ORIGINS: https://${APP_HOST}
+      # Uploaded files live on a named volume (survives redeploys).
+      STORAGE_LOCAL_BASE_PATH: /app/data/storage
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+    volumes:
+      - examlense-storage:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see backend Dockerfile).
+    mem_limit: 1500m
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/ls1intum/hestia/examlense-frontend:${IMAGE_TAG:-latest}
+    container_name: examlense-web
+    # No host ports: the shared Traefik proxy (infra/traefik) owns 80/443 and terminates
+    # TLS. This container only needs to be reachable by Traefik on the shared edge network.
+    expose:
+      - "80"
+    depends_on:
+      - server
+    networks:
+      - default        # private: reach this app's own server (and via it, postgres)
+      - hestia-edge    # shared: receive traffic from Traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      # Route https://${APP_HOST}/examlense/... to this app; Traefik strips the prefix (and
+      # sends X-Forwarded-Prefix) so nginx stays prefix-agnostic. The prefix is HARDCODED to
+      # /examlense here — NOT read from ${APP_PATH_PREFIX}, which is a shared per-environment
+      # variable owned by another app (=/learninggoalhub). It also matches the frontend build
+      # (vite `base` + .env.production). Only APP_HOST (the VM FQDN) is a shared variable.
+      - "traefik.http.routers.examlense.rule=Host(`${APP_HOST}`) && PathPrefix(`/examlense`)"
+      - "traefik.http.routers.examlense.entrypoints=websecure"
+      - "traefik.http.routers.examlense.tls=true"
+      - "traefik.http.routers.examlense.middlewares=examlense-strip"
+      - "traefik.http.middlewares.examlense-strip.stripprefix.prefixes=/examlense"
+      - "traefik.http.services.examlense.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+networks:
+  # Shared, created once on the VM: `docker network create hestia-edge`.
+  hestia-edge:
+    external: true
+
+volumes:
+  postgres-data:
+  examlense-storage:

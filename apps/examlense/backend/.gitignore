@@ -1,0 +1,19 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+### IDE ###
+.idea/
+*.iml
+out/
+.vscode/
+
+### OS ###
+.DS_Store
+
+### Env ###
+.env
+.env.local
+
+### Local-FS storage (uploaded PDFs/figures) ###
+data/

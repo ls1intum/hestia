@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── HESTIA Design System ─────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Light Mode — HESTIA */
+    --background: 40 21% 87%;
+    --foreground: 10 15% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 10 15% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 10 15% 15%;
+    --primary: 33 65% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 21% 82%;
+    --secondary-foreground: 10 15% 15%;
+    --muted: 40 20% 91%;
+    --muted-foreground: 10 15% 42%;
+    --accent: 190 33% 33%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 3 72% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 15% 78%;
+    --input: 40 15% 78%;
+    --ring: 33 65% 32%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark Mode — HESTIA */
+    --background: 0 0% 7%;
+    --foreground: 40 33% 92%;
+    --card: 0 0% 12%;
+    --card-foreground: 40 33% 92%;
+    --popover: 0 0% 15%;
+    --popover-foreground: 40 33% 92%;
+    --primary: 40 55% 63%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 40 33% 92%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 40 20% 65%;
+    --accent: 164 94% 43%;
+    --accent-foreground: 0 0% 7%;
+    --destructive: 356 85% 64%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 40 55% 63%;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Focus ring — WCAG AA */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Remove number input spinners */
+  .no-spinner::-webkit-inner-spin-button,
+  .no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .no-spinner {
+    -moz-appearance: textfield;
+  }
+
+  /* Smooth scroll */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ── Custom utilities ─────────────────────────────────────────────── */
+@layer utilities {
+  .font-display {
+    font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  }
+  .font-body {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(hsl(var(--border)) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}

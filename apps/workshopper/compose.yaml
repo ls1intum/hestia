@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: workshopper-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-workshopper}
+      POSTGRES_USER: ${POSTGRES_USER:-workshopper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workshopper}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workshopper} -d ${POSTGRES_DB:-workshopper}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

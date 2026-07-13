@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-170 -140 340 340">
+  <!-- HESTIA flame mark (from the brand thumbnail); evenodd cuts the inner flame out. -->
+  <path fill="#946520" fill-rule="evenodd" d="M-70 120 C-70 30 -40 -40 0 -120 C40 -40 70 30 70 120 C70 175 35 200 0 200 C-35 200 -70 175 -70 120 Z M-32 130 C-32 80 -14 38 0 -10 C14 38 32 80 32 130 C32 160 14 178 0 178 C-14 178 -32 160 -32 130 Z"/>
+</svg>

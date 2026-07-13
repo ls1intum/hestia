@@ -1,0 +1,66 @@
+server:
+  # Behind the nginx reverse proxy: honour X-Forwarded-* so springdoc advertises the external
+  # base URL in /v3/api-docs (and Swagger UI "Try it out") instead of the container's localhost.
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: learninggoalhub-server
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 500MB
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:learninggoalhub}
+    username: ${POSTGRES_USER:learninggoalhub}
+    password: ${POSTGRES_PASSWORD:learninggoalhub}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  ai:
+    openai:
+      api-key: ${SAIA_API_KEY:}
+    # SAIA rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
+    # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
+    # so the hundreds of classify/embed/synthesis calls in one run spread out under the limit.
+    retry:
+      on-http-codes: [429]
+      max-attempts: 6
+      backoff:
+        initial-interval: 1s
+        multiplier: 2
+        max-interval: 20s
+
+hestia:
+  title:
+    # Vision model that names a bookmark-less PDF (slide deck/exercise) from its first rendered
+    # pages. A VLM reads the slide layout to tell the session topic from the repeated course banner,
+    # which flat text extraction cannot. On any failure the session falls back to the filename.
+    vision-model: qwen3.6-35b-a3b
+  bookmark:
+    # Text model that judges whether a PDF's top-level bookmarks are separate course units (split into
+    # a session each) or one lecture's internal outline (treat as a single session). Only the grey
+    # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
+    # any failure the document is split, the original bookmark behaviour.
+    judge-model: openai-gpt-oss-120b
+  extraction:
+    # Larger chunks + more parallelism: fewer, wider extraction calls run concurrently without
+    # tripping SAIA's rate limit (see tuning notes), which dominates wall-clock time on big PDFs.
+    chunk-size: 16000
+    parallelism: 16
+  embedding:
+    # Embeddings go to the endpoint in batches of this many texts per request instead of one call
+    # per goal, cutting hundreds of round trips to a handful.
+    batch-size: 64
+  overlap:
+    # OVERLAPS_WITH band floor. On a homogeneous corpus (one ML course) the default 0.80 produced a
+    # hairball — many weakly-related pairs sit in 0.80–0.85. Raised so only genuinely similar goals link.
+    min-similarity: 0.85
+    # Cap each goal's overlap degree: keep only its strongest few overlaps, drop the dense middle.
+    max-per-goal: 3
+  prerequisite:
+    # Fewer candidate neighbours and a stricter confidence floor: top-K=5 / 0.7 accepted ~two thirds
+    # of candidate pairs and over-connected the graph. 3 / 0.8 keeps only the clearer dependencies.
+    candidate-neighbors: 3
+    min-confidence: 0.8

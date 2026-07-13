@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Leading-slash URL is rebased by Vite to the build `base` (/examlense/ in prod,
+         / in dev), so the favicon resolves under the path prefix Traefik routes. -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>ExamLense — Stress-test your exams against AI</title>
+    <meta name="description" content="ExamLense helps university instructors evaluate which exam tasks LLMs can already solve, and which ones still measure real understanding.">
+    <meta name="author" content="HESTIA" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <script>
+      // Set the theme before the app bundle loads to avoid a flash of the wrong theme.
+      // Explicit user choice (localStorage) wins; otherwise follow the OS preference.
+      // Kept in sync with getInitialTheme() in src/hooks/use-theme.ts.
+      (function () {
+        try {
+          var stored = localStorage.getItem("hestia-theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+
+    
+    
+    <meta property="og:type" content="website" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:title" content="ExamLense — Stress-test your exams against AI">
+  <meta name="twitter:title" content="ExamLense — Stress-test your exams against AI">
+  <meta property="og:description" content="ExamLense helps university instructors evaluate which exam tasks LLMs can already solve, and which ones still measure real understanding.">
+  <meta name="twitter:description" content="ExamLense helps university instructors evaluate which exam tasks LLMs can already solve, and which ones still measure real understanding.">
+</head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
