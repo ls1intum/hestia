@@ -28,6 +28,10 @@ services:
       POSTGRES_PASSWORD: ${WORKSHOPPER_POSTGRES_PASSWORD:?set WORKSHOPPER_POSTGRES_PASSWORD in .env}
       WORKSHOPPER_SAIA_API_KEY: ${WORKSHOPPER_SAIA_API_KEY:?set WORKSHOPPER_SAIA_API_KEY in .env}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+      SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
+      SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
+    volumes:
+      - ./certs:/app/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
