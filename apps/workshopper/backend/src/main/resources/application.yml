@@ -19,7 +19,7 @@ spring:
     url: ${POSTGRES_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:workshopper}}
     driver-class-name: org.postgresql.Driver
     username: ${POSTGRES_USER:workshopper}
-    password: ${WORKSHOPPER_POSTGRES_PASSWORD:workshopper}
+    password: ${POSTGRES_PASSWORD:workshopper}
 
   jpa:
     hibernate:
