@@ -1,33 +1,41 @@
-import { Check, ExternalLink } from "lucide-react";
+import type { ReactNode } from "react";
+import { Check, ExternalLink, Plus } from "lucide-react";
 
 import { useLghCourses } from "@/hooks/use-learning-goals";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-/** Sentinel Select value for "no course" — Radix Select values must be non-empty. */
+/** Sentinel selection value for "no course" (nothing picked → skippable). */
 export const NO_COURSE = "none";
+/** Sentinel selection value for "create a new course on confirm". */
+export const CREATE_COURSE = "new";
 
 interface Props {
-  /** Current selection: NO_COURSE or a stringified course id. */
+  /** Current selection: NO_COURSE, CREATE_COURSE, or a stringified course id. */
   value: string;
   onChange: (value: string) => void;
+  /** Title for the to-be-created course (only used when value === CREATE_COURSE). */
+  newCourseName: string;
+  onNewCourseNameChange: (value: string) => void;
 }
 
 /**
- * Shared step (both flows): optionally link a LearningGoalHub course so
- * each task gets learning goals when its section is confirmed. Skippable via
- * the "No course" option. Degrades gracefully when LGH is unreachable.
+ * Shared step (both flows): optionally link a LearningGoalHub course so each
+ * task gets learning goals when its section is confirmed. Pick an existing
+ * course or create a new one (created in LGH and linked on confirm); leaving
+ * nothing selected lets the wizard skip the step. Degrades gracefully when LGH
+ * is unreachable.
  */
-export const CoursePickerStep = ({ value, onChange }: Props) => {
+export const CoursePickerStep = ({
+  value,
+  onChange,
+  newCourseName,
+  onNewCourseNameChange,
+}: Props) => {
   const { data: courses, isLoading, isError } = useLghCourses();
 
   return (
     <div className="space-y-hestia-3">
-      <p className="text-sm text-hestia-text-muted">
-        Link a LearningGoalHub course to derive learning goals for each task
-        automatically when you confirm its section. You can also continue
-        without a course — the exam then has no learning-goal insights.
-      </p>
-
       {isError ? (
         <p className="rounded-hestia-md border border-hestia-border bg-hestia-primary-muted/10 px-hestia-3 py-hestia-2 text-sm text-hestia-text-muted">
           LearningGoalHub is unreachable — you can continue without a course.
@@ -49,11 +57,6 @@ export const CoursePickerStep = ({ value, onChange }: Props) => {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-[44px_minmax(0,1fr)_80px] border-b border-hestia-border bg-hestia-bg/60 px-hestia-3 py-hestia-2 text-[11px] font-semibold uppercase tracking-wide text-hestia-text-muted">
-            <span />
-            <span>Course</span>
-            <span className="text-right">ID</span>
-          </div>
 
           <div className="max-h-[280px] overflow-y-auto">
             {isLoading ? (
@@ -63,17 +66,30 @@ export const CoursePickerStep = ({ value, onChange }: Props) => {
             ) : (
               <>
                 <CourseRow
-                  selected={value === NO_COURSE}
-                  name="No course"
-                  idLabel="Skip"
-                  onClick={() => onChange(NO_COURSE)}
+                  selected={value === CREATE_COURSE}
+                  name="Create new course"
+                  icon={<Plus size={12} />}
+                  onClick={() => onChange(CREATE_COURSE)}
                 />
+                {value === CREATE_COURSE && (
+                  <div className="border-b border-hestia-border/70 bg-hestia-primary-muted/10 px-hestia-3 py-hestia-2">
+                    <Input
+                      autoFocus
+                      value={newCourseName}
+                      onChange={(e) => onNewCourseNameChange(e.target.value)}
+                      placeholder="New course title"
+                      aria-label="New course title"
+                    />
+                    <p className="mt-hestia-1 text-xs text-hestia-text-muted">
+                      Created in LearningGoalHub and linked when you confirm.
+                    </p>
+                  </div>
+                )}
                 {(courses ?? []).map((course) => (
                   <CourseRow
                     key={course.id}
                     selected={value === String(course.id)}
                     name={course.name}
-                    idLabel={String(course.id)}
                     onClick={() => onChange(String(course.id))}
                   />
                 ))}
@@ -89,12 +105,12 @@ export const CoursePickerStep = ({ value, onChange }: Props) => {
 function CourseRow({
   selected,
   name,
-  idLabel,
+  icon,
   onClick,
 }: {
   selected: boolean;
   name: string;
-  idLabel: string;
+  icon?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -103,13 +119,13 @@ function CourseRow({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "grid min-h-[44px] w-full grid-cols-[44px_minmax(0,1fr)_80px] items-center border-b border-hestia-border/70 px-hestia-3 py-hestia-2 text-left transition-colors last:border-b-0 hover:bg-hestia-primary-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-hestia-primary",
+        "flex min-h-[44px] w-full items-center gap-hestia-2 border-b border-hestia-border/70 px-hestia-3 py-hestia-2 text-left transition-colors last:border-b-0 hover:bg-hestia-primary-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-hestia-primary",
         selected ? "bg-hestia-primary-muted/20" : "bg-transparent",
       )}
     >
       <span
         className={cn(
-          "inline-flex h-5 w-5 items-center justify-center rounded-hestia-full border transition-colors",
+          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-hestia-full border transition-colors",
           selected
             ? "border-hestia-primary bg-hestia-primary text-white"
             : "border-hestia-border text-transparent",
@@ -118,11 +134,9 @@ function CourseRow({
       >
         <Check size={12} />
       </span>
-      <span className="min-w-0 truncate text-sm font-medium text-hestia-text">
+      {icon ? <span className="shrink-0 text-hestia-primary">{icon}</span> : null}
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-hestia-text">
         {name}
-      </span>
-      <span className="text-right text-xs font-medium text-hestia-text-muted">
-        {idLabel}
       </span>
     </button>
   );
