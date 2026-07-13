@@ -15,8 +15,9 @@ conventions this app follows.
 
 - ExamLense runs as **three containers** on the VM via `compose.prod.yaml`: `examlense-postgres`,
   `examlense-server` (Spring Boot), `examlense-web` (nginx serving the SPA and proxying `/api`).
-  None publish a host port. Only `web` joins the shared `hestia-edge` network and carries
-  Traefik labels.
+  None publish a host port. `web` joins the shared `hestia-edge` network and carries Traefik
+  labels; `server` also joins `hestia-edge` only so it can reach LearningGoalHub's nginx
+  container at `http://learninggoalhub-web`.
 - The shared **Traefik** proxy routes `https://<APP_HOST>/examlense/*` to `web` and strips the
   `/examlense` prefix. TLS, ports 80/443, and the `hestia-edge` network are shared infra — you
   don't touch them when updating the app. The `/examlense` prefix is **hardcoded** in
@@ -100,6 +101,8 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
 - **Variables (optional, all have compose defaults):** `POSTGRES_DB`, `POSTGRES_USER`,
   `JAVA_OPTS`, `AI_BASE_URL`, `LGH_BASE_URL`, `API_RATELIMIT_BEHIND_PROXY` (defaults to `true`
   in `compose.prod.yaml` since the VMs sit behind Traefik).
+  Leave `LGH_BASE_URL` unset unless you intentionally need an override; the production default is
+  the Docker-internal `http://learninggoalhub-web`, not the public `/learninggoalhub` URL.
 
 The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config — they do
 **not** need to be set per repo. Everything except the connection keys is written verbatim into
@@ -216,6 +219,7 @@ only `server` + `web` (whose images changed); **`postgres` and its data volume a
 | `pull` says `denied` / `unauthorized` (manual) | GHCR login expired or wrong. `sudo docker login ghcr.io` with a **classic PAT** (scope `read:packages`), and authorize it for the `ls1intum` org if SSO prompts. |
 | `server` restarting after deploy | Almost always a Flyway migration error or a bad `.env` value — `logs server` says which. |
 | SPA loads but every API call 401s | The frontend's baked `VITE_API_AUTH_TOKEN` and the backend's `API_AUTH_TOKEN` don't match. |
+| `/examlense/api/lgh/courses` returns 502 | ExamLense reached its own backend, but the backend could not complete its LGH call. Check `LGH_BASE_URL` first: on the VM it should normally be unset or `http://learninggoalhub-web`. Then smoke-test from the server container with `curl http://learninggoalhub-web/api/courses` and inspect `logs server` for the underlying client error. |
 | `403` on SSE in `logs server` (stack through `asyncDispatch`) | Cosmetic teardown noise, not user-facing. Harmless. |
 | `parse_metrics …_fkey` FK `WARN` | An exam was deleted/truncated while a parse was still in flight. Best-effort metrics only — harmless. Quiesce the server before truncating/importing to avoid it. |
 

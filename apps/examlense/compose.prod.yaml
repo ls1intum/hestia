@@ -1,6 +1,8 @@
 # Full-stack deployment for ExamLense: postgres + Spring server + nginx web.
 # Only the web container is reachable from outside (via the shared Traefik proxy);
-# postgres and server stay on the internal network.
+# postgres stays on the internal network. The server also joins hestia-edge so
+# it can call LearningGoalHub's web container over Docker DNS instead of
+# hairpinning through the public Traefik URL.
 #
 # Images are built and pushed to GHCR by CI (.github/workflows/examlense-cicd.yml)
 # and deployed by tag — this file references them by ${IMAGE_TAG}, it does NOT build.
@@ -55,8 +57,9 @@ services:
       # if selected without a key). Base URL defaults to the public endpoint.
       GEMINI_API_KEY: ${EXAMLENSE_GEMINI_API_KEY:-}
       # LearningGoalHub base URL (goal derivation per exam task + course/goal reads).
-      # On the shared VM both apps sit behind the same proxy — default to the public URL.
-      LGH_BASE_URL: ${LGH_BASE_URL:-https://hestia-test.aet.cit.tum.de/learninggoalhub}
+      # On the shared VM, call LGH's nginx container over Docker DNS instead of
+      # hairpinning through the public Traefik URL.
+      LGH_BASE_URL: ${LGH_BASE_URL:-http://learninggoalhub-web}
       # Static bearer token — must match the value baked into the frontend build.
       API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN:-dev-local-token}
       # Dedicated HMAC key for signed file URLs; falls back to API_AUTH_TOKEN
@@ -76,6 +79,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default        # private: reach this app's own postgres
+      - hestia-edge    # shared: reach learninggoalhub-web by Docker DNS
     # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see backend Dockerfile).
     mem_limit: 1500m
     restart: unless-stopped
