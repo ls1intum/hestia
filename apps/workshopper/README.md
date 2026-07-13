@@ -24,9 +24,9 @@ A full-stack prototype for generating structured teaching sessions using AI.
 Create a `.env` file in the `apps/workshopper/` directory:
 
 ```bash
-LLM_API_KEY="your-api-key-here"
+WORKSHOPPER_SAIA_API_KEY="your-api-key-here"
 POSTGRES_USER="workshopper"
-POSTGRES_PASSWORD="your-secure-password"
+WORKSHOPPER_POSTGRES_PASSWORD="your-secure-password"
 POSTGRES_DB="workshopper"
 ```
 
@@ -41,7 +41,7 @@ docker compose up -d
 
 From the repository root, start the backend using Gradle:
 ```bash
-LLM_API_KEY="your-api-key-here" ./gradlew :apps:workshopper:backend:bootRun
+WORKSHOPPER_SAIA_API_KEY="your-api-key-here" ./gradlew :apps:workshopper:backend:bootRun
 # → Starts on http://localhost:8081
 ```
 

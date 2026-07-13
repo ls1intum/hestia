@@ -3,12 +3,14 @@ import { Loader2, Moon, Sun, GraduationCap, ArrowLeft } from "lucide-react";
 import WorkshopFormStep1 from "@/components/WorkshopFormStep1";
 import WorkshopFormStep2 from "@/components/WorkshopFormStep2";
 import WorkshopGoalEntry from "@/components/WorkshopGoalEntry";
-import WorkshopSkeletonBuilder from "@/components/WorkshopSkeletonBuilder";
-import WorkshopResult from "@/components/WorkshopResult";
+import WorkshopGeneratedTimetable from "@/components/WorkshopGeneratedTimetable";
+
 import WorkshopPreparation from "@/components/WorkshopPreparation";
 import SessionsDashboard from "@/components/SessionsDashboard";
 import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
+import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
+import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
 import { generateSession, getSessionDetail, saveDraft, finishSession } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
@@ -16,21 +18,34 @@ import type {
   LearningGoalPlan,
   WorkshopSession,
   SessionSkeleton,
-  DraftState,
+  DraftState
 } from "@/lib/workshop-generator";
+import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 
 import LectureSummary from "@/components/LectureSummary";
+import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 
-type Step = "input-1" | "input-2" | "lecture-summary" | "goals" | "skeleton" | "result" | "prepare";
+type Step = "input-1" | "input-2" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
+
+// Helper: compute the ordered step IDs for a given entity configuration
+function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
+  return ALL_STEPS
+    .filter(s => {
+      if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2";
+      if (!lectureId && s.id === "lecture-summary") return false;
+      return true;
+    })
+    .map(s => s.id);
+}
 
 const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "lecture-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
-  { id: "skeleton", label: "Timetable" },
-  { id: "result",   label: "Session" },
+  { id: "timeline", label: "Timetable" },
   { id: "prepare",  label: "Preparation" },
+  { id: "final-review", label: "Final Review" },
 ];
 
 export default function App() {
@@ -40,6 +55,9 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  // N-2: confirmation dialog when navigating back from timeline → goals
+  const [showTimelineBackConfirm, setShowTimelineBackConfirm] = useState(false);
+  const isGeneratingRef = useRef(false);
 
   // Current session being created/edited
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -59,6 +77,7 @@ export default function App() {
   const [session,       setSession]       = useState<WorkshopSession | null>(null);
   const [currentSkeleton, setCurrentSkeleton] = useState<SessionSkeleton | null>(null);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
+  const [slidesCache, setSlidesCache] = useState<Record<number, SlideData[]>>({});
 
   // Debounce ref for draft saves
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,6 +137,7 @@ export default function App() {
     setSession(null);
     setCurrentSkeleton(null);
     setCompletedTasks([]);
+    setSlidesCache({});
     setIsFinished(false);
     setHighestStepIdx(0);
     setStep("input-1");
@@ -133,6 +153,7 @@ export default function App() {
     setSession(null);
     setCurrentSkeleton(null);
     setCompletedTasks([]);
+    setSlidesCache({});
     setIsFinished(false);
     setHighestStepIdx(0);
     setStep("input-1");
@@ -145,7 +166,11 @@ export default function App() {
       const detail = await getSessionDetail(lectureId);
       if (detail.draftStateJson) {
         const draft: DraftState = JSON.parse(detail.draftStateJson);
-        if (draft.workshopInput) setWorkshopInput(draft.workshopInput);
+        if (draft.workshopInput) {
+          const inheritedInput = { ...draft.workshopInput };
+          delete inheritedInput.title;
+          setWorkshopInput(inheritedInput);
+        }
       }
       setSessionId(null);
       setCurrentLectureId(lectureId);
@@ -154,6 +179,7 @@ export default function App() {
       setSession(null);
       setCurrentSkeleton(null);
       setCompletedTasks([]);
+      setSlidesCache({});
       setIsFinished(false);
       
       const idx = ALL_STEPS.filter(s => s.id !== "lecture-summary" || true).map(s => s.id).indexOf("lecture-summary");
@@ -171,12 +197,20 @@ export default function App() {
     setIsLoading(true);
     try {
       const detail = await getSessionDetail(id);
+      // R-2: resolve entity type and lectureId locally so we can compute the correct
+      // step order immediately, without waiting for React state to flush.
+      const resolvedEntityType = detail.type ?? "SESSION";
+      const resolvedLectureId = detail.lectureId ?? null;
+
       setSessionId(detail.id);
-      setEntityType(detail.type ?? "SESSION");
-      setCurrentLectureId(detail.lectureId ?? null);
+      setEntityType(resolvedEntityType);
+      setCurrentLectureId(resolvedLectureId);
 
       const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
       setIsFinished(sessionIsFinished);
+
+      // R-2: use locally computed step order, not the stale component-state STEP_ORDER
+      const localStepOrder = computeStepOrder(resolvedEntityType, resolvedLectureId);
 
       if (sessionIsFinished && detail.session) {
         if (detail.title) {
@@ -186,15 +220,20 @@ export default function App() {
         if (detail.draftStateJson) {
           try {
             const draft: DraftState = JSON.parse(detail.draftStateJson);
-            if (draft.workshopInput) setWorkshopInput(draft.workshopInput);
+            if (draft.workshopInput) {
+              if (detail.title) draft.workshopInput.title = detail.title;
+              setWorkshopInput(draft.workshopInput);
+            }
             if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
             if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
             if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
           } catch (_) { /* best effort */ }
         }
         setSession(detail.session);
-        setStep("result");
-        setHighestStepIdx(STEP_ORDER.indexOf("result"));
+        setSlidesCache(detail.session.slides || {});
+        setStep("final-review");
+        const frIdx = localStepOrder.indexOf("final-review");
+        setHighestStepIdx(frIdx >= 0 ? frIdx : localStepOrder.length - 1);
         setView("wizard");
         return;
       }
@@ -203,7 +242,10 @@ export default function App() {
       if (detail.draftStateJson) {
         try {
           const draft: DraftState = JSON.parse(detail.draftStateJson);
-          if (draft.workshopInput) setWorkshopInput(draft.workshopInput);
+          if (draft.workshopInput) {
+            if (detail.title) draft.workshopInput.title = detail.title;
+            setWorkshopInput(draft.workshopInput);
+          }
           if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
           if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
           if (draft.session) {
@@ -219,13 +261,27 @@ export default function App() {
       }
 
       // Navigate to where the user left off
-      let targetStep = (detail.currentStep as Step) ?? "input-1";
-      if (detail.type === "LECTURE" && targetStep === "result") {
-        targetStep = "input-2";
+      let targetStepStr = (detail.currentStep as string) ?? "input-1";
+      if (resolvedEntityType === "LECTURE" && targetStepStr === "result") {
+        targetStepStr = "input-2";
       }
-      
+      if (targetStepStr === "result" || targetStepStr === "skeleton") {
+        if (detail.session) {
+          targetStepStr = "timeline";
+        } else {
+          targetStepStr = "goals";
+        }
+      }
+      if (targetStepStr === "finished") {
+        targetStepStr = "final-review";
+      }
+
+      const targetStep = targetStepStr as Step;
+      const targetIdx = localStepOrder.indexOf(targetStep);
+
       setStep(targetStep);
-      setHighestStepIdx(STEP_ORDER.indexOf(targetStep));
+      // R-2: use localStepOrder — guaranteed to reflect resolved entity/lecture state
+      setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
       toast({
@@ -241,70 +297,77 @@ export default function App() {
   // ── Step handlers ────────────────────────────────────────────────────
 
   const handleStep1 = async (input: Partial<WorkshopInput>) => {
+    // B-1: guard against rapid clicks creating duplicate sessions
+    if (isLoading) return;
+    setIsLoading(true);
     setIsFinished(false);
     setWorkshopInput(input);
-    const draft = buildDraft(input);
-    const id = await persistDraft(draft, "input-2", sessionId, entityType, currentLectureId);
-    if (!sessionId) setSessionId(id);
-    setStep("input-2");
+    try {
+      const draft = buildDraft(input);
+      const id = await persistDraft(draft, "input-2", sessionId, entityType, currentLectureId);
+      if (!sessionId) setSessionId(id);
+      setStep("input-2");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleStep2 = async (input: WorkshopInput) => {
+    // B-1: guard against rapid clicks creating duplicate sessions
+    if (isLoading) return;
+    setIsLoading(true);
     setIsFinished(false);
     setWorkshopInput(input);
-    const draft = buildDraft(input);
-    const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionId, entityType, currentLectureId);
-    if (!sessionId) setSessionId(id);
-    if (entityType === "LECTURE") {
-      toast({ title: "Lecture successfully created" });
-      handleReset();
-    } else {
-      setStep("goals");
+    try {
+      const draft = buildDraft(input);
+      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionId, entityType, currentLectureId);
+      if (!sessionId) setSessionId(id);
+      if (entityType === "LECTURE") {
+        toast({ title: "Lecture successfully created", description: "Your lecture has been saved to the dashboard." });
+        // C-3: short delay so the toast is visible before navigating away
+        setTimeout(() => handleReset(), 1500);
+      } else {
+        setStep("goals");
+      }
+    } finally {
+      if (entityType !== "LECTURE") setIsLoading(false);
+      // For LECTURE, handleReset() will run after 1500ms — keep spinner until then
     }
   };
 
-  const handleGoalsEntered = async (goals: LearningGoalPlan[], uploadedMaterialsText?: string) => {
+  const handleGoalsEntered = async (goals: LearningGoalPlan[]) => {
+    if (isGeneratingRef.current) return;
+    isGeneratingRef.current = true;
     setIsFinished(false);
     setRefinedGoals(goals);
     
-    // Update workshopInput with the uploaded materials text if provided
     const updatedInput = { ...workshopInput };
-    if (uploadedMaterialsText !== undefined) {
-      updatedInput.uploadedMaterialsText = uploadedMaterialsText;
-      setWorkshopInput(updatedInput);
-    }
-    
-    const draft = buildDraft(updatedInput, goals);
-    const id = await persistDraft(draft, "skeleton", sessionId, entityType, currentLectureId);
-    if (!sessionId) setSessionId(id);
-    setStep("skeleton");
-  };
 
-  const handleSkeletonConfirmed = async (
-    skeleton: SessionSkeleton,
-    goals: LearningGoalPlan[]
-  ) => {
-    if (!workshopInput) return;
-    setIsFinished(false);
-    setCurrentSkeleton(skeleton);
     setIsLoading(true);
     try {
-      // Pass the current sessionId inside skeleton so backend can update it
+      const skeleton = generateDefaultSkeleton(goals, updatedInput.duration || 90);
+      setCurrentSkeleton(skeleton);
       const skeletonWithId: SessionSkeleton = {
         ...skeleton,
         sessionId: sessionId ?? undefined,
       };
       const result = await generateSession(
         goals,
-        workshopInput as WorkshopInput,
+        updatedInput as WorkshopInput,
         skeletonWithId
       );
+      if (updatedInput.title?.trim()) {
+        result.title = updatedInput.title.trim();
+      }
       setSession(result);
-      // If the backend returned a new id (first-time create), sync it
       if (result.id && result.id !== sessionId) {
         setSessionId(result.id);
       }
-      setStep("result");
+      
+      const draft = buildDraft(updatedInput, goals, skeleton, result);
+      const id = await persistDraft(draft, "timeline", sessionId ?? result.id ?? null, entityType, currentLectureId);
+      if (!sessionId) setSessionId(id);
+      setStep("timeline");
     } catch (err) {
       toast({
         title: "Session generation failed",
@@ -313,6 +376,7 @@ export default function App() {
       });
     } finally {
       setIsLoading(false);
+      isGeneratingRef.current = false;
     }
   };
 
@@ -340,7 +404,7 @@ export default function App() {
   };
 
   const currentIdx = STEP_ORDER.indexOf(step);
-  
+
   useEffect(() => {
     setHighestStepIdx(prev => Math.max(prev, currentIdx));
   }, [currentIdx]);
@@ -350,9 +414,9 @@ export default function App() {
     "input-2":  { title: "Loading…",                    sub: "" },
     "lecture-summary": { title: "Loading…",             sub: "" },
     "goals":    { title: "Loading…",                    sub: "" },
-    "skeleton": { title: "Generating your session plan…", sub: "This may take a moment." },
-    "result":   { title: "Generating your session plan…", sub: "This may take a moment." },
+    "timeline": { title: "Generating your session plan…", sub: "This may take a moment." },
     "prepare":  { title: "Loading…",                    sub: "" },
+    "final-review": { title: "Loading…",                sub: "" },
   };
 
   // ── Dashboard view ────────────────────────────────────────────────────
@@ -389,20 +453,37 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
-          <button onClick={handleReset} className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0">
+          <button onClick={handleReset} className="flex items-center gap-3 hover:opacity-80 transition-opacity shrink-0">
             <ArrowLeft className="h-5 w-5 text-muted-foreground" />
-            <GraduationCap className="h-8 w-8 text-primary" />
-            <span className="font-display font-bold text-2xl text-foreground">Workshopper</span>
+            <img src={hestiaLogoLight} alt="Hestia" className="h-6 w-auto dark:hidden" />
+            <img src={hestiaLogoDark} alt="Hestia" className="h-6 w-auto hidden dark:block" />
+            <span className="bg-primary/20 text-primary px-3 py-0.5 rounded-full font-body font-bold text-sm">
+              Workshopper
+            </span>
           </button>
 
           <div className="hidden sm:flex items-center justify-center flex-1 gap-1.5 text-sm font-body text-muted-foreground whitespace-nowrap px-4">
             {STEPS.map((s, i) => {
+              const effectiveStep = step;
               const isClickable = i <= highestStepIdx && !isLoading;
               return (
                 <span key={s.id} className="flex items-center gap-1.5">
                   <button
-                    onClick={() => { if (isClickable) setStep(s.id); }}
-                    disabled={!isClickable && step !== s.id}
+                    onClick={() => {
+                      if (!isClickable) return;
+                      // M-2: cancel any pending draft debounce before navigating
+                      if (draftSaveTimeout.current) {
+                        clearTimeout(draftSaveTimeout.current);
+                        draftSaveTimeout.current = null;
+                      }
+                      // N-2: warn before navigating back past the timeline step
+                      if (step === "timeline" && STEP_ORDER.indexOf(s.id) < STEP_ORDER.indexOf("timeline")) {
+                        setShowTimelineBackConfirm(true);
+                        return;
+                      }
+                      setStep(s.id);
+                    }}
+                    disabled={!isClickable && effectiveStep !== s.id}
                     className={`flex items-center gap-1.5 transition-opacity ${
                       isClickable ? "cursor-pointer hover:opacity-70" 
                       : i > highestStepIdx ? "cursor-not-allowed opacity-50" 
@@ -410,13 +491,13 @@ export default function App() {
                     }`}
                   >
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold transition-colors ${
-                      step === s.id ? "bg-primary text-primary-foreground"
+                      effectiveStep === s.id ? "bg-primary text-primary-foreground"
                       : i <= highestStepIdx ? "bg-primary/30 text-primary"
                       : "bg-muted text-muted-foreground"
                     }`}>
                       {i + 1}
                     </span>
-                    <span className={step === s.id ? "text-foreground font-medium" : ""}>{s.label}</span>
+                    <span className={effectiveStep === s.id ? "text-foreground font-medium" : ""}>{s.label}</span>
                   </button>
                   {i < STEPS.length - 1 && <span className="mx-1 opacity-30">›</span>}
                 </span>
@@ -433,7 +514,14 @@ export default function App() {
       {/* Main */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {step === "input-1" && (
-          <WorkshopFormStep1 onNext={handleStep1} isLoading={isLoading} initialInput={workshopInput} entityType={entityType} />
+          // N-4: pass onBack when in lecture-session mode so user isn't trapped on Step 1
+          <WorkshopFormStep1
+            onNext={handleStep1}
+            isLoading={isLoading}
+            initialInput={workshopInput}
+            entityType={entityType}
+            onBack={currentLectureId ? () => setStep("lecture-summary") : undefined}
+          />
         )}
 
         {step === "input-2" && (
@@ -442,6 +530,14 @@ export default function App() {
             onGenerate={handleStep2}
             isLoading={isLoading}
             onBack={() => setStep("input-1")}
+            // N-1: incrementally save selections so they survive re-mount
+            onSelectionsChange={(activities, materials) => {
+              setWorkshopInput(prev => ({
+                ...prev,
+                selectedActivities: activities,
+                availableMaterials: materials,
+              }));
+            }}
           />
         )}
 
@@ -467,30 +563,25 @@ export default function App() {
           />
         )}
 
-        {step === "skeleton" && (
-          <WorkshopSkeletonBuilder
-            goals={refinedGoals}
-            totalDuration={workshopInput.duration || 90}
-            initialSkeleton={currentSkeleton ?? undefined}
-            onBack={() => setStep("goals")}
-            onContinue={handleSkeletonConfirmed}
-            isLoading={isLoading}
-          />
-        )}
 
-        {step === "result" && session && (
-          <WorkshopResult
+
+        {step === "timeline" && session && (
+          <WorkshopGeneratedTimetable
             session={session}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
-            onBack={() => setStep("skeleton")}
-            onNext={() => {
+            onBack={() => {
+              // N-2: show confirmation before going back to goals (which triggers regen)
+              setShowTimelineBackConfirm(true);
+            }}
+            onNext={(latestSession) => {
+              setSession(latestSession);
               setStep("prepare");
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session), isFinished ? "finished" : "prepare", sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, latestSession), isFinished ? "finished" : "prepare", sessionId, entityType, currentLectureId);
             }}
             onSaveSession={(updatedSession) => {
               setSession(updatedSession);
-              persistDraft(buildDraft(workshopInput, refinedGoals, undefined, updatedSession), isFinished ? "finished" : "result", sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, undefined, updatedSession), isFinished ? "finished" : "timeline", sessionId, entityType, currentLectureId);
             }}
           />
         )}
@@ -501,6 +592,8 @@ export default function App() {
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
             completedTasks={completedTasks}
+            slidesCache={slidesCache}
+            setSlidesCache={setSlidesCache}
             onUpdateTasks={(tasks, isAllDone) => {
               setCompletedTasks(tasks);
               let nextStep = isFinished ? "finished" : "prepare";
@@ -510,25 +603,42 @@ export default function App() {
               }
               persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), nextStep, sessionId, entityType, currentLectureId);
             }}
-            onBack={() => setStep("result")}
-            onDone={async (latestTasks) => {
-              const safeTasks = Array.isArray(latestTasks) ? latestTasks : completedTasks;
-              if (sessionId) {
-                try {
-                  setIsFinished(true);
-                  await saveDraft(
-                    buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, safeTasks),
-                    sessionId,
-                    "finished",
-                    entityType,
-                    currentLectureId ?? undefined
-                  );
-                  await finishSession(sessionId);
-                } catch (e) {
-                  toast({ title: "Failed to mark as finished", description: String(e), variant: "destructive" });
-                }
+            onBack={() => setStep("timeline")}
+            onDone={(latestTasks) => {
+              if (latestTasks) setCompletedTasks(latestTasks);
+              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, latestTasks ?? completedTasks), "final-review", sessionId, entityType, currentLectureId);
+              setStep("final-review");
+              setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
+              window.scrollTo(0, 0);
+            }}
+          />
+        )}
+
+        {step === "final-review" && session && (
+          <WorkshopFinalReview
+            session={session}
+            meta={workshopInput as WorkshopInput}
+            goals={refinedGoals}
+            slidesCache={slidesCache}
+            onBack={() => setStep("prepare")}
+            onDone={async () => {
+              // C-2: surface an error instead of silently doing nothing
+              if (!sessionId) {
+                toast({ title: "Cannot finish session", description: "Session ID is missing — please go back and re-save.", variant: "destructive" });
+                return;
               }
-              handleReset();
+              setIsLoading(true);
+              try {
+                await persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "finished", sessionId, entityType, currentLectureId);
+                await finishSession(sessionId);
+                toast({ title: "Session completed!" });
+                setIsFinished(true);
+                handleReset();
+              } catch (e) {
+                toast({ title: "Save failed", description: String(e), variant: "destructive" });
+              } finally {
+                setIsLoading(false);
+              }
             }}
           />
         )}
@@ -540,6 +650,30 @@ export default function App() {
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <p className="font-body font-medium text-foreground">{loadingMessages[step].title}</p>
             <p className="text-sm text-muted-foreground font-body">{loadingMessages[step].sub}</p>
+          </div>
+        </div>
+      )}
+
+      {/* N-2: Confirmation dialog for navigating back from timeline (would trigger regen) */}
+      {showTimelineBackConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <h3 className="font-display font-semibold text-lg text-foreground">Discard timetable edits?</h3>
+            <p className="text-sm text-muted-foreground font-body">
+              Going back to Goals will re-generate the session plan when you continue, discarding any edits you've made to the timetable.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setShowTimelineBackConfirm(false)}>Stay here</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setShowTimelineBackConfirm(false);
+                  setStep("goals");
+                }}
+              >
+                Go back anyway
+              </Button>
+            </div>
           </div>
         </div>
       )}

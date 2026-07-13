@@ -17,5 +17,6 @@ subprojects {
 
     repositories {
         mavenCentral()
+        maven { url = uri("https://build.shibboleth.net/nexus/content/repositories/releases/") }
     }
 }

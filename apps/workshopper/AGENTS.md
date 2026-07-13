@@ -8,8 +8,6 @@ Use English for repository documentation and agent-facing instructions.
 
 ## Project Context
 
-Workshopper is Yingge's master's thesis project.
-
 The system helps instructors generate interactive, pedagogically sound workshop sessions and lecture slides based on specified learning goals and uploaded educational materials. It utilizes LLMs to structure a session into logical phases, propose activities, estimate durations, and output complete PDF handouts and PPTX presentations.
 
 ## Required Agent Workflow

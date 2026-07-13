@@ -41,9 +41,8 @@ function SortableGoalCard({ goal, index }: { goal: LearningGoalPlan; index: numb
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-3 border rounded-xl bg-muted/40 shadow-sm select-none ${
-        isDragging ? "shadow-lg ring-2 ring-primary/30 bg-muted/60" : "border-border/60"
-      }`}
+      className={`flex items-center gap-3 p-3 border rounded-xl bg-muted/40 shadow-sm select-none ${isDragging ? "shadow-lg ring-2 ring-primary/30 bg-muted/60" : "border-border/60"
+        }`}
     >
       <div
         {...attributes}
@@ -84,7 +83,7 @@ export default function WorkshopGoalOrdering({ initialGoals, onBack, onContinue,
     <div className="space-y-4">
       <Card className="border-border/60 shadow-lg bg-card">
         <CardHeader className="py-4">
-          <CardTitle className="font-display text-3xl">Step 4: Order Learning Goals</CardTitle>
+          <CardTitle className="font-display text-3xl">Order Learning Goals</CardTitle>
           <CardDescription className="font-body text-sm">
             Drag the cards to set the order in which goals appear in the session.
           </CardDescription>

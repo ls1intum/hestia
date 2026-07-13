@@ -56,7 +56,7 @@ export default function WorkshopGoalRefine({ initialGoals, onBack, onContinue, i
 
       <Card className="border-primary/20 bg-primary/5 shadow-lg">
         <CardHeader className="py-4">
-          <CardTitle className="font-display text-lg">Step 3.0: Refine your learning goals</CardTitle>
+          <CardTitle className="font-display text-lg">Refine your learning goals</CardTitle>
           <CardDescription className="font-body text-sm">
             Review the generated learning goals. Accept or reject changes from your input, edit text, or add new ones.
           </CardDescription>
@@ -80,7 +80,7 @@ export default function WorkshopGoalRefine({ initialGoals, onBack, onContinue, i
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex gap-2 items-start">
                   <Input
                     value={g.goal}

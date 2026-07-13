@@ -26,7 +26,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Only the web layer is loaded — no DB, no real services.
  * Verifies HTTP status codes, routing, and basic error handling.
  */
-@WebMvcTest(WorkshopController.class)
+@WebMvcTest(
+    value = WorkshopController.class,
+    excludeAutoConfiguration = {
+        org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.security.saml2.Saml2RelyingPartyAutoConfiguration.class
+    }
+)
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
 class WorkshopControllerTest {
 
     @Autowired

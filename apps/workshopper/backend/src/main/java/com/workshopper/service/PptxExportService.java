@@ -3,6 +3,7 @@ package com.workshopper.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.ActivityBlockDto;
+import com.workshopper.dto.ActivitySectionDto;
 import com.workshopper.dto.PdfExportRequestDto;
 import com.workshopper.dto.WorkshopInputDto;
 import com.workshopper.dto.WorkshopSessionDto;
@@ -79,20 +80,52 @@ public class PptxExportService {
         userPrompt.append("Duration: ").append(block.duration()).append(" minutes\n");
         if (block.objective() != null) userPrompt.append("Objective: ").append(block.objective()).append("\n");
         if (block.description() != null) userPrompt.append("Description: ").append(block.description()).append("\n");
-        if (block.methods() != null && !block.methods().isEmpty())
-            userPrompt.append("Activities: ").append(String.join(", ", block.methods())).append("\n");
-        if (block.sections() != null && !block.sections().isEmpty()) {
-            userPrompt.append("\nSection Steps:\n");
-            try {
-                userPrompt.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(block.sections())).append("\n");
-            } catch (Exception ignored) {}
+
+        // Collect all methods: block-level + section-level (deduplicated)
+        java.util.Set<String> allMethods = new java.util.LinkedHashSet<>();
+        if (block.methods() != null) allMethods.addAll(block.methods());
+        if (block.sections() != null) {
+            for (ActivitySectionDto sec : block.sections()) {
+                if (sec.methods() != null) allMethods.addAll(sec.methods());
+            }
         }
+        if (!allMethods.isEmpty()) {
+            userPrompt.append("Teaching Methods / Activities: ").append(String.join(", ", allMethods)).append("\n");
+        }
+
+        // ── CRITICAL: explicitly surface the exact activity steps from the timetable ──
+        // These strings (e.g. "5 min - Poll: What is the P vs NP problem?") are what
+        // the instructor will actually run. Slides MUST match them exactly.
+        if (block.sections() != null && !block.sections().isEmpty()) {
+            boolean hasSteps = block.sections().stream()
+                    .anyMatch(s -> s.steps() != null && !s.steps().isEmpty());
+            if (hasSteps) {
+                userPrompt.append("\nDetailed Activity Steps (MUST be reflected in slides — use these exact prompts/questions):\n");
+                for (ActivitySectionDto sec : block.sections()) {
+                    if (sec.steps() != null && !sec.steps().isEmpty()) {
+                        if (sec.title() != null && !sec.title().isBlank()) {
+                            userPrompt.append("  [").append(sec.title()).append("]\n");
+                        }
+                        for (String step : sec.steps()) {
+                            userPrompt.append("    • ").append(step).append("\n");
+                        }
+                    }
+                }
+            } else {
+                // No step-level detail — fall back to structured JSON
+                userPrompt.append("\nSection Structure:\n");
+                try {
+                    userPrompt.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(block.sections())).append("\n");
+                } catch (Exception ignored) {}
+            }
+        }
+
         if (meta != null && meta.uploadedMaterialsText() != null && !meta.uploadedMaterialsText().isBlank()) {
             String text = meta.uploadedMaterialsText();
             if (text.length() > 8000) text = text.substring(0, 8000) + "\n[...truncated]";
             userPrompt.append("\nReference Materials:\n").append(text);
         }
-        userPrompt.append("\nTask: Return ONLY a JSON array of slides for this block.");
+        userPrompt.append("\nTask: Return ONLY a JSON array of slides for this block. Each slide must directly correspond to the activity steps listed above. If a step is a poll, quiz, or question prompt, the slide should present that exact question/prompt to students.");
 
         log.info("Requesting LLM to generate slides for block: {}", block.phaseLabel());
         String rawResponse = llm.callSecondary(systemPrompt, userPrompt.toString());

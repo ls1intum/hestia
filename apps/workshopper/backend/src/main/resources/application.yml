@@ -2,11 +2,24 @@ spring:
   application:
     name: workshopper-backend
 
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          tum:
+            signing:
+              credentials:
+                - private-key-location: classpath:certs/private-key.pem
+                  certificate-location: classpath:certs/certificate.crt
+            assertingparty:
+              entity-id: https://tumidp.lrz.de/idp/shibboleth
+              metadata-uri: https://login.tum.de/idp/shibboleth
+
   datasource:
     url: ${POSTGRES_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:workshopper}}
     driver-class-name: org.postgresql.Driver
     username: ${POSTGRES_USER:workshopper}
-    password: ${POSTGRES_PASSWORD:workshopper}
+    password: ${WORKSHOPPER_POSTGRES_PASSWORD:workshopper}
 
   jpa:
     hibernate:
@@ -21,7 +34,7 @@ server:
 
 # ── LLM Configuration ──────────────────────────────────────────────
 # We now use the shared Hestia LLM defaults (spring.ai.openai properties).
-spring.ai.openai.api-key: ${LLM_API_KEY}
+spring.ai.openai.api-key: ${WORKSHOPPER_SAIA_API_KEY}
 
 llm:
   secondary-model: ${LLM_SECONDARY_MODEL:}

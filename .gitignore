@@ -27,6 +27,10 @@ Thumbs.db
 .env
 .env.local
 
+# SAML Certificates (never commit private keys)
+**/certs/private-key.pem
+**/certs/certificate.crt
+
 # H2 / embedded database files (use Postgres in all envs)
 *.mv.db
 *.lock.db
