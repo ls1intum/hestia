@@ -61,13 +61,13 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=hestia-edge"
-      # Route https://${APP_HOST}${APP_PATH_PREFIX}/... to this app; Traefik strips the
+      # Route https://${APP_HOST}/learninggoalhub/... to this app; Traefik strips the
       # prefix (and sends X-Forwarded-Prefix) so nginx stays prefix-agnostic.
-      - "traefik.http.routers.learninggoalhub.rule=Host(`${APP_HOST}`) && PathPrefix(`${APP_PATH_PREFIX}`)"
+      - "traefik.http.routers.learninggoalhub.rule=Host(`${APP_HOST}`) && PathPrefix(`/learninggoalhub`)"
       - "traefik.http.routers.learninggoalhub.entrypoints=websecure"
       - "traefik.http.routers.learninggoalhub.tls=true"
       - "traefik.http.routers.learninggoalhub.middlewares=learninggoalhub-strip"
-      - "traefik.http.middlewares.learninggoalhub-strip.stripprefix.prefixes=${APP_PATH_PREFIX}"
+      - "traefik.http.middlewares.learninggoalhub-strip.stripprefix.prefixes=/learninggoalhub"
       - "traefik.http.services.learninggoalhub.loadbalancer.server.port=80"
     restart: unless-stopped
 
