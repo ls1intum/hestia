@@ -68,7 +68,7 @@ jobs:
     needs: test-backend
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/examlense-backend
+      image-name: ${{ github.repository }}/examlense/server
       docker-file: apps/examlense/backend/Dockerfile
       # Standalone Gradle project: build from the backend directory itself.
       docker-context: apps/examlense/backend
@@ -77,7 +77,7 @@ jobs:
   build-frontend:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/examlense-frontend
+      image-name: ${{ github.repository }}/examlense/client
       docker-file: apps/examlense/frontend/Dockerfile
       docker-context: apps/examlense/frontend
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
@@ -93,7 +93,7 @@ jobs:
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/examlense/compose.prod.yaml
-      main-image-name: ${{ github.repository }}/examlense-backend
+      main-image-name: ${{ github.repository }}/examlense/server
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/examlense
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,

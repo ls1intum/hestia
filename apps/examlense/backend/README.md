@@ -150,7 +150,7 @@ Available models include Gemma / Mistral / Qwen, GPT, Claude, and Gemini entries
 ## Deploying
 
 The backend is deployed as the `server` container on the chair Hestia VMs (Docker image
-`ghcr.io/ls1intum/hestia/examlense-backend`, built by CI). The local-FS storage directory
+`ghcr.io/ls1intum/hestia/examlense/server`, built by CI). The local-FS storage directory
 (`STORAGE_LOCAL_BASE_PATH`) is backed by a named Docker volume and Postgres runs as a sibling
 container; provider keys, `API_AUTH_TOKEN`, and `DB_*` come from the deploy `.env`.
 See the app-level **[`../DEPLOY.md`](../DEPLOY.md)** for the full pipeline.
