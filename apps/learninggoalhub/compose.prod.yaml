@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   server:
-    image: ghcr.io/ls1intum/hestia/learninggoalhub-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/learninggoalhub/server:${IMAGE_TAG:-latest}
     container_name: learninggoalhub-server
     environment:
       POSTGRES_HOST: postgres
@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/ls1intum/hestia/learninggoalhub-client:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/learninggoalhub/client:${IMAGE_TAG:-latest}
     container_name: learninggoalhub-web
     # No host ports: the shared Traefik proxy (infra/traefik) owns 80/443 and terminates
     # TLS. This container only needs to be reachable by Traefik on the shared edge network.

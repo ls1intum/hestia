@@ -1,0 +1,30 @@
+# Gitleaks configuration for the hestia monorepo.
+# Used by the pre-commit hook (.githooks/pre-commit) and the repo-guard CI workflow.
+
+title = "hestia gitleaks config"
+
+[extend]
+useDefault = true
+
+# Repo-specific tripwires beyond the default secret rules. This is a public academic
+# repository, so personal data must stay out of it (docs must be user-agnostic).
+
+[[rules]]
+id = "personal-email"
+description = "Personal e-mail address (repo content must stay user-agnostic)"
+regex = '''[a-zA-Z0-9._%+-]+@(hotmail|gmail|googlemail|gmx|web|outlook|yahoo|icloud|live|protonmail|proton)\.[a-z]{2,6}'''
+keywords = ["hotmail", "gmail", "googlemail", "gmx", "outlook", "yahoo", "icloud", "live", "proton"]
+
+[[rules]]
+id = "local-home-path"
+description = "Local macOS home directory path (leaks a username; keep content machine-agnostic)"
+regex = '''/Users/[A-Za-z0-9._-]+'''
+keywords = ["/users/"]
+
+[allowlist]
+description = "Known dev placeholders and template values"
+regexes = [
+  '''dev-local-token''',
+  '''your_api_key_here''',
+  '''change-me''',
+]

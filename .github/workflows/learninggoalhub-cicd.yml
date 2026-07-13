@@ -62,7 +62,7 @@ jobs:
   build-server:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/learninggoalhub-server
+      image-name: ${{ github.repository }}/learninggoalhub/server
       docker-file: apps/learninggoalhub/server/Dockerfile
       # Repo root: the server is a multi-module Gradle build (depends on :libs:shared-llm).
       docker-context: .
@@ -71,7 +71,7 @@ jobs:
   build-client:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/learninggoalhub-client
+      image-name: ${{ github.repository }}/learninggoalhub/client
       docker-file: apps/learninggoalhub/client/Dockerfile
       docker-context: apps/learninggoalhub/client
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
@@ -87,7 +87,7 @@ jobs:
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/learninggoalhub/compose.prod.yaml
-      main-image-name: ${{ github.repository }}/learninggoalhub-server
+      main-image-name: ${{ github.repository }}/learninggoalhub/server
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/learninggoalhub
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
