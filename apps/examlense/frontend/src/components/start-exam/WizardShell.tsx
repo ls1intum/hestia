@@ -25,6 +25,13 @@ interface Props {
   onNext: () => void;
   /** Label for the primary button (e.g. "Continue", "Parse exam"). */
   nextLabel: string;
+  /**
+   * Visual tone of the primary button. "muted" renders a greyer, secondary
+   * button — used when the step can be skipped without a real choice.
+   */
+  nextVariant?: "primary" | "muted";
+  /** Optional muted helper shown just above the footer (e.g. a skip caveat). */
+  nextNote?: string;
   /** Disables the primary button (step invalid). */
   nextDisabled?: boolean;
   /** Shows a spinner + disables navigation while a transition runs. */
@@ -48,6 +55,8 @@ export const WizardShell = ({
   onBack,
   onNext,
   nextLabel,
+  nextVariant = "primary",
+  nextNote,
   nextDisabled,
   busy,
   children,
@@ -83,29 +92,41 @@ export const WizardShell = ({
 
         <div className="mt-hestia-2 min-h-[220px]">{children}</div>
 
-        <div className="mt-hestia-2 flex items-center justify-between gap-hestia-3">
-          {onBack ? (
+        <div className="mt-hestia-2 flex flex-col gap-hestia-1">
+          {nextNote && (
+            <p className="text-right text-xs text-hestia-text-muted">
+              {nextNote}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-hestia-3">
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                disabled={busy}
+                className="inline-flex items-center gap-1 rounded-hestia-md px-hestia-3 py-hestia-2 text-sm font-medium text-hestia-text-muted transition-colors hover:bg-hestia-primary-muted/30 hover:text-hestia-text disabled:opacity-50"
+              >
+                <ArrowLeft size={14} />
+                Back
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               type="button"
-              onClick={onBack}
-              disabled={busy}
-              className="inline-flex items-center gap-1 rounded-hestia-md px-hestia-3 py-hestia-2 text-sm font-medium text-hestia-text-muted transition-colors hover:bg-hestia-primary-muted/30 hover:text-hestia-text disabled:opacity-50"
+              onClick={onNext}
+              disabled={nextDisabled || busy}
+              className={cn(
+                "inline-flex items-center justify-center gap-hestia-2 rounded-hestia-md px-hestia-4 py-hestia-2 text-sm font-semibold shadow-hestia-sm transition-colors disabled:opacity-50",
+                nextVariant === "muted"
+                  ? "bg-hestia-border/60 text-hestia-text-muted hover:bg-hestia-border hover:text-hestia-text"
+                  : "bg-hestia-primary text-white hover:bg-hestia-primary-hover",
+              )}
             >
-              <ArrowLeft size={14} />
-              Back
+              {busy && <Loader2 size={14} className="animate-spin" />}
+              {nextLabel}
             </button>
-          ) : (
-            <span />
-          )}
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={nextDisabled || busy}
-            className="inline-flex items-center justify-center gap-hestia-2 rounded-hestia-md bg-hestia-primary px-hestia-4 py-hestia-2 text-sm font-semibold text-white shadow-hestia-sm transition-colors hover:bg-hestia-primary-hover disabled:opacity-50"
-          >
-            {busy && <Loader2 size={14} className="animate-spin" />}
-            {nextLabel}
-          </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

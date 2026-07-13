@@ -19,7 +19,8 @@ import { UploadStep } from "./UploadStep";
 import { ParserModelStep } from "./ParserModelStep";
 import { SolverModelStep } from "./SolverModelStep";
 import { MetadataStep, type ExamLanguage } from "./MetadataStep";
-import { CoursePickerStep, NO_COURSE } from "./CoursePickerStep";
+import { CoursePickerStep, CREATE_COURSE, NO_COURSE } from "./CoursePickerStep";
+import { useCreateLghCourse } from "@/hooks/use-learning-goals";
 
 export type StartExamMode = "pdf" | "manual";
 
@@ -55,6 +56,7 @@ export const StartExamDialog = ({
   const onError = (msg: string) =>
     toast({ title: msg, variant: "destructive" });
 
+  const createCourse = useCreateLghCourse();
   const { data: solverCatalog } = useSolverModels();
   const defaultSolverId = resolveSelectableDefault(
     selectableModels(solverCatalog?.models ?? []),
@@ -70,6 +72,7 @@ export const StartExamDialog = ({
   const [parserFastMode, setParserFastMode] = useState(false);
   const [solverId, setSolverId] = useState("");
   const [courseValue, setCourseValue] = useState(NO_COURSE);
+  const [newCourseName, setNewCourseName] = useState("");
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState<ExamLanguage>("en");
   // PDF flow: exams created (and parsing) once the parser step is confirmed.
@@ -85,6 +88,7 @@ export const StartExamDialog = ({
     setParserFastMode(false);
     setSolverId(defaultSolverId);
     setCourseValue(NO_COURSE);
+    setNewCourseName("");
     setTitle("");
     setLanguage("en");
     setExamIds([]);
@@ -99,16 +103,39 @@ export const StartExamDialog = ({
 
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
+  // Resolve the LGH course id to link. When the author chose "create new", the
+  // empty course is created in LGH now (once) and its id reused — so all the
+  // PDF flow's per-parser exams share one course. Throws on failure so callers
+  // can abort instead of silently linking nothing.
+  const resolveCourseId = async (): Promise<number | null> => {
+    if (courseValue === NO_COURSE) return null;
+    if (courseValue === CREATE_COURSE) {
+      const course = await createCourse.mutateAsync(newCourseName.trim());
+      return course.id;
+    }
+    return Number(courseValue);
+  };
+
   // PDF: create one exam per parser model, upload the PDF, and fire parsing.
   // Best-effort per model — a failed one is rolled back, the rest continue.
   const startParsing = async (): Promise<boolean> => {
     if (!file) return false;
     setBusy(true);
+
+    let courseId: number | null;
+    try {
+      courseId = await resolveCourseId();
+    } catch (e) {
+      console.error("create LGH course failed", e);
+      setBusy(false);
+      onError("Couldn't create the LearningGoalHub course. Please try again.");
+      return false;
+    }
+
     const baseTitle = file.name.replace(/\.pdf$/i, "");
 
     const startOne = async (parserModel: string): Promise<string | null> => {
       let examRow;
-      const courseId = courseValue === NO_COURSE ? null : Number(courseValue);
       try {
         examRow = await createExam({
           title: baseTitle,
@@ -193,7 +220,15 @@ export const StartExamDialog = ({
   // then open the editor.
   const finishManual = async () => {
     setBusy(true);
-    const courseId = courseValue === NO_COURSE ? null : Number(courseValue);
+    let courseId: number | null;
+    try {
+      courseId = await resolveCourseId();
+    } catch (e) {
+      console.error("create LGH course failed", e);
+      setBusy(false);
+      onError("Couldn't create the LearningGoalHub course. Please try again.");
+      return;
+    }
     let exam;
     try {
       exam = await createExam({
@@ -272,6 +307,8 @@ export const StartExamDialog = ({
     heading: string;
     subtitle?: string;
     nextLabel: string;
+    nextVariant?: "primary" | "muted";
+    nextNote?: string;
     disabled: boolean;
     body: ReactNode;
   } => {
@@ -320,15 +357,29 @@ export const StartExamDialog = ({
           disabled: !solverId,
           body: <SolverModelStep value={solverId} onChange={setSolverId} />,
         };
-      case "course":
+      case "course": {
+        // Nothing picked yet → the step is skippable, but skipping means no
+        // learning-goal insights, so the primary button greys out into "Skip"
+        // with a caveat instead of a confident "Continue".
+        const skipping = courseValue === NO_COURSE;
         return {
           heading: "Connect a course from LearningGoalHub",
-          nextLabel: "Continue",
-          disabled: false,
+          nextLabel: skipping ? "Skip" : "Continue",
+          nextVariant: skipping ? "muted" : "primary",
+          nextNote: skipping
+            ? "No learning-goal insights without a course"
+            : undefined,
+          disabled: courseValue === CREATE_COURSE && !newCourseName.trim(),
           body: (
-            <CoursePickerStep value={courseValue} onChange={setCourseValue} />
+            <CoursePickerStep
+              value={courseValue}
+              onChange={setCourseValue}
+              newCourseName={newCourseName}
+              onNewCourseNameChange={setNewCourseName}
+            />
           ),
         };
+      }
     }
   };
 
@@ -347,6 +398,8 @@ export const StartExamDialog = ({
       onBack={stepIndex === 0 ? undefined : goBack}
       onNext={handleNext}
       nextLabel={m.nextLabel}
+      nextVariant={m.nextVariant}
+      nextNote={m.nextNote}
       nextDisabled={m.disabled}
       busy={busy}
     >

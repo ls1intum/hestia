@@ -17,6 +17,9 @@ public final class LghDtos {
 
     public record GenerateExamGoalsRequest(List<ExamBlock> blocks) {}
 
+    /** Body for creating a new (empty) LGH course — mirrors LGH's CreateCourseRequest. */
+    public record CreateCourseRequest(String name) {}
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ExamTaskGoals(String blockId, List<LearningGoal> goals) {}
 

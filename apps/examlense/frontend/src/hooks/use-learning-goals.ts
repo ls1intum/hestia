@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getExamLearningGoals, listLghCourses } from "@/lib/api-client";
+import { createLghCourse, getExamLearningGoals, listLghCourses } from "@/lib/api-client";
 import type { LearningGoalResponse } from "@/lib/learning-goals";
 
 export const examLearningGoalsKey = (examId: string) =>
@@ -31,6 +31,20 @@ export function useLghCourses(enabled = true) {
     enabled,
     staleTime: 10 * 60 * 1000,
     retry: 1,
+  });
+}
+
+/**
+ * Create a new, empty LearningGoalHub course. Invalidates the course list so a
+ * freshly created course shows up the next time the picker opens.
+ */
+export function useCreateLghCourse() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => createLghCourse(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: lghCoursesKey });
+    },
   });
 }
 

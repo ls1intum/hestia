@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,6 +33,8 @@ public class LghController {
     private static final Logger log = LoggerFactory.getLogger(LghController.class);
 
     public record CourseDto(long id, String name) {}
+
+    public record CreateCourseReq(String name) {}
 
     public record LearningGoalDto(long id, String text, String bloom_level, String solo_level, String status) {}
 
@@ -49,6 +53,19 @@ public class LghController {
         return viaLgh("list LGH courses", () -> client.listCourses().stream()
             .map(c -> new CourseDto(c.id(), c.name()))
             .toList());
+    }
+
+    /** Create a new, empty LGH course (name only) and return it for linking to an exam. */
+    @PostMapping("/lgh/courses")
+    public CourseDto createCourse(@RequestBody CreateCourseReq req, @CurrentUser String userId) {
+        String name = req.name() == null ? "" : req.name().trim();
+        if (name.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Course name is required");
+        }
+        return viaLgh("create LGH course", () -> {
+            var c = client.createCourse(name);
+            return new CourseDto(c.id(), c.name());
+        });
     }
 
     /**

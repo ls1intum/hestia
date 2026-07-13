@@ -204,6 +204,10 @@ interface LearningGoalDto {
 
 export const listLghCourses = () => apiRequest<LghCourse[]>("/api/lgh/courses");
 
+/** Create a new, empty LearningGoalHub course (name only) and return it with its id. */
+export const createLghCourse = (name: string) =>
+  apiRequest<LghCourse>("/api/lgh/courses", { method: "POST", json: { name } });
+
 /** The resolved learning goals linked to an exam's tasks. */
 export async function getExamLearningGoals(examId: string): Promise<LearningGoalResponse[]> {
   const rows = await apiRequest<LearningGoalDto[]>(`/api/exams/${examId}/learning-goals`);

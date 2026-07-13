@@ -63,6 +63,15 @@ public class LearningGoalHubClient {
         return out == null ? List.of() : out;
     }
 
+    /** Create a new, empty course (name only — no documents) and return it with its id. */
+    public LghDtos.Course createCourse(String name) {
+        return readClient.post()
+            .uri("/api/courses")
+            .body(new LghDtos.CreateCourseRequest(name))
+            .retrieve()
+            .body(LghDtos.Course.class);
+    }
+
     public List<LghDtos.Course> listCourses() {
         return fetchAllPages("/api/courses",
             new ParameterizedTypeReference<LghDtos.Paged<LghDtos.Course>>() {});
