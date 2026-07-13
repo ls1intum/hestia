@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { LearningGoalPlan } from "@/lib/workshop-generator";
-import { extractPdfText, extractPptxText } from "@/lib/pdf-parser";
 import { toast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Trash2, Check, X, Loader2,
-  Sparkles, ArrowRight, AlertCircle, Upload, FileText,
+  Sparkles, ArrowRight, AlertCircle,
 } from "lucide-react";
+import { LGHImport } from "./LGHImport";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface GoalDraft {
@@ -33,10 +33,9 @@ interface Props {
     sessionType?: string;
     studentBackground?: string;
     interactionLevel?: string;
-    uploadedMaterialsText?: string;
   };
   onBack: () => void;
-  onContinue: (goals: LearningGoalPlan[], uploadedMaterialsText?: string) => void;
+  onContinue: (goals: LearningGoalPlan[]) => void;
   isLoading?: boolean;
   initialGoals?: LearningGoalPlan[];
 }
@@ -59,11 +58,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     }
     return [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
   });
-  const [extracting, setExtracting] = useState(false);
-  const [uploadingLegacy, setUploadingLegacy] = useState(false);
-  const [uploadedText, setUploadedText] = useState<string>(initialInput.uploadedMaterialsText || "");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const legacyInputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
   const updateGoal = useCallback(
     (id: string, patch: Partial<GoalDraft>) =>
@@ -120,13 +115,14 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         const idx = prev.findIndex((g) => g.id === goalId);
         const newGoals = [...prev];
         newGoals[idx] = { ...newGoals[idx], text: suggestion.values[0], suggestions: [], dirty: false };
-        newGoals.splice(idx + 1, 0, {
-          id: `g${Date.now()}`,
-          text: suggestion.values[1],
+        const extraGoals = suggestion.values.slice(1).map((val, i) => ({
+          id: `g${Date.now()}-${i}`,
+          text: val,
           suggestions: [],
           checking: false,
           dirty: false,
-        });
+        }));
+        newGoals.splice(idx + 1, 0, ...extraGoals);
         return newGoals;
       });
     }
@@ -139,137 +135,43 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       )
     );
 
-  const addGoal = () =>
+  const addGoal = () => {
+    const newId = `g${Date.now()}`;
     setGoals((prev) => [
       ...prev,
-      { id: `g${Date.now()}`, text: "", suggestions: [], checking: false, dirty: false },
+      { id: newId, text: "", suggestions: [], checking: false, dirty: false },
     ]);
+    setTimeout(() => {
+      document.getElementById(`textarea-${newId}`)?.focus();
+    }, 50);
+  };
 
   const removeGoal = (id: string) => setGoals((prev) => prev.filter((g) => g.id !== id));
 
-  // ── File upload: extract goals from document ──────────────────────
-  const handleFileUpload = async (file: File | undefined) => {
-    if (!file) return;
-    const allowed = ["application/pdf", "text/plain"];
-    if (!allowed.includes(file.type)) {
-      toast({ title: "Unsupported file", description: "Please upload a PDF or plain-text (.txt) file.", variant: "destructive" });
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "File must be under 10 MB.", variant: "destructive" });
-      return;
-    }
-    setExtracting(true);
-    try {
-      let text: string;
-      if (file.type === "application/pdf") {
-        text = await extractPdfText(file);
-      } else {
-        text = await file.text();
-      }
-      if (!text || text.trim().length < 20) {
-        toast({ title: "Could not read file", description: "No readable text found in the file.", variant: "destructive" });
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/workshop/extract-goals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentText: text.slice(0, 15000),
-          context: {
-            sessionType: initialInput.sessionType,
-            duration: initialInput.duration,
-            participants: initialInput.participants,
-            studentBackground: initialInput.studentBackground,
-          },
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const extracted: string[] = await res.json();
-
-      if (!extracted || extracted.length === 0) {
-        toast({ title: "No goals found", description: "The assistant couldn't find learning goals in the document.", variant: "destructive" });
-        return;
-      }
-
-      const newDrafts: GoalDraft[] = extracted.map((t, i) => ({
-        id: `gx-${Date.now()}-${i}`,
-        text: t,
-        suggestions: [],
-        checking: false,
-        dirty: false,
-      }));
-
-      setGoals((prev) => {
-        const nonEmpty = prev.filter((g) => g.text.trim().length > 0);
-        const merged = [...nonEmpty, ...newDrafts];
-        // Note: previously we auto-checked here, now it's manual
-        return merged.length > 0 ? merged : [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
-      });
-
-      toast({
-        title: `${extracted.length} goal${extracted.length > 1 ? "s" : ""} extracted`,
-        description: "Review the suggestions and refine them as needed.",
-      });
-    } catch (err) {
-      toast({
-        title: "Extraction failed",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setExtracting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
-  // ── File upload: legacy materials for slide generation ────────────────
-  const handleLegacyMaterialUpload = async (file: File | undefined) => {
-    if (!file) return;
-    const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.presentationml.presentation"];
-    if (!allowed.includes(file.type) && !file.name.endsWith(".pptx")) {
-      toast({ title: "Unsupported file", description: "Please upload a PDF, PPTX, or plain-text (.txt) file.", variant: "destructive" });
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "File must be under 10 MB.", variant: "destructive" });
-      return;
-    }
-    setUploadingLegacy(true);
-    try {
-      let text: string;
-      if (file.type === "application/pdf") {
-        text = await extractPdfText(file);
-      } else if (file.name.endsWith(".pptx") || file.type.includes("presentationml")) {
-        text = await extractPptxText(file);
-      } else {
-        text = await file.text();
-      }
-      if (!text || text.trim().length < 20) {
-        toast({ title: "Could not read file", description: "No readable text found in the file.", variant: "destructive" });
-        return;
-      }
-      setUploadedText(text.slice(0, 15000));
-      toast({ title: "Materials uploaded", description: "Successfully extracted text from the document." });
-    } catch (err) {
-      toast({
-        title: "Upload failed",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setUploadingLegacy(false);
-      if (legacyInputRef.current) legacyInputRef.current.value = "";
-    }
-  };
+  const handleAddGoalsFromLGH = useCallback((newGoalTexts: string[]) => {
+    const newDrafts: GoalDraft[] = newGoalTexts.map((text, i) => ({
+      id: `lgh-${Date.now()}-${i}`,
+      text: text,
+      suggestions: [],
+      checking: false,
+      dirty: false,
+    }));
+    setGoals((prev) => {
+      const nonEmpty = prev.filter((g) => g.text.trim().length > 0);
+      const merged = [...nonEmpty, ...newDrafts];
+      return merged.length > 0 ? merged : [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
+    });
+  }, []);
 
   const [isFixingGrammar, setIsFixingGrammar] = useState(false);
 
   const handleContinue = async () => {
+    // B-2: prevent re-entry between click and first isFixingGrammar re-render
+    if (submittingRef.current) return;
     const validGoals = goals.filter((g) => g.text.trim().length > 0);
     if (validGoals.length === 0) return;
 
+    submittingRef.current = true;
     setIsFixingGrammar(true);
     let finalGoalsText = validGoals.map((g) => g.text.trim());
     try {
@@ -288,6 +190,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       console.error("Grammar check failed", e);
     } finally {
       setIsFixingGrammar(false);
+      submittingRef.current = false;
     }
 
     const plans: LearningGoalPlan[] = finalGoalsText.map((text, i) => ({
@@ -299,10 +202,10 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       assessActivities: [],
       priority: 0,
     }));
-    onContinue(plans, uploadedText);
+    onContinue(plans);
   };
 
-  const canContinue = goals.some((g) => g.text.trim().length > 5) && !isLoading && !extracting;
+  const canContinue = goals.some((g) => g.text.trim().length > 5) && !isLoading;
 
   return (
     <div className="space-y-4 pb-20">
@@ -310,101 +213,21 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         <CardHeader className="py-4">
           <CardTitle className="font-display text-3xl flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Step 3: Enter Learning Goals
+            Enter Learning Goals
           </CardTitle>
           <CardDescription className="font-body text-sm">
-            Type each goal, or upload a document to extract them automatically.
-            The assistant will give real-time suggestions — accept or dismiss any feedback as you go.
+            What should a student be able to do after this session?
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
 
-          {/* ── File upload strip ─────────────────────────────────── */}
-          <div className="flex items-center gap-3 rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-3">
-            <Upload className="h-4 w-4 text-muted-foreground shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-body text-foreground font-medium">Import Learning Goals</p>
-              <p className="text-xs text-muted-foreground">PDF or TXT — goals are extracted automatically</p>
-            </div>
-            {extracting ? (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Extracting…
-              </div>
-            ) : (
-              <label className="cursor-pointer">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 pointer-events-none"
-                  disabled={extracting}
-                  asChild
-                >
-                  <span>
-                    <Sparkles className="h-3.5 w-3.5" /> Extract Goals
-                  </span>
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,text/plain"
-                  className="hidden"
-                  onChange={(e) => handleFileUpload(e.target.files?.[0])}
-                  disabled={extracting}
-                />
-              </label>
-            )}
-          </div>
+          <LGHImport onAddGoals={handleAddGoalsFromLGH} disabled={isLoading} />
 
-          {/* ── File upload strip: Legacy Materials ─────────────────── */}
-          <div className="flex items-center gap-3 rounded-lg border border-dashed border-border/70 bg-muted/10 px-4 py-3">
-            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-body text-foreground font-medium">Upload Legacy Materials</p>
-              <p className="text-xs text-muted-foreground">PDF or PPTX — text will be used to tailor slide content</p>
-            </div>
-            {uploadingLegacy ? (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…
-              </div>
-            ) : (
-              <label className="cursor-pointer">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 pointer-events-none"
-                  disabled={uploadingLegacy}
-                  asChild
-                >
-                  <span>
-                    <Upload className="h-3.5 w-3.5" /> Upload Materials
-                  </span>
-                </Button>
-                <input
-                  ref={legacyInputRef}
-                  type="file"
-                  accept="application/pdf,text/plain,.pptx"
-                  className="hidden"
-                  onChange={(e) => handleLegacyMaterialUpload(e.target.files?.[0])}
-                  disabled={uploadingLegacy}
-                />
-              </label>
-            )}
-            {uploadedText && (
-              <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-md ml-auto">
-                <Check className="h-4 w-4" /> Uploaded successfully
-                <button type="button" onClick={() => setUploadedText("")} className="hover:text-emerald-800 ml-2">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-border/40">
-            <h3 className="font-display text-lg font-medium text-foreground mb-3">
+          <div className="pt-4 border-t border-border/40">
+            <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option B: Enter Manually</h3>
+            <h4 className="font-body text-md font-medium text-foreground mb-3">
               Participants will be able to...
-            </h3>
+            </h4>
             <div className="space-y-4">
               {goals.map((g, idx) => (
                 <div key={g.id} className="space-y-2">
@@ -412,9 +235,16 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
                   <div className="flex gap-2 items-start">
                     <div className="flex-1 relative">
                       <Textarea
+                        id={`textarea-${g.id}`}
                         placeholder="e.g. apply logistic regression to classification problems…"
                         value={g.text}
                         onChange={(e) => handleTextChange(g.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            addGoal();
+                          }
+                        }}
                         rows={2}
                         className="resize-none h-[60px] min-h-[60px] font-body text-sm leading-relaxed"
                         disabled={isLoading}
@@ -465,10 +295,20 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
                     <div
                       key={sIdx}
                       className={`rounded-lg border px-3 py-2.5 text-sm space-y-1.5 ${s.type === "split"
-                          ? "border-blue-400/30 bg-blue-500/5"
-                          : "border-amber-400/30 bg-amber-500/5"
+                        ? "border-blue-400/30 bg-blue-500/5"
+                        : "border-amber-400/30 bg-amber-500/5"
                         }`}
                     >
+                      {/* G-5: text label so type is readable in grayscale */}
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                          s.type === "split"
+                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                        }`}>
+                          {s.type === "split" ? "Split Goal" : "Refinement"}
+                        </span>
+                      </div>
                       <div className="flex items-start gap-1.5">
                         <AlertCircle
                           className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${s.type === "split" ? "text-blue-500" : "text-amber-500"
@@ -512,7 +352,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             variant="outline"
             onClick={addGoal}
             className="gap-2 w-full border-dashed"
-            disabled={isLoading || extracting}
+            disabled={isLoading}
           >
             <Plus className="h-4 w-4" /> Add another learning goal
           </Button>
@@ -521,7 +361,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
         {/* Floating Footer Bar */}
         <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">
-          <Button variant="outline" size="sm" onClick={onBack} className="gap-2 font-body shrink-0" disabled={isLoading || extracting}>
+          <Button variant="outline" size="sm" onClick={onBack} className="gap-2 font-body shrink-0" disabled={isLoading}>
             <ArrowLeft className="h-4 w-4" /> Previous
           </Button>
           <Button onClick={handleContinue} disabled={!canContinue || isFixingGrammar} size="sm" className="px-6 gap-2 shadow-md hover:shadow-lg transition-shadow shrink-0">

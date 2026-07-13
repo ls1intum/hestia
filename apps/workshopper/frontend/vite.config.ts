@@ -21,6 +21,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(new RegExp(`^${BASE_PATH}`), ""),
       },
+      "/learninggoalhub/api": {
+        target: process.env.VITE_LGH_TARGET ?? "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/learninggoalhub/, ""),
+      },
     },
   },
   optimizeDeps: {
