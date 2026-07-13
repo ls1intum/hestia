@@ -133,9 +133,8 @@ const Exams = () => {
 
   /**
    * Deep-copy an exam. The backend's duplicate endpoint clones the exam row plus
-   * its sections, blocks, and tasks (remapping section ids) in one transaction
-   * and forces the copy to "draft". Figures are not copied (matches prior
-   * behavior).
+   * its sections, blocks, tasks, and figures (remapping section/block ids and
+   * copying image files) in one transaction and forces the copy to "draft".
    */
   const duplicateExam = async (exam: ExamListItem) => {
     try {
