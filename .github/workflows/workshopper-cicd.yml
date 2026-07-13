@@ -91,7 +91,7 @@ jobs:
     needs: test-backend
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/workshopper-backend
+      image-name: ${{ github.repository }}/workshopper/backend
       docker-file: apps/workshopper/backend/Dockerfile
       # Repo root: the backend is a multi-module Gradle build (depends on :libs:shared-llm).
       docker-context: .
@@ -101,7 +101,7 @@ jobs:
     needs: test-backend
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/workshopper-frontend
+      image-name: ${{ github.repository }}/workshopper/frontend
       docker-file: apps/workshopper/frontend/Dockerfile
       docker-context: apps/workshopper/frontend
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
@@ -115,7 +115,7 @@ jobs:
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/workshopper/compose.deploy.yaml
-      main-image-name: ${{ github.repository }}/workshopper-backend
+      main-image-name: ${{ github.repository }}/workshopper/backend
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/workshopper
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-workshopper}
       POSTGRES_USER: ${POSTGRES_USER:-workshopper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${WORKSHOPPER_POSTGRES_PASSWORD:?set WORKSHOPPER_POSTGRES_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -16,9 +16,7 @@ services:
     restart: unless-stopped
 
   server:
-    build:
-      context: ../..
-      dockerfile: apps/workshopper/backend/Dockerfile
+    image: ghcr.io/ls1intum/hestia/workshopper/backend:${IMAGE_TAG:-latest}
     container_name: workshopper-server
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -27,8 +25,8 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-workshopper}
       POSTGRES_USER: ${POSTGRES_USER:-workshopper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY in .env}
+      POSTGRES_PASSWORD: ${WORKSHOPPER_POSTGRES_PASSWORD:?set WORKSHOPPER_POSTGRES_PASSWORD in .env}
+      WORKSHOPPER_SAIA_API_KEY: ${WORKSHOPPER_SAIA_API_KEY:?set WORKSHOPPER_SAIA_API_KEY in .env}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
     depends_on:
       postgres:
@@ -37,9 +35,7 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/ls1intum/hestia/workshopper/frontend:${IMAGE_TAG:-latest}
     container_name: workshopper-web
     expose:
       - "80"
