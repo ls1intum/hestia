@@ -114,7 +114,7 @@ jobs:
     uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
-      docker-compose-file: apps/workshopper/compose.deploy.yaml
+      docker-compose-file: apps/workshopper/compose.prod.yaml
       main-image-name: ${{ github.repository }}/workshopper/backend
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/workshopper
