@@ -1,0 +1,26 @@
+#!/bin/sh
+# Pre-commit guard for the hestia monorepo: secret scan + binary file guard.
+# One-time setup per clone (see CONTRIBUTING.md):
+#   git config core.hooksPath .githooks
+# The same checks run in CI on every pull request (.github/workflows/repo-guard.yml).
+
+set -eu
+
+hook_dir=$(dirname "$0")
+
+# --- 1. Secret scan (gitleaks) over the staged changes ----------------------
+if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks git --pre-commit --staged --no-banner --redact; then
+        echo >&2
+        echo "pre-commit: gitleaks found potential secrets in the staged changes (see above)." >&2
+        echo "Remove them; for a confirmed false positive, extend the allowlist in .gitleaks.toml." >&2
+        exit 1
+    fi
+else
+    echo "pre-commit: gitleaks is not installed but required for committing to this repo." >&2
+    echo "Install it first, e.g.: brew install gitleaks" >&2
+    exit 1
+fi
+
+# --- 2. File guard: no new binary files (PDFs, images, archives, ...) -------
+"$hook_dir/file-guard.sh" --staged

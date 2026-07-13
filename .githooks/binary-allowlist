@@ -1,0 +1,3 @@
+# Deliberate, reviewed exceptions to the binary file guard (.githooks/file-guard.sh).
+# One exact repo-relative path per line. Add the entry in the same commit/PR that
+# adds the file, so the exception is visible in review.
