@@ -37,7 +37,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-learninggoalhub}
       POSTGRES_USER: ${POSTGRES_USER:-learninggoalhub}
       POSTGRES_PASSWORD: ${LEARNINGGOALHUB_POSTGRES_PASSWORD:?set LEARNINGGOALHUB_POSTGRES_PASSWORD in .env}
-      SAIA_API_KEY: ${SAIA_API_KEY:?set SAIA_API_KEY in .env}
+      SAIA_API_KEY: ${LEARNINGGOALHUB_SAIA_API_KEY:?set LEARNINGGOALHUB_SAIA_API_KEY in .env}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
     depends_on:
       postgres:
