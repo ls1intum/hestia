@@ -274,19 +274,6 @@ export function hasCompetencyTree(goals: LearningGoal[]): boolean {
   return goals.some((g) => g.origin === "TERMINAL");
 }
 
-/**
- * Number of not-yet-approved goals in a node's subtree, excluding the node itself — i.e. how much
- * review work is still hidden beneath a (collapsed) branch box in the competency map.
- */
-export function countPendingDescendants(node: CompetencyNode): number {
-  let pending = 0;
-  for (const child of node.children) {
-    if (child.goal.status !== "APPROVED") pending += 1;
-    pending += countPendingDescendants(child);
-  }
-  return pending;
-}
-
 /** Distinct source filenames backing a goal, preserving first-seen order. */
 export function sourceFilenames(goal: LearningGoal): string[] {
   const seen = new Set<string>();
