@@ -1,5 +1,7 @@
 package app.api;
 
+import app.error.ApiException;
+import app.persistence.entity.Exam;
 import app.persistence.entity.Task;
 import app.persistence.entity.TaskGrade;
 import app.persistence.repository.TaskGradeRepository;
@@ -8,6 +10,7 @@ import app.security.CurrentUser;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -48,6 +51,14 @@ public class TaskGradeController {
     @PutMapping("/task-grades")
     public Dtos.GradeDto upsert(@RequestBody UpsertGradeRequest req, @CurrentUser String userId) {
         Task task = access.requireOwnedChild(taskRepository, req.task_id(), userId, Task::getExamId, "Task");
+        // Grades are only editable while the exam is being graded. A finished exam
+        // must first be re-opened (status → grading) before any score changes; this
+        // keeps its "final" (live-derived) results from silently drifting.
+        Exam exam = access.requireExam(task.getExamId(), userId);
+        if (!"grading".equals(exam.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                "Grades can only be changed while the exam is being graded.");
+        }
         UUID taskId = task.getId();
         TaskGrade g = gradeRepository.findByTaskId(taskId).orElseGet(TaskGrade::new);
         g.setTaskId(taskId);

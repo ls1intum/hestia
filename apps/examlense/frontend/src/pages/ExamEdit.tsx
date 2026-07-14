@@ -69,6 +69,8 @@ import { ManualIntroSlide } from "@/components/exam-edit/ManualIntroSlide";
 import { useSectionConfirmations } from "@/hooks/use-section-confirmations";
 import {
   convertTaskType,
+  examModePath,
+  examModeSlug,
   figureLabelsForBlocks,
   isSectionReady,
   itemId,
@@ -1115,8 +1117,12 @@ const ExamEditInner = () => {
     );
   }
 
-  if (exam.status === "grading" || exam.status === "finished") {
-    if (evaluationStartedRef.current) {
+  // Editing is only valid for pre-grading statuses. Once an exam has moved on, /edit
+  // redirects to its canonical mode (grading → /grade, finished → /results) rather
+  // than forcing it back into the editor.
+  if (examModeSlug(exam.status) !== "edit") {
+    // Just-completed solve from within the editor: offer the hand-off to grading.
+    if (evaluationStartedRef.current && exam.status === "grading") {
       return (
         <EvaluatingView
           title={exam.title || "Untitled exam"}
@@ -1127,7 +1133,7 @@ const ExamEditInner = () => {
         />
       );
     }
-    return <Navigate to={`/exams/${exam.id}/grade`} replace />;
+    return <Navigate to={examModePath(exam.id, exam.status)} replace />;
   }
 
   const isEmpty = (!sections || sections.length === 0) && (!tasks || tasks.length === 0);

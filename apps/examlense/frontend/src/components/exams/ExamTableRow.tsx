@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AlertTriangle } from "lucide-react";
 import type { ExamListItem } from "@/lib/api-client";
+import { examModePath } from "@/lib/exam-helpers";
 import { ExamStatusBadge } from "@/components/ExamStatusBadge";
 import { ModelLogo } from "@/components/ModelLogo";
 import { solverModelLabel } from "@/lib/llm-models";
@@ -11,11 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ExamProgressCell } from "./ExamProgressCell";
 import { ExamActionsMenu } from "./ExamActionsMenu";
 
-/** Where a row navigates on click, matching the per-status routing of the old cards. */
-export const examHref = (e: ExamListItem): string =>
-  `/exams/${e.id}/${
-    e.status === "finished" ? "results" : e.status === "grading" ? "grade" : "edit"
-  }`;
+/** Where a row navigates on click — the exam's canonical mode for its status. */
+export const examHref = (e: ExamListItem): string => examModePath(e.id, e.status);
 
 export interface ExamRowHandlers {
   onRetry: (exam: ExamListItem) => void;
