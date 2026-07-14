@@ -56,7 +56,9 @@ An agent or developer must replicate the exact SAML configuration we built for W
 * Copy the SAML configuration block (including `server.forward-headers-strategy: framework`) into their `application.yml`.
 * Create the `SecurityConfig.java` to enable `.saml2Login()` and explicitly permit access to `/saml2/service-provider-metadata/**`.
 * Modify their `application.yml` and `compose.prod.yaml` to mount the exact same central certificate folder (`/opt/hestia/secrets/saml:/app/certs:ro`) and read them via environment variables.
+* **CRITICAL:** Fix the Docker DNS collision in their frontend `nginx.conf`! Both currently proxy to `http://server`, which randomly resolves to the wrong backend on the shared `hestia-edge` network. Change this to their exact unique container names (e.g., `proxy_pass http://examlense-server:8081;` and `proxy_pass http://learninggoalhub-server:8080;`).
 * **CRITICAL:** Update their frontend `nginx.conf` file to proxy `location ~ ^/(v3/api-docs|swagger-ui|saml2|login/saml2/sso)` to the backend server. Otherwise, NGINX will block the SAML traffic!
+* **NOTE:** While editing `compose.prod.yaml`, it is highly recommended to proactively change `POSTGRES_HOST: postgres` to their unique database container names (`examlense-postgres` or `learninggoalhub-postgres`) to prevent future DNS collisions if the database ever joins the edge network.
 * Once deployed, verify that they each generate their own live metadata URLs (e.g., `https://hestia-test.aet.cit.tum.de/learninggoalhub/saml2/service-provider-metadata/tum`).
 
 **2. Host the Privacy Policy:**

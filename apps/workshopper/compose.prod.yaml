@@ -21,7 +21,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: workshopper-postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-workshopper}
       POSTGRES_USER: ${POSTGRES_USER:-workshopper}

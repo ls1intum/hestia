@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getSessionStatus } from "@/lib/utils";
 import { GraduationCap, BookOpen, Clock, Loader2, Target, Plus, Trash2, Settings, ArrowRight, Play, Archive, FileText, ChevronRight, X, Edit2, CheckCircle2, FileEdit, MoreVertical, Pencil, Presentation, ChevronDown, Sparkles } from "lucide-react";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
@@ -297,34 +298,22 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                   {(() => {
                     const isFinished = session.status === "complete" && session.currentStep === "finished";
                     const isReadyForPrep = session.status === "complete" && session.currentStep !== "finished";
-                    const isDraft = session.status !== "complete";
-                    // G-1: status text inside icon container so state is readable in grayscale
-                    const statusShort = isFinished ? "Done" : isReadyForPrep ? "Ready" : "Draft";
+                    const status = getSessionStatus(session);
                     return (
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex flex-col items-center justify-center transition-colors gap-0 ${isFinished ? "bg-emerald-500/15 text-emerald-500"
-                        : isReadyForPrep ? "bg-blue-500/15 text-blue-500"
-                          : "bg-amber-500/15 text-amber-500"
-                        }`}>
-                        {isFinished ? <CheckCircle2 className="h-4 w-4" /> : isReadyForPrep ? <Sparkles className="h-4 w-4" /> : <FileEdit className="h-4 w-4" />}
-                        <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5">{statusShort}</span>
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex flex-col items-center justify-center transition-colors gap-0 ${status.iconClass}`}>
+                        {status.isFinished ? <CheckCircle2 className="h-4 w-4" /> : status.isReadyForPrep ? <Sparkles className="h-4 w-4" /> : <FileEdit className="h-4 w-4" />}
+                        <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5">{status.statusShort}</span>
                       </div>
                     );
                   })()}
                   <div className="flex-1 min-w-0">
                     {(() => {
-                      const isFinished = session.status === "complete" && session.currentStep === "finished";
-                      const isReadyForPrep = session.status === "complete" && session.currentStep !== "finished";
-                      const statusLabel = isFinished ? "Completed" : isReadyForPrep ? "Ready for preparation" : "In progress";
-                      const statusClass = isFinished
-                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                        : isReadyForPrep
-                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                          : "bg-amber-500/15 text-amber-600 dark:text-amber-400";
+                      const status = getSessionStatus(session);
                       return (
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="font-display font-semibold text-foreground truncate">{session.title || "Workshop Session"}</span>
-                          <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full font-body ${statusClass}`}>
-                            {statusLabel}
+                          <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full font-body ${status.statusClass}`}>
+                            {status.statusLabel}
                           </span>
                         </div>
                       );
