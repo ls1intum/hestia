@@ -1,8 +1,13 @@
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { BLOOM_LABELS, SOLO_LABELS, TASK_TYPE_LABELS } from "@/lib/labels";
+import { BLOOM_LABELS, SOLO_LABELS } from "@/lib/labels";
 import type { Task } from "@/lib/exam-helpers";
 import type { TaskAnswer } from "@/lib/grading";
 import type { BloomLevel, SoloLevel } from "@/lib/learning-goals";
@@ -66,21 +71,6 @@ export const ReadOnlyTaskCard = ({
       expanded={!collapsed}
       onToggle={() => setCollapsed((v) => !v)}
       label={labelText}
-      rightMeta={
-        task.points != null && task.points > 0 ? (
-          <span className="tabular-nums text-sm font-semibold text-hestia-text">
-            {`${task.points} pts`}
-          </span>
-        ) : null
-      }
-      badge={
-        <Badge
-          variant="secondary"
-          className="bg-hestia-primary-muted/30 text-hestia-text-muted"
-        >
-          {TASK_TYPE_LABELS[task.type]}
-        </Badge>
-      }
     />
   );
 
@@ -103,31 +93,44 @@ export const ReadOnlyTaskCard = ({
       )}
 
       {(goals?.length ?? 0) > 0 && (
-        <div className="mb-hestia-3 flex flex-wrap items-center gap-hestia-1">
-          <span className="hestia-eyebrow text-hestia-text-muted">
-            Learning goals
-          </span>
-          {goals!.map((g) => (
-            <span key={g.id} className="inline-flex items-center gap-hestia-1">
-              <Badge
-                variant="secondary"
-                className="max-w-[360px] bg-hestia-primary-muted/40 text-xs font-normal text-hestia-text"
-              >
-                <span className="truncate">{g.text || `Goal #${g.id}`}</span>
-              </Badge>
-              {g.bloomLevel && (
-                <Badge variant="outline" className="text-[10px] text-hestia-text-muted">
-                  {BLOOM_LABELS[g.bloomLevel]}
+        <Collapsible className="mb-hestia-3">
+          <CollapsibleTrigger className="group inline-flex items-center gap-hestia-1 rounded-hestia-sm py-0.5 text-hestia-text-muted transition-colors hover:text-hestia-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary focus-visible:ring-offset-1 focus-visible:ring-offset-hestia-bg">
+            <ChevronRight
+              size={12}
+              className="shrink-0 transition-transform group-data-[state=open]:hidden"
+              aria-hidden
+            />
+            <ChevronDown
+              size={12}
+              className="hidden shrink-0 transition-transform group-data-[state=open]:block"
+              aria-hidden
+            />
+            <span className="hestia-eyebrow">Learning goals</span>
+            <span className="hestia-eyebrow tabular-nums">({goals!.length})</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-hestia-2 flex flex-wrap items-center gap-hestia-1">
+            {goals!.map((g) => (
+              <span key={g.id} className="inline-flex items-center gap-hestia-1">
+                <Badge
+                  variant="secondary"
+                  className="max-w-[360px] bg-hestia-primary-muted/40 text-xs font-normal text-hestia-text"
+                >
+                  <span className="truncate">{g.text || `Goal #${g.id}`}</span>
                 </Badge>
-              )}
-              {g.soloLevel && (
-                <Badge variant="outline" className="text-[10px] text-hestia-text-muted">
-                  {SOLO_LABELS[g.soloLevel]}
-                </Badge>
-              )}
-            </span>
-          ))}
-        </div>
+                {g.bloomLevel && (
+                  <Badge variant="outline" className="text-[10px] text-hestia-text-muted">
+                    {BLOOM_LABELS[g.bloomLevel]}
+                  </Badge>
+                )}
+                {g.soloLevel && (
+                  <Badge variant="outline" className="text-[10px] text-hestia-text-muted">
+                    {SOLO_LABELS[g.soloLevel]}
+                  </Badge>
+                )}
+              </span>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {task.type !== "text" && (task.options?.length ?? 0) > 0 && (

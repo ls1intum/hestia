@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, AlertTriangle, PenLine } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, Bot, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
@@ -8,6 +8,7 @@ import { useUpsertTaskGrade } from "@/hooks/use-task-grades";
 import { taskAnswersKey } from "@/hooks/use-task-answers";
 import { autoGradeChoiceTask, type TaskAnswer, type TaskGrade } from "@/lib/grading";
 import { MarkdownView } from "../MarkdownView";
+import { BlockCard } from "../BlockCard";
 import type { Task } from "@/lib/exam-helpers";
 import { cn } from "@/lib/utils";
 import { solveTask } from "@/lib/api-solve";
@@ -17,14 +18,29 @@ const preventNumberWheelChange = (event: React.WheelEvent<HTMLInputElement>) => 
   event.currentTarget.blur();
 };
 
+/** Grading increment shared by the slider and the number input. */
+const SCORE_STEP = 0.5;
+/** Only draw slider tick marks when the count stays readable. */
+const MAX_TICKS = 16;
+
 interface Props {
   task: Task;
   examId: string;
   answer: TaskAnswer | undefined;
   grade: TaskGrade | undefined;
+  /** Task letter, e.g. "a" — shown in the card header next to the status dot. */
+  label: string;
+  /** True when this task has a grade (auto or manual). Drives the leading dot. */
+  graded?: boolean;
 }
 
-export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
+/**
+ * The gradable "work object" in grading mode: the AI answer (or the selected
+ * options for choice tasks) plus the score controls, rendered as a real
+ * `primary` card. The static question lives card-less in `ReadOnlyQuestionBlock`
+ * above it — so this card, not the question, is the thing the grader acts on.
+ */
+export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }: Props) => {
   const qc = useQueryClient();
   const upsert = useUpsertTaskGrade(examId);
 
@@ -82,6 +98,10 @@ export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
     return Math.min(Math.max(n, 0), sliderMax);
   })();
 
+  // Tick marks under the slider at each grading step — only when readable.
+  const tickCount = sliderMax > 0 ? Math.round(sliderMax / SCORE_STEP) + 1 : 0;
+  const showTicks = tickCount > 1 && tickCount <= MAX_TICKS + 1;
+
   // Per-card generation state (no answer yet)
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -111,39 +131,46 @@ export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
   // Card content depends on whether the LLM produced an answer.
   const noAnswer = !answer;
 
-  return (
-    <section
-      className={cn(
-        "relative rounded-hestia-md border-2 border-hestia-primary/30 bg-hestia-primary-muted/5 p-hestia-3",
-        generating && "pointer-events-none",
-      )}
-      aria-busy={generating}
-    >
+  const correctIds = new Set(
+    (task.options ?? []).filter((o) => o.is_correct).map((o) => o.id),
+  );
+  const pickedIds = new Set(answer?.selected_option_ids ?? []);
+
+  const header = (
+    <div className="flex items-center justify-between gap-hestia-2">
+      <span className="inline-flex min-w-0 items-center gap-hestia-2 font-body text-base font-semibold text-hestia-text">
+        <span
+          aria-hidden
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            graded ? "bg-hestia-success" : "bg-hestia-border",
+          )}
+        />
+        <span className="min-w-0 truncate tabular-nums">
+          {label ? `${label})` : "Answer"}
+        </span>
+      </span>
+      <Badge
+        variant="secondary"
+        className={cn(
+          "shrink-0",
+          source === "manual" && "bg-hestia-primary/15 text-hestia-primary",
+          source === "auto" && "bg-hestia-success/15 text-hestia-success",
+          source === "pending" && "bg-hestia-danger/10 text-hestia-danger",
+        )}
+      >
+        {GRADE_SOURCE_LABELS[source]}
+      </Badge>
+    </div>
+  );
+
+  const body = (
+    <div className={cn("relative", generating && "pointer-events-none")} aria-busy={generating}>
       {generating && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-hestia-md bg-hestia-bg/70 backdrop-blur-sm">
           <Loader2 className="h-5 w-5 animate-spin text-hestia-primary" />
         </div>
       )}
-
-      <div className="mb-hestia-2 flex items-center justify-between gap-hestia-2">
-        <div className="flex items-center gap-hestia-2">
-          <PenLine size={12} className="text-hestia-primary" />
-          <span className="hestia-eyebrow text-hestia-text-muted">
-            Grade
-          </span>
-        </div>
-        <Badge
-          variant="secondary"
-          className={cn(
-            "shrink-0",
-            source === "manual" && "bg-hestia-primary/15 text-hestia-primary",
-            source === "auto" && "bg-hestia-success/15 text-hestia-success",
-            source === "pending" && "bg-hestia-danger/10 text-hestia-danger",
-          )}
-        >
-          {GRADE_SOURCE_LABELS[source]}
-        </Badge>
-      </div>
 
       {noAnswer ? (
         <div className="space-y-hestia-2">
@@ -164,51 +191,91 @@ export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
             {genError ? "Try again" : "Generate answer"}
           </button>
         </div>
-      ) : task.type !== "text" ? (
-        <p className="text-sm text-hestia-text-muted">
-          See selected options above.
-        </p>
       ) : (
         <div className="space-y-hestia-2">
-          <div className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-surface px-hestia-2 py-hestia-2">
-            <MarkdownView content={answer!.answer_text ?? ""} />
+          <div className="flex items-center gap-hestia-2">
+            <Bot size={12} className="text-hestia-primary" />
+            <span className="hestia-eyebrow text-hestia-text-muted">AI answer</span>
           </div>
-          {answer?.reasoning && (
-            <details className="text-xs text-hestia-text-muted">
-              <summary className="cursor-pointer select-none">
-                Show reasoning
-              </summary>
-              <div className="mt-1">
-                <MarkdownView
-                  content={answer.reasoning}
-                  className="text-hestia-text-muted"
-                />
+
+          {task.type !== "text" ? (
+            <ul className="space-y-1.5">
+              {(task.options ?? []).map((o) => {
+                const isCorrect = correctIds.has(o.id);
+                const isPicked = pickedIds.has(o.id);
+                return (
+                  <li
+                    key={o.id}
+                    className={cn(
+                      "flex items-start gap-hestia-2 rounded-hestia-sm border border-hestia-border/60 px-hestia-2 py-1.5 text-sm",
+                      isPicked && "border-hestia-primary/60 bg-hestia-primary-muted/20",
+                      isCorrect && "ring-1 ring-hestia-success/40",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                        isPicked
+                          ? "border-hestia-primary bg-hestia-primary text-white"
+                          : "border-hestia-border text-transparent",
+                      )}
+                    >
+                      {isPicked && <Check size={12} />}
+                    </span>
+                    <span className="min-w-0 flex-1 break-words text-hestia-text">
+                      {o.text || <span className="italic text-hestia-text-muted">—</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <>
+              {/*
+                Rendering is already math-capable: MarkdownView runs remark-math +
+                rehype-katex (KaTeX CSS loaded). If formulas show as raw text, the
+                solver emitted plain-text notation instead of $…$ LaTeX — that is a
+                backend solver-prompt fix, tracked separately, not a rendering bug.
+              */}
+              <div className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-surface px-hestia-2 py-hestia-2">
+                <MarkdownView content={answer!.answer_text ?? ""} />
               </div>
-            </details>
+              {answer?.reasoning && (
+                <details className="text-xs text-hestia-text-muted">
+                  <summary className="cursor-pointer select-none">
+                    Show reasoning
+                  </summary>
+                  <div className="mt-1">
+                    <MarkdownView
+                      content={answer.reasoning}
+                      className="text-hestia-text-muted"
+                    />
+                  </div>
+                </details>
+              )}
+            </>
           )}
         </div>
       )}
 
       <div className="mt-hestia-3 border-t border-hestia-border pt-hestia-3">
-        <span className="hestia-eyebrow text-hestia-text-muted">
-          {`Score (max ${task.points ?? "?"})`}
-        </span>
-        <div
-          className={cn(
-            "mt-1 flex flex-wrap items-center gap-hestia-3 rounded-hestia-sm border bg-transparent p-hestia-2",
-            grade?.score == null
-              ? source === "auto"
-                ? "border-hestia-warning ring-1 ring-hestia-warning/30"
-                : "border-hestia-danger ring-1 ring-hestia-danger/30"
-              : "border-transparent",
-          )}
-        >
+        <span className="hestia-eyebrow text-hestia-text-muted">Score</span>
+        <div className="mt-1 flex flex-wrap items-center gap-hestia-3">
           {task.points != null && (
-            <div className="flex h-9 min-w-[160px] flex-1 items-center">
+            <div className="flex min-w-[160px] flex-1 flex-col">
+              {/*
+                h-9 on the slider stretches its hit area to the full row height:
+                the bare Radix Root is only as tall as the 20px thumb, leaving
+                dead zones above/below the track where clicks did nothing. With
+                a full-height, cursor-pointer Root, a click anywhere in the band
+                jumps the thumb.
+              */}
               <Slider
+                className="h-9 w-full cursor-pointer"
                 min={0}
                 max={sliderMax}
-                step={0.25}
+                step={SCORE_STEP}
                 value={[sliderValue]}
                 disabled={noAnswer}
                 onPointerDown={() => {
@@ -223,21 +290,57 @@ export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
                   if (!changedDuringSlideRef.current) persist(sliderValue, false);
                 }}
               />
+              {showTicks && (
+                <div className="relative mt-0.5 h-1.5" aria-hidden>
+                  {Array.from({ length: tickCount }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="absolute top-0 h-1.5 w-px -translate-x-1/2 bg-hestia-border"
+                      style={{ left: `${(i / (tickCount - 1)) * 100}%` }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
-          <Input
-            type="number"
-            min={0}
-            max={task.points ?? undefined}
-            step={0.5}
-            value={scoreStr}
-            onWheel={preventNumberWheelChange}
-            onChange={(e) => setScoreStr(e.target.value)}
-            onBlur={onScoreBlur}
-            className="h-9 w-24 border-hestia-border bg-hestia-surface text-sm"
-          />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              max={task.points ?? undefined}
+              step={SCORE_STEP}
+              value={scoreStr}
+              onWheel={preventNumberWheelChange}
+              onChange={(e) => setScoreStr(e.target.value)}
+              onBlur={onScoreBlur}
+              className={cn(
+                "h-9 w-16 bg-hestia-surface text-sm tabular-nums",
+                source === "pending"
+                  ? "border-hestia-danger"
+                  : "border-hestia-border",
+              )}
+            />
+            {task.points != null && (
+              <span className="tabular-nums text-sm text-hestia-text-muted">
+                / {task.points}
+              </span>
+            )}
+          </div>
         </div>
       </div>
-    </section>
+    </div>
+  );
+
+  return (
+    <BlockCard
+      variant="primary"
+      header={header}
+      body={body}
+      className={cn(
+        // Needs grading → two red "snakes" travel around the card border
+        // (no persistent red border; the card keeps its normal hairline).
+        source === "pending" && "snake-danger-border",
+      )}
+    />
   );
 };

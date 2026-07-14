@@ -10,10 +10,8 @@ import { useTaskGrades } from "@/hooks/use-task-grades";
 import { useExamLearningGoals, examLearningGoalsKey } from "@/hooks/use-learning-goals";
 import { subscribeExam } from "@/lib/sse";
 import type { LearningGoalResponse } from "@/lib/learning-goals";
-import {
-  ReadOnlyTaskCard,
-  type TaskGoalDisplay,
-} from "@/components/exam-edit/grading/ReadOnlyTaskCard";
+import { type TaskGoalDisplay } from "@/components/exam-edit/grading/ReadOnlyTaskCard";
+import { ReadOnlyQuestionBlock } from "@/components/exam-edit/grading/ReadOnlyQuestionBlock";
 import { ReadOnlyContextBlock } from "@/components/exam-edit/grading/ReadOnlyContextBlock";
 import { ReadOnlyFigureBlock } from "@/components/exam-edit/grading/ReadOnlyFigureBlock";
 import { TaskGradingPanel } from "@/components/exam-edit/grading/TaskGradingPanel";
@@ -260,23 +258,23 @@ export const GradingView = ({ examId }: Props) => {
         );
       }
       const task: Task = item.task;
+      const label = taskLetterById.get(task.id) ?? "";
       return (
-        <ReadOnlyTaskCard
-          key={`t-${task.id}`}
-          task={task}
-          label={taskLetterById.get(task.id) ?? ""}
-          graded={!pendingByTaskId.get(task.id)}
-          answer={answersById.get(task.id)}
-          goals={goalsForTask(task)}
-          gradingPanel={
-            <TaskGradingPanel
-              task={task}
-              examId={examId}
-              answer={answersById.get(task.id)}
-              grade={gradesById.get(task.id)}
-            />
-          }
-        />
+        <div key={`t-${task.id}`} className="space-y-hestia-2">
+          <ReadOnlyQuestionBlock
+            task={task}
+            label={label}
+            goals={goalsForTask(task)}
+          />
+          <TaskGradingPanel
+            task={task}
+            examId={examId}
+            answer={answersById.get(task.id)}
+            grade={gradesById.get(task.id)}
+            label={label}
+            graded={!pendingByTaskId.get(task.id)}
+          />
+        </div>
       );
     });
 
