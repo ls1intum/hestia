@@ -34,6 +34,10 @@ spring:
 
 hestia:
   title:
+    # Whether to name bookmark-less PDFs with the vision model below. Off → every such document falls
+    # back to its filename, with no VLM call during upload. Disabled for now because the vision model
+    # can stall the (synchronous) upload when SAIA is overloaded or the model is unavailable.
+    enabled: false
     # Vision model that names a bookmark-less PDF (slide deck/exercise) from its first rendered
     # pages. A VLM reads the slide layout to tell the session topic from the repeated course banner,
     # which flat text extraction cannot. On any failure the session falls back to the filename.

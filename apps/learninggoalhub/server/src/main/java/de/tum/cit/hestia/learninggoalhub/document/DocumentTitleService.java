@@ -54,19 +54,23 @@ public class DocumentTitleService {
 
     private final ChatClient chatClient;
     private final String visionModel;
+    private final boolean enabled;
 
     public DocumentTitleService(ChatClient.Builder chatClientBuilder,
-                                @Value("${hestia.title.vision-model:qwen3.6-35b-a3b}") String visionModel) {
+                                @Value("${hestia.title.vision-model:qwen3.6-35b-a3b}") String visionModel,
+                                @Value("${hestia.title.enabled:true}") boolean enabled) {
         this.chatClient = chatClientBuilder.build();
         this.visionModel = visionModel;
+        this.enabled = enabled;
     }
 
     /**
-     * Derives a session title from a PDF's first pages, or returns {@code null} if the document is
-     * not a PDF or the vision model cannot be reached / returns nothing usable.
+     * Derives a session title from a PDF's first pages, or returns {@code null} if VLM titling is
+     * disabled, the document is not a PDF, or the vision model cannot be reached / returns nothing
+     * usable. A {@code null} makes the caller fall back to the filename.
      */
     public String deriveTitle(byte[] bytes, String contentType, String filename) {
-        if (!isPdf(contentType, filename)) {
+        if (!enabled || !isPdf(contentType, filename)) {
             return null;
         }
         try {
