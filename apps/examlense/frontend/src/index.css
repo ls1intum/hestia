@@ -224,3 +224,61 @@
     transform-origin: center;
   }
 }
+
+/* "Snake" border for a task that still needs grading: two bright danger heads
+   with fading tails, positioned opposite each other (180° apart), travel around
+   the card's border. Built as a rotating conic gradient masked to a thin ring on
+   a ::before, so it rides over the card's normal border without touching the
+   card's own shadow — there is no persistent red border. Reduced-motion users
+   get a plain static red border instead (no travel). */
+@property --hestia-snake-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes hestia-snake-border {
+  to {
+    --hestia-snake-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .snake-danger-border {
+    position: relative;
+  }
+  .snake-danger-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: 2px; /* ring thickness — sits over the 1px border */
+    /* Two identical segments 180° apart, both carried by the same angle. */
+    background: conic-gradient(
+      from var(--hestia-snake-angle),
+      hsl(var(--hestia-danger)) 0deg,
+      hsl(var(--hestia-danger) / 0.2) 45deg,
+      hsl(var(--hestia-danger) / 0) 95deg,
+      hsl(var(--hestia-danger) / 0) 180deg,
+      hsl(var(--hestia-danger)) 180deg,
+      hsl(var(--hestia-danger) / 0.2) 225deg,
+      hsl(var(--hestia-danger) / 0) 275deg,
+      hsl(var(--hestia-danger) / 0) 360deg
+    );
+    /* Keep only the padding ring: fill minus content-box = border band. */
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    animation: hestia-snake-border 5s linear infinite reverse;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snake-danger-border {
+    border-color: hsl(var(--hestia-danger));
+  }
+}

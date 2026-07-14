@@ -8,6 +8,8 @@ interface Props {
   isDragging?: boolean;
   setNodeRef?: (el: HTMLElement | null) => void;
   style?: CSSProperties;
+  /** Extra classes on the card shell (e.g. a state-driven border/animation). */
+  className?: string;
   /** Header row — typically a `<BlockHeader />` invocation. */
   header: ReactNode;
   /** Body region under the header. Collapsed: subtitle preview. Expanded: full editor body. */
@@ -32,6 +34,7 @@ export const BlockCard = ({
   isDragging,
   setNodeRef,
   style,
+  className,
   header,
   body,
 }: Props) => {
@@ -52,6 +55,7 @@ export const BlockCard = ({
           (flow
             ? "bg-hestia-surface opacity-60 shadow-hestia-md ring-2 ring-hestia-primary/40"
             : "opacity-60 ring-2 ring-hestia-primary/40"),
+        className,
       )}
     >
       <div className={cn(flow ? "px-hestia-3 pt-hestia-2 pb-1" : "px-hestia-3 pt-hestia-3 pb-hestia-2")}>

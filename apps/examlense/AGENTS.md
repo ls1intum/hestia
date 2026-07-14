@@ -146,10 +146,11 @@ When the user uses any of these phrases, treat them as references to the listed 
 
 ### Grading-only components
 
-- **"Read-Only Task"**, **"Task Preview"** → `src/components/exam-edit/grading/ReadOnlyTaskCard.tsx`
+- **"Read-Only Question"**, **"Question Block"** (grading: the static, card-less question — prompt + learning goals + optional reference answer) → `src/components/exam-edit/grading/ReadOnlyQuestionBlock.tsx`
+- **"Read-Only Task"**, **"Task Preview"** (the single question+panel card — now used by the **results** view `AllTasksList`; grading composes `ReadOnlyQuestionBlock` + `TaskGradingPanel` instead) → `src/components/exam-edit/grading/ReadOnlyTaskCard.tsx`
 - **"Read-Only Context"** → `src/components/exam-edit/grading/ReadOnlyContextBlock.tsx`
 - **"Read-Only Figure"** → `src/components/exam-edit/grading/ReadOnlyFigureBlock.tsx`
-- **"Grading Panel"**, **"Score Panel"**, **"Manual Grade"** → `src/components/exam-edit/grading/TaskGradingPanel.tsx`
+- **"Grading Panel"**, **"Score Panel"**, **"Manual Grade"** (grading: the gradable AI-answer + score, rendered as the `primary` card) → `src/components/exam-edit/grading/TaskGradingPanel.tsx`
 
 ### Results dashboard cards
 

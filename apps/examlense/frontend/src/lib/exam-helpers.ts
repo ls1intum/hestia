@@ -128,6 +128,20 @@ export interface Exam {
 }
 
 
+/**
+ * The single canonical mode an exam belongs in, keyed off its status. Routing
+ * uses this so that visiting a link for a different mode redirects to the exam's
+ * real mode instead of silently transitioning it. `grading` → grade, `finished`
+ * → results, everything else (draft/parsing/ready/evaluating/failed) → edit.
+ */
+export type ExamModeSlug = "edit" | "grade" | "results";
+
+export const examModeSlug = (status: string | null | undefined): ExamModeSlug =>
+  status === "finished" ? "results" : status === "grading" ? "grade" : "edit";
+
+export const examModePath = (id: string, status: string | null | undefined): string =>
+  `/exams/${id}/${examModeSlug(status)}`;
+
 export const TASK_TYPES: TaskType[] = ["single_choice", "multiple_choice", "text"];
 
 export const newOption = (overrides: Partial<TaskOption> = {}): TaskOption => ({

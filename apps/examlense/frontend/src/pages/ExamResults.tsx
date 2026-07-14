@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { BarChart3, CheckCircle2, GraduationCap, ListChecks, PencilLine, Table2 } from "lucide-react";
-import { useExam, useTasks } from "@/hooks/use-exam";
+import { useExam, useTasks, examKey } from "@/hooks/use-exam";
+import { patchExam } from "@/lib/api-client";
 import { useSections, useSectionBlocks } from "@/hooks/use-sections";
 import { useTaskAnswers } from "@/hooks/use-task-answers";
 import { useTaskGrades } from "@/hooks/use-task-grades";
@@ -26,7 +28,7 @@ import {
   type TaskAnswer,
   type TaskGrade,
 } from "@/lib/grading";
-import { letterLabel } from "@/lib/exam-helpers";
+import { examModePath, examModeSlug, letterLabel } from "@/lib/exam-helpers";
 
 type ResultView = "overview" | "learningGoals" | "details" | "allTasks";
 
@@ -39,6 +41,8 @@ const VIEWS: ResultsViewItem[] = [
 
 const ExamResults = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data: exam, isLoading: examLoading } = useExam(id);
   const { data: tasks, isLoading: tasksLoading } = useTasks(id!);
   const { data: sections, isLoading: sectionsLoading } = useSections(id!);
@@ -84,8 +88,23 @@ const ExamResults = () => {
 
   if (examLoading || tasksLoading || sectionsLoading) return <EditorLoadingView />;
   if (!exam) return null;
+  // Results are only valid for a finished exam; other statuses redirect to their
+  // canonical mode rather than showing (potentially incomplete) final results.
+  if (examModeSlug(exam.status) !== "results") {
+    return <Navigate to={examModePath(exam.id, exam.status)} replace />;
+  }
 
   const pct = totals.max > 0 ? (totals.earned / totals.max) * 100 : 0;
+
+  // Deliberately re-open a finished exam for grading. This is the one sanctioned
+  // path that moves status finished → grading; visiting /grade by URL never does.
+  // Seeding the cache from the patch response lets GradeRoute render immediately
+  // (status already `grading`) with no redirect bounce or edit-vs-status race.
+  const reopenForGrading = async () => {
+    const updated = await patchExam(exam.id, { status: "grading" });
+    qc.setQueryData(examKey(exam.id), updated);
+    navigate(`/exams/${exam.id}/grade`);
+  };
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden">
@@ -97,15 +116,14 @@ const ExamResults = () => {
           title={<StaticTitle value={exam.title} />}
           footer={
             <Button
-              asChild
+              type="button"
               size="sm"
               variant="outline"
               className="w-full gap-1"
+              onClick={reopenForGrading}
             >
-              <Link to={`/exams/${exam.id}/grade`}>
-                <PencilLine size={14} />
-                Back to Grading
-              </Link>
+              <PencilLine size={14} />
+              Back to Grading
             </Button>
           }
         />

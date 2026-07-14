@@ -101,6 +101,16 @@ public class ExamController {
             if (status == null || !PATCHABLE_STATUSES.contains(status)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
             }
+            // An exam may only be finished when every task is graded — keeps the
+            // finished ⟺ all-graded invariant that the live-derived results rely on.
+            if ("finished".equals(status)) {
+                ExamProgressService.Counts c = progress.countsFor(List.of(e.getId()))
+                    .getOrDefault(e.getId(), ExamProgressService.Counts.EMPTY);
+                if (c.taskCount() == 0 || c.gradedCount() < c.taskCount()) {
+                    throw new ApiException(HttpStatus.CONFLICT,
+                        "All tasks must be graded before the exam can be finished.");
+                }
+            }
             e.setStatus(status);
         }
         if (Patch.has(body, "parse_error")) e.setParseError(Patch.str(body.get("parse_error")));
