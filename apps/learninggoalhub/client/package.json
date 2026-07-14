@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
-    "@formkit/auto-animate": "^0.9.0",
     "@tanstack/react-query": "^5.62.7",
     "@xyflow/react": "^12.10.2",
     "openapi-fetch": "^0.13.4",

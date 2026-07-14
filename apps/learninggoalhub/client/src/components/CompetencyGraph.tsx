@@ -1,51 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
-import { useAutoAnimate } from "@formkit/auto-animate/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LearningGoal } from "../api/client.ts";
+import CompetencyGoalModal, { RoleBadge } from "./CompetencyGoalModal.tsx";
 import {
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
-  countPendingDescendants,
   type CompetencyNode,
-  type CompetencyRole,
 } from "../lib/goals.ts";
 
 // Box geometry, kept in sync with the Tailwind classes below so the SVG connectors can be drawn
-// from the layout alone (no DOM measuring): w-56 = 14rem and gap-3 = 0.75rem at a 16px root.
+// from the layout alone (no DOM measuring): w-56 = 14rem, w-80 = 20rem and gap-3 = 0.75rem at a
+// 16px root.
 const BOX_W = 224;
+const WIDE_W = 320; // drill-path boxes and the knowledge row under a focused sub-skill
 const GAP = 12;
-const PITCH = BOX_W + GAP; // centre-to-centre distance between adjacent boxes
-const HALF = BOX_W / 2;
 const CONNECTOR_H = 40;
 
 /**
- * Competency map: a progressive, row-by-row drill-in laid out like a tree. The first row shows
- * every terminal competency. Click one and it glides to the left, its siblings line up to its
- * right, and a new row of its sub-skills unfolds beneath — joined to it by tree connectors. Click
- * a sub-skill and the same happens one tier down, revealing its knowledge and gaps. The whole map
- * shares one horizontal scroll so the boxes and connectors stay aligned; all motion (reorder +
- * unfolding) is handled by auto-animate. Plain, readable DOM — no canvas, zoom or pan. Clicking a
- * leaf (knowledge/gap), or the ⓘ on a branch box, opens the goal detail modal.
+ * Competency map: a focus-and-context tree. The overview shows every terminal competency as a
+ * collapsed tree — a card with sub-skill/knowledge counts and a small root-to-leaves schematic
+ * hinting that three tiers unfold beneath it. Click one and it becomes the focused tree: the
+ * card moves to the centre with its sub-skills fanned out below it. Its siblings collapse into
+ * a quiet pill above ("Other skills · 7"); one tier down, the focused sub-skill's siblings
+ * collapse into a pill sitting ON the skill → sub-skill edge, joined by short trunk segments.
+ * Clicking a pill opens an overlay with the overview-style card grid (cards staggering in) to
+ * switch the focus at that tier; any navigation closes it. The centre column is always the
+ * drill path. The whole tree shares one horizontal scroll container so boxes and connectors
+ * stay aligned; each focus change re-centres it. Clicking a leaf, or an already-focused box a
+ * second time, opens the goal detail modal.
  */
 export default function CompetencyGraph({
   goals,
-  highlight,
-  onOpenDetail,
-  onToggleApproved,
   onEdit,
   onDelete,
 }: {
   goals: LearningGoal[];
-  highlight: "approved" | "unapproved" | null;
-  onOpenDetail: (goal: LearningGoal) => void;
-  onToggleApproved: (goal: LearningGoal) => void;
   onEdit: (goal: LearningGoal) => void;
   onDelete: (goal: LearningGoal) => void;
 }) {
   const forest = useMemo(() => buildCompetencyForest(goals), [goals]);
-  const actions = { onToggleApproved, onEdit, onDelete };
+  const actions = { onEdit, onDelete };
+
+  // The node whose classification the map-own detail overlay is showing.
+  const [detail, setDetail] = useState<CompetencyNode | null>(null);
+  const onOpenDetail = setDetail;
 
   // Drill path: [selected competency id, selected sub-skill id]. Empty = overview only.
   const [path, setPath] = useState<number[]>([]);
+
+  // Which sibling picker overlay is open; any focus change closes it again.
+  const [picker, setPicker] = useState<"skills" | "subs" | null>(null);
+  useEffect(() => setPicker(null), [path]);
 
   const competency = useMemo(
     () => forest.find((n) => n.goal.id === path[0]) ?? null,
@@ -57,279 +61,594 @@ export default function CompetencyGraph({
   );
 
   // A reload/re-extraction can drop a selected node; prune the path back to what still exists.
+  // Plain setPath — nothing was clicked, so nothing should animate.
   useEffect(() => {
     if (path.length === 0) return;
     if (!competency) setPath([]);
     else if (path.length > 1 && !subSkill) setPath([path[0]]);
   }, [competency, subSkill, path]);
 
+  // FLIP: `navigate` snapshots every visible box (by goal id) before the path changes; after the
+  // new layout is in, each box that survived the transition — the clicked one gliding into its
+  // focus slot, the parent rising onto the path, a card flying out of the picker overlay — is
+  // animated from its old viewport rect to its new one. Boxes without a previous rect simply
+  // appear (their `comp-pop` entrance), so a programmatic path change animates nothing.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const flipRects = useRef<Map<string, DOMRect> | null>(null);
+
+  const navigate = (next: number[]) => {
+    const map = new Map<string, DOMRect>();
+    containerRef.current
+      ?.querySelectorAll<HTMLElement>("[data-goal-id]")
+      .forEach((el) => map.set(el.dataset.goalId!, el.getBoundingClientRect()));
+    flipRects.current = map;
+    setPath(next);
+  };
+
+  useLayoutEffect(() => {
+    // Re-centre the tree first, so the boxes are measured in their final resting places.
+    const scroller = scrollRef.current;
+    if (scroller)
+      scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+
+    const prev = flipRects.current;
+    flipRects.current = null;
+    if (
+      !prev ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    containerRef.current
+      ?.querySelectorAll<HTMLElement>("[data-goal-id]")
+      .forEach((el) => {
+        const from = prev.get(el.dataset.goalId!);
+        if (!from) return;
+        const to = el.getBoundingClientRect();
+        const dx = from.left - to.left;
+        const dy = from.top - to.top;
+        const sx = from.width / to.width;
+        const sy = from.height / to.height;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01)
+          return;
+        // A surviving box slides — it must not ALSO play an entrance animation, neither its
+        // own nor an enclosing wrapper's (the state-2 cells carry `comp-pop`).
+        for (
+          let n: HTMLElement | null = el;
+          n && n !== containerRef.current;
+          n = n.parentElement
+        ) {
+          n.getAnimations().forEach((a) => {
+            if (a instanceof CSSAnimation && a.animationName.startsWith("comp-"))
+              a.cancel();
+          });
+        }
+        el.style.transformOrigin = "top left";
+        el.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+            { transform: "none" },
+          ],
+          { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
+        );
+      });
+  }, [path]);
+
   // Toggle selection at a tier: re-selecting the active node collapses it (and everything below).
   const pickCompetency = (id: number) =>
-    setPath((p) => (p[0] === id ? [] : [id]));
+    navigate(path[0] === id ? [] : [id]);
   const pickSubSkill = (id: number) =>
-    setPath((p) => (p[1] === id ? [p[0]] : [p[0], id]));
+    navigate(path[1] === id ? [path[0]] : [path[0], id]);
 
   if (forest.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
         No competency tree for this course yet. Re-run the extraction to
-        synthesise terminal competencies, sub-skills and knowledge gaps.
+        synthesise terminal competencies, sub-skills and knowledge.
       </p>
     );
   }
 
-  // Each tier lives in its own horizontal scroll container, so a tier scrolls independently (the
-  // tiers above stay put) and — crucially — drilling in does not resize the parent tier's
-  // container, which would otherwise reset auto-animate's positions and kill its reorder animation.
-  // Each tier's incoming connector rides inside its container, so it scrolls with its children.
+  // Overview: every competency as a collapsed tree in a wrapped grid.
+  if (!competency) {
+    return (
+      <div ref={containerRef} className="flex flex-col gap-3 pt-1">
+        <p className="px-1 text-sm text-hestia-text-muted">
+          Click a skill to focus its tree — sub-skills unfold below it, the
+          other skills move to a shelf above.
+        </p>
+        <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {forest.map((node) => {
+            const expandable = node.children.length > 0;
+            const deep = countGrandchildren(node);
+            return (
+              // Two-row cell: the card stretches to the row height, and the collapsed-tree
+              // schematic branches off UNDERNEATH it — outside the card, like a folded-up
+              // version of the connectors that unfold on click.
+              <div key={node.goal.id} className="grid grid-rows-[1fr_auto]">
+                <Box
+                  node={node}
+                  active={false}
+                  expandable={expandable}
+                  onClick={() =>
+                    expandable
+                      ? pickCompetency(node.goal.id!)
+                      : onOpenDetail(node)
+                  }
+                  actions={actions}
+                  fluid
+                  deepKnowledge={deep}
+                />
+                {expandable && (
+                  <div className="justify-self-center">
+                    <Stub
+                      childCount={node.children.length}
+                      hasKnowledge={deep > 0}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
+      </div>
+    );
+  }
+
+  const skillColor = COMPETENCY_ROLE_META.competency.color;
+  const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
+  const otherSkills = forest.filter((n) => n.goal.id !== competency.goal.id);
+  const otherSubs = subSkill
+    ? competency.children.filter((n) => n.goal.id !== subSkill.goal.id)
+    : [];
+
+  // Focused tree. The canvas is keyed by the drill path so a focus change replays the unfold
+  // animation; `w-max` + `mx-auto` centre it when it fits and let it scroll as one unit when not.
   return (
-    <div className="flex flex-col">
-      <Tier
-        items={forest}
-        activeId={path[0] ?? null}
-        onPick={pickCompetency}
-        onOpenDetail={onOpenDetail}
-        actions={actions}
-        highlight={highlight}
-        isRoot
-      />
-      {competency && (
-        <Tier
-          key={`level-sub-${competency.goal.id}`}
-          items={competency.children}
-          activeId={path[1] ?? null}
+    <div ref={containerRef} className="flex flex-col gap-2 px-1 pt-1">
+      {otherSkills.length > 0 && (
+        <div className="flex justify-center">
+          <ShelfPill
+            label="Other skills"
+            count={otherSkills.length}
+            color={skillColor}
+            onClick={() => setPicker("skills")}
+          />
+        </div>
+      )}
+      <div ref={scrollRef} className="overflow-x-auto pb-2">
+        {/* Keyed by the drill path so every navigation remounts the tiers — the connectors
+            redraw and the children replay their entrance, while surviving boxes FLIP. */}
+        <div
+          key={`tree-${competency.goal.id}-${subSkill?.goal.id ?? "none"}`}
+          className="mx-auto flex w-max min-w-full flex-col items-center"
+        >
+          {subSkill == null ? (
+            <>
+              {/* Already unfolded — a second click opens the goal detail instead. */}
+              <Box
+                node={competency}
+                active
+                expandable
+                onClick={() => onOpenDetail(competency)}
+                actions={actions}
+                wide
+              />
+              <Connector
+                count={competency.children.length}
+                color={skillColor}
+              />
+              <div className="flex justify-center gap-3">
+                {competency.children.map((child, i) => {
+                  const expandable = child.children.length > 0;
+                  return (
+                    // Column cell: the box plus, when knowledge waits beneath, the mini leaf
+                    // indicator branching off below it. Stub width < box width, so the cell
+                    // keeps the box's footprint and the connector above stays aligned. The
+                    // cell pops in after the focused box has slid into place (FLIP cancels
+                    // this entrance on a box that survived the transition).
+                    <div
+                      key={child.goal.id}
+                      className="comp-pop flex flex-col items-center"
+                      style={{ animationDelay: `${180 + i * 30}ms` }}
+                    >
+                      <Box
+                        node={child}
+                        active={false}
+                        expandable={expandable}
+                        onClick={() =>
+                          expandable
+                            ? pickSubSkill(child.goal.id!)
+                            : onOpenDetail(child)
+                        }
+                        actions={actions}
+                      />
+                      {expandable && (
+                        <LeafStub count={child.children.length} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* The drill path's parent: quieter than the focus node, click to go back up. */}
+              <Box
+                node={competency}
+                active={false}
+                open
+                expandable
+                onClick={() => navigate([competency.goal.id!])}
+                actions={actions}
+                subdued
+                wide
+              />
+              {otherSubs.length > 0 ? (
+                <>
+                  {/* The sibling picker pill sits at its own tree depth, ON the edge between
+                      parent and focus; the trunk segments keep that edge readable through it. */}
+                  <VLine color={skillColor} />
+                  <ShelfPill
+                    label="Other sub-skills"
+                    count={otherSubs.length}
+                    color={subColor}
+                    onClick={() => setPicker("subs")}
+                  />
+                  <VLine color={skillColor} />
+                </>
+              ) : (
+                <Connector count={1} color={skillColor} />
+              )}
+              {/* Already unfolded — a second click opens the goal detail instead. */}
+              <Box
+                node={subSkill}
+                active
+                expandable
+                onClick={() => onOpenDetail(subSkill)}
+                actions={actions}
+                wide
+              />
+              <Connector
+                count={subSkill.children.length}
+                color={subColor}
+                childW={WIDE_W}
+              />
+              <div className="flex justify-center gap-3">
+                {subSkill.children.map((leaf, i) => (
+                  // The knowledge pops in after the focused sub-skill has slid into place.
+                  <div
+                    key={leaf.goal.id}
+                    className="comp-pop"
+                    style={{ animationDelay: `${180 + i * 30}ms` }}
+                  >
+                    <Box
+                      node={leaf}
+                      active={false}
+                      expandable={false}
+                      onClick={() => onOpenDetail(leaf)}
+                      actions={actions}
+                      wide
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      {picker === "skills" && (
+        <ShelfOverlay
+          label="Other skills"
+          items={otherSkills}
+          kind="skills"
+          onPick={pickCompetency}
+          onOpenDetail={onOpenDetail}
+          actions={actions}
+          onClose={() => setPicker(null)}
+        />
+      )}
+      {picker === "subs" && subSkill != null && (
+        <ShelfOverlay
+          label="Other sub-skills"
+          items={otherSubs}
+          kind="subs"
           onPick={pickSubSkill}
           onOpenDetail={onOpenDetail}
           actions={actions}
-          highlight={highlight}
-          connectorColor={COMPETENCY_ROLE_META.competency.color}
+          onClose={() => setPicker(null)}
         />
       )}
-      {subSkill && (
-        <Tier
-          key={`level-know-${subSkill.goal.id}`}
-          items={subSkill.children}
-          activeId={null}
-          onPick={null}
-          onOpenDetail={onOpenDetail}
-          actions={actions}
-          highlight={highlight}
-          connectorColor={COMPETENCY_ROLE_META["sub-skill"].color}
-        />
-      )}
+      <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
     </div>
   );
 }
 
+/** Total knowledge two tiers down — shown on overview cards so the depth reads at a glance. */
+function countGrandchildren(node: CompetencyNode) {
+  return node.children.reduce((n, child) => n + child.children.length, 0);
+}
+
 /**
- * One scroll-independent tier: its own horizontal scroll container holding the incoming connector
- * (unless it is the root) and the row of boxes. It tracks its own scroll offset so the connector
- * trunk and the sticky left-most box stay glued to the visible left edge while the rest scrolls.
+ * Collapsed sibling picker: one quiet pill naming the tier and how many siblings wait behind
+ * it. Clicking opens the ShelfOverlay to switch the focus at that tier.
  */
-function Tier({
+function ShelfPill({
+  label,
+  count,
+  color,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2.5 py-1 text-[0.6rem] font-semibold uppercase tracking-wider shadow-sm transition hover:shadow"
+      style={{
+        borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${color} 4%, transparent)`,
+        color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))`,
+      }}
+    >
+      {label} · {count}
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="h-2.5 w-2.5"
+      >
+        <path d="M7 5l6 5-6 5" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Sibling picker overlay: the same cards as the page-one overview (skills keep their counts and
+ * collapsed-tree schematic), staggering onto the page over the tree. Picking one focuses it —
+ * the path change closes the overlay; backdrop click, Escape and the ✕ close it without picking.
+ * Sits at z-40 so the goal detail modal (z-50, reachable via a card's ⓘ) stacks above it.
+ */
+function ShelfOverlay({
+  label,
   items,
-  activeId,
+  kind,
   onPick,
   onOpenDetail,
   actions,
-  highlight,
-  connectorColor,
-  isRoot = false,
+  onClose,
 }: {
+  label: string;
   items: CompetencyNode[];
-  activeId: number | null;
-  onPick: ((id: number) => void) | null;
-  onOpenDetail: (goal: LearningGoal) => void;
+  kind: "skills" | "subs";
+  onPick: (id: number) => void;
+  onOpenDetail: (node: CompetencyNode) => void;
   actions: GoalActions;
-  highlight: "approved" | "unapproved" | null;
-  connectorColor?: string;
-  isRoot?: boolean;
+  onClose: () => void;
 }) {
-  const [scrollLeft, setScrollLeft] = useState(0);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
-      className={`overflow-x-auto px-1 pb-2 ${isRoot ? "pt-2" : ""}`}
-      onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
+      onClick={onClose}
+      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-hestia-bg/75 p-4 backdrop-blur-[2px] sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
     >
-      <div className={`flex w-max flex-col ${isRoot ? "" : "comp-unfold"}`}>
-        {connectorColor && (
-          <Connector
-            count={items.length}
-            color={connectorColor}
-            scrollLeft={scrollLeft}
-          />
-        )}
-        <Row
-          items={items}
-          activeId={activeId}
-          onPick={onPick}
-          onOpenDetail={onOpenDetail}
-          actions={actions}
-          highlight={highlight}
-          scrolled={scrollLeft > 0}
-        />
+      {/* No panel chrome — the cards float freely over the dimmed tree. */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex w-full max-w-4xl flex-col gap-3"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text">
+            {label}
+          </span>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((node, i) => {
+            const expandable = node.children.length > 0;
+            const deep = kind === "skills" ? countGrandchildren(node) : null;
+            return (
+              // Two-row grid wrapper: carries the staggered entrance without disturbing the
+              // box's own layout, stretches it to the row height, and hangs the collapsed-tree
+              // indicator underneath — the same footprint the card has in the tree/overview.
+              <div
+                key={node.goal.id}
+                className="comp-unfold grid grid-rows-[1fr_auto]"
+                style={{
+                  animationDelay: `${i * 35}ms`,
+                  animationFillMode: "backwards",
+                }}
+              >
+                <Box
+                  node={node}
+                  active={false}
+                  expandable={expandable}
+                  onClick={() =>
+                    expandable ? onPick(node.goal.id!) : onOpenDetail(node)
+                  }
+                  actions={actions}
+                  fluid
+                  deepKnowledge={deep}
+                />
+                {expandable && (
+                  <div className="justify-self-center">
+                    {kind === "skills" ? (
+                      <Stub
+                        childCount={node.children.length}
+                        hasKnowledge={(deep ?? 0) > 0}
+                      />
+                    ) : (
+                      <LeafStub count={node.children.length} />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
+/** Short vertical trunk segment continuing the parent → focus edge through a `between` shelf. */
+function VLine({ color }: { color: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className="h-[18px] w-[1.5px] shrink-0 rounded-full"
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
 /**
- * Tree connector between the parent box (one tier up) and its children's row. The links share a
- * trunk down from the parent and a horizontal rail, then drop a parallel stub to each child — the
- * standard tree routing, so nothing overlaps; joins are rounded so there are no sharp corners.
- *
- * The trunk is kept at the tier's visible left edge by offsetting it by `scrollLeft`. A sub-tier's
- * left-most box is sticky (pinned to that same edge), so the trunk stays glued to it and up to the
- * parent however far the tier is scrolled — the line to the parent above is always visible.
- * Children that scroll behind the sticky box are dropped from the rail, so the connector always
- * reads as "parent → left-most child → the rest".
+ * Tree connector between a centred parent box and its children's row. The trunk drops from the
+ * parent's centre, turns onto a horizontal rail and drops a stub to each child — the standard
+ * tree routing, mirrored for children left of the trunk; joins are rounded so there are no sharp
+ * corners. Geometry comes from the shared box constants, so no DOM measuring is needed: parent
+ * and children are centred in the same column, which puts the trunk at the row's midpoint.
  */
 function Connector({
   count,
   color,
-  scrollLeft,
+  childW = BOX_W,
 }: {
   count: number;
   color: string;
-  scrollLeft: number;
+  /** Width of the child boxes below — matches their `wide`/default Tailwind width. */
+  childW?: number;
 }) {
   if (count === 0) return null;
-  const width = (count - 1) * PITCH + BOX_W;
+  const pitch = childW + GAP; // centre-to-centre distance between adjacent children
+  const width = (count - 1) * pitch + childW;
+  const trunk = width / 2;
   const mid = CONNECTOR_H / 2;
   const r = 8; // corner radius for the rounded joins
-  const trunk = scrollLeft + HALF; // follow the visible left edge / the sticky first box
 
-  // Children that scroll behind the sticky box are hidden, so we skip them.
-  const visible: number[] = [];
-  for (let i = 1; i < count; i++) {
-    const cx = HALF + i * PITCH;
-    if (cx > trunk + r) visible.push(cx);
-  }
-
+  // `pathLength={1}` normalises every path so the comp-draw dash animation can draw each link
+  // from the trunk toward its child, whatever the actual path length.
   return (
     <svg
       width={width}
       height={CONNECTOR_H}
-      className="block shrink-0"
+      className="comp-draw block shrink-0"
       aria-hidden="true"
     >
       <g stroke={color} strokeWidth={1.5} fill="none" strokeLinecap="round">
-        {/* Trunk down to the sticky left-most child: a straight drop at the visible left edge. */}
-        <path d={`M ${trunk} 0 V ${CONNECTOR_H}`} />
-        {/* Each remaining child: trunk down, rounded turn onto the rail, across, rounded turn, drop. */}
-        {visible.map((cx, i) => (
-          <path
-            key={i}
-            d={`M ${trunk} 0 V ${mid - r} Q ${trunk} ${mid} ${trunk + r} ${mid} H ${cx - r} Q ${cx} ${mid} ${cx} ${mid + r} V ${CONNECTOR_H}`}
-          />
-        ))}
+        {Array.from({ length: count }, (_, i) => {
+          const cx = childW / 2 + i * pitch;
+          const dx = cx - trunk;
+          // Too close to the trunk for the rail-and-corners route: a gentle S-curve instead
+          // (straight drop when the child sits exactly under the trunk).
+          if (Math.abs(dx) < 2 * r) {
+            return (
+              <path
+                key={i}
+                pathLength={1}
+                d={`M ${trunk} 0 C ${trunk} ${mid} ${cx} ${mid} ${cx} ${CONNECTOR_H}`}
+              />
+            );
+          }
+          const sg = dx > 0 ? 1 : -1;
+          return (
+            <path
+              key={i}
+              pathLength={1}
+              d={`M ${trunk} 0 V ${mid - r} Q ${trunk} ${mid} ${trunk + sg * r} ${mid} H ${cx - sg * r} Q ${cx} ${mid} ${cx} ${mid + r} V ${CONNECTOR_H}`}
+            />
+          );
+        })}
       </g>
     </svg>
   );
 }
 
-/**
- * One tier of the drill-in. Items animate into place; the active node is pinned to the left and
- * the rest follow in their original order. `onPick` is null for the leaf tier (knowledge/gaps),
- * whose boxes have nothing to unfold and so just open the detail modal.
- */
-/** The review actions shared by every box, mirroring the list view's approve / edit / delete. */
+/** The edit actions shared by every box; approving stays a list-view concern. */
 type GoalActions = {
-  onToggleApproved: (goal: LearningGoal) => void;
   onEdit: (goal: LearningGoal) => void;
   onDelete: (goal: LearningGoal) => void;
 };
 
-function Row({
-  items,
-  activeId,
-  onPick,
-  onOpenDetail,
-  actions,
-  highlight,
-  scrolled,
-}: {
-  items: CompetencyNode[];
-  activeId: number | null;
-  onPick: ((id: number) => void) | null;
-  onOpenDetail: (goal: LearningGoal) => void;
-  actions: GoalActions;
-  highlight: "approved" | "unapproved" | null;
-  scrolled: boolean;
-}) {
-  const [rowRef] = useAutoAnimate<HTMLDivElement>();
-
-  // Active node first, the rest in their natural order.
-  const ordered = useMemo(() => {
-    if (activeId == null) return items;
-    const active = items.filter((n) => n.goal.id === activeId);
-    const rest = items.filter((n) => n.goal.id !== activeId);
-    return [...active, ...rest];
-  }, [items, activeId]);
-
-  return (
-    <div ref={rowRef} className="flex gap-3">
-      {ordered.map((node, i) => {
-        const expandable = onPick != null && node.children.length > 0;
-        // The left-most box is pinned only when it is the selected node (selection moves it to the
-        // front), so its unfolded children below stay anchored to it while the row scrolls. With
-        // nothing selected the row scrolls freely and so does the connector above it.
-        const sticky = i === 0 && activeId != null;
-        const approved = node.goal.status === "APPROVED";
-        const dimmed =
-          highlight != null && (highlight === "approved") !== approved;
-        return (
-          <Box
-            key={node.goal.id}
-            node={node}
-            active={node.goal.id === activeId}
-            expandable={expandable}
-            onClick={() =>
-              expandable ? onPick!(node.goal.id!) : onOpenDetail(node.goal)
-            }
-            onOpenDetail={() => onOpenDetail(node.goal)}
-            actions={actions}
-            stuck={sticky && scrolled}
-            dimmed={dimmed}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 /** A readable competency/sub-skill/knowledge rectangle. Branch boxes carry a child count and an
- * unfold chevron; every box carries the review actions (details / approve / edit / delete), which
- * fade in on hover and each explain themselves via a tooltip. Clicking the body unfolds a branch
- * or opens the detail of a leaf. It is a div (not a button) so the action buttons can nest. */
+ * unfold chevron (overview cards add the deep knowledge count and a collapsed-tree schematic);
+ * every box carries edit / delete top-right, which fade in on hover. Clicking the body unfolds
+ * a branch or opens the goal detail (leaves, and focused boxes on their second click) — the
+ * classification (Bloom / SOLO / kind / source) lives in that detail modal. It is a div (not a
+ * button) so the action buttons can nest. */
 function Box({
   node,
   active,
+  open = active,
   expandable,
   onClick,
-  onOpenDetail,
   actions,
-  stuck,
-  dimmed,
+  fluid = false,
+  wide = false,
+  subdued = false,
+  deepKnowledge = null,
 }: {
   node: CompetencyNode;
   active: boolean;
+  /** Chevron state: the box is unfolded. Defaults to `active`; the path parent sets it alone. */
+  open?: boolean;
   expandable: boolean;
   onClick: () => void;
-  onOpenDetail: () => void;
   actions: GoalActions;
-  stuck: boolean;
-  dimmed: boolean;
+  /** In the grid overview the box fills its cell; in the tree it keeps the fixed connector width. */
+  fluid?: boolean;
+  /** Boxes on the drill path are wider (w-80) so long goal texts stay shallow and the tiers
+   * below remain in view. Safe for the connectors: parent and children are centred in the same
+   * column, so the trunk stays at the parent's centre regardless of its width. */
+  wide?: boolean;
+  /** The drill path's parent box: readable but quieter than the focus node. */
+  subdued?: boolean;
+  /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
+  deepKnowledge?: number | null;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
   const childCount = node.children.length;
-  const approved = node.goal.status === "APPROVED";
-  const pendingBelow = countPendingDescendants(node);
   return (
     <div
       role="button"
       tabIndex={0}
+      data-goal-id={node.goal.id}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -337,132 +656,32 @@ function Box({
           onClick();
         }
       }}
-      title={expandable ? "Unfold" : "View goal details"}
-      className={`group relative flex w-56 shrink-0 cursor-pointer flex-col gap-1.5 rounded-lg border-t-4 border p-3 text-left shadow-sm transition ${
+      title={!active && expandable ? "Unfold" : "View goal details"}
+      className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 text-left shadow-sm transition ${
+        fluid ? "" : wide ? "w-80 shrink-0" : "w-56 shrink-0"
+      } ${
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"
-      } ${active ? "ring-2 ring-offset-2 ring-offset-hestia-bg shadow-md" : ""} ${
-        // Only pin once the row is actually scrolled — at scroll 0 sticky has no visible effect but
-        // would race auto-animate's FLIP measurement and break the slide-to-front animation.
-        stuck
-          ? "sticky left-0 z-10 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.35)]"
-          : ""
-      } ${dimmed ? "opacity-30" : ""}`}
+      } ${subdued ? "opacity-80 hover:opacity-100" : ""}`}
       style={{
-        borderTopColor: meta.color,
+        // The focused box keeps only this quiet tint — the shelved siblings do the highlighting.
         ...(active
-          ? ({
-              "--tw-ring-color": meta.color,
+          ? {
               backgroundColor: `color-mix(in srgb, ${meta.color} 12%, var(--hestia-surface))`,
               borderColor: meta.color,
-            } as React.CSSProperties)
+            }
           : {}),
       }}
     >
-      {/* Header: role (and the pending count) on the left, the approve checkmark pinned right. */}
+      {/* Header: the role badge on the left, edit / delete pinned right. */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <RoleBadge role={node.role} />
-          {/* How many goals beneath this branch still await review — guides the drill-in. */}
-          {pendingBelow > 0 && (
-            <span
-              className="flex items-center gap-1 text-[0.7rem] font-medium text-hestia-warning"
-              title={`${pendingBelow} goal${pendingBelow === 1 ? "" : "s"} below still need review`}
-            >
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full bg-hestia-warning"
-                aria-hidden="true"
-              />
-              {pendingBelow} pending
-            </span>
-          )}
-        </div>
-        <BoxAction
-          label={approved ? "Unapprove goal" : "Approve goal"}
-          tip={
-            approved
-              ? "Approved — click to move this goal back to pending."
-              : "Approve this goal — marks it as reviewed and accepted."
-          }
-          alwaysVisible={approved}
-          tipBelow
-          onClick={() => actions.onToggleApproved(node.goal)}
-          className={
-            approved
-              ? "text-hestia-accent hover:bg-[color-mix(in_srgb,var(--hestia-accent)_15%,transparent)]"
-              : "text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-          }
-        >
-          <svg
-            viewBox="0 0 20 20"
-            fill={approved ? "currentColor" : "none"}
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-5 w-5"
-          >
-            <circle cx="10" cy="10" r="7.5" />
-            <path
-              d="M6.5 10.5l2.5 2.5 4.5-5"
-              stroke={approved ? "var(--hestia-surface)" : "currentColor"}
-              fill="none"
-            />
-          </svg>
-        </BoxAction>
-      </div>
-      <p
-        className={`text-[0.8rem] font-medium leading-snug ${
-          isGap ? "text-hestia-danger" : "text-hestia-text"
-        }`}
-      >
-        {node.goal.text}
-      </p>
-      <div className="mt-auto flex items-center gap-1 pt-1">
-        {expandable && (
-          <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
-            <span className="tabular-nums">
-              {childCount} {node.role === "competency" ? "sub-skill" : "item"}
-              {childCount === 1 ? "" : "s"}
-            </span>
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-3.5 w-3.5 transition-transform ${active ? "rotate-90" : ""}`}
-            >
-              <path d="M7 5l6 5-6 5" />
-            </svg>
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-0.5">
-          <BoxAction
-            label="View details"
-            tip="Open the full goal — sources and related goals."
-            onClick={onOpenDetail}
-            className="text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <circle cx="10" cy="10" r="7.5" />
-              <path d="M10 9v4" />
-              <path d="M10 6.5h.01" />
-            </svg>
-          </BoxAction>
+        <RoleBadge role={node.role} />
+        <div className="flex items-center gap-0.5">
           <BoxAction
             label="Edit goal"
             tip="Edit this goal's wording and its Bloom / SOLO level."
+            tipBelow
             onClick={() => actions.onEdit(node.goal)}
             className="text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
           >
@@ -481,6 +700,7 @@ function Box({
           <BoxAction
             label="Delete goal"
             tip="Delete this goal permanently."
+            tipBelow
             onClick={() => actions.onDelete(node.goal)}
             className="text-hestia-text-muted hover:bg-hestia-danger hover:text-white"
           >
@@ -497,6 +717,142 @@ function Box({
             </svg>
           </BoxAction>
         </div>
+      </div>
+      <p
+        className={`text-[0.8rem] font-medium leading-snug ${
+          isGap ? "text-hestia-danger" : "text-hestia-text"
+        }`}
+      >
+        {node.goal.text}
+      </p>
+      <div className="mt-auto flex items-center gap-1 pt-1">
+        {expandable && (
+          <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
+            <span className="tabular-nums">
+              {childCount} {node.role === "competency" ? "sub-skill" : "item"}
+              {childCount === 1 ? "" : "s"}
+              {deepKnowledge != null && deepKnowledge > 0 && (
+                <> · {deepKnowledge} knowledge</>
+              )}
+            </span>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`}
+            >
+              <path d="M7 5l6 5-6 5" />
+            </svg>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Collapsed-tree schematic hanging under an overview card: connector stubs to unlabelled
+ * sub-skill bars, then a fainter row of knowledge dots — a first-glance hint that three tiers
+ * unfold beneath.
+ */
+function Stub({
+  childCount,
+  hasKnowledge,
+}: {
+  childCount: number;
+  hasKnowledge: boolean;
+}) {
+  const xs =
+    childCount >= 3 ? [26, 60, 94] : childCount === 2 ? [43, 77] : [60];
+  const barColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 45%, var(--hestia-surface))`;
+  const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 60%, var(--hestia-surface))`;
+  return (
+    <div className="pointer-events-none" aria-hidden="true">
+      <svg width={120} height={14} className="mx-auto block">
+        <g
+          stroke={`color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 55%, transparent)`}
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        >
+          {xs.map((x) =>
+            x === 60 ? (
+              <path key={x} d="M 60 0 V 14" />
+            ) : (
+              <path
+                key={x}
+                d={`M 60 0 V 4 Q 60 7 ${x < 60 ? 55 : 65} 7 H ${x < 60 ? x + 5 : x - 5} Q ${x} 7 ${x} 10 V 14`}
+              />
+            ),
+          )}
+        </g>
+      </svg>
+      <div className="flex justify-center gap-2.5">
+        {xs.map((x) => (
+          <span
+            key={x}
+            className="h-[7px] w-[34px] rounded"
+            style={{ backgroundColor: barColor }}
+          />
+        ))}
+      </div>
+      {hasKnowledge && (
+        <div className="mt-1 flex justify-center gap-[7px] opacity-50">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span
+              key={i}
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: dotColor }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Mini leaf indicator under an unfocused sub-skill box: stub lines branching into a few
+ * knowledge dots, hinting that another tier unfolds beneath it. Dots = knowledge, the same
+ * visual language as the overview schematic; the count is suggestive (capped at three), the
+ * exact number already sits in the box's "N items" line.
+ */
+function LeafStub({ count }: { count: number }) {
+  const xs = count >= 3 ? [12, 30, 48] : count === 2 ? [21, 39] : [30];
+  const lineColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, transparent)`;
+  const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, var(--hestia-surface))`;
+  return (
+    <div className="pointer-events-none" aria-hidden="true">
+      <svg width={60} height={12} className="mx-auto block">
+        <g
+          stroke={lineColor}
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        >
+          {xs.map((x) =>
+            x === 30 ? (
+              <path key={x} d="M 30 0 V 12" />
+            ) : (
+              <path
+                key={x}
+                d={`M 30 0 V 3 Q 30 6 ${x < 30 ? 26 : 34} 6 H ${x < 30 ? x + 4 : x - 4} Q ${x} 6 ${x} 9 V 12`}
+              />
+            ),
+          )}
+        </g>
+      </svg>
+      <div className="mt-px flex justify-center gap-2">
+        {xs.map((x) => (
+          <span
+            key={x}
+            className="h-[7px] w-[7px] rounded-full"
+            style={{ backgroundColor: dotColor }}
+          />
+        ))}
       </div>
     </div>
   );
@@ -552,38 +908,3 @@ function BoxAction({
   );
 }
 
-function RoleBadge({ role }: { role: CompetencyRole }) {
-  const meta = COMPETENCY_ROLE_META[role];
-  const isGap = role === "gap";
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
-      style={{
-        color: meta.color,
-        backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
-      }}
-    >
-      {isGap && <GapIcon />}
-      {meta.label}
-    </span>
-  );
-}
-
-function GapIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-3 w-3"
-    >
-      <path d="M10 3.5L2.5 16.5h15z" />
-      <path d="M10 8v3.5" />
-      <path d="M10 14h.01" />
-    </svg>
-  );
-}

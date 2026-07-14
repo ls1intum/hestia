@@ -3,11 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
-import GoalGraph from "../components/GoalGraph.tsx";
 import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
-import GoalDetailPanel from "../components/GoalDetailPanel.tsx";
-import GoalDetailModal from "../components/GoalDetailModal.tsx";
+import CompetencyGoalModal from "../components/CompetencyGoalModal.tsx";
+import FilterPopover from "../components/FilterPopover.tsx";
 import {
   LEVEL_META,
   groupGoalsByUnit,
@@ -15,24 +14,29 @@ import {
   hasCompetencyTree,
   levelOf,
   presentLevels,
-  sourceFilenames,
+  titleCase,
   tocLabel,
   type GoalGroup,
-  type RelationshipGroup,
 } from "../lib/goals.ts";
 
-type GoalsView = "list" | "graph" | "tree" | "map";
+// The competency map is the home view; the goal list ("goals by session") and the skills table are
+// reached from it. `map`/`tree` are the skill-based views, `list` the session-based one.
+type GoalsView = "list" | "tree" | "map";
 
-/** Display labels for the view toggle. */
-const VIEW_LABELS: Record<GoalsView, string> = {
-  list: "List",
-  graph: "Graph",
-  tree: "Tree",
-  map: "Map",
-};
-type KindFilter = "ALL" | "EXPLICIT" | "IMPLICIT";
-type GoalStatus = NonNullable<LearningGoal["status"]>;
-type StatusFilter = "ALL" | GoalStatus;
+// Quiet text-and-icon jump links in the header, used both to leave the map (to the table / list)
+// and to return to it.
+const VIEW_LINK_CLS =
+  "inline-flex items-center gap-1.5 text-sm font-medium text-hestia-text-muted transition hover:text-hestia-text";
+// The list view filters like the tree-grid: each column is a multi-select set (empty = all),
+// surfaced as a funnel popover + active-filter chips.
+type ListFilterKey = "level" | "kind" | "status" | "bloom" | "solo";
+const emptyFilters = (): Record<ListFilterKey, Set<string>> => ({
+  level: new Set(),
+  kind: new Set(),
+  status: new Set(),
+  bloom: new Set(),
+  solo: new Set(),
+});
 
 const BLOOM_ORDER = [
   "REMEMBER",
@@ -58,23 +62,19 @@ export default function CoursePage() {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [goalsView, setGoalsView] = useState<GoalsView>("list");
-  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null);
+  // The map is the home view once a competency tree exists; this guards the one-time default so a
+  // later manual switch is never overridden.
+  const didInitView = useRef(false);
   const [detailGoal, setDetailGoal] = useState<LearningGoal | null>(null);
   const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
   // Which session/unit the table-of-contents has selected — the list shows only this group.
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
-  // Map view: clicking the approved/unapproved counter dims the non-matching nodes.
-  const [mapHighlight, setMapHighlight] = useState<
-    "approved" | "unapproved" | null
-  >(null);
 
   const [search, setSearch] = useState("");
-  const [kindFilter, setKindFilter] = useState<KindFilter>("ALL");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [levelFilter, setLevelFilter] = useState("ALL");
-  const [bloomFilter, setBloomFilter] = useState("ALL");
-  const [soloFilter, setSoloFilter] = useState("ALL");
+  const [filters, setFilters] =
+    useState<Record<ListFilterKey, Set<string>>>(emptyFilters);
+  const [openFilter, setOpenFilter] = useState<ListFilterKey | null>(null);
 
   const courseQuery = useQuery({
     queryKey: ["course", courseId],
@@ -118,7 +118,7 @@ export default function CoursePage() {
     mutationFn: async (vars: {
       goalId: number;
       text?: string;
-      status?: GoalStatus;
+      status?: NonNullable<LearningGoal["status"]>;
       bloomLevel?: LearningGoal["bloomLevel"];
       soloLevel?: LearningGoal["soloLevel"];
     }) => {
@@ -161,18 +161,25 @@ export default function CoursePage() {
       status: goal.status === "APPROVED" ? "PENDING" : "APPROVED",
     });
 
+  // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
+  // the pipeline still synthesises and stores them, only the client filters.
   const goals: LearningGoal[] = useMemo(
-    () => goalsQuery.data?.content ?? [],
+    () => (goalsQuery.data?.content ?? []).filter((g) => g.origin !== "GAP"),
     [goalsQuery.data],
   );
 
   // The competency-tree view only appears once the pipeline has synthesised one.
   const competencyAvailable = useMemo(() => hasCompetencyTree(goals), [goals]);
-  const views: GoalsView[] = competencyAvailable
-    ? ["list", "graph", "tree", "map"]
-    : ["list", "graph"];
   // The competency views ignore the goal-level filter bar (filtering would prune tree nodes).
   const isCompetencyView = goalsView === "tree" || goalsView === "map";
+
+  // Land on the competency map once, as soon as we know the course has one; otherwise stay on the
+  // session goal list. A later manual switch sticks (guarded by the ref).
+  useEffect(() => {
+    if (didInitView.current || !goalsQuery.isSuccess) return;
+    didInitView.current = true;
+    if (competencyAvailable) setGoalsView("map");
+  }, [goalsQuery.isSuccess, competencyAvailable]);
 
   // Fall back to the list if a competency view is active but none exists (yet).
   useEffect(() => {
@@ -189,38 +196,67 @@ export default function CoursePage() {
     () => SOLO_ORDER.filter((l) => goals.some((g) => g.soloLevel === l)),
     [goals],
   );
+  const kindValues = useMemo(
+    () => ["EXPLICIT", "IMPLICIT"].filter((k) => goals.some((g) => g.kind === k)),
+    [goals],
+  );
+  const statusValues = useMemo(
+    () =>
+      ["PENDING", "APPROVED"].filter((s) =>
+        goals.some((g) => (g.status ?? "PENDING") === s),
+      ),
+    [goals],
+  );
+
+  // One entry per filter column, mirroring the tree-grid: label, the values present (in a sensible
+  // order) and how to render each. Drives both the funnel popovers and the active-filter chips.
+  const filterDefs = useMemo(
+    () => [
+      {
+        key: "level" as const,
+        label: "Level",
+        options: levels as string[],
+        display: (v: string) => LEVEL_META[v as keyof typeof LEVEL_META].label,
+      },
+      { key: "kind" as const, label: "Kind", options: kindValues, display: titleCase },
+      {
+        key: "status" as const,
+        label: "Status",
+        options: statusValues,
+        display: titleCase,
+      },
+      { key: "bloom" as const, label: "Bloom", options: bloomLevels, display: titleCase },
+      { key: "solo" as const, label: "SOLO", options: soloLevels, display: titleCase },
+    ],
+    [levels, kindValues, statusValues, bloomLevels, soloLevels],
+  );
 
   const filteredGoals = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return goals.filter((g) => {
-      if (kindFilter !== "ALL" && g.kind !== kindFilter) return false;
-      if (statusFilter !== "ALL" && (g.status ?? "PENDING") !== statusFilter)
+      if (filters.kind.size && !filters.kind.has(g.kind ?? "")) return false;
+      if (filters.status.size && !filters.status.has(g.status ?? "PENDING"))
         return false;
-      if (levelFilter !== "ALL" && levelOf(g) !== levelFilter) return false;
-      if (bloomFilter !== "ALL" && g.bloomLevel !== bloomFilter) return false;
-      if (soloFilter !== "ALL" && g.soloLevel !== soloFilter) return false;
+      if (filters.level.size && !filters.level.has(levelOf(g))) return false;
+      if (filters.bloom.size && !filters.bloom.has(g.bloomLevel ?? ""))
+        return false;
+      if (filters.solo.size && !filters.solo.has(g.soloLevel ?? ""))
+        return false;
       if (needle && !(g.text ?? "").toLowerCase().includes(needle))
         return false;
       return true;
     });
-  }, [
-    goals,
-    search,
-    kindFilter,
-    statusFilter,
-    levelFilter,
-    bloomFilter,
-    soloFilter,
-  ]);
+  }, [goals, search, filters]);
 
-  const selectedGoal = useMemo(
-    () => filteredGoals.find((g) => g.id === selectedGoalId) ?? null,
-    [filteredGoals, selectedGoalId],
-  );
 
-  // Session/unit grouping drives both the list and the table of contents.
+  // Session/unit grouping drives both the list and the table of contents. Only the
+  // lecture/exercise groups are shown — course-wide "Module goals" and "Ungrouped" goals are
+  // dropped from this view.
   const groups = useMemo(
-    () => groupGoalsByUnit(filteredGoals),
+    () =>
+      groupGoalsByUnit(filteredGoals).filter(
+        (g) => g.level === "SESSION" || g.level === "EXERCISE",
+      ),
     [filteredGoals],
   );
 
@@ -231,83 +267,94 @@ export default function CoursePage() {
     [groups, selectedGroupKey],
   );
 
-  const hasActiveFilter =
-    search.trim() !== "" ||
-    kindFilter !== "ALL" ||
-    statusFilter !== "ALL" ||
-    levelFilter !== "ALL" ||
-    bloomFilter !== "ALL" ||
-    soloFilter !== "ALL";
+  const toggleFilterValue = (key: ListFilterKey, value: string) =>
+    setFilters((prev) => {
+      const next = new Set(prev[key]);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return { ...prev, [key]: next };
+    });
+
+  const clearFilter = (key: ListFilterKey) =>
+    setFilters((prev) => ({ ...prev, [key]: new Set() }));
 
   const clearFilters = () => {
     setSearch("");
-    setKindFilter("ALL");
-    setStatusFilter("ALL");
-    setLevelFilter("ALL");
-    setBloomFilter("ALL");
-    setSoloFilter("ALL");
+    setFilters(emptyFilters());
   };
+
+  // Active filters as removable chips (search + each selected value), same as the tree-grid.
+  const activeChips: { label: string; value: string; onRemove: () => void }[] =
+    [];
+  if (search.trim())
+    activeChips.push({
+      label: "Search",
+      value: `“${search.trim()}”`,
+      onRemove: () => setSearch(""),
+    });
+  for (const def of filterDefs) {
+    for (const value of filters[def.key]) {
+      activeChips.push({
+        label: def.label,
+        value: def.display(value),
+        onRemove: () => toggleFilterValue(def.key, value),
+      });
+    }
+  }
 
   const showToc = goalsView === "list" && groups.length > 0;
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
-  const totalGoals = courseQuery.data?.goalCount ?? goals.length;
-  const approvedGoals = useMemo(
-    () => goals.filter((g) => g.status === "APPROVED").length,
-    [goals],
-  );
-  const unapprovedGoals = goals.length - approvedGoals;
-
+  // Count the loaded (gap-filtered) goals — the server-side goalCount still includes gap goals.
+  const totalGoals = goalsQuery.data
+    ? goals.length
+    : (courseQuery.data?.goalCount ?? 0);
   return (
     <div className="flex flex-col gap-6">
       {/* Header — title + count and the view toggle / menu on a single line */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <h1 className="text-2xl">{courseName}</h1>
-          {goalsView === "map" ? (
-            <span className="flex items-center gap-1.5 text-sm text-hestia-text-muted">
-              <span>·</span>
-              <CountPill
-                count={approvedGoals}
-                label="approved"
-                active={mapHighlight === "approved"}
-                onClick={() =>
-                  setMapHighlight((h) => (h === "approved" ? null : "approved"))
-                }
-              />
-              <CountPill
-                count={unapprovedGoals}
-                label="unapproved"
-                active={mapHighlight === "unapproved"}
-                onClick={() =>
-                  setMapHighlight((h) =>
-                    h === "unapproved" ? null : "unapproved",
-                  )
-                }
-              />
-            </span>
-          ) : (
-            <span className="text-sm text-hestia-text-muted">
-              · {totalGoals} learning goal{totalGoals === 1 ? "" : "s"}
-            </span>
-          )}
+          <span className="text-sm text-hestia-text-muted">
+            · {totalGoals} learning goal{totalGoals === 1 ? "" : "s"}
+          </span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md border border-hestia-border p-0.5 text-sm">
-            {views.map((view) => (
-              <button
-                key={view}
-                onClick={() => setGoalsView(view)}
-                className={`rounded-[0.3rem] px-3 py-1 font-medium transition ${
-                  goalsView === view
-                    ? "bg-hestia-primary text-white"
-                    : "text-hestia-text-muted hover:text-hestia-text"
-                }`}
-              >
-                {VIEW_LABELS[view]}
-              </button>
-            ))}
-          </div>
+          {goals.length > 0 && (
+            <nav className="flex items-center gap-4">
+              {goalsView === "map" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setGoalsView("tree")}
+                    className={VIEW_LINK_CLS}
+                  >
+                    <TableIcon />
+                    Skills as table
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGoalsView("list")}
+                    className={VIEW_LINK_CLS}
+                  >
+                    <ListIcon />
+                    Learning goals by session
+                  </button>
+                </>
+              ) : (
+                competencyAvailable && (
+                  <button
+                    type="button"
+                    onClick={() => setGoalsView("map")}
+                    className={VIEW_LINK_CLS}
+                  >
+                    <BackIcon />
+                    Skill trees
+                  </button>
+                )
+              )}
+            </nav>
+          )}
           <CourseMenu
             exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
             onDelete={() => setConfirmDelete(true)}
@@ -380,87 +427,12 @@ export default function CoursePage() {
         />
       )}
 
-      {/* Filter bar — hidden on the competency views, which render the full synthesised tree. */}
+      {/* Filter bar — hidden on the competency views, which render the full synthesised tree.
+          Filters the same way as the tree-grid: funnel popovers (multi-select) + active chips. */}
       {goals.length > 0 && !isCompetencyView && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hestia-border bg-hestia-surface p-3 shadow-sm">
-          <label className="relative flex min-w-48 max-w-sm flex-1 items-center">
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="pointer-events-none absolute left-3 h-4 w-4 text-hestia-text-muted"
-            >
-              <circle cx="9" cy="9" r="6" />
-              <path d="M14 14l4 4" />
-            </svg>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search learning goals…"
-              className="w-full rounded-md border-[1.5px] border-hestia-border bg-hestia-surface py-1.5 pl-9 pr-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-            />
-          </label>
-          <FilterDropdown
-            label="Level"
-            info={LEVEL_INFO}
-            value={levelFilter}
-            onChange={setLevelFilter}
-            options={[
-              { value: "ALL", label: "All" },
-              ...levels.map((l) => ({ value: l, label: LEVEL_META[l].label })),
-            ]}
-          />
-          <FilterDropdown
-            label="Kind"
-            info={KIND_INFO}
-            value={kindFilter}
-            onChange={(v) => setKindFilter(v as KindFilter)}
-            options={[
-              { value: "ALL", label: "All" },
-              { value: "EXPLICIT", label: "Explicit" },
-              { value: "IMPLICIT", label: "Implicit" },
-            ]}
-          />
-          <FilterDropdown
-            label="Status"
-            info={STATUS_INFO}
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as StatusFilter)}
-            options={[
-              { value: "ALL", label: "All" },
-              { value: "PENDING", label: "Pending" },
-              { value: "APPROVED", label: "Approved" },
-            ]}
-          />
-          <FilterDropdown
-            label="Bloom"
-            info={BLOOM_INFO}
-            value={bloomFilter}
-            onChange={setBloomFilter}
-            options={[
-              { value: "ALL", label: "All" },
-              ...bloomLevels.map((l) => ({ value: l, label: titleCase(l) })),
-            ]}
-          />
-          <FilterDropdown
-            label="SOLO"
-            info={SOLO_INFO}
-            value={soloFilter}
-            onChange={setSoloFilter}
-            options={[
-              { value: "ALL", label: "All" },
-              ...soloLevels.map((l) => ({ value: l, label: titleCase(l) })),
-            ]}
-          />
-          {hasActiveFilter && (
-            <button
-              onClick={clearFilters}
-              className="ml-auto inline-flex items-center gap-1.5 text-sm font-medium text-hestia-primary transition hover:text-hestia-primary-hover"
-            >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hestia-border bg-hestia-surface p-3 shadow-sm">
+            <label className="relative flex min-w-48 max-w-sm flex-1 items-center">
               <svg
                 viewBox="0 0 20 20"
                 fill="none"
@@ -468,13 +440,115 @@ export default function CoursePage() {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="h-4 w-4"
+                className="pointer-events-none absolute left-3 h-4 w-4 text-hestia-text-muted"
               >
-                <path d="M3 10a7 7 0 1 1 2 4.9" />
-                <path d="M3 15v-4h4" />
+                <circle cx="9" cy="9" r="6" />
+                <path d="M14 14l4 4" />
               </svg>
-              Clear filters
-            </button>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search learning goals…"
+                className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface py-1.5 pl-9 pr-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
+              />
+            </label>
+            {filterDefs.map((def) => {
+              if (def.options.length === 0) return null;
+              const count = filters[def.key].size;
+              return (
+                <div key={def.key} className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenFilter((prev) =>
+                        prev === def.key ? null : def.key,
+                      )
+                    }
+                    aria-haspopup="true"
+                    aria-expanded={openFilter === def.key}
+                    className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium transition ${
+                      count > 0
+                        ? "border-hestia-primary bg-hestia-primary-muted text-hestia-text"
+                        : "border-hestia-border text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
+                    }`}
+                  >
+                    {def.label}
+                    {count > 0 && (
+                      <span className="tabular-nums text-hestia-primary">
+                        {count}
+                      </span>
+                    )}
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill={count > 0 ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`h-3 w-3 ${count > 0 ? "text-hestia-primary" : "text-hestia-text-muted"}`}
+                    >
+                      <path d="M2.5 4h15l-6 7v5l-3 1.5V11z" />
+                    </svg>
+                  </button>
+                  {openFilter === def.key && (
+                    <FilterPopover
+                      options={def.options}
+                      selected={filters[def.key]}
+                      display={def.display}
+                      onToggle={(v) => toggleFilterValue(def.key, v)}
+                      onClear={() => {
+                        clearFilter(def.key);
+                        setOpenFilter(null);
+                      }}
+                      onClose={() => setOpenFilter(null)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activeChips.map((chip, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--hestia-primary)_35%,transparent)] bg-hestia-primary-muted py-0.5 pl-2.5 pr-1.5 text-xs"
+                >
+                  <span>
+                    <b className="font-semibold">{chip.label}:</b> {chip.value}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={chip.onRemove}
+                    aria-label={`Remove filter ${chip.label} ${chip.value}`}
+                    className="flex rounded-full text-hestia-text-muted transition hover:text-hestia-danger"
+                  >
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      aria-hidden="true"
+                      className="h-3 w-3"
+                    >
+                      <path d="M5 5l10 10M15 5L5 15" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+              {activeChips.length > 1 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -524,86 +598,26 @@ export default function CoursePage() {
         </div>
       )}
 
-      {/* Graph view: graph on the left, persistent detail panel on the right. */}
-      {goals.length > 0 && goalsView === "graph" && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0">
-            {filteredGoals.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
-                No goals match the current filters.
-              </p>
-            ) : (
-              <GoalGraph
-                goals={filteredGoals}
-                selectedGoalId={selectedGoalId}
-                onSelect={setSelectedGoalId}
-              />
-            )}
-          </div>
-          <aside className="lg:sticky lg:top-4 lg:self-start">
-            <GoalDetailPanel
-              goal={selectedGoal}
-              onViewInList={
-                selectedGoal ? () => setGoalsView("list") : undefined
-              }
-            />
-          </aside>
-        </div>
-      )}
-
       {/* Competency tree view: the full synthesised tree, terminal → sub-skill → knowledge/gap. */}
       {goals.length > 0 && goalsView === "tree" && (
-        <CompetencyTree goals={goals} onOpenDetail={setDetailGoal} />
+        <CompetencyTree goals={goals} />
       )}
 
       {/* Competency map view: focus-and-drill graph, one layer at a time. */}
       {goals.length > 0 && goalsView === "map" && (
         <CompetencyGraph
           goals={goals}
-          highlight={mapHighlight}
-          onOpenDetail={setDetailGoal}
-          onToggleApproved={toggleApproved}
           onEdit={setEditGoal}
           onDelete={setGoalToDelete}
         />
       )}
 
-      <GoalDetailModal goal={detailGoal} onClose={() => setDetailGoal(null)} />
+      <CompetencyGoalModal
+        goal={detailGoal}
+        relationships={detailGoal ? groupRelationships(detailGoal) : []}
+        onClose={() => setDetailGoal(null)}
+      />
     </div>
-  );
-}
-
-/** A clickable count in the map header that toggles dimming of the non-matching nodes. When active
- * it is filled in; clicking again clears the highlight. */
-function CountPill({
-  count,
-  label,
-  active,
-  onClick,
-}: {
-  count: number;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      title={
-        active
-          ? `Showing all — click to clear`
-          : `Highlight ${label} goals, dim the rest`
-      }
-      className={`rounded-full border px-2 py-0.5 font-medium tabular-nums transition ${
-        active
-          ? "border-hestia-primary bg-hestia-primary text-white"
-          : "border-hestia-border text-hestia-text-muted hover:border-hestia-primary hover:text-hestia-text"
-      }`}
-    >
-      {count} {label}
-    </button>
   );
 }
 
@@ -627,7 +641,6 @@ function GoalCards({
     <div className="flex flex-col gap-4">
       {group.goals.map((goal, i) => {
         const rels = groupRelationships(goal);
-        const sources = sourceFilenames(goal);
         const hasMeta =
           Boolean(goal.bloomLevel || goal.soloLevel) || rels.length > 0;
         const approved = goal.status === "APPROVED";
@@ -651,41 +664,14 @@ function GoalCards({
             <div className="min-w-0 flex-1">
               <p className="text-sm leading-relaxed text-hestia-text">
                 {goal.text}
-                {sources.map((name, s) => (
-                  <SourceChip key={s} name={name} />
-                ))}
               </p>
               {hasMeta && (
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-hestia-text-muted">
                   {goal.bloomLevel && (
-                    <Tooltip
-                      content={
-                        <TaxonomyTip
-                          taxonomy="Bloom"
-                          level={titleCase(goal.bloomLevel)}
-                          desc={BLOOM_DESC[titleCase(goal.bloomLevel)]}
-                        />
-                      }
-                    >
-                      <Badge variant="accent">
-                        {titleCase(goal.bloomLevel)}
-                      </Badge>
-                    </Tooltip>
+                    <Badge variant="accent">{titleCase(goal.bloomLevel)}</Badge>
                   )}
                   {goal.soloLevel && (
-                    <Tooltip
-                      content={
-                        <TaxonomyTip
-                          taxonomy="SOLO"
-                          level={titleCase(goal.soloLevel)}
-                          desc={SOLO_DESC[titleCase(goal.soloLevel)]}
-                        />
-                      }
-                    >
-                      <Badge variant="primary">
-                        {titleCase(goal.soloLevel)}
-                      </Badge>
-                    </Tooltip>
+                    <Badge variant="primary">{titleCase(goal.soloLevel)}</Badge>
                   )}
                   {(goal.bloomLevel || goal.soloLevel) && rels.length > 0 && (
                     <span
@@ -694,18 +680,13 @@ function GoalCards({
                     />
                   )}
                   {rels.map((r) => (
-                    <Tooltip
-                      key={r.type}
-                      content={<RelationshipTip group={r} />}
-                    >
-                      <span className="cursor-help whitespace-nowrap decoration-hestia-border decoration-dotted underline-offset-2 hover:underline">
-                        {r.phrase}{" "}
-                        <span className="font-semibold tabular-nums text-hestia-text">
-                          {r.count}
-                        </span>{" "}
-                        goal{r.count === 1 ? "" : "s"}
-                      </span>
-                    </Tooltip>
+                    <span key={r.type} className="whitespace-nowrap">
+                      {r.phrase}{" "}
+                      <span className="font-semibold tabular-nums text-hestia-text">
+                        {r.count}
+                      </span>{" "}
+                      goal{r.count === 1 ? "" : "s"}
+                    </span>
                   ))}
                 </div>
               )}
@@ -815,92 +796,8 @@ function CardAction({
   );
 }
 
-/**
- * Wraps a card trigger (badge / relationship text) and reveals a HESTIA-styled tooltip above it on
- * hover. Hover-only (no focusable child) because triggers live inside the clickable goal card button.
- */
-function Tooltip({
-  content,
-  children,
-}: {
-  content: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="group/tip relative inline-flex items-center">
-      {children}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-60 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-hestia-border border-l-[3px] border-l-hestia-primary bg-hestia-surface p-2.5 text-left text-xs font-normal normal-case leading-snug tracking-normal shadow-lg group-hover/tip:block"
-      >
-        {content}
-      </span>
-    </span>
-  );
-}
-
-/** Tooltip body for a Bloom/SOLO badge: which taxonomy it is, the level, and what the level means. */
-function TaxonomyTip({
-  taxonomy,
-  level,
-  desc,
-}: {
-  taxonomy: string;
-  level: string;
-  desc?: string;
-}) {
-  return (
-    <>
-      <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-hestia-primary">
-        {taxonomy}
-      </span>
-      <span className="mt-0.5 block font-semibold text-hestia-text">
-        {level}
-      </span>
-      {desc && (
-        <span className="mt-0.5 block text-hestia-text-muted">{desc}</span>
-      )}
-    </>
-  );
-}
-
-/** Tooltip body for a relationship summary: the phrase plus the exact linked goals. */
-function RelationshipTip({ group }: { group: RelationshipGroup }) {
-  return (
-    <>
-      <span className="block text-[0.65rem] font-semibold uppercase tracking-wide text-hestia-primary">
-        {group.phrase} {group.count} goal{group.count === 1 ? "" : "s"}
-      </span>
-      {group.targets.length > 0 && (
-        <span className="mt-1 flex flex-col gap-1">
-          {group.targets.map((t, i) => (
-            <span key={i} className="flex gap-1.5 text-hestia-text">
-              <span className="text-hestia-text-muted">•</span>
-              <span className="line-clamp-2">{t}</span>
-            </span>
-          ))}
-        </span>
-      )}
-    </>
-  );
-}
-
-/** A compact source chip rendered inline after the goal text, ChatGPT-citation style. */
-function SourceChip({ name }: { name: string }) {
-  return (
-    <span
-      title={name}
-      className="ml-1 inline-flex max-w-[10rem] items-center gap-0.5 rounded border border-hestia-border bg-hestia-surface px-1 py-px align-middle text-[0.65rem] font-normal leading-none text-hestia-text-muted"
-    >
-      <span className="shrink-0">
-        <DocIcon />
-      </span>
-      <span className="truncate">{name}</span>
-    </span>
-  );
-}
-
-function DocIcon() {
+/** Icons for the header jump links. Sized to sit inline with the link text. */
+function TableIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
@@ -910,10 +807,44 @@ function DocIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-3 w-3"
+      className="h-4 w-4"
     >
-      <path d="M6 3h5l3 3v11H6z" />
-      <path d="M11 3v3h3" />
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <path d="M3 8h14M8 8v8" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <path d="M7 5h10M7 10h10M7 15h10M3.5 5h.01M3.5 10h.01M3.5 15h.01" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <path d="M11 5l-5 5 5 5M6 10h9" />
     </svg>
   );
 }
@@ -1276,216 +1207,6 @@ function LevelSelect({
   );
 }
 
-/** Title-cases an ALL-CAPS enum value (e.g. "EXTENDED_ABSTRACT" → "Extended Abstract"). */
-function titleCase(value: string): string {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-/**
- * Compact filter control: a single button showing the active value that opens a popover of
- * pill options. Keeps the whole filter bar to one row instead of a chip group per facet.
- */
-function FilterDropdown({
-  label,
-  info,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  info?: FilterInfo;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useDismissable<HTMLDivElement>(open, () => setOpen(false));
-  if (options.length <= 1) return null;
-
-  const active = options.find((o) => o.value === value) ?? options[0];
-  const isFiltered = value !== "ALL";
-
-  return (
-    <div ref={ref} className="relative inline-flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium transition ${
-          isFiltered
-            ? "border-hestia-primary bg-hestia-primary-muted text-hestia-text"
-            : "border-hestia-border text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-        }`}
-      >
-        <span className="text-hestia-text-muted">{label}</span>
-        <span
-          className={isFiltered ? "text-hestia-primary" : "text-hestia-text"}
-        >
-          {active.label}
-        </span>
-        <svg
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`h-3.5 w-3.5 text-hestia-text-muted transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-        >
-          <path d="M5 7l5 6 5-6" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute left-0 top-full z-20 mt-1 rounded-md border border-hestia-border bg-hestia-surface p-1.5 shadow-lg"
-        >
-          <div className="flex max-w-[16rem] flex-wrap gap-1.5">
-            {options.map((o) => {
-              const isActive = o.value === value;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={isActive}
-                  onClick={() => {
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                  className={`whitespace-nowrap rounded-md px-2.5 py-1 text-sm font-medium transition ${
-                    isActive
-                      ? "bg-hestia-primary text-white"
-                      : "border border-hestia-border text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {info && <InfoTip title={label} info={info} />}
-    </div>
-  );
-}
-
-/** Structured explanation shown in a filter's info tooltip. */
-type FilterInfo = {
-  intro: string;
-  items?: { term: string; desc: string }[];
-};
-
-const LEVEL_INFO: FilterInfo = {
-  intro: "The hierarchy level a goal applies to.",
-  items: [
-    { term: "Module", desc: "Course-wide outcome spanning the whole course." },
-    { term: "Session", desc: "Tied to a single lecture or document." },
-    { term: "Exercise", desc: "Tied to a specific exercise or tutorial." },
-  ],
-};
-
-const KIND_INFO: FilterInfo = {
-  intro: "Where the goal comes from.",
-  items: [
-    { term: "Explicit", desc: "Stated directly in the source material." },
-    { term: "Implicit", desc: "Inferred by the model from the content." },
-  ],
-};
-
-const STATUS_INFO: FilterInfo = {
-  intro: "The review state of a goal.",
-  items: [
-    { term: "Pending", desc: "Extracted but not yet reviewed." },
-    { term: "Approved", desc: "Accepted by an instructor." },
-  ],
-};
-
-const BLOOM_INFO: FilterInfo = {
-  intro:
-    "Bloom's taxonomy — the cognitive demand, from lower- to higher-order thinking.",
-  items: [
-    { term: "Remember", desc: "Recall facts and basic concepts." },
-    { term: "Understand", desc: "Explain ideas or concepts." },
-    { term: "Apply", desc: "Use knowledge in new situations." },
-    { term: "Analyze", desc: "Break ideas apart and draw connections." },
-    { term: "Evaluate", desc: "Justify a stance or judgement." },
-    { term: "Create", desc: "Produce new or original work." },
-  ],
-};
-
-const SOLO_INFO: FilterInfo = {
-  intro:
-    "SOLO taxonomy — how structurally complex the expected understanding is.",
-  items: [
-    { term: "Prestructural", desc: "Misses the point; no real grasp." },
-    { term: "Unistructural", desc: "Grasps one relevant aspect." },
-    { term: "Multistructural", desc: "Several aspects, but in isolation." },
-    { term: "Relational", desc: "Integrates aspects into a coherent whole." },
-    { term: "Extended Abstract", desc: "Generalises beyond to new contexts." },
-  ],
-};
-
-/** Level → description lookups (keyed by title-cased term) for the badge tooltips. */
-const BLOOM_DESC: Record<string, string> = Object.fromEntries(
-  (BLOOM_INFO.items ?? []).map((i) => [i.term, i.desc]),
-);
-const SOLO_DESC: Record<string, string> = Object.fromEntries(
-  (SOLO_INFO.items ?? []).map((i) => [i.term, i.desc]),
-);
-
-/** A muted "i" icon that reveals a HESTIA-styled explanatory tooltip on hover/focus. */
-function InfoTip({ title, info }: { title: string; info: FilterInfo }) {
-  return (
-    <span className="group/tip relative inline-flex" tabIndex={0}>
-      <svg
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        className="h-4 w-4 cursor-help text-hestia-text-muted transition hover:text-hestia-primary"
-      >
-        <circle cx="10" cy="10" r="7.5" />
-        <path d="M10 9v4" />
-        <path d="M10 6.5h.01" />
-      </svg>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-72 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-hestia-border border-l-[3px] border-l-hestia-primary bg-hestia-surface p-3 text-left shadow-lg group-hover/tip:block group-focus/tip:block"
-      >
-        <span className="block text-xs font-semibold uppercase tracking-wide text-hestia-primary">
-          {title}
-        </span>
-        <span className="mt-1 block text-xs leading-snug text-hestia-text-muted">
-          {info.intro}
-        </span>
-        {info.items && (
-          <span className="mt-2 flex flex-col gap-1 border-t border-hestia-border pt-2">
-            {info.items.map((it) => (
-              <span key={it.term} className="block text-xs leading-snug">
-                <span className="font-semibold text-hestia-text">
-                  {it.term}
-                </span>
-                <span className="text-hestia-text-muted"> — {it.desc}</span>
-              </span>
-            ))}
-          </span>
-        )}
-      </span>
-    </span>
-  );
-}
 
 /**
  * Closes a popover when the user clicks outside the returned ref's element or presses Escape.

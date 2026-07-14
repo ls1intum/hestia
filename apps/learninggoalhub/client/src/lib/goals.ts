@@ -70,6 +70,40 @@ export function groupGoalsByUnit(goals: LearningGoal[]): GoalGroup[] {
   );
 }
 
+/** Title-cases an ALL-CAPS enum value (e.g. "EXTENDED_ABSTRACT" → "Extended Abstract"). */
+export function titleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** Level → description lookups (keyed by title-cased term), shared by the list view's badge
+ * tooltips and filter infos and the competency map's hover card. Insertion order is the
+ * taxonomy's level order. */
+export const BLOOM_DESC: Record<string, string> = {
+  Remember: "Recall facts and basic concepts.",
+  Understand: "Explain ideas or concepts.",
+  Apply: "Use knowledge in new situations.",
+  Analyze: "Break ideas apart and draw connections.",
+  Evaluate: "Justify a stance or judgement.",
+  Create: "Produce new or original work.",
+};
+
+export const SOLO_DESC: Record<string, string> = {
+  Prestructural: "Misses the point; no real grasp.",
+  Unistructural: "Grasps one relevant aspect.",
+  Multistructural: "Several aspects, but in isolation.",
+  Relational: "Integrates aspects into a coherent whole.",
+  "Extended Abstract": "Generalises beyond to new contexts.",
+};
+
+export const KIND_DESC: Record<string, string> = {
+  Explicit: "Stated directly in the source material.",
+  Implicit: "Inferred by the model from the content.",
+};
+
 export const RELATIONSHIP_LABELS: Record<string, string> = {
   CONTRIBUTES_TO: "contributes to",
   PREREQUISITE_OF: "prerequisite of",
@@ -155,12 +189,16 @@ export type CompetencyNode = {
   children: CompetencyNode[];
 };
 
+// Role colours are drawn from the HESTIA styleguide's text-safe palette (primary / accent /
+// text-muted); warning is deliberately avoided (never a standalone text colour) and danger is
+// reserved for gaps. Skill takes gold (the sparing main accent, few top-level nodes), sub-skill
+// the secondary accent, knowledge the quiet muted tier.
 export const COMPETENCY_ROLE_META: Record<
   CompetencyRole,
   { label: string; color: string }
 > = {
-  competency: { label: "Skill", color: "var(--hestia-accent)" },
-  "sub-skill": { label: "Sub-skill", color: "var(--hestia-primary)" },
+  competency: { label: "Skill", color: "var(--hestia-primary)" },
+  "sub-skill": { label: "Sub-skill", color: "var(--hestia-accent)" },
   knowledge: { label: "Knowledge", color: "var(--hestia-text-muted)" },
   gap: { label: "Gap", color: "var(--hestia-danger)" },
 };
@@ -173,8 +211,10 @@ export const COMPETENCY_ROLE_META: Record<
  * Tree depth is capped at three tiers (terminal → sub-skill → knowledge/gap) and traversal
  * tracks the current path so a stray edge can never produce a cycle or revisit a node within
  * its own branch. Roles are assigned by position: depth 0 = competency; a depth-1 node is a
- * sub-skill when it has children, otherwise leftover knowledge attached directly to the
- * terminal; deeper nodes are knowledge; any GAP-origin goal renders as a gap leaf.
+ * sub-skill when it has children OR carries a doing/judgement Bloom level (a childless
+ * apply/analyze/evaluate/create goal is still a capability, not knowledge), otherwise it is
+ * leftover knowledge attached directly to the terminal; deeper nodes are knowledge; any
+ * GAP-origin goal renders as a gap leaf.
  */
 export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   const byId = new Map<number, LearningGoal>();
@@ -193,6 +233,9 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   }
 
   const MAX_DEPTH = 2; // depth 0/1/2 = competency / sub-skill / knowledge|gap
+
+  // Bloom levels that make a goal a capability (mirrors the server's SUB_SKILL_BLOOM split).
+  const DOING_BLOOM = new Set(["APPLY", "ANALYZE", "EVALUATE", "CREATE"]);
 
   const build = (
     goal: LearningGoal,
@@ -213,7 +256,8 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
         ? "gap"
         : depth === 0
           ? "competency"
-          : children.length > 0
+          : depth === 1 &&
+              (children.length > 0 || DOING_BLOOM.has(goal.bloomLevel ?? ""))
             ? "sub-skill"
             : "knowledge";
     return { goal, role, children };
@@ -228,19 +272,6 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
 /** Whether a course has a synthesised competency tree to show (≥1 terminal competency). */
 export function hasCompetencyTree(goals: LearningGoal[]): boolean {
   return goals.some((g) => g.origin === "TERMINAL");
-}
-
-/**
- * Number of not-yet-approved goals in a node's subtree, excluding the node itself — i.e. how much
- * review work is still hidden beneath a (collapsed) branch box in the competency map.
- */
-export function countPendingDescendants(node: CompetencyNode): number {
-  let pending = 0;
-  for (const child of node.children) {
-    if (child.goal.status !== "APPROVED") pending += 1;
-    pending += countPendingDescendants(child);
-  }
-  return pending;
 }
 
 /** Distinct source filenames backing a goal, preserving first-seen order. */

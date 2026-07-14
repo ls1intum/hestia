@@ -624,8 +624,13 @@ public class ExtractionRunner {
     private static final Set<BloomLevel> HIGH_BLOOM =
             EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
 
-    /** Bloom levels that make a goal a SUB-SKILL (a doing-capability); every other goal is knowledge. */
-    private static final Set<BloomLevel> SUB_SKILL_BLOOM = EnumSet.of(BloomLevel.APPLY, BloomLevel.CREATE);
+    /**
+     * Bloom levels that make a goal a SUB-SKILL — a doing/judgement capability. Only the pure
+     * knowledge levels ({@code REMEMBER}/{@code UNDERSTAND}) become tier-3 knowledge leaves, so the
+     * lowest tier stays declarative knowledge.
+     */
+    private static final Set<BloomLevel> SUB_SKILL_BLOOM =
+            EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
 
     /** How many terminal competencies and gap nodes the competency tree produced. */
     public record CompetencyTreeResult(int competencies, int gaps) {
@@ -641,7 +646,8 @@ public class ExtractionRunner {
      *       {@code TERMINAL}-origin {@link LearningGoal} under the root;</li>
      *   <li>route EVERY session/exercise goal under the competency it serves (full coverage, unlike the
      *       clustering's sparse hints) and split each competency's goals by Bloom into sub-skills
-     *       ({@code APPLY}/{@code CREATE}) and knowledge (the rest);</li>
+     *       ({@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE}) and knowledge
+     *       ({@code REMEMBER}/{@code UNDERSTAND});</li>
      *   <li>per competency, attach knowledge under the sub-skill it underpins and name the knowledge a
      *       sub-skill needs but the material lacks, as unanchored {@code GAP} goals — so the lowest node
      *       under every sub-skill is a knowledge aspect.</li>
