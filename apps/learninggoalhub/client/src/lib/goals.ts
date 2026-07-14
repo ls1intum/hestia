@@ -70,6 +70,40 @@ export function groupGoalsByUnit(goals: LearningGoal[]): GoalGroup[] {
   );
 }
 
+/** Title-cases an ALL-CAPS enum value (e.g. "EXTENDED_ABSTRACT" → "Extended Abstract"). */
+export function titleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** Level → description lookups (keyed by title-cased term), shared by the list view's badge
+ * tooltips and filter infos and the competency map's hover card. Insertion order is the
+ * taxonomy's level order. */
+export const BLOOM_DESC: Record<string, string> = {
+  Remember: "Recall facts and basic concepts.",
+  Understand: "Explain ideas or concepts.",
+  Apply: "Use knowledge in new situations.",
+  Analyze: "Break ideas apart and draw connections.",
+  Evaluate: "Justify a stance or judgement.",
+  Create: "Produce new or original work.",
+};
+
+export const SOLO_DESC: Record<string, string> = {
+  Prestructural: "Misses the point; no real grasp.",
+  Unistructural: "Grasps one relevant aspect.",
+  Multistructural: "Several aspects, but in isolation.",
+  Relational: "Integrates aspects into a coherent whole.",
+  "Extended Abstract": "Generalises beyond to new contexts.",
+};
+
+export const KIND_DESC: Record<string, string> = {
+  Explicit: "Stated directly in the source material.",
+  Implicit: "Inferred by the model from the content.",
+};
+
 export const RELATIONSHIP_LABELS: Record<string, string> = {
   CONTRIBUTES_TO: "contributes to",
   PREREQUISITE_OF: "prerequisite of",
@@ -155,12 +189,16 @@ export type CompetencyNode = {
   children: CompetencyNode[];
 };
 
+// Role colours are drawn from the HESTIA styleguide's text-safe palette (primary / accent /
+// text-muted); warning is deliberately avoided (never a standalone text colour) and danger is
+// reserved for gaps. Skill takes gold (the sparing main accent, few top-level nodes), sub-skill
+// the secondary accent, knowledge the quiet muted tier.
 export const COMPETENCY_ROLE_META: Record<
   CompetencyRole,
   { label: string; color: string }
 > = {
-  competency: { label: "Skill", color: "var(--hestia-accent)" },
-  "sub-skill": { label: "Sub-skill", color: "var(--hestia-primary)" },
+  competency: { label: "Skill", color: "var(--hestia-primary)" },
+  "sub-skill": { label: "Sub-skill", color: "var(--hestia-accent)" },
   knowledge: { label: "Knowledge", color: "var(--hestia-text-muted)" },
   gap: { label: "Gap", color: "var(--hestia-danger)" },
 };
