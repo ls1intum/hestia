@@ -61,6 +61,14 @@ learninggoalhub client for a worked example.
 
 Prefixes in use: `/learninggoalhub`, `/examlense`. Add yours here when you onboard.
 
+**Naming on the shared network:** Compose registers a service's *name* as a DNS alias on
+every network it joins. Generic service names (`server`, `web`, `postgres`) on `hestia-edge`
+therefore shadow those names for **all** attached containers — e.g. another app's nginx
+resolving its upstream `server` may suddenly get your container. If a service joins
+`hestia-edge`, give it an app-unique name (e.g. `examlense-server`), and when resolving
+your *own* containers from a service that sits on the shared network, use the unique
+`container_name` instead of the generic service name.
+
 One exception: `apps/landing-page` serves the **bare host root** (`https://<vm-host>/`).
 Its router matches ``Host(`<vm-host>`)`` with no path prefix at explicit `priority=1`, so
 every app's longer `Host && PathPrefix` rule wins and the landing page catches the rest.
