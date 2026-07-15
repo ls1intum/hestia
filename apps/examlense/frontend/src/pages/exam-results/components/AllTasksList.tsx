@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ReadOnlyContextBlock } from "@/components/shared/exam-content/read-only/ReadOnlyContextBlock";
 import { ReadOnlyFigureBlock } from "@/components/shared/exam-content/read-only/ReadOnlyFigureBlock";
 import { ReadOnlyTaskCard } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
@@ -108,12 +108,12 @@ export const AllTasksList = ({
     if (typeof window === "undefined") return "";
     return window.location.hash.replace(/^#/, "");
   });
-  useEffect(() => {
-    const validIds = new Set(grouped.map((g) => g.slug));
-    if (!currentSlug || !validIds.has(currentSlug)) {
-      setCurrentSlug(grouped[0]?.slug ?? "");
-    }
-  }, [grouped, currentSlug]);
+  // Resolve the effective section during render rather than syncing state via an
+  // effect: fall back to the first section whenever the stored slug is empty or
+  // points at a section that no longer exists.
+  const activeSlug = grouped.some((g) => g.slug === currentSlug)
+    ? currentSlug
+    : grouped[0]?.slug ?? "";
 
   const slides: CarouselSlide[] = grouped.map((g) => {
     const letterById = new Map<string, string>();
@@ -246,7 +246,7 @@ export const AllTasksList = ({
     <div className="flex min-h-0 min-w-0 flex-1">
       <SectionSidebar
         entries={sectionEntries}
-        currentSectionId={currentSlug}
+        currentSectionId={activeSlug}
         onSelectSection={setCurrentSlug}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -254,7 +254,7 @@ export const AllTasksList = ({
           <div className="mx-auto w-full max-w-[900px] px-hestia-6 pb-hestia-8 pt-hestia-5">
             <SectionCarousel
               slides={slides}
-              currentId={currentSlug}
+              currentId={activeSlug}
               onChange={setCurrentSlug}
             />
           </div>
