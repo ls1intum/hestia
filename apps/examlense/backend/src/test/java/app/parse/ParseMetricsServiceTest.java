@@ -2,8 +2,6 @@ package app.parse;
 
 import app.parse.ParseMetricsService.Metrics;
 import app.parse.ParseMetricsService.ModelStat;
-import app.persistence.entity.ParseMetric;
-import app.persistence.repository.ParseMetricRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

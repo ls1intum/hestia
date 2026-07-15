@@ -1,6 +1,6 @@
 package app.sse;
 
-import app.api.Access;
+import app.shared.Access;
 import app.security.CurrentUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

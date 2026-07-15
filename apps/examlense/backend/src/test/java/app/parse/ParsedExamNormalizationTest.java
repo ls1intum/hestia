@@ -1,6 +1,6 @@
 package app.parse;
 
-import app.persistence.entity.TaskOption;
+import app.task.TaskOption;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

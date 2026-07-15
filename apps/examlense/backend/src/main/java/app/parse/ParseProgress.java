@@ -1,6 +1,6 @@
 package app.parse;
 
-import app.persistence.repository.ExamRepository;
+import app.exam.ExamRepository;
 import app.sse.SseHub;
 import java.util.UUID;
 import org.slf4j.Logger;

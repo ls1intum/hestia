@@ -2,7 +2,7 @@ package app.parse;
 
 import app.ai.AiProvider;
 import app.ai.ParserStrategy;
-import app.persistence.repository.ExamRepository;
+import app.exam.ExamRepository;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;

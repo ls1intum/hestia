@@ -1,14 +1,14 @@
 package app.parse;
 
-import app.persistence.entity.Exam;
-import app.persistence.entity.Section;
-import app.persistence.entity.SectionBlock;
-import app.persistence.entity.Task;
-import app.persistence.entity.TaskOption;
-import app.persistence.repository.ExamRepository;
-import app.persistence.repository.SectionBlockRepository;
-import app.persistence.repository.SectionRepository;
-import app.persistence.repository.TaskRepository;
+import app.exam.Exam;
+import app.section.Section;
+import app.section.SectionBlock;
+import app.task.Task;
+import app.task.TaskOption;
+import app.exam.ExamRepository;
+import app.section.SectionBlockRepository;
+import app.section.SectionRepository;
+import app.task.TaskRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;

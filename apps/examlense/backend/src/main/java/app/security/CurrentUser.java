@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
 /**
  * Inject the authenticated principal directly into controller args. With the
  * static-token auth filter the principal is the single-user id String
- * ({@link app.persistence.DefaultUser#ID}).
+ * ({@link app.shared.DefaultUser#ID}).
  *
  * Usage:
  *   @GetMapping("/me")
