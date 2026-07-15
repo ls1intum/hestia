@@ -1,13 +1,13 @@
 package app.solve;
 
-import app.api.Access;
+import app.shared.Access;
 import app.error.ApiException;
-import app.persistence.entity.Exam;
-import app.persistence.entity.Task;
-import app.persistence.repository.ExamRepository;
-import app.persistence.repository.TaskAnswerRepository;
-import app.persistence.repository.TaskGradeRepository;
-import app.persistence.repository.TaskRepository;
+import app.exam.Exam;
+import app.task.Task;
+import app.exam.ExamRepository;
+import app.task.TaskAnswerRepository;
+import app.grading.TaskGradeRepository;
+import app.task.TaskRepository;
 import app.sse.SseHub;
 import java.util.List;
 import java.util.UUID;

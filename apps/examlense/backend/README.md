@@ -99,22 +99,35 @@ every request, and `src/lib/sse.ts` opens the SSE streams.
 backend/
 ├── build.gradle.kts
 ├── settings.gradle.kts
-├── src/main/java/app/
-│   ├── ApiApplication.java
-│   ├── security/        # StaticTokenAuthFilter, RateLimitFilter, CurrentUser
-│   ├── config/          # SecurityConfig, AsyncConfig (solver/LGH pools, scheduling)
-│   ├── api/             # CRUD controllers + CrudService + Dtos (snake_case) + Access/Patch helpers
-│   ├── error/           # ApiException + GlobalExceptionHandler
-│   ├── persistence/     # JPA entities + repositories + DefaultUser
-│   ├── parse/           # parse pipeline: ParseExamService (orchestrator),
-│   │                    #   ParseInputBuilder, ParsedExamPersister, ParseProgress, metrics
+├── src/main/java/app/          # package-by-feature: each domain slice owns its
+│   ├── ApiApplication.java     #   controller + service + entity + repository + DTOs
+│   │
+│   │   # ── domain feature slices ──
+│   ├── exam/            # ExamController, ExamService (duplication), ExamProgressService,
+│   │                    #   Exam entity + repo, ExamDtos (snake_case)
+│   ├── section/         # Section/Block/Figure controllers, SectionService (insert/unconfirm/
+│   │                    #   delete), Section/SectionBlock/SectionFigure entities + repos, SectionDtos
+│   ├── task/            # Task + TaskAnswer controllers, TaskService (insert),
+│   │                    #   Task/TaskOption/TaskAnswer entities + repos, TaskDtos
+│   ├── grading/         # TaskGradeController, TaskGrade entity + repo, GradeDto
+│   ├── parse/           # parse pipeline: ParseExamService (orchestrator), ParseInputBuilder,
+│   │                    #   ParsedExamPersister, ParseProgress, metrics + parse-quality survey
 │   ├── solve/           # SolveExam/Section/Task services + SolveCore (shared machinery)
+│   ├── lgh/             # LearningGoalHub proxy + goal generation
+│   ├── admin/           # AdminController (survey/metrics rollups) + SurveyModelDto
+│   │
+│   │   # ── shared technical infrastructure ──
 │   ├── ai/              # AiProvider + factory, ProviderHttpCaller (shared transport/retry),
 │   │                    #   per-provider request/response adapters, parser/solver strategies
-│   ├── lgh/             # LearningGoalHub proxy + goal generation
+│   ├── storage/         # StorageService, LocalFileSystemStorageService, SignedUrls, FileController
+│   ├── sse/             # SseHub + SseController
+│   ├── security/        # StaticTokenAuthFilter, RateLimitFilter, CurrentUser
+│   ├── config/          # SecurityConfig, AsyncConfig (solver/LGH pools, scheduling)
+│   ├── error/           # ApiException + GlobalExceptionHandler
 │   ├── prompts/         # solver prompt + submit_answers schema
-│   ├── storage/         # StorageService, LocalFileSystemStorageService, SignedUrls
-│   └── sse/             # SseHub + SseController
+│   ├── models/          # ModelsController (parser/solver model catalog endpoint)
+│   ├── health/          # HealthController
+│   └── shared/          # Access + Patch (ownership / PATCH-body helpers), DefaultUser
 └── src/main/resources/
     ├── application.yml
     └── db/migration/    # Flyway (V1__baseline.sql … V5)

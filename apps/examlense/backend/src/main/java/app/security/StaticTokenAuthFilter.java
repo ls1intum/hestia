@@ -1,6 +1,6 @@
 package app.security;
 
-import app.persistence.DefaultUser;
+import app.shared.DefaultUser;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

@@ -1,10 +1,10 @@
 package app.lgh;
 
-import app.api.Access;
+import app.shared.Access;
 import app.error.ApiException;
-import app.persistence.entity.Exam;
-import app.persistence.entity.Task;
-import app.persistence.repository.TaskRepository;
+import app.exam.Exam;
+import app.task.Task;
+import app.task.TaskRepository;
 import app.security.CurrentUser;
 import java.util.HashSet;
 import java.util.List;

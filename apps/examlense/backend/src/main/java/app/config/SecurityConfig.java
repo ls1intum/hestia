@@ -21,7 +21,7 @@ import java.util.List;
  * Stateless API security. Real user authentication is deferred to a later phase;
  * for now the API is gated by a single static bearer token plus a coarse per-IP
  * rate limiter (bot/overload protection only). A valid token authenticates the
- * request as the single seeded user (see {@link app.persistence.DefaultUser}).
+ * request as the single seeded user (see {@link app.shared.DefaultUser}).
  *
  * Public endpoints: /api/healthz (liveness probe) and CORS preflight.
  */

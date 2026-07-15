@@ -1,6 +1,6 @@
 package app.security;
 
-import app.persistence.DefaultUser;
+import app.shared.DefaultUser;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

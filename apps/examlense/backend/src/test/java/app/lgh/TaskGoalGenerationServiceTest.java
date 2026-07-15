@@ -1,10 +1,10 @@
 package app.lgh;
 
-import app.persistence.entity.Exam;
-import app.persistence.repository.ExamRepository;
-import app.persistence.repository.SectionBlockRepository;
-import app.persistence.repository.SectionRepository;
-import app.persistence.repository.TaskRepository;
+import app.exam.Exam;
+import app.exam.ExamRepository;
+import app.section.SectionBlockRepository;
+import app.section.SectionRepository;
+import app.task.TaskRepository;
 import app.sse.SseHub;
 import java.util.List;
 import java.util.Optional;

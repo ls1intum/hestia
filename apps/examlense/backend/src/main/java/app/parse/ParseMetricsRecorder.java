@@ -1,8 +1,6 @@
 package app.parse;
 
-import app.persistence.entity.ParseMetric;
-import app.persistence.repository.ExamRepository;
-import app.persistence.repository.ParseMetricRepository;
+import app.exam.ExamRepository;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

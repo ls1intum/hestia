@@ -1,13 +1,13 @@
 package app.solve;
 
-import app.api.Access;
-import app.persistence.entity.Exam;
-import app.persistence.entity.Task;
-import app.persistence.repository.ExamRepository;
-import app.persistence.repository.SectionRepository;
-import app.persistence.repository.TaskAnswerRepository;
-import app.persistence.repository.TaskGradeRepository;
-import app.persistence.repository.TaskRepository;
+import app.shared.Access;
+import app.exam.Exam;
+import app.task.Task;
+import app.exam.ExamRepository;
+import app.section.SectionRepository;
+import app.task.TaskAnswerRepository;
+import app.grading.TaskGradeRepository;
+import app.task.TaskRepository;
 import app.sse.SseHub;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
