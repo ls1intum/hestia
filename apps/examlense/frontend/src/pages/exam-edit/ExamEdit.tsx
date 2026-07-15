@@ -22,10 +22,10 @@ import {
   listAnswers,
   cancelExam,
 } from "@/lib/api/api-client";
-import { subscribeExam } from "@/lib/api/sse";
 import { examKey, tasksKey } from "@/hooks/data/use-exam";
 import { sectionsKey, blocksKey } from "@/hooks/data/use-sections";
 import { useExamBundle } from "@/hooks/data/use-exam-bundle";
+import { useExamRealtime } from "@/hooks/data/use-exam-realtime";
 import { useExamMutations } from "@/pages/exam-edit/use-exam-mutations";
 import { SaveStatusProvider, useSaveStatus, SaveIndicator } from "@/pages/exam-edit/components/SaveStatus";
 import { useToast } from "@/hooks/ui/use-toast";
@@ -81,29 +81,26 @@ const ExamEditInner = () => {
 
   // Keep the exam in sync if its status changes server-side (e.g. background
   // evaluation flips it back to a non-evaluating state).
-  useEffect(() => {
-    if (!id) return;
+  useExamRealtime(id, {
     // The SSE `exam` event carries no payload, so we can't diff status here.
     // Invalidate the exam and its child collections together: when the
     // background pipeline transitions out of a long-running phase
     // (parsing/evaluating/grading), the child collections were empty at first
     // load, and refetching them renders the freshly created
     // sections/tasks/blocks without a manual refresh.
-    return subscribeExam(id, {
-      onExam: () => {
-        qc.invalidateQueries({ queryKey: examKey(id) });
-        qc.invalidateQueries({ queryKey: tasksKey(id) });
-        qc.invalidateQueries({ queryKey: sectionsKey(id) });
-        qc.invalidateQueries({ queryKey: blocksKey(id) });
-      },
-      // Learning goals were generated in the background — refresh the tasks
-      // (they carry the goal ids) and the resolved-goal cache.
-      onTasks: () => {
-        qc.invalidateQueries({ queryKey: tasksKey(id) });
-        qc.invalidateQueries({ queryKey: examLearningGoalsKey(id) });
-      },
-    });
-  }, [id, qc]);
+    onExam: () => {
+      qc.invalidateQueries({ queryKey: examKey(id) });
+      qc.invalidateQueries({ queryKey: tasksKey(id) });
+      qc.invalidateQueries({ queryKey: sectionsKey(id) });
+      qc.invalidateQueries({ queryKey: blocksKey(id) });
+    },
+    // Learning goals were generated in the background — refresh the tasks
+    // (they carry the goal ids) and the resolved-goal cache.
+    onTasks: () => {
+      qc.invalidateQueries({ queryKey: tasksKey(id) });
+      qc.invalidateQueries({ queryKey: examLearningGoalsKey(id) });
+    },
+  });
 
   // Per-section user-confirmation state. Confirming a section dispatches a
   // background solve-section call so the LLM answers are ready by the time
@@ -420,34 +417,21 @@ const ExamEditInner = () => {
     );
   }, [grouped, confirmApi]);
 
-  // Scroll-and-expand jump used by the footer progress button.
-  const handleJumpToTask = useCallback(
-    (taskId: string) => {
+  // Expand the target task and scroll it into view. `focusScore` also focuses
+  // the score input after the scroll settles — used by the "Score needs to be
+  // set" wayfinding indicator; the plain jump drives the footer progress button.
+  const jumpToTask = useCallback(
+    (taskId: string, { focusScore = false }: { focusScore?: boolean } = {}) => {
       const id = `task:${taskId}`;
       if (collapseApi.isCollapsed(id)) {
         collapseApi.setManyCollapsed([id], false);
       }
       // Defer to next frame so the expanded card is in the DOM.
       requestAnimationFrame(() => {
-        const el = document.getElementById(`task-${taskId}`);
-        el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-    },
-    [collapseApi],
-  );
-
-  // Like handleJumpToTask, but also focuses the score input — used by the
-  // "Score needs to be set" wayfinding indicator.
-  const handleGoToScore = useCallback(
-    (taskId: string) => {
-      const id = `task:${taskId}`;
-      if (collapseApi.isCollapsed(id)) {
-        collapseApi.setManyCollapsed([id], false);
-      }
-      requestAnimationFrame(() => {
         document
           .getElementById(`task-${taskId}`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (!focusScore) return;
         // Focus after the smooth scroll settles so the caret lands cleanly.
         window.setTimeout(() => {
           const input = document.getElementById(
@@ -642,7 +626,7 @@ const ExamEditInner = () => {
             <ScoreNeededIndicator
               scrollRef={scrollRef}
               targetTaskId={nextUnscoredTaskId}
-              onGoToScore={handleGoToScore}
+              onGoToScore={(taskId) => jumpToTask(taskId, { focusScore: true })}
             />
           )}
         </main>
@@ -655,7 +639,7 @@ const ExamEditInner = () => {
         currentSectionTasks={currentSectionTasks}
         taskLetterById={taskLetterById}
         allSectionsReady={allSectionsReady}
-        onJumpToTask={handleJumpToTask}
+        onJumpToTask={jumpToTask}
         onAdvanceSection={handleAdvanceSection}
         startSolvingOpen={startSolvingOpen}
         onStartSolvingOpenChange={setStartSolvingOpen}

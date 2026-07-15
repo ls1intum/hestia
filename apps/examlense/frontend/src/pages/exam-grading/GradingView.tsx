@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { ClipboardCheck, CheckCircle2 } from "lucide-react";
 import { patchExam } from "@/lib/api/api-client";
 import { useQueryClient } from "@tanstack/react-query";
-import { useExam, useTasks, tasksKey } from "@/hooks/data/use-exam";
-import { useSections, useSectionBlocks } from "@/hooks/data/use-sections";
+import { tasksKey } from "@/hooks/data/use-exam";
+import { useExamBundle } from "@/hooks/data/use-exam-bundle";
 import { useTaskAnswers } from "@/hooks/data/use-task-answers";
 import { useTaskGrades } from "@/hooks/data/use-task-grades";
 import { useExamLearningGoals, examLearningGoalsKey } from "@/hooks/data/use-learning-goals";
-import { subscribeExam } from "@/lib/api/sse";
+import { useExamRealtime } from "@/hooks/data/use-exam-realtime";
 import type { LearningGoalResponse } from "@/lib/learning-goals/learning-goals";
 import { type TaskGoalDisplay } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
 import { ReadOnlyQuestionBlock } from "@/pages/exam-grading/components/ReadOnlyQuestionBlock";
@@ -59,24 +59,19 @@ interface Props {
 export const GradingView = ({ examId }: Props) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: exam, isLoading: examLoading } = useExam(examId);
-  const { data: tasks, isLoading: tasksLoading } = useTasks(examId);
-  const { data: sections, isLoading: sectionsLoading } = useSections(examId);
-  const { data: blocks, isLoading: blocksLoading } = useSectionBlocks(examId);
+  const { exam, tasks, sections, blocks, isLoading } = useExamBundle(examId);
   const { data: answers } = useTaskAnswers(examId);
   const { data: grades } = useTaskGrades(examId);
   const { data: learningGoals, isError: goalsError } = useExamLearningGoals(examId);
 
   // Learning goals can finish generating while this view is open — refresh
   // the tasks (goal ids) and resolved goals on the backend's `tasks` event.
-  useEffect(() => {
-    return subscribeExam(examId, {
-      onTasks: () => {
-        qc.invalidateQueries({ queryKey: tasksKey(examId) });
-        qc.invalidateQueries({ queryKey: examLearningGoalsKey(examId) });
-      },
-    });
-  }, [examId, qc]);
+  useExamRealtime(examId, {
+    onTasks: () => {
+      qc.invalidateQueries({ queryKey: tasksKey(examId) });
+      qc.invalidateQueries({ queryKey: examLearningGoalsKey(examId) });
+    },
+  });
 
   const goalsById = useMemo(() => {
     const m = new Map<number, LearningGoalResponse>();
@@ -246,7 +241,7 @@ export const GradingView = ({ examId }: Props) => {
     };
   });
 
-  if (examLoading || tasksLoading || sectionsLoading || blocksLoading) {
+  if (isLoading) {
     return <EditorLoadingView />;
   }
   if (!exam) return null;

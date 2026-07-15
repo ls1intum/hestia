@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
-import { cn } from "@/lib/utils/utils";
+import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
@@ -35,10 +35,6 @@ import {
   type TaskOption,
   type TaskType,
 } from "@/lib/exam/exam-helpers";
-
-const preventNumberWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
-  event.currentTarget.blur();
-};
 
 interface Props {
   task: Task;
