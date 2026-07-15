@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
   GripVertical,
   MoreVertical,
@@ -11,7 +11,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -36,14 +35,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
-import { useAutosizeTextarea } from "@/hooks/ui/use-autosize-textarea";
-import { useDebouncedCallback } from "@/hooks/ui/use-debounced-callback";
+import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import { cn } from "@/lib/utils/utils";
-import {
-  MarkdownView,
-  markdownSurfaceClassName,
-  markdownTextareaClassName,
-} from "@/components/shared/exam-content/MarkdownView";
+import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import {
@@ -93,40 +87,13 @@ export const TaskCard = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingConvert, setPendingConvert] = useState<TaskType | null>(null);
 
-  // Local mirror for fast typing; flush via onPatch on change
-  const [prompt, setPrompt] = useState(task.prompt);
-  useEffect(() => setPrompt(task.prompt), [task.id, task.prompt]);
-  const promptRef = useAutosizeTextarea<HTMLTextAreaElement>(prompt);
-  const [editingPrompt, setEditingPrompt] = useState(() => (task.prompt ?? "").trim() === "");
-  const justEnteredPromptEdit = useRef(false);
-
-  useEffect(() => {
-    if (editingPrompt && justEnteredPromptEdit.current) {
-      justEnteredPromptEdit.current = false;
-      const el = promptRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        try {
-          el.setSelectionRange(len, len);
-        } catch {
-          /* noop */
-        }
-      }
-    }
-  }, [editingPrompt, promptRef]);
-
-  const enterPromptEdit = () => {
-    justEnteredPromptEdit.current = true;
-    setEditingPrompt(true);
-  };
-
-  // Debounce text-field patches so each keystroke does NOT cascade into a
-  // full editor re-render (which would recompute a/b/c labels for every task).
-  const debouncedPatchPrompt = useDebouncedCallback(
-    (value: string) => onPatch({ prompt: value }),
-    250,
-  );
+  // Local mirror + click-to-edit machine for the prompt. Debounced patches
+  // keep each keystroke from cascading into a full editor re-render (which
+  // would recompute a/b/c labels for every task).
+  const field = useInlineTextEdit({
+    value: task.prompt,
+    onCommit: (prompt) => onPatch({ prompt }),
+  });
 
   const hasEmptyPrompt = (task.prompt ?? "").trim() === "";
 
@@ -251,45 +218,13 @@ export const TaskCard = ({
         <WarningBanner text="No task description added." />
       )}
 
-      {editingPrompt || prompt.trim() === "" ? (
-        <>
-          <Textarea
-            ref={promptRef}
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-              debouncedPatchPrompt(e.target.value);
-            }}
-            onBlur={() => {
-              debouncedPatchPrompt.flush();
-              if (prompt !== task.prompt) onPatch({ prompt });
-              if (prompt.trim() !== "") setEditingPrompt(false);
-            }}
-            placeholder="Enter the task question…"
-            rows={2}
-            className={cn(markdownTextareaClassName, "max-h-[550px] overflow-y-auto")}
-          />
-          <p className="mt-1 text-xs text-hestia-text-muted">
-            Code blocks and snippets (Markdown) supported
-          </p>
-        </>
-      ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={enterPromptEdit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              enterPromptEdit();
-            }
-          }}
-          aria-label="Enter the task question…"
-          className={markdownSurfaceClassName}
-        >
-          <MarkdownView content={prompt} />
-        </div>
-      )}
+      <MarkdownEditField
+        field={field}
+        placeholder="Enter the task question…"
+        ariaLabel="Enter the task question…"
+        rows={2}
+        textareaClassName="max-h-[550px] overflow-y-auto"
+      />
 
       {task.type === "text" ? null : task.type === "single_choice" ? (
         <div className="mt-hestia-3">

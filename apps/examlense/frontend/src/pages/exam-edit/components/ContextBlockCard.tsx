@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import { MoreVertical } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,11 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useAutosizeTextarea } from "@/hooks/ui/use-autosize-textarea";
-import { useDebouncedCallback } from "@/hooks/ui/use-debounced-callback";
-import { cn } from "@/lib/utils/utils";
+import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import type { SectionBlock } from "@/lib/exam/exam-helpers";
-import { MarkdownView, markdownTextareaClassName } from "@/components/shared/exam-content/MarkdownView";
+import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 
@@ -47,37 +44,10 @@ export const ContextBlockCard = ({
   isDragging,
 }: Props) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [content, setContent] = useState(block.content);
-  const [editing, setEditing] = useState(() => block.content.trim() === "");
-  useEffect(() => setContent(block.content), [block.id, block.content]);
-  const contentRef = useAutosizeTextarea<HTMLTextAreaElement>(content);
-  const justEnteredEdit = useRef(false);
-
-  useEffect(() => {
-    if (editing && justEnteredEdit.current) {
-      justEnteredEdit.current = false;
-      const el = contentRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        try {
-          el.setSelectionRange(len, len);
-        } catch {
-          /* noop */
-        }
-      }
-    }
-  }, [editing, contentRef]);
-
-  const debouncedPatch = useDebouncedCallback(
-    (value: string) => onPatch({ content: value }),
-    250,
-  );
-
-  const enterEdit = () => {
-    justEnteredEdit.current = true;
-    setEditing(true);
-  };
+  const field = useInlineTextEdit({
+    value: block.content,
+    onCommit: (content) => onPatch({ content }),
+  });
 
   const header = (
     <BlockHeader
@@ -96,48 +66,17 @@ export const ContextBlockCard = ({
 
   const body = (
     <div>
-      {editing || content.trim() === "" ? (
-        <>
-          <Textarea
-            ref={contentRef}
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value);
-              debouncedPatch(e.target.value);
-            }}
-            onBlur={() => {
-              debouncedPatch.flush();
-              if (content !== block.content) onPatch({ content });
-              if (content.trim() !== "") setEditing(false);
-            }}
-            placeholder="Context for the tasks below: instructions, definitions, references…"
-            rows={2}
-            className={markdownTextareaClassName}
-          />
-          <p className="mt-1 text-xs text-hestia-text-muted">
-            Code blocks and snippets (Markdown) supported
-          </p>
-        </>
-      ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={enterEdit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              enterEdit();
-            }
-          }}
-          aria-label="Context for the tasks below: instructions, definitions, references…"
-          // Card-less read view: the context flows on the section background;
-          // a soft tint on hover (and a ring on keyboard focus) hints that
-          // it is editable. The field box only appears while editing.
-          className="-mx-hestia-2 cursor-text rounded-hestia-sm px-hestia-2 py-1 transition-colors hover:bg-hestia-primary-muted/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
-        >
-          <MarkdownView content={content} className="text-hestia-text/90" />
-        </div>
-      )}
+      <MarkdownEditField
+        field={field}
+        placeholder="Context for the tasks below: instructions, definitions, references…"
+        ariaLabel="Context for the tasks below: instructions, definitions, references…"
+        rows={2}
+        // Card-less read view: the context flows on the section background;
+        // a soft tint on hover (and a ring on keyboard focus) hints that
+        // it is editable. The field box only appears while editing.
+        readViewClassName="-mx-hestia-2 cursor-text rounded-hestia-sm px-hestia-2 py-1 transition-colors hover:bg-hestia-primary-muted/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
+        markdownClassName="text-hestia-text/90"
+      />
     </div>
   );
 
