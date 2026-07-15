@@ -61,19 +61,19 @@ import {
   convertTaskType,
   examModePath,
   examModeSlug,
-  figureLabelsForBlocks,
   isSectionReady,
   itemId,
-  letterLabel,
-  mergeSectionItems,
   totalPoints,
   type BlockItem,
   type Exam,
   type Section,
-  type SectionBlock,
   type Task,
   type TaskType,
 } from "@/lib/exam/exam-helpers";
+import {
+  useSectionGroups,
+  useCurrentSectionId,
+} from "@/hooks/ui/use-section-groups";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -103,8 +103,6 @@ const taskTypeIcon = (type: TaskType) => {
       return NotebookPen;
   }
 };
-
-const sectionIndexSlug = (index: number) => `section-${index + 1}`;
 
 const ExamEditInner = () => {
   const { id } = useParams<{ id: string }>();
@@ -252,58 +250,13 @@ const ExamEditInner = () => {
     });
   };
 
-  // Group tasks + context blocks by section_id (preserving section order; unassigned tasks go last)
-  const grouped = useMemo(() => {
-    const sortedSections = (sections ?? [])
-      .slice()
-      .sort((a, b) => a.position - b.position);
-    const tasksBySection = new Map<string | null, Task[]>();
-    for (const task of tasks ?? []) {
-      const key = task.section_id ?? null;
-      const arr = tasksBySection.get(key) ?? [];
-      arr.push(task);
-      tasksBySection.set(key, arr);
-    }
-    const blocksBySection = new Map<string, SectionBlock[]>();
-    for (const block of blocks ?? []) {
-      const arr = blocksBySection.get(block.section_id) ?? [];
-      arr.push(block);
-      blocksBySection.set(block.section_id, arr);
-    }
-
-    const groups: Array<{
-      section: Section | null;
-      tasks: Task[];
-      items: BlockItem[];
-      slug: string;
-    }> = [];
-    for (const [index, s] of sortedSections.entries()) {
-      const sectionTasks = tasksBySection.get(s.id) ?? [];
-      const sectionBlocks = blocksBySection.get(s.id) ?? [];
-      groups.push({
-        section: s,
-        tasks: sectionTasks,
-        items: mergeSectionItems(sectionTasks, sectionBlocks),
-        slug: sectionIndexSlug(index),
-      });
-    }
-    const orphan = tasksBySection.get(null) ?? [];
-    if (orphan.length > 0) {
-      orphan.sort((a, b) => a.position - b.position);
-      groups.push({
-        section: null,
-        tasks: orphan,
-        items: mergeSectionItems(orphan, []),
-        slug: "section-unassigned",
-      });
-    }
-    return groups;
-  }, [tasks, sections, blocks]);
-
-  // Auto-generated labels for figure blocks: "Figure {section}.{index}".
-  const figureLabels = useMemo(
-    () => figureLabelsForBlocks(sections, blocks),
-    [sections, blocks],
+  // Group tasks + context blocks by section (editor keeps empty sections).
+  // taskLetterById → a/b/c labels; figureLabels → "Figure {section}.{index}".
+  const { grouped, taskLetterById, figureLabels } = useSectionGroups(
+    sections,
+    tasks,
+    blocks,
+    { includeEmpty: true },
   );
 
   // Last position used inside a given section (across tasks + blocks).
@@ -358,23 +311,9 @@ const ExamEditInner = () => {
     setIntroComplete(localStorage.getItem(introKey) === "1");
   }, [introKey, showInlineIntro]);
 
-  const [currentSectionId, setCurrentSectionId] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const hashed = window.location.hash.replace(/^#/, "");
-      if (hashed) return hashed;
-    }
-    return "";
+  const [currentSectionId, setCurrentSectionId] = useCurrentSectionId(grouped, {
+    introGate: showInlineIntro && !introComplete,
   });
-
-  useEffect(() => {
-    if (grouped.length === 0) return;
-    const validIds = new Set(grouped.map((g) => g.slug));
-    setCurrentSectionId((prev) => {
-      if (validIds.has(prev)) return prev;
-      if (showInlineIntro && !introComplete) return "";
-      return grouped[0]?.slug ?? "";
-    });
-  }, [grouped, introComplete, showInlineIntro]);
 
   const markIntroComplete = useCallback(() => {
     if (introKey) localStorage.setItem(introKey, "1");
@@ -386,7 +325,7 @@ const ExamEditInner = () => {
       if (showInlineIntro && !introComplete) markIntroComplete();
       setCurrentSectionId(slug);
     },
-    [introComplete, markIntroComplete, showInlineIntro],
+    [introComplete, markIntroComplete, showInlineIntro, setCurrentSectionId],
   );
 
   // Auto-expand newly created blocks. We only treat ids as "new" right
@@ -466,21 +405,6 @@ const ExamEditInner = () => {
       const newOrder = arrayMove(group.items, oldIndex, newIndex);
       void persistReorder(newOrder);
     };
-
-  // Pure UI labels: a, b, c... per task within its section. Computed in
-  // render — no memoization, no callbacks, no cache churn.
-  const taskLetterById = (() => {
-    const counts = new Map<string | null, number>();
-    const out = new Map<string, string>();
-    const sorted = (tasks ?? []).slice().sort((a, b) => a.position - b.position);
-    for (const task of sorted) {
-      const key = task.section_id ?? null;
-      const i = counts.get(key) ?? 0;
-      out.set(task.id, letterLabel(i));
-      counts.set(key, i + 1);
-    }
-    return out;
-  })();
 
   /**
    * Render a single block. When collapsed → lightweight TOC row. When
@@ -762,7 +686,7 @@ const ExamEditInner = () => {
       findNextUnconfirmed(idx + 1, grouped.length) ??
       findNextUnconfirmed(0, idx);
     if (nextSlug) setCurrentSectionId(nextSlug);
-  }, [confirmApi, currentGroup, currentSectionRealId, grouped]);
+  }, [confirmApi, currentGroup, currentSectionRealId, grouped, setCurrentSectionId]);
 
   if (isLoading) {
     return <EditorLoadingView />;

@@ -266,6 +266,16 @@ export const figureLabelsForBlocks = (
   return out;
 };
 
+/** Carousel/hash slug for the orphan ("Unassigned tasks") bucket. */
+export const UNASSIGNED_SLUG = "section-unassigned";
+
+/**
+ * Index-based carousel/hash slug for a real section: 1-based position in the
+ * sorted section list. Shared by the editor and grading views so their
+ * deep-link hashes stay in lockstep.
+ */
+export const sectionIndexSlug = (index: number) => `section-${index + 1}`;
+
 /**
  * Build a URL-hash-safe slug for a section. Used by the editor + grading
  * + results sidebars to deep-link to a specific section.
