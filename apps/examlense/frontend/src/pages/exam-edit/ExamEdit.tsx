@@ -1,15 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, Navigate, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  FileText,
-  ArrowLeft,
-  ListChecks,
-  ListTodo,
-  NotebookPen,
-  Image as ImageIcon,
-  Plus,
-} from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -31,21 +23,18 @@ import {
   cancelExam,
 } from "@/lib/api/api-client";
 import { subscribeExam } from "@/lib/api/sse";
-import { useExam, useTasks, examKey, tasksKey } from "@/hooks/data/use-exam";
-import { useSections, useSectionBlocks, sectionsKey, blocksKey } from "@/hooks/data/use-sections";
+import { examKey, tasksKey } from "@/hooks/data/use-exam";
+import { sectionsKey, blocksKey } from "@/hooks/data/use-sections";
+import { useExamBundle } from "@/hooks/data/use-exam-bundle";
 import { useExamMutations } from "@/pages/exam-edit/use-exam-mutations";
 import { SaveStatusProvider, useSaveStatus, SaveIndicator } from "@/pages/exam-edit/components/SaveStatus";
 import { useToast } from "@/hooks/ui/use-toast";
 import { examLearningGoalsKey } from "@/hooks/data/use-learning-goals";
-import { TaskCard } from "@/pages/exam-edit/components/TaskCard";
-import { ContextBlockCard } from "@/pages/exam-edit/components/ContextBlockCard";
-import { FigureBlockCard } from "@/pages/exam-edit/components/FigureBlockCard";
 import { AddTaskInline } from "@/pages/exam-edit/components/AddTaskInline";
 import { SectionLayout } from "@/components/shared/exam-content/SectionLayout";
 import { SectionTitleInput } from "@/pages/exam-edit/components/SectionTitleInput";
 import { useItemCollapseState } from "@/hooks/ui/use-item-collapse-state";
-import { BlockRow } from "@/pages/exam-edit/components/BlockRow";
-import { SortableItem } from "@/pages/exam-edit/components/SortableItem";
+import { BlockItem as BlockItemComponent } from "@/pages/exam-edit/components/BlockItem";
 import { ExamEditFooter } from "@/pages/exam-edit/components/ExamEditFooter";
 import { ScoreNeededIndicator } from "@/pages/exam-edit/components/ScoreNeededIndicator";
 import { InlineTitle } from "@/components/shared/chrome/InlineTitle";
@@ -58,7 +47,6 @@ import { IntroSlide } from "@/pages/exam-edit/components/IntroSlide";
 import { ManualIntroSlide } from "@/pages/exam-edit/components/ManualIntroSlide";
 import { useSectionConfirmations } from "@/hooks/data/use-section-confirmations";
 import {
-  convertTaskType,
   examModePath,
   examModeSlug,
   isSectionReady,
@@ -74,47 +62,19 @@ import {
   useSectionGroups,
   useCurrentSectionId,
 } from "@/hooks/ui/use-section-groups";
-import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
-import { Badge } from "@/components/ui/badge";
 import {
   SectionSidebar,
   useEditSectionEntries,
   type SectionEntry,
 } from "@/components/shared/exam-content/SectionSidebar";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-
-const taskTypeIcon = (type: TaskType) => {
-  switch (type) {
-    case "single_choice":
-      return ListTodo;
-    case "multiple_choice":
-      return ListChecks;
-    case "text":
-    default:
-      return NotebookPen;
-  }
-};
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
 const ExamEditInner = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { setSaving, setSaved, setError } = useSaveStatus();
-  const { data: exam, isLoading: examLoading } = useExam(id);
-  const { data: tasks, isLoading: tasksLoading } = useTasks(id);
-  const { data: sections, isLoading: sectionsLoading } = useSections(id);
-  const { data: blocks, isLoading: blocksLoading } = useSectionBlocks(id);
-  const isLoading =
-    examLoading || tasksLoading || sectionsLoading || blocksLoading;
+  const { exam, tasks, sections, blocks, isLoading } = useExamBundle(id);
 
   const solverModelId =
     exam?.solver_model ?? DEFAULT_SOLVER_MODEL_ID;
@@ -274,11 +234,11 @@ const ExamEditInner = () => {
   // proactively; this catches readiness-only changes that the wrappers
   // could miss (e.g. an external/realtime update).
   //
-  // Gate on both queries having actually returned: on first load `sections`
-  // can settle before `tasks`, which would briefly make every section look
-  // empty and unconfirm the entire exam.
+  // Gate on the bundle having fully loaded: on first load `sections` can settle
+  // before `tasks`, which would briefly make every section look empty and
+  // unconfirm the entire exam.
   useEffect(() => {
-    if (tasksLoading || sectionsLoading) return;
+    if (isLoading) return;
     if (!tasks || !sections) return;
     for (const g of grouped) {
       const sid = g.section?.id;
@@ -288,7 +248,7 @@ const ExamEditInner = () => {
         void confirmApiRef.current.unconfirm(sid);
       }
     }
-  }, [grouped, tasks, sections, tasksLoading, sectionsLoading]);
+  }, [grouped, tasks, sections, isLoading]);
 
   const [pendingDeleteSection, setPendingDeleteSection] = useState<{
     id: string;
@@ -406,159 +366,21 @@ const ExamEditInner = () => {
       void persistReorder(newOrder);
     };
 
-  /**
-   * Render a single block. When collapsed → lightweight TOC row. When
-   * expanded → full editor card. Both paths share the same SortableItem so
-   * DnD reordering works regardless of expansion state.
-   */
-  const renderBlockItem = (item: BlockItem) => {
-    const id = itemId(item);
-    const expanded = !collapseApi.isCollapsed(id);
-    const onToggle = () => collapseApi.toggle(id);
-    const scrollTargetId =
-      item.kind === "task" ? `task-${item.task.id}` : undefined;
-
-    return (
-      <div key={id} id={scrollTargetId}>
-      <SortableItem id={id}>
-        {({ setNodeRef, style, isDragging, dragHandleProps }) => {
-          if (!expanded) {
-            // Build the row label + subtitle per block kind.
-            let label: ReactNode = "";
-            let subtitle: ReactNode = null;
-            let points: number | null | undefined;
-            let missingScore = false;
-            let badgeText = "";
-            let leadingIcon: ReactNode;
-            if (item.kind === "task") {
-              const TaskTypeIcon = taskTypeIcon(item.task.type);
-              const letter = taskLetterById.get(item.task.id) ?? "";
-              const prompt = item.task.prompt?.trim() ?? "";
-              label = letter
-                ? `${letter})`
-                : "Untitled task";
-              subtitle = prompt ? (
-                <p className="text-sm leading-relaxed text-hestia-text-muted line-clamp-2">
-                  {prompt}
-                </p>
-              ) : (
-                <p className="text-sm italic text-hestia-text-muted/70">
-                  Enter the task question…
-                </p>
-              );
-              points = item.task.points ?? null;
-              missingScore =
-                item.task.points == null || item.task.points <= 0;
-              badgeText = TASK_TYPE_LABELS[item.task.type];
-              leadingIcon = (
-                <TaskTypeIcon
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            } else if (item.kind === "figure") {
-              label = figureLabels.get(item.block.id) ?? "Figure";
-              badgeText = "Figure";
-              leadingIcon = (
-                <ImageIcon
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            } else {
-              label = "Context";
-              badgeText = "Context";
-              leadingIcon = (
-                <FileText
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            }
-            return (
-              <BlockRow
-                kind={item.kind}
-                label={label}
-                subtitle={subtitle}
-                points={points}
-                missingScore={missingScore}
-                leadingIcon={leadingIcon}
-                badge={
-                  <Badge
-                    variant="secondary"
-                    className="bg-hestia-primary-muted/30 text-hestia-text-muted"
-                  >
-                    {badgeText}
-                  </Badge>
-                }
-                onToggle={onToggle}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-
-          // Expanded: render the full editor card. Its own header chevron
-          // toggles back to the collapsed row via the shared collapseApi.
-          if (item.kind === "context") {
-            return (
-              <ContextBlockCard
-                block={item.block}
-                onToggleCollapsed={onToggle}
-                onPatch={(patch) => patchBlock(item.block.id, patch)}
-                onDelete={() => deleteBlock(item.block.id)}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-          if (item.kind === "figure") {
-            return (
-              <FigureBlockCard
-                block={item.block}
-                examId={exam!.id}
-                displayLabel={
-                  figureLabels.get(item.block.id) ?? "Figure"
-                }
-                onToggleCollapsed={onToggle}
-                onDelete={() => deleteBlock(item.block.id)}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-          return (
-            <TaskCard
-              task={item.task}
-              label={taskLetterById.get(item.task.id) ?? ""}
-              collapsed={false}
-              onToggleCollapsed={onToggle}
-              onPatch={(patch) => patchTask(item.task.id, patch)}
-              onDelete={() => deleteTask(item.task.id)}
-              onDuplicate={() => duplicateTask(item.task)}
-              onConvert={(toType) =>
-                patchTask(item.task.id, convertTaskType(item.task, toType))
-              }
-              setNodeRef={setNodeRef}
-              style={style}
-              isDragging={isDragging}
-              dragHandleProps={dragHandleProps}
-            />
-          );
-        }}
-      </SortableItem>
-      </div>
-    );
-  };
+  const renderBlockItem = (item: BlockItem) => (
+    <BlockItemComponent
+      key={itemId(item)}
+      item={item}
+      collapseApi={collapseApi}
+      figureLabels={figureLabels}
+      taskLetterById={taskLetterById}
+      examId={exam!.id}
+      onPatchBlock={patchBlock}
+      onDeleteBlock={deleteBlock}
+      onPatchTask={patchTask}
+      onDeleteTask={deleteTask}
+      onDuplicateTask={duplicateTask}
+    />
+  );
 
   const confirmedSectionIds = useMemo(() => {
     const set = new Set<string>();
@@ -839,37 +661,21 @@ const ExamEditInner = () => {
         onStartSolvingOpenChange={setStartSolvingOpen}
       />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={pendingDeleteSection != null}
         onOpenChange={(open) => {
           if (!open) setPendingDeleteSection(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete this section?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Tasks in this section will become unassigned.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(ev) => {
-                ev.preventDefault();
-                const target = pendingDeleteSection;
-                setPendingDeleteSection(null);
-                if (target) void deleteSection(target.id);
-              }}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete section
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Delete this section?"
+        description="Tasks in this section will become unassigned."
+        onConfirm={(ev) => {
+          ev.preventDefault();
+          const target = pendingDeleteSection;
+          setPendingDeleteSection(null);
+          if (target) void deleteSection(target.id);
+        }}
+        confirmLabel="Delete section"
+      />
     </div>
   );
 };
