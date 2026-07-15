@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resilienceScore, resilienceTier } from "@/lib/resilience";
+import { resilienceScore, resilienceTier } from "@/lib/grading/resilience";
 
 describe("resilienceScore", () => {
   it("inverts the AI percentage", () => {

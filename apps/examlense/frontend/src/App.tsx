@@ -5,14 +5,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navigate } from "react-router-dom";
 import NotFound from "./pages/NotFound.tsx";
-import Exams from "./pages/Exams.tsx";
-import ExamEdit from "./pages/ExamEdit.tsx";
-import GradeRoute from "./pages/GradeRoute.tsx";
-import ExamResults from "./pages/ExamResults.tsx";
-import AdminDashboard from "./pages/AdminDashboard.tsx";
-import Auth from "./pages/Auth.tsx";
-import ResetPassword from "./pages/ResetPassword.tsx";
-import { RequireAuth } from "./components/RequireAuth";
+import Exams from "./pages/exams/Exams.tsx";
+import ExamEdit from "./pages/exam-edit/ExamEdit.tsx";
+import GradeRoute from "./pages/exam-grading/GradeRoute.tsx";
+import ExamResults from "./pages/exam-results/ExamResults.tsx";
+import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
 
 const queryClient = new QueryClient();
 
@@ -26,13 +23,11 @@ const AppRoutes = () => {
     <BrowserRouter basename={routerBasename}>
       <Routes>
         <Route path="/" element={<Navigate to="/exams" replace />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/exams" element={<RequireAuth><Exams /></RequireAuth>} />
-        <Route path="/exams/:id/edit" element={<RequireAuth><ExamEdit /></RequireAuth>} />
-        <Route path="/exams/:id/grade" element={<RequireAuth><GradeRoute /></RequireAuth>} />
-        <Route path="/exams/:id/results" element={<RequireAuth><ExamResults /></RequireAuth>} />
-        <Route path="/admin" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
+        <Route path="/exams" element={<Exams />} />
+        <Route path="/exams/:id/edit" element={<ExamEdit />} />
+        <Route path="/exams/:id/grade" element={<GradeRoute />} />
+        <Route path="/exams/:id/results" element={<ExamResults />} />
+        <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/feedback" element={<Navigate to="/admin" replace />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
