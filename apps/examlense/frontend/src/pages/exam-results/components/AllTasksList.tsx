@@ -22,11 +22,11 @@ import {
 } from "@/lib/exam/exam-helpers";
 import {
   effectiveScore,
+  scoreRollup,
   type TaskAnswer,
   type TaskGrade,
 } from "@/lib/grading/grading";
-import { SCORE_FILL_CLASS, scoreTier } from "@/lib/grading/score-color";
-import { cn } from "@/lib/utils/utils";
+import { ScoreBar } from "./ScoreBar";
 
 interface Props {
   tasks: Task[];
@@ -63,11 +63,7 @@ export const AllTasksList = ({
         const title =
           sec?.name?.trim() ||
           (sec ? "Untitled section" : "Unassigned tasks");
-        const earned = secTasks.reduce((sum, tk) => {
-          const eff = effectiveScore(tk, gradesById.get(tk.id), answersById.get(tk.id));
-          return sum + (eff.score ?? 0);
-        }, 0);
-        const max = secTasks.reduce((sum, tk) => sum + (tk.points ?? 0), 0);
+        const { earned, max } = scoreRollup(secTasks, gradesById, answersById);
         return {
           slug,
           title,
@@ -217,15 +213,7 @@ export const AllTasksList = ({
                         {maxPoints}
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hestia-border/40">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all",
-                          SCORE_FILL_CLASS[scoreTier(pct)],
-                        )}
-                        style={{ width: `${Math.round(pct * 100)}%` }}
-                      />
-                    </div>
+                    <ScoreBar pct={pct * 100} tone="tier" className="mt-1" />
                   </div>
                 </div>
               );

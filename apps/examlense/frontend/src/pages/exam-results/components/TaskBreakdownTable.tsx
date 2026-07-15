@@ -23,13 +23,18 @@ export const TaskBreakdownTable = ({ tasks, grades, answers, labelById }: Props)
     return tasks.map((tk) => {
       const eff = effectiveScore(tk, grades.get(tk.id), answers.get(tk.id));
       const pts = tk.points ?? 0;
+      const pct = pts > 0 ? Math.round(((eff.score ?? 0) / pts) * 100) : 0;
       return {
         id: tk.id,
         label: labelById.get(tk.id) ?? "",
         type: tk.type,
         points: pts,
         score: eff.score ?? 0,
-        pct: pts > 0 ? Math.round(((eff.score ?? 0) / pts) * 100) : 0,
+        pct,
+        // Deliberately binary (perfect / zeroed), not the 80/50 performance
+        // tiers — a per-task table flags only aced and failed tasks.
+        isPerfect: pct === 100,
+        isZeroed: pct === 0 && pts > 0,
       };
     });
   }, [tasks, grades, answers, labelById]);
@@ -81,8 +86,8 @@ export const TaskBreakdownTable = ({ tasks, grades, answers, labelById }: Props)
               key={r.id}
               className={cn(
                 "border-b border-hestia-border/50",
-                r.pct === 100 && "bg-hestia-success/5",
-                r.pct === 0 && r.points > 0 && "bg-hestia-danger/5",
+                r.isPerfect && "bg-hestia-success/5",
+                r.isZeroed && "bg-hestia-danger/5",
               )}
             >
               <td className="py-1.5 font-medium tabular-nums text-hestia-text">{r.label}</td>
@@ -91,8 +96,8 @@ export const TaskBreakdownTable = ({ tasks, grades, answers, labelById }: Props)
               <td className="py-1.5 text-right tabular-nums font-semibold text-hestia-text">{r.score}</td>
               <td className={cn(
                 "py-1.5 text-right tabular-nums font-semibold",
-                r.pct === 100 && "text-hestia-success",
-                r.pct === 0 && r.points > 0 && "text-hestia-danger",
+                r.isPerfect && "text-hestia-success",
+                r.isZeroed && "text-hestia-danger",
                 r.pct > 0 && r.pct < 100 && "text-hestia-text",
               )}>
                 {r.pct}%

@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import type { ExamListItem } from "@/lib/api/api-client";
 import { fuzzyMatch } from "@/lib/utils/fuzzy";
 import { progressSortValue } from "@/lib/exam/exam-progress";
+import { EXAM_STATUS_META } from "@/lib/exam/exam-status";
 import {
   Table,
   TableBody,
@@ -27,17 +28,6 @@ const PAGE_SIZE = 10;
 type SortKey = "title" | "status" | "progress" | "created";
 type SortDir = "asc" | "desc";
 
-/** Lifecycle order used when sorting by Status. */
-const STATUS_RANK: Record<ExamListItem["status"], number> = {
-  parsing: 0,
-  evaluating: 1,
-  draft: 2,
-  ready: 2,
-  grading: 3,
-  finished: 4,
-  failed: 5,
-};
-
 /** Default direction when a column is first selected. */
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   title: "asc",
@@ -51,7 +41,7 @@ const compare = (a: ExamListItem, b: ExamListItem, key: SortKey): number => {
     case "title":
       return (a.title || "Untitled exam").localeCompare(b.title || "Untitled exam");
     case "status":
-      return STATUS_RANK[a.status] - STATUS_RANK[b.status];
+      return EXAM_STATUS_META[a.status].rank - EXAM_STATUS_META[b.status].rank;
     case "progress":
       return progressSortValue(a) - progressSortValue(b);
     case "created":

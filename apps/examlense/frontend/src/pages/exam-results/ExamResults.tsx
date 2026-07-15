@@ -15,6 +15,7 @@ import { TaskBreakdownTable } from "@/pages/exam-results/components/TaskBreakdow
 import { TaskScoreBarChart } from "@/pages/exam-results/components/TaskScoreBarChart";
 import { LearningGoalsCard } from "@/pages/exam-results/components/LearningGoalsCard";
 import { AllTasksList } from "@/pages/exam-results/components/AllTasksList";
+import { ScoreBar } from "@/pages/exam-results/components/ScoreBar";
 import {
   ResultsSidebar,
   type ResultsViewItem,
@@ -219,12 +220,7 @@ const ExamResults = () => {
               {totals.earned}
               <span className="text-hestia-text-muted"> / {totals.max}</span>
             </span>
-            <div className="hidden h-1.5 w-32 overflow-hidden rounded-full bg-hestia-border/40 sm:block">
-              <div
-                className="h-full rounded-full bg-hestia-primary transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+            <ScoreBar pct={pct} className="hidden w-32 sm:block" />
           </div>
         }
         right={<ChromeUtilityCluster />}
