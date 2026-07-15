@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useClickToEdit } from "@/hooks/ui/use-click-to-edit";
 
 interface Props {
   value: string;
@@ -8,15 +8,13 @@ interface Props {
 }
 
 export const InlineTitle = ({ value, onSave }: Props) => {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  const { editing, startEditing, inputProps } = useClickToEdit(value, onSave);
 
   if (!editing) {
     return (
       <button
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={startEditing}
         className="group flex max-w-full items-center gap-1.5 text-left font-body text-base font-semibold leading-tight text-hestia-text transition-colors hover:text-hestia-primary"
       >
         <span className="truncate">
@@ -36,20 +34,7 @@ export const InlineTitle = ({ value, onSave }: Props) => {
   }
   return (
     <Input
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        onSave(draft.trim());
-        setEditing(false);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        if (e.key === "Escape") {
-          setDraft(value);
-          setEditing(false);
-        }
-      }}
+      {...inputProps}
       className="h-auto border-hestia-border bg-transparent py-1 font-body text-base font-semibold"
     />
   );
