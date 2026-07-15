@@ -1,16 +1,16 @@
 /**
- * Presentation metadata (provider label + logo) for solver models, shared by
- * the create-exam solver picker and the results overview. The behavioral
+ * Presentation metadata (provider label + logo) for LLM models, shared by the
+ * create-exam parser/solver pickers and the results overview. The behavioral
  * catalog lives in `llm-models.ts`; this is display-only.
  */
 
-export interface SolverModelMeta {
+export interface ModelMeta {
   provider: string;
   name: string;
   logoSrc: string;
 }
 
-export const SOLVER_MODEL_META: Record<string, SolverModelMeta> = {
+export const MODEL_META: Record<string, ModelMeta> = {
   "gemini-2.5-flash": {
     provider: "Google",
     name: "Gemini Flash",
@@ -43,7 +43,7 @@ export const SOLVER_MODEL_META: Record<string, SolverModelMeta> = {
   },
 };
 
-export const SOLVER_MODEL_ORDER = [
+export const MODEL_ORDER = [
   "gemini-2.5-flash",
   "gpt-5.5",
   "claude-opus-4-8",
@@ -51,5 +51,4 @@ export const SOLVER_MODEL_ORDER = [
   "qwen3.6-35b-a3b",
 ];
 
-export const solverModelMeta = (id: string): SolverModelMeta | undefined =>
-  SOLVER_MODEL_META[id];
+export const modelMeta = (id: string): ModelMeta | undefined => MODEL_META[id];

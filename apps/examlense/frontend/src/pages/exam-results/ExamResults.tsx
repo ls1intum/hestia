@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { BarChart3, CheckCircle2, GraduationCap, ListChecks, PencilLine, Table2 } from "lucide-react";
-import { useExam, useTasks, examKey } from "@/hooks/data/use-exam";
+import { examKey } from "@/hooks/data/use-exam";
+import { useExamBundle } from "@/hooks/data/use-exam-bundle";
 import { patchExam } from "@/lib/api/api-client";
-import { useSections, useSectionBlocks } from "@/hooks/data/use-sections";
 import { useTaskAnswers } from "@/hooks/data/use-task-answers";
 import { useTaskGrades } from "@/hooks/data/use-task-grades";
 import { EditorLoadingView } from "@/components/shared/exam-content/EditorLoadingView";
@@ -29,7 +29,8 @@ import {
   type TaskAnswer,
   type TaskGrade,
 } from "@/lib/grading/grading";
-import { examModePath, examModeSlug, letterLabel } from "@/lib/exam/exam-helpers";
+import { letterLabel } from "@/lib/exam/exam-helpers";
+import { examModeRedirect } from "@/components/shared/ExamModeRedirect";
 
 type ResultView = "overview" | "learningGoals" | "details" | "allTasks";
 
@@ -44,10 +45,7 @@ const ExamResults = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: exam, isLoading: examLoading } = useExam(id);
-  const { data: tasks, isLoading: tasksLoading } = useTasks(id!);
-  const { data: sections, isLoading: sectionsLoading } = useSections(id!);
-  const { data: blocks } = useSectionBlocks(id!);
+  const { exam, tasks, sections, blocks, isLoading } = useExamBundle(id);
   const { data: answers } = useTaskAnswers(id!);
   const { data: grades } = useTaskGrades(id!);
 
@@ -87,13 +85,12 @@ const ExamResults = () => {
     return m;
   }, [tasks, sections]);
 
-  if (examLoading || tasksLoading || sectionsLoading) return <EditorLoadingView />;
+  if (isLoading) return <EditorLoadingView />;
   if (!exam) return null;
   // Results are only valid for a finished exam; other statuses redirect to their
   // canonical mode rather than showing (potentially incomplete) final results.
-  if (examModeSlug(exam.status) !== "results") {
-    return <Navigate to={examModePath(exam.id, exam.status)} replace />;
-  }
+  const redirect = examModeRedirect(exam, "results");
+  if (redirect) return redirect;
 
   const pct = totals.max > 0 ? (totals.earned / totals.max) * 100 : 0;
 
