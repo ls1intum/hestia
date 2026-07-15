@@ -1,0 +1,68 @@
+import React, { useState, useRef, useEffect } from "react";
+
+export function InlineEditText({
+  value, editing, onStartEdit, onSave, multiline = false, className = "", inputClassName = "text-sm px-2 py-0.5", boxStyle = false
+}: {
+  value: string;
+  editing: boolean;
+  onStartEdit: () => void;
+  onSave: (v: string) => void;
+  multiline?: boolean;
+  className?: string;
+  inputClassName?: string;
+  boxStyle?: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(value);
+      setTimeout(() => ref.current?.focus(), 30);
+    }
+  }, [editing, value]);
+
+  const commit = () => onSave(draft);
+
+  if (editing) {
+    if (multiline) {
+      return (
+        <textarea
+          ref={ref as React.Ref<HTMLTextAreaElement>}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Escape") onSave(value); }}
+          rows={3}
+          className={`w-full text-sm bg-background border border-primary/60 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary shadow-sm ${className}`}
+        />
+      );
+    }
+    return (
+      <input
+        ref={ref as React.Ref<HTMLInputElement>}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") onSave(value); }}
+        className={`font-body font-semibold bg-background border border-primary/60 rounded-md focus:outline-none focus:ring-1 focus:ring-primary ${inputClassName} ${className}`}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`cursor-text select-text ${boxStyle ? "inline-block border border-border/60 rounded px-1 py-0.5 bg-background/50 hover:bg-background transition-colors" : ""} ${className}`}
+      onDoubleClick={e => { e.stopPropagation(); onStartEdit(); }}
+      onClick={e => {
+        if (boxStyle) {
+          e.stopPropagation();
+          onStartEdit();
+        }
+      }}
+      title={boxStyle ? "Click to edit" : "Double-click to edit"}
+    >
+      {value || (boxStyle ? "0" : "Click to edit...")}
+    </span>
+  );
+}
