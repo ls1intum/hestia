@@ -1,26 +1,11 @@
 import { useState, type CSSProperties, type HTMLAttributes } from "react";
-import { MoreVertical } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import type { SectionBlock } from "@/lib/exam/exam-helpers";
 import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
+import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
 interface Props {
   block: SectionBlock;
@@ -58,7 +43,11 @@ export const ContextBlockCard = ({
       quietControls
       dragAlwaysVisible
       actionsMenu={
-        <ContextActionsMenu setConfirmDelete={setConfirmDelete} />
+        <BlockActionsMenu
+          ariaLabel="Context actions"
+          onDelete={() => setConfirmDelete(true)}
+          deleteLabel="Delete context block"
+        />
       }
       dragHandleProps={dragHandleProps}
     />
@@ -91,48 +80,13 @@ export const ContextBlockCard = ({
         body={body}
       />
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this context block?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Any figures attached to it will also be removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onDelete}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this context block?"
+        description="Any figures attached to it will also be removed."
+        onConfirm={onDelete}
+      />
     </>
   );
 };
-
-const ContextActionsMenu = ({
-  setConfirmDelete,
-}: {
-  setConfirmDelete: (v: boolean) => void;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger
-      aria-label="Context actions"
-      className="rounded-hestia-sm p-1 text-hestia-text-muted hover:bg-hestia-primary-muted/40 hover:text-hestia-text"
-    >
-      <MoreVertical size={16} />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuItem
-        onClick={() => setConfirmDelete(true)}
-        className="text-hestia-danger focus:text-hestia-danger"
-      >
-        Delete context block
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);

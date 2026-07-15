@@ -1,7 +1,6 @@
 import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
   GripVertical,
-  MoreVertical,
   Trash2,
   AlertTriangle,
   ChevronDown,
@@ -14,32 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import { cn } from "@/lib/utils/utils";
 import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
+import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 import {
   TASK_TYPES,
   mcWarning,
@@ -203,7 +190,24 @@ export const TaskCard = ({
           </Popover>
         }
         actionsMenu={
-          <TaskActionsMenu {...{ task, onDuplicate, onConvert, setConfirmDelete }} />
+          <BlockActionsMenu
+            ariaLabel="Task actions"
+            onDelete={() => setConfirmDelete(true)}
+          >
+            <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Convert type</DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  {TASK_TYPES.filter((tp) => tp !== task.type).map((tp) => (
+                    <DropdownMenuItem key={tp} onClick={() => onConvert(tp)}>
+                      {TASK_TYPE_LABELS[tp]}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+          </BlockActionsMenu>
         }
         dragHandleProps={dragHandleProps}
       />
@@ -282,99 +286,34 @@ export const TaskCard = ({
         body={body}
       />
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onDelete}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this task?"
+        description="This action cannot be undone."
+        onConfirm={onDelete}
+      />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={pendingConvert !== null}
         onOpenChange={(open) => {
           if (!open) setPendingConvert(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Change task type?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConvert === "text"
-                ? "Switching to a free-text task will remove all answer options and correctness settings. This cannot be undone."
-                : "Switching from a free-text task to a choice task will discard the current free-text answer setup. This cannot be undone."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (pendingConvert) onConvert(pendingConvert);
-                setPendingConvert(null);
-              }}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Change type
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Change task type?"
+        description={
+          pendingConvert === "text"
+            ? "Switching to a free-text task will remove all answer options and correctness settings. This cannot be undone."
+            : "Switching from a free-text task to a choice task will discard the current free-text answer setup. This cannot be undone."
+        }
+        onConfirm={() => {
+          if (pendingConvert) onConvert(pendingConvert);
+          setPendingConvert(null);
+        }}
+        confirmLabel="Change type"
+      />
     </>
   );
 };
-
-const TaskActionsMenu = ({
-  task,
-  onDuplicate,
-  onConvert,
-  setConfirmDelete,
-}: {
-  task: Task;
-  onDuplicate: () => void;
-  onConvert: (toType: TaskType) => void;
-  setConfirmDelete: (v: boolean) => void;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger
-      aria-label="Task actions"
-      className="rounded-hestia-sm p-1 text-hestia-text-muted hover:bg-hestia-primary-muted/40 hover:text-hestia-text"
-    >
-      <MoreVertical size={16} />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Convert type</DropdownMenuSubTrigger>
-        <DropdownMenuPortal>
-          <DropdownMenuSubContent>
-            {TASK_TYPES.filter((tp) => tp !== task.type).map((tp) => (
-              <DropdownMenuItem key={tp} onClick={() => onConvert(tp)}>
-                {TASK_TYPE_LABELS[tp]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuPortal>
-      </DropdownMenuSub>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        onClick={() => setConfirmDelete(true)}
-        className="text-hestia-danger focus:text-hestia-danger"
-      >
-        Delete
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
 
 const WarningBanner = ({ text }: { text: string }) => (
   <div className="mt-hestia-3 flex items-start gap-2 rounded-hestia-sm border-l-4 border-hestia-warning bg-hestia-warning/10 px-hestia-3 py-2 text-xs text-hestia-text">
