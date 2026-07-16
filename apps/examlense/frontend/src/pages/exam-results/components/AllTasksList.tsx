@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ReadOnlyContextBlock } from "@/components/shared/exam-content/read-only/ReadOnlyContextBlock";
 import { ReadOnlyFigureBlock } from "@/components/shared/exam-content/read-only/ReadOnlyFigureBlock";
 import { ReadOnlyTaskCard } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
@@ -22,11 +22,11 @@ import {
 } from "@/lib/exam/exam-helpers";
 import {
   effectiveScore,
+  scoreRollup,
   type TaskAnswer,
   type TaskGrade,
 } from "@/lib/grading/grading";
-import { SCORE_FILL_CLASS, scoreTier } from "@/lib/grading/score-color";
-import { cn } from "@/lib/utils/utils";
+import { ScoreBar } from "./ScoreBar";
 
 interface Props {
   tasks: Task[];
@@ -63,11 +63,7 @@ export const AllTasksList = ({
         const title =
           sec?.name?.trim() ||
           (sec ? "Untitled section" : "Unassigned tasks");
-        const earned = secTasks.reduce((sum, tk) => {
-          const eff = effectiveScore(tk, gradesById.get(tk.id), answersById.get(tk.id));
-          return sum + (eff.score ?? 0);
-        }, 0);
-        const max = secTasks.reduce((sum, tk) => sum + (tk.points ?? 0), 0);
+        const { earned, max } = scoreRollup(secTasks, gradesById, answersById);
         return {
           slug,
           title,
@@ -112,12 +108,12 @@ export const AllTasksList = ({
     if (typeof window === "undefined") return "";
     return window.location.hash.replace(/^#/, "");
   });
-  useEffect(() => {
-    const validIds = new Set(grouped.map((g) => g.slug));
-    if (!currentSlug || !validIds.has(currentSlug)) {
-      setCurrentSlug(grouped[0]?.slug ?? "");
-    }
-  }, [grouped, currentSlug]);
+  // Resolve the effective section during render rather than syncing state via an
+  // effect: fall back to the first section whenever the stored slug is empty or
+  // points at a section that no longer exists.
+  const activeSlug = grouped.some((g) => g.slug === currentSlug)
+    ? currentSlug
+    : grouped[0]?.slug ?? "";
 
   const slides: CarouselSlide[] = grouped.map((g) => {
     const letterById = new Map<string, string>();
@@ -217,15 +213,7 @@ export const AllTasksList = ({
                         {maxPoints}
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hestia-border/40">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all",
-                          SCORE_FILL_CLASS[scoreTier(pct)],
-                        )}
-                        style={{ width: `${Math.round(pct * 100)}%` }}
-                      />
-                    </div>
+                    <ScoreBar pct={pct * 100} tone="tier" className="mt-1" />
                   </div>
                 </div>
               );
@@ -258,7 +246,7 @@ export const AllTasksList = ({
     <div className="flex min-h-0 min-w-0 flex-1">
       <SectionSidebar
         entries={sectionEntries}
-        currentSectionId={currentSlug}
+        currentSectionId={activeSlug}
         onSelectSection={setCurrentSlug}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -266,7 +254,7 @@ export const AllTasksList = ({
           <div className="mx-auto w-full max-w-[900px] px-hestia-6 pb-hestia-8 pt-hestia-5">
             <SectionCarousel
               slides={slides}
-              currentId={currentSlug}
+              currentId={activeSlug}
               onChange={setCurrentSlug}
             />
           </div>

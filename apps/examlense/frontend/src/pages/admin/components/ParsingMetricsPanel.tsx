@@ -1,9 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { parserModelLabel } from "@/lib/exam/llm-models";
 import { pdfModeLabel } from "@/lib/exam/labels";
 import { useParsingMetrics } from "@/hooks/data/use-parsing-metrics";
-
-const modelLabel = (id: string) => parserModelLabel(id);
+import { StatCardGrid } from "./StatCardGrid";
+import { PanelMessage } from "./PanelMessage";
+import { MetricsTable, type MetricsColumn } from "./MetricsTable";
 
 const formatDuration = (ms: number) => {
   if (ms < 1000) return `${ms} ms`;
@@ -21,7 +21,7 @@ const ParsingMetricsPanel = () => {
   const { data: metrics, isLoading } = useParsingMetrics();
 
   if (isLoading || !metrics) {
-    return <p className="text-sm text-hestia-text-muted">Loading…</p>;
+    return <PanelMessage>Loading…</PanelMessage>;
   }
 
   const stats = [
@@ -32,57 +32,35 @@ const ParsingMetricsPanel = () => {
     { label: "P95 duration", value: formatDuration(metrics.p95DurationMs) },
   ];
 
+  type ByModelRow = (typeof metrics.byModel)[number];
+  const columns: MetricsColumn<ByModelRow>[] = [
+    {
+      header: "Model",
+      cell: (m) => (
+        <>
+          {parserModelLabel(m.modelId)}
+          <span className="mt-0.5 block text-xs text-hestia-text-muted">
+            {pdfModeLabel(m.pdfMode)}
+          </span>
+        </>
+      ),
+    },
+    { header: "Total", align: "right", cell: (m) => m.total },
+    { header: "Success rate", align: "right", cell: (m) => rate(m.succeeded, m.total) },
+    { header: "Time / page", align: "right", cell: (m) => formatDuration(m.avgMsPerPage) },
+    { header: "Tokens / page", align: "right", cell: (m) => formatTokens(m.avgTokensPerPage) },
+  ];
+
   return (
     <div className="space-y-hestia-5">
-      <div className="grid grid-cols-2 gap-hestia-3 sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-hestia-4">
-              <p className="text-xs font-medium text-hestia-text-muted">{s.label}</p>
-              <p className="mt-1 font-body text-2xl font-bold tabular-nums text-hestia-text">{s.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCardGrid stats={stats} className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-body text-lg">By model</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-hestia-border text-left text-xs text-hestia-text-muted">
-                <th className="pb-hestia-2 font-medium">Model</th>
-                <th className="pb-hestia-2 text-right font-medium">Total</th>
-                <th className="pb-hestia-2 text-right font-medium">Success rate</th>
-                <th className="pb-hestia-2 text-right font-medium">Time / page</th>
-                <th className="pb-hestia-2 text-right font-medium">Tokens / page</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.byModel.map((m) => (
-                <tr key={`${m.modelId}:${m.pdfMode}`} className="border-b border-hestia-border/40 last:border-0">
-                  <td className="py-hestia-2 text-hestia-text">
-                    {modelLabel(m.modelId)}
-                    <span className="mt-0.5 block text-xs text-hestia-text-muted">{pdfModeLabel(m.pdfMode)}</span>
-                  </td>
-                  <td className="py-hestia-2 text-right tabular-nums text-hestia-text">{m.total}</td>
-                  <td className="py-hestia-2 text-right tabular-nums text-hestia-text">
-                    {rate(m.succeeded, m.total)}
-                  </td>
-                  <td className="py-hestia-2 text-right tabular-nums text-hestia-text">
-                    {formatDuration(m.avgMsPerPage)}
-                  </td>
-                  <td className="py-hestia-2 text-right tabular-nums text-hestia-text">
-                    {formatTokens(m.avgTokensPerPage)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      <MetricsTable
+        title="By model"
+        columns={columns}
+        rows={metrics.byModel}
+        getRowKey={(m) => `${m.modelId}:${m.pdfMode}`}
+      />
     </div>
   );
 };

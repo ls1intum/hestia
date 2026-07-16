@@ -1,22 +1,6 @@
 import { useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { MoreVertical, ImagePlus, Loader2, Trash2 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { uploadFigure, deleteFigure } from "@/lib/api/api-client";
 import { useFigureUrl } from "@/hooks/data/use-figure-url";
 import { useSectionFigures, figuresKey } from "@/hooks/data/use-sections";
@@ -25,6 +9,8 @@ import { cn } from "@/lib/utils/utils";
 import type { SectionBlock, SectionFigure } from "@/lib/exam/exam-helpers";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
+import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -122,7 +108,11 @@ export const FigureBlockCard = ({
       quietControls
       dragAlwaysVisible
       actionsMenu={
-        <FigureActionsMenu setConfirmDelete={setConfirmDelete} />
+        <BlockActionsMenu
+          ariaLabel="Figure actions"
+          onDelete={() => setConfirmDelete(true)}
+          deleteLabel="Delete figure block"
+        />
       }
       dragHandleProps={dragHandleProps}
     />
@@ -188,25 +178,13 @@ export const FigureBlockCard = ({
         body={body}
       />
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this figure block?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The image attached to it will also be removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onDelete}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this figure block?"
+        description="The image attached to it will also be removed."
+        onConfirm={onDelete}
+      />
     </>
   );
 };
@@ -259,26 +237,3 @@ const FigureThumb = ({
     </div>
   );
 };
-
-const FigureActionsMenu = ({
-  setConfirmDelete,
-}: {
-  setConfirmDelete: (v: boolean) => void;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger
-      aria-label="Figure actions"
-      className="rounded-hestia-sm p-1 text-hestia-text-muted hover:bg-hestia-primary-muted/40 hover:text-hestia-text"
-    >
-      <MoreVertical size={16} />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuItem
-        onClick={() => setConfirmDelete(true)}
-        className="text-hestia-danger focus:text-hestia-danger"
-      >
-        Delete figure block
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);

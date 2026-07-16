@@ -10,13 +10,9 @@ import { autoGradeChoiceTask, type TaskAnswer, type TaskGrade } from "@/lib/grad
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import type { Task } from "@/lib/exam/exam-helpers";
-import { cn } from "@/lib/utils/utils";
+import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { solveTask } from "@/lib/api/api-solve";
 import { GRADE_SOURCE_LABELS } from "@/lib/exam/labels";
-
-const preventNumberWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
-  event.currentTarget.blur();
-};
 
 /** Grading increment shared by the slider and the number input. */
 const SCORE_STEP = 0.5;

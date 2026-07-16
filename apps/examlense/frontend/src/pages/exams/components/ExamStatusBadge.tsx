@@ -1,59 +1,13 @@
-import { CheckCircle2, FileText, Gavel, Loader2, Sparkles } from "lucide-react";
 import type { Exam } from "@/lib/exam/exam-helpers";
+import { examStatusMeta } from "@/lib/exam/exam-status";
 
 /**
- * Unified status badge shown on every exam card in the dashboard. Covers the
- * five user-facing statuses: Parsing, Draft, Evaluating, Grading, Finished.
- * The DB still also has `ready` (= editable draft that's ready to send) and
- * `failed` (handled separately on its own card variant); `ready` collapses
- * into "Draft" for display.
+ * Unified status badge shown on every exam row in the dashboard. Appearance and
+ * labels come from the shared `EXAM_STATUS_META` table (`lib/exam/exam-status`),
+ * where `ready` and `failed` collapse into the neutral "Draft" chip.
  */
 export const ExamStatusBadge = ({ status }: { status: Exam["status"] }) => {
-  // Map DB status -> visible badge. `ready` and any unknown future state
-  // collapse to "Draft" so the dashboard never shows a blank chip.
-  const variant = (() => {
-    switch (status) {
-      case "parsing":
-        return {
-          label: "Parsing",
-          className: "bg-hestia-primary/10 text-hestia-primary",
-          Icon: Loader2,
-          spin: true,
-        };
-      case "evaluating":
-        return {
-          label: "Evaluating",
-          className: "bg-hestia-success/10 text-hestia-success",
-          Icon: Sparkles,
-          spin: false,
-        };
-      case "grading":
-        return {
-          label: "Grading",
-          className: "bg-hestia-accent/10 text-hestia-accent",
-          Icon: Gavel,
-          spin: false,
-        };
-      case "finished":
-        return {
-          label: "Finished",
-          className: "bg-hestia-success/10 text-hestia-success",
-          Icon: CheckCircle2,
-          spin: false,
-        };
-      case "draft":
-      case "ready":
-      default:
-        return {
-          label: "Draft",
-          className: "border border-hestia-border text-hestia-text-muted",
-          Icon: FileText,
-          spin: false,
-        };
-    }
-  })();
-
-  const { Icon, label, className, spin } = variant;
+  const { Icon, label, className, spin } = examStatusMeta(status);
   const isEvaluating = status === "evaluating";
   return (
     <span

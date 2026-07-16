@@ -1,15 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, Navigate, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  FileText,
-  ArrowLeft,
-  ListChecks,
-  ListTodo,
-  NotebookPen,
-  Image as ImageIcon,
-  Plus,
-} from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -27,35 +19,22 @@ import {
 } from "@dnd-kit/sortable";
 import {
   patchExam as apiPatchExam,
-  patchTask as apiPatchTask,
-  createTask as apiCreateTask,
-  deleteTask as apiDeleteTask,
-  patchSection as apiPatchSection,
-  createSection as apiCreateSection,
-  deleteSection as apiDeleteSection,
-  patchBlock as apiPatchBlock,
-  createBlock as apiCreateBlock,
-  deleteBlock as apiDeleteBlock,
-  deleteTasksBySection,
-  deleteBlocksBySection,
   listAnswers,
   cancelExam,
 } from "@/lib/api/api-client";
-import { subscribeExam } from "@/lib/api/sse";
-import { useExam, useTasks, examKey, tasksKey } from "@/hooks/data/use-exam";
-import { useSections, useSectionBlocks, sectionsKey, blocksKey } from "@/hooks/data/use-sections";
+import { examKey, tasksKey } from "@/hooks/data/use-exam";
+import { sectionsKey, blocksKey } from "@/hooks/data/use-sections";
+import { useExamBundle } from "@/hooks/data/use-exam-bundle";
+import { useExamRealtime } from "@/hooks/data/use-exam-realtime";
+import { useExamMutations } from "@/pages/exam-edit/use-exam-mutations";
 import { SaveStatusProvider, useSaveStatus, SaveIndicator } from "@/pages/exam-edit/components/SaveStatus";
 import { useToast } from "@/hooks/ui/use-toast";
 import { examLearningGoalsKey } from "@/hooks/data/use-learning-goals";
-import { TaskCard } from "@/pages/exam-edit/components/TaskCard";
-import { ContextBlockCard } from "@/pages/exam-edit/components/ContextBlockCard";
-import { FigureBlockCard } from "@/pages/exam-edit/components/FigureBlockCard";
 import { AddTaskInline } from "@/pages/exam-edit/components/AddTaskInline";
 import { SectionLayout } from "@/components/shared/exam-content/SectionLayout";
 import { SectionTitleInput } from "@/pages/exam-edit/components/SectionTitleInput";
 import { useItemCollapseState } from "@/hooks/ui/use-item-collapse-state";
-import { BlockRow } from "@/pages/exam-edit/components/BlockRow";
-import { SortableItem } from "@/pages/exam-edit/components/SortableItem";
+import { BlockItem as BlockItemComponent } from "@/pages/exam-edit/components/BlockItem";
 import { ExamEditFooter } from "@/pages/exam-edit/components/ExamEditFooter";
 import { ScoreNeededIndicator } from "@/pages/exam-edit/components/ScoreNeededIndicator";
 import { InlineTitle } from "@/components/shared/chrome/InlineTitle";
@@ -68,94 +47,60 @@ import { IntroSlide } from "@/pages/exam-edit/components/IntroSlide";
 import { ManualIntroSlide } from "@/pages/exam-edit/components/ManualIntroSlide";
 import { useSectionConfirmations } from "@/hooks/data/use-section-confirmations";
 import {
-  convertTaskType,
   examModePath,
   examModeSlug,
-  figureLabelsForBlocks,
   isSectionReady,
   itemId,
-  letterLabel,
-  mergeSectionItems,
   totalPoints,
   type BlockItem,
   type Exam,
   type Section,
-  type SectionBlock,
   type Task,
   type TaskType,
 } from "@/lib/exam/exam-helpers";
-import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
-import { Badge } from "@/components/ui/badge";
+import {
+  useSectionGroups,
+  useCurrentSectionId,
+} from "@/hooks/ui/use-section-groups";
 import {
   SectionSidebar,
   useEditSectionEntries,
   type SectionEntry,
 } from "@/components/shared/exam-content/SectionSidebar";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-
-const taskTypeIcon = (type: TaskType) => {
-  switch (type) {
-    case "single_choice":
-      return ListTodo;
-    case "multiple_choice":
-      return ListChecks;
-    case "text":
-    default:
-      return NotebookPen;
-  }
-};
-
-const sectionIndexSlug = (index: number) => `section-${index + 1}`;
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
 const ExamEditInner = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { setSaving, setSaved, setError } = useSaveStatus();
-  const { data: exam, isLoading: examLoading } = useExam(id);
-  const { data: tasks, isLoading: tasksLoading } = useTasks(id);
-  const { data: sections, isLoading: sectionsLoading } = useSections(id);
-  const { data: blocks, isLoading: blocksLoading } = useSectionBlocks(id);
-  const isLoading =
-    examLoading || tasksLoading || sectionsLoading || blocksLoading;
+  const { exam, tasks, sections, blocks, isLoading } = useExamBundle(id);
 
   const solverModelId =
     exam?.solver_model ?? DEFAULT_SOLVER_MODEL_ID;
 
   // Keep the exam in sync if its status changes server-side (e.g. background
   // evaluation flips it back to a non-evaluating state).
-  useEffect(() => {
-    if (!id) return;
+  useExamRealtime(id, {
     // The SSE `exam` event carries no payload, so we can't diff status here.
     // Invalidate the exam and its child collections together: when the
     // background pipeline transitions out of a long-running phase
     // (parsing/evaluating/grading), the child collections were empty at first
     // load, and refetching them renders the freshly created
     // sections/tasks/blocks without a manual refresh.
-    return subscribeExam(id, {
-      onExam: () => {
-        qc.invalidateQueries({ queryKey: examKey(id) });
-        qc.invalidateQueries({ queryKey: tasksKey(id) });
-        qc.invalidateQueries({ queryKey: sectionsKey(id) });
-        qc.invalidateQueries({ queryKey: blocksKey(id) });
-      },
-      // Learning goals were generated in the background — refresh the tasks
-      // (they carry the goal ids) and the resolved-goal cache.
-      onTasks: () => {
-        qc.invalidateQueries({ queryKey: tasksKey(id) });
-        qc.invalidateQueries({ queryKey: examLearningGoalsKey(id) });
-      },
-    });
-  }, [id, qc]);
+    onExam: () => {
+      qc.invalidateQueries({ queryKey: examKey(id) });
+      qc.invalidateQueries({ queryKey: tasksKey(id) });
+      qc.invalidateQueries({ queryKey: sectionsKey(id) });
+      qc.invalidateQueries({ queryKey: blocksKey(id) });
+    },
+    // Learning goals were generated in the background — refresh the tasks
+    // (they carry the goal ids) and the resolved-goal cache.
+    onTasks: () => {
+      qc.invalidateQueries({ queryKey: tasksKey(id) });
+      qc.invalidateQueries({ queryKey: examLearningGoalsKey(id) });
+    },
+  });
 
   // Per-section user-confirmation state. Confirming a section dispatches a
   // background solve-section call so the LLM answers are ready by the time
@@ -192,46 +137,6 @@ const ExamEditInner = () => {
   // The scrolling content viewport — used by the "Score needs to be set"
   // indicator to place itself relative to the visible area.
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const sectionIdForTask = useCallback(
-    (taskId: string): string | null => {
-      const t = (tasks ?? []).find((tk) => tk.id === taskId);
-      return t?.section_id ?? null;
-    },
-    [tasks],
-  );
-
-  const sectionIdForBlock = useCallback(
-    (blockId: string): string | null => {
-      const b = (blocks ?? []).find((bk) => bk.id === blockId);
-      return b?.section_id ?? null;
-    },
-    [blocks],
-  );
-
-  // Unconfirm the given section (if confirmed) before performing an edit.
-  // Centralised so every mutation path keeps the confirmation/answer state
-  // honest: confirmation is a commit point, any edit reopens it.
-  const unconfirmIfNeeded = useCallback(
-    async (sectionId: string | null | undefined) => {
-      if (sectionId && confirmApiRef.current.isConfirmed(sectionId)) {
-        await confirmApiRef.current.unconfirm(sectionId);
-      }
-    },
-    [],
-  );
-
-  const patchExam = async (patch: Partial<Exam>) => {
-    if (!id || !exam) return;
-    setSaving();
-    qc.setQueryData(examKey(id), { ...exam, ...patch });
-    try {
-      await apiPatchExam(id, patch as Record<string, unknown>);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
 
   const sendToEvaluation = async () => {
     if (!id || !exam) return;
@@ -302,347 +207,13 @@ const ExamEditInner = () => {
     });
   };
 
-  const patchTask = async (taskId: string, patch: Partial<Task>) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionIdForTask(taskId));
-    setSaving();
-    qc.setQueryData<Task[]>(tasksKey(id), (prev) =>
-      (prev ?? []).map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
-    );
-    try {
-      await apiPatchTask(taskId, patch as Record<string, unknown>);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
-
-  const addTask = async (
-    type: TaskType,
-    afterPosition: number,
-    sectionId: string | null,
-  ) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionId);
-    setSaving();
-    markPendingAdd();
-    try {
-      await apiCreateTask({
-        exam_id: id,
-        position: afterPosition + 1,
-        type,
-        section_id: sectionId,
-        options:
-          type === "text"
-            ? null
-            : [
-                { id: crypto.randomUUID(), text: "", is_correct: false },
-                { id: crypto.randomUUID(), text: "", is_correct: false },
-              ],
-      });
-      setSaved();
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-    } catch {
-      setError();
-    }
-  };
-
-  const deleteTask = async (taskId: string) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionIdForTask(taskId));
-    setSaving();
-    qc.setQueryData<Task[]>(tasksKey(id), (prev) =>
-      (prev ?? []).filter((t) => t.id !== taskId),
-    );
-    try {
-      await apiDeleteTask(taskId);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
-
-  const duplicateTask = async (task: Task) => {
-    if (!id) return;
-    await unconfirmIfNeeded(task.section_id);
-    setSaving();
-    try {
-      await apiCreateTask({
-        exam_id: id,
-        position: task.position + 1,
-        type: task.type,
-        prompt: task.prompt,
-        options: task.options ?? null,
-        reference_answer: task.reference_answer,
-        section: task.section,
-        points: task.points,
-        section_id: task.section_id,
-      });
-      setSaved();
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-    } catch {
-      setError();
-    }
-  };
-
-  const patchSection = async (sectionId: string, patch: Partial<Section>) => {
-    if (!id) return;
-    // Confirmation toggles flow through useSectionConfirmations and bypass
-    // this helper, so any patchSection call here is a user-initiated edit
-    // and should reopen the section.
-    if (!("confirmed_at" in patch)) {
-      await unconfirmIfNeeded(sectionId);
-    }
-    setSaving();
-    qc.setQueryData<Section[]>(sectionsKey(id), (prev) =>
-      (prev ?? []).map((s) => (s.id === sectionId ? { ...s, ...patch } : s)),
-    );
-    try {
-      await apiPatchSection(sectionId, patch as Record<string, unknown>);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
-
-  const patchBlock = async (
-    blockId: string,
-    patch: Partial<SectionBlock>,
-  ) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionIdForBlock(blockId));
-    setSaving();
-    qc.setQueryData<SectionBlock[]>(blocksKey(id), (prev) =>
-      (prev ?? []).map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
-    );
-    try {
-      await apiPatchBlock(blockId, patch as Record<string, unknown>);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
-
-  const addContextBlock = async (
-    afterPosition: number,
-    sectionId: string,
-  ) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionId);
-    setSaving();
-    markPendingAdd();
-    try {
-      await apiCreateBlock({
-        exam_id: id,
-        section_id: sectionId,
-        position: afterPosition + 1,
-        content: "",
-      });
-      setSaved();
-      qc.invalidateQueries({ queryKey: blocksKey(id) });
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-    } catch (error) {
-      console.error("addContextBlock", error);
-      setError();
-    }
-  };
-
-  const addFigureBlock = async (
-    afterPosition: number,
-    sectionId: string,
-  ) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionId);
-    setSaving();
-    markPendingAdd();
-    try {
-      await apiCreateBlock({
-        exam_id: id,
-        section_id: sectionId,
-        position: afterPosition + 1,
-        content: "",
-        kind: "figure",
-      });
-      setSaved();
-      qc.invalidateQueries({ queryKey: blocksKey(id) });
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-    } catch {
-      setError();
-    }
-  };
-
-  const deleteBlock = async (blockId: string) => {
-    if (!id) return;
-    await unconfirmIfNeeded(sectionIdForBlock(blockId));
-    setSaving();
-    qc.setQueryData<SectionBlock[]>(blocksKey(id), (prev) =>
-      (prev ?? []).filter((b) => b.id !== blockId),
-    );
-    try {
-      await apiDeleteBlock(blockId);
-      setSaved();
-    } catch {
-      setError();
-    }
-  };
-
-  const addSection = async (afterPosition?: number) => {
-    if (!id) return;
-    setSaving();
-    // The backend's create-section is transactional and shifts later sections
-    // down itself, so we just hand it the target position (append falls past
-    // the end, where nothing needs shifting).
-    const position =
-      afterPosition != null ? afterPosition + 1 : (sections?.length ?? 0) + 1;
-    try {
-      await apiCreateSection({ exam_id: id, name: "", position });
-      setSaved();
-      qc.invalidateQueries({ queryKey: sectionsKey(id) });
-    } catch {
-      setError();
-    }
-  };
-
-  const deleteSection = async (sectionId: string) => {
-    if (!id) return;
-    setSaving();
-    // Delete tasks, blocks, then the section itself
-    try {
-      await deleteTasksBySection(id, sectionId);
-      await deleteBlocksBySection(id, sectionId);
-      await apiDeleteSection(sectionId);
-      setSaved();
-      qc.invalidateQueries({ queryKey: sectionsKey(id) });
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-      qc.invalidateQueries({ queryKey: blocksKey(id) });
-    } catch {
-      setError();
-    }
-  };
-
-  /**
-   * Persist a new ordering of items within a section. Assigns sequential
-   * positions (0, 1, 2, ...) and writes only the rows whose position changed.
-   * Cache is updated optimistically so the UI does not flicker.
-   */
-  const persistReorder = async (newOrder: BlockItem[]) => {
-    if (!id) return;
-    // Items in a single reorder all belong to the same section (the call
-    // originates from one section's DndContext). Take the section id from
-    // the first item that exposes one and reopen its confirmation.
-    const firstWithSection = newOrder.find(
-      (it) =>
-        (it.kind === "task" && it.task.section_id) ||
-        it.kind === "context" ||
-        it.kind === "figure",
-    );
-    const reorderSectionId =
-      firstWithSection?.kind === "task"
-        ? firstWithSection.task.section_id
-        : firstWithSection?.kind === "context" || firstWithSection?.kind === "figure"
-          ? firstWithSection.block.section_id
-          : null;
-    await unconfirmIfNeeded(reorderSectionId);
-    setSaving();
-
-    const taskUpdates: Array<{ id: string; position: number }> = [];
-    const blockUpdates: Array<{ id: string; position: number }> = [];
-
-    newOrder.forEach((item, idx) => {
-      if (item.kind === "task" && item.task.position !== idx) {
-        taskUpdates.push({ id: item.task.id, position: idx });
-      }
-      if (
-        (item.kind === "context" || item.kind === "figure") &&
-        item.block.position !== idx
-      ) {
-        blockUpdates.push({ id: item.block.id, position: idx });
-      }
-    });
-
-    // Optimistic cache update
-    if (taskUpdates.length > 0) {
-      const map = new Map(taskUpdates.map((u) => [u.id, u.position]));
-      qc.setQueryData<Task[]>(tasksKey(id), (prev) =>
-        (prev ?? []).map((t) =>
-          map.has(t.id) ? { ...t, position: map.get(t.id)! } : t,
-        ),
-      );
-    }
-    if (blockUpdates.length > 0) {
-      const map = new Map(blockUpdates.map((u) => [u.id, u.position]));
-      qc.setQueryData<SectionBlock[]>(blocksKey(id), (prev) =>
-        (prev ?? []).map((b) =>
-          map.has(b.id) ? { ...b, position: map.get(b.id)! } : b,
-        ),
-      );
-    }
-
-    try {
-      await Promise.all([
-        ...taskUpdates.map((u) => apiPatchTask(u.id, { position: u.position })),
-        ...blockUpdates.map((u) => apiPatchBlock(u.id, { position: u.position })),
-      ]);
-      setSaved();
-    } catch {
-      setError();
-      qc.invalidateQueries({ queryKey: tasksKey(id) });
-      qc.invalidateQueries({ queryKey: blocksKey(id) });
-    }
-  };
-
-  // Group tasks + context blocks by section_id (preserving section order; unassigned tasks go last)
-  const grouped = useMemo(() => {
-    const sortedSections = (sections ?? [])
-      .slice()
-      .sort((a, b) => a.position - b.position);
-    const tasksBySection = new Map<string | null, Task[]>();
-    for (const task of tasks ?? []) {
-      const key = task.section_id ?? null;
-      const arr = tasksBySection.get(key) ?? [];
-      arr.push(task);
-      tasksBySection.set(key, arr);
-    }
-    const blocksBySection = new Map<string, SectionBlock[]>();
-    for (const block of blocks ?? []) {
-      const arr = blocksBySection.get(block.section_id) ?? [];
-      arr.push(block);
-      blocksBySection.set(block.section_id, arr);
-    }
-
-    const groups: Array<{
-      section: Section | null;
-      tasks: Task[];
-      items: BlockItem[];
-      slug: string;
-    }> = [];
-    for (const [index, s] of sortedSections.entries()) {
-      const sectionTasks = tasksBySection.get(s.id) ?? [];
-      const sectionBlocks = blocksBySection.get(s.id) ?? [];
-      groups.push({
-        section: s,
-        tasks: sectionTasks,
-        items: mergeSectionItems(sectionTasks, sectionBlocks),
-        slug: sectionIndexSlug(index),
-      });
-    }
-    const orphan = tasksBySection.get(null) ?? [];
-    if (orphan.length > 0) {
-      orphan.sort((a, b) => a.position - b.position);
-      groups.push({
-        section: null,
-        tasks: orphan,
-        items: mergeSectionItems(orphan, []),
-        slug: "section-unassigned",
-      });
-    }
-    return groups;
-  }, [tasks, sections, blocks]);
-
-  // Auto-generated labels for figure blocks: "Figure {section}.{index}".
-  const figureLabels = useMemo(
-    () => figureLabelsForBlocks(sections, blocks),
-    [sections, blocks],
+  // Group tasks + context blocks by section (editor keeps empty sections).
+  // taskLetterById → a/b/c labels; figureLabels → "Figure {section}.{index}".
+  const { grouped, taskLetterById, figureLabels } = useSectionGroups(
+    sections,
+    tasks,
+    blocks,
+    { includeEmpty: true },
   );
 
   // Last position used inside a given section (across tasks + blocks).
@@ -660,11 +231,11 @@ const ExamEditInner = () => {
   // proactively; this catches readiness-only changes that the wrappers
   // could miss (e.g. an external/realtime update).
   //
-  // Gate on both queries having actually returned: on first load `sections`
-  // can settle before `tasks`, which would briefly make every section look
-  // empty and unconfirm the entire exam.
+  // Gate on the bundle having fully loaded: on first load `sections` can settle
+  // before `tasks`, which would briefly make every section look empty and
+  // unconfirm the entire exam.
   useEffect(() => {
-    if (tasksLoading || sectionsLoading) return;
+    if (isLoading) return;
     if (!tasks || !sections) return;
     for (const g of grouped) {
       const sid = g.section?.id;
@@ -674,7 +245,7 @@ const ExamEditInner = () => {
         void confirmApiRef.current.unconfirm(sid);
       }
     }
-  }, [grouped, tasks, sections, tasksLoading, sectionsLoading]);
+  }, [grouped, tasks, sections, isLoading]);
 
   const [pendingDeleteSection, setPendingDeleteSection] = useState<{
     id: string;
@@ -697,23 +268,9 @@ const ExamEditInner = () => {
     setIntroComplete(localStorage.getItem(introKey) === "1");
   }, [introKey, showInlineIntro]);
 
-  const [currentSectionId, setCurrentSectionId] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const hashed = window.location.hash.replace(/^#/, "");
-      if (hashed) return hashed;
-    }
-    return "";
+  const [currentSectionId, setCurrentSectionId] = useCurrentSectionId(grouped, {
+    introGate: showInlineIntro && !introComplete,
   });
-
-  useEffect(() => {
-    if (grouped.length === 0) return;
-    const validIds = new Set(grouped.map((g) => g.slug));
-    setCurrentSectionId((prev) => {
-      if (validIds.has(prev)) return prev;
-      if (showInlineIntro && !introComplete) return "";
-      return grouped[0]?.slug ?? "";
-    });
-  }, [grouped, introComplete, showInlineIntro]);
 
   const markIntroComplete = useCallback(() => {
     if (introKey) localStorage.setItem(introKey, "1");
@@ -725,7 +282,7 @@ const ExamEditInner = () => {
       if (showInlineIntro && !introComplete) markIntroComplete();
       setCurrentSectionId(slug);
     },
-    [introComplete, markIntroComplete, showInlineIntro],
+    [introComplete, markIntroComplete, showInlineIntro, setCurrentSectionId],
   );
 
   // Auto-expand newly created blocks. We only treat ids as "new" right
@@ -765,6 +322,30 @@ const ExamEditInner = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, allBlockCollapseIds.join("|")]);
 
+  // CRUD/mutation layer (optimistic writes + save-status + unconfirm-on-edit).
+  const {
+    patchExam,
+    patchTask,
+    addTask,
+    deleteTask,
+    duplicateTask,
+    patchSection,
+    patchBlock,
+    addContextBlock,
+    addFigureBlock,
+    deleteBlock,
+    addSection,
+    deleteSection,
+    persistReorder,
+  } = useExamMutations(id, {
+    exam,
+    tasks,
+    blocks,
+    sections,
+    confirmApiRef,
+    markPendingAdd,
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -782,174 +363,21 @@ const ExamEditInner = () => {
       void persistReorder(newOrder);
     };
 
-  // Pure UI labels: a, b, c... per task within its section. Computed in
-  // render — no memoization, no callbacks, no cache churn.
-  const taskLetterById = (() => {
-    const counts = new Map<string | null, number>();
-    const out = new Map<string, string>();
-    const sorted = (tasks ?? []).slice().sort((a, b) => a.position - b.position);
-    for (const task of sorted) {
-      const key = task.section_id ?? null;
-      const i = counts.get(key) ?? 0;
-      out.set(task.id, letterLabel(i));
-      counts.set(key, i + 1);
-    }
-    return out;
-  })();
-
-  /**
-   * Render a single block. When collapsed → lightweight TOC row. When
-   * expanded → full editor card. Both paths share the same SortableItem so
-   * DnD reordering works regardless of expansion state.
-   */
-  const renderBlockItem = (item: BlockItem) => {
-    const id = itemId(item);
-    const expanded = !collapseApi.isCollapsed(id);
-    const onToggle = () => collapseApi.toggle(id);
-    const scrollTargetId =
-      item.kind === "task" ? `task-${item.task.id}` : undefined;
-
-    return (
-      <div key={id} id={scrollTargetId}>
-      <SortableItem id={id}>
-        {({ setNodeRef, style, isDragging, dragHandleProps }) => {
-          if (!expanded) {
-            // Build the row label + subtitle per block kind.
-            let label: ReactNode = "";
-            let subtitle: ReactNode = null;
-            let points: number | null | undefined;
-            let missingScore = false;
-            let badgeText = "";
-            let leadingIcon: ReactNode;
-            if (item.kind === "task") {
-              const TaskTypeIcon = taskTypeIcon(item.task.type);
-              const letter = taskLetterById.get(item.task.id) ?? "";
-              const prompt = item.task.prompt?.trim() ?? "";
-              label = letter
-                ? `${letter})`
-                : "Untitled task";
-              subtitle = prompt ? (
-                <p className="text-sm leading-relaxed text-hestia-text-muted line-clamp-2">
-                  {prompt}
-                </p>
-              ) : (
-                <p className="text-sm italic text-hestia-text-muted/70">
-                  Enter the task question…
-                </p>
-              );
-              points = item.task.points ?? null;
-              missingScore =
-                item.task.points == null || item.task.points <= 0;
-              badgeText = TASK_TYPE_LABELS[item.task.type];
-              leadingIcon = (
-                <TaskTypeIcon
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            } else if (item.kind === "figure") {
-              label = figureLabels.get(item.block.id) ?? "Figure";
-              badgeText = "Figure";
-              leadingIcon = (
-                <ImageIcon
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            } else {
-              label = "Context";
-              badgeText = "Context";
-              leadingIcon = (
-                <FileText
-                  size={14}
-                  className="text-hestia-text-muted"
-                  aria-hidden
-                />
-              );
-            }
-            return (
-              <BlockRow
-                kind={item.kind}
-                label={label}
-                subtitle={subtitle}
-                points={points}
-                missingScore={missingScore}
-                leadingIcon={leadingIcon}
-                badge={
-                  <Badge
-                    variant="secondary"
-                    className="bg-hestia-primary-muted/30 text-hestia-text-muted"
-                  >
-                    {badgeText}
-                  </Badge>
-                }
-                onToggle={onToggle}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-
-          // Expanded: render the full editor card. Its own header chevron
-          // toggles back to the collapsed row via the shared collapseApi.
-          if (item.kind === "context") {
-            return (
-              <ContextBlockCard
-                block={item.block}
-                onToggleCollapsed={onToggle}
-                onPatch={(patch) => patchBlock(item.block.id, patch)}
-                onDelete={() => deleteBlock(item.block.id)}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-          if (item.kind === "figure") {
-            return (
-              <FigureBlockCard
-                block={item.block}
-                examId={exam!.id}
-                displayLabel={
-                  figureLabels.get(item.block.id) ?? "Figure"
-                }
-                onToggleCollapsed={onToggle}
-                onDelete={() => deleteBlock(item.block.id)}
-                setNodeRef={setNodeRef}
-                style={style}
-                isDragging={isDragging}
-                dragHandleProps={dragHandleProps}
-              />
-            );
-          }
-          return (
-            <TaskCard
-              task={item.task}
-              label={taskLetterById.get(item.task.id) ?? ""}
-              collapsed={false}
-              onToggleCollapsed={onToggle}
-              onPatch={(patch) => patchTask(item.task.id, patch)}
-              onDelete={() => deleteTask(item.task.id)}
-              onDuplicate={() => duplicateTask(item.task)}
-              onConvert={(toType) =>
-                patchTask(item.task.id, convertTaskType(item.task, toType))
-              }
-              setNodeRef={setNodeRef}
-              style={style}
-              isDragging={isDragging}
-              dragHandleProps={dragHandleProps}
-            />
-          );
-        }}
-      </SortableItem>
-      </div>
-    );
-  };
+  const renderBlockItem = (item: BlockItem) => (
+    <BlockItemComponent
+      key={itemId(item)}
+      item={item}
+      collapseApi={collapseApi}
+      figureLabels={figureLabels}
+      taskLetterById={taskLetterById}
+      examId={exam!.id}
+      onPatchBlock={patchBlock}
+      onDeleteBlock={deleteBlock}
+      onPatchTask={patchTask}
+      onDeleteTask={deleteTask}
+      onDuplicateTask={duplicateTask}
+    />
+  );
 
   const confirmedSectionIds = useMemo(() => {
     const set = new Set<string>();
@@ -989,34 +417,21 @@ const ExamEditInner = () => {
     );
   }, [grouped, confirmApi]);
 
-  // Scroll-and-expand jump used by the footer progress button.
-  const handleJumpToTask = useCallback(
-    (taskId: string) => {
+  // Expand the target task and scroll it into view. `focusScore` also focuses
+  // the score input after the scroll settles — used by the "Score needs to be
+  // set" wayfinding indicator; the plain jump drives the footer progress button.
+  const jumpToTask = useCallback(
+    (taskId: string, { focusScore = false }: { focusScore?: boolean } = {}) => {
       const id = `task:${taskId}`;
       if (collapseApi.isCollapsed(id)) {
         collapseApi.setManyCollapsed([id], false);
       }
       // Defer to next frame so the expanded card is in the DOM.
       requestAnimationFrame(() => {
-        const el = document.getElementById(`task-${taskId}`);
-        el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-    },
-    [collapseApi],
-  );
-
-  // Like handleJumpToTask, but also focuses the score input — used by the
-  // "Score needs to be set" wayfinding indicator.
-  const handleGoToScore = useCallback(
-    (taskId: string) => {
-      const id = `task:${taskId}`;
-      if (collapseApi.isCollapsed(id)) {
-        collapseApi.setManyCollapsed([id], false);
-      }
-      requestAnimationFrame(() => {
         document
           .getElementById(`task-${taskId}`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (!focusScore) return;
         // Focus after the smooth scroll settles so the caret lands cleanly.
         window.setTimeout(() => {
           const input = document.getElementById(
@@ -1077,7 +492,7 @@ const ExamEditInner = () => {
       findNextUnconfirmed(idx + 1, grouped.length) ??
       findNextUnconfirmed(0, idx);
     if (nextSlug) setCurrentSectionId(nextSlug);
-  }, [confirmApi, currentGroup, currentSectionRealId, grouped]);
+  }, [confirmApi, currentGroup, currentSectionRealId, grouped, setCurrentSectionId]);
 
   if (isLoading) {
     return <EditorLoadingView />;
@@ -1211,7 +626,7 @@ const ExamEditInner = () => {
             <ScoreNeededIndicator
               scrollRef={scrollRef}
               targetTaskId={nextUnscoredTaskId}
-              onGoToScore={handleGoToScore}
+              onGoToScore={(taskId) => jumpToTask(taskId, { focusScore: true })}
             />
           )}
         </main>
@@ -1224,43 +639,27 @@ const ExamEditInner = () => {
         currentSectionTasks={currentSectionTasks}
         taskLetterById={taskLetterById}
         allSectionsReady={allSectionsReady}
-        onJumpToTask={handleJumpToTask}
+        onJumpToTask={jumpToTask}
         onAdvanceSection={handleAdvanceSection}
         startSolvingOpen={startSolvingOpen}
         onStartSolvingOpenChange={setStartSolvingOpen}
       />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={pendingDeleteSection != null}
         onOpenChange={(open) => {
           if (!open) setPendingDeleteSection(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete this section?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Tasks in this section will become unassigned.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(ev) => {
-                ev.preventDefault();
-                const target = pendingDeleteSection;
-                setPendingDeleteSection(null);
-                if (target) void deleteSection(target.id);
-              }}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete section
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Delete this section?"
+        description="Tasks in this section will become unassigned."
+        onConfirm={(ev) => {
+          ev.preventDefault();
+          const target = pendingDeleteSection;
+          setPendingDeleteSection(null);
+          if (target) void deleteSection(target.id);
+        }}
+        confirmLabel="Delete section"
+      />
     </div>
   );
 };

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import type { ExamListItem } from "@/lib/api/api-client";
 import { fuzzyMatch } from "@/lib/utils/fuzzy";
 import { progressSortValue } from "@/lib/exam/exam-progress";
+import { EXAM_STATUS_META } from "@/lib/exam/exam-status";
 import {
   Table,
   TableBody,
@@ -27,17 +28,6 @@ const PAGE_SIZE = 10;
 type SortKey = "title" | "status" | "progress" | "created";
 type SortDir = "asc" | "desc";
 
-/** Lifecycle order used when sorting by Status. */
-const STATUS_RANK: Record<ExamListItem["status"], number> = {
-  parsing: 0,
-  evaluating: 1,
-  draft: 2,
-  ready: 2,
-  grading: 3,
-  finished: 4,
-  failed: 5,
-};
-
 /** Default direction when a column is first selected. */
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   title: "asc",
@@ -51,7 +41,7 @@ const compare = (a: ExamListItem, b: ExamListItem, key: SortKey): number => {
     case "title":
       return (a.title || "Untitled exam").localeCompare(b.title || "Untitled exam");
     case "status":
-      return STATUS_RANK[a.status] - STATUS_RANK[b.status];
+      return EXAM_STATUS_META[a.status].rank - EXAM_STATUS_META[b.status].rank;
     case "progress":
       return progressSortValue(a) - progressSortValue(b);
     case "created":
@@ -128,6 +118,7 @@ export const ExamsTable = ({
       setSortKey(key);
       setSortDir(DEFAULT_DIR[key]);
     }
+    setPage(1);
   };
 
   const filtered = useMemo(() => {
@@ -141,16 +132,19 @@ export const ExamsTable = ({
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
-  // Reset to the first page whenever the result set is re-shaped, and keep the
-  // current page in range if the filtered set shrinks.
-  useEffect(() => {
+  // Reset to the first page when the Title search (a prop) changes — adjusted
+  // during render rather than in an effect. Sort changes reset the page in
+  // `onSort`.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
     setPage(1);
-  }, [query, sortKey, sortDir]);
-  useEffect(() => {
-    setPage((p) => Math.min(p, totalPages));
-  }, [totalPages]);
+  }
 
-  const pageStart = (page - 1) * PAGE_SIZE;
+  // Clamp during render so a shrinking result set can't strand us past the last
+  // page; the stored `page` is corrected lazily rather than via an effect.
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
   const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
   return (
@@ -191,19 +185,19 @@ export const ExamsTable = ({
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  setPage((p) => Math.max(1, p - 1));
+                  setPage(Math.max(1, safePage - 1));
                 }}
-                className={cn(page === 1 && "pointer-events-none opacity-50")}
+                className={cn(safePage === 1 && "pointer-events-none opacity-50")}
               />
             </PaginationItem>
-            {pageItems(page, totalPages).map((item, i) => (
+            {pageItems(safePage, totalPages).map((item, i) => (
               <PaginationItem key={`${item}-${i}`}>
                 {item === "…" ? (
                   <span className="flex h-9 w-9 items-center justify-center text-hestia-text-muted">…</span>
                 ) : (
                   <PaginationLink
                     href="#"
-                    isActive={item === page}
+                    isActive={item === safePage}
                     onClick={(e) => {
                       e.preventDefault();
                       setPage(item);
@@ -219,9 +213,9 @@ export const ExamsTable = ({
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  setPage((p) => Math.min(totalPages, p + 1));
+                  setPage(Math.min(totalPages, safePage + 1));
                 }}
-                className={cn(page === totalPages && "pointer-events-none opacity-50")}
+                className={cn(safePage === totalPages && "pointer-events-none opacity-50")}
               />
             </PaginationItem>
           </PaginationContent>

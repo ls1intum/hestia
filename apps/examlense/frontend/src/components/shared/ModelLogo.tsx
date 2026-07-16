@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils/utils";
-import { solverModelMeta } from "@/lib/exam/solver-model-meta";
+import { modelMeta } from "@/lib/exam/model-meta";
 
 interface Props {
   modelId: string;
@@ -12,7 +12,7 @@ interface Props {
  * logo is mapped. Callers own the surrounding chip/container.
  */
 export const ModelLogo = ({ modelId, className }: Props) => {
-  const meta = solverModelMeta(modelId);
+  const meta = modelMeta(modelId);
 
   if (meta?.logoSrc) {
     return (

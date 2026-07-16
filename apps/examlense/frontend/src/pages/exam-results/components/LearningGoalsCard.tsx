@@ -2,11 +2,12 @@ import { useMemo } from "react";
 import { Target } from "lucide-react";
 import type { Task } from "@/lib/exam/exam-helpers";
 import type { TaskGrade, TaskAnswer } from "@/lib/grading/grading";
-import { goalRollup, scoreRollup } from "@/lib/grading/grading";
+import { formatScoreSummary, goalRollup, scoreRollup } from "@/lib/grading/grading";
 import { Badge } from "@/components/ui/badge";
 import { useExamLearningGoals } from "@/hooks/data/use-learning-goals";
 import type { LearningGoalResponse } from "@/lib/learning-goals/learning-goals";
 import { BLOOM_LABELS, SOLO_LABELS } from "@/lib/exam/labels";
+import { ScoreBar } from "./ScoreBar";
 
 interface Props {
   tasks: Task[];
@@ -80,7 +81,7 @@ export const LearningGoalsCard = ({ tasks, grades, answers, examId }: Props) => 
                 {goal.text}
               </span>
               <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
-                {count} tasks · {earned}/{max} ({pct}%)
+                {formatScoreSummary({ count, earned, max, pct })}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-hestia-1">
@@ -95,12 +96,7 @@ export const LearningGoalsCard = ({ tasks, grades, answers, examId }: Props) => 
                 </Badge>
               )}
             </div>
-            <div className="mt-hestia-2 h-1.5 w-full overflow-hidden rounded-full bg-hestia-border/40">
-              <div
-                className="h-full rounded-full bg-hestia-primary transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+            <ScoreBar pct={pct} className="mt-hestia-2" />
           </div>
         ))}
 
@@ -111,7 +107,7 @@ export const LearningGoalsCard = ({ tasks, grades, answers, examId }: Props) => 
                 Unassigned tasks
               </span>
               <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
-                {unassigned.count} tasks · {unassigned.earned}/{unassigned.max} ({unassigned.pct}%)
+                {formatScoreSummary(unassigned)}
               </span>
             </div>
           </div>

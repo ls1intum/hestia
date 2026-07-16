@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import type { Section } from "@/lib/exam/exam-helpers";
+import { useClickToEdit } from "@/hooks/ui/use-click-to-edit";
 
 interface Props {
   section: Section;
@@ -13,35 +13,17 @@ interface Props {
  * inline input that commits on blur / Enter and reverts on Escape.
  */
 export const SectionTitleInput = ({ section, onPatch }: Props) => {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(section.name);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => setName(section.name), [section.id, section.name]);
-
-  const flush = () => {
-    const next = name.trim();
-    if (next !== section.name) onPatch({ name: next });
-  };
+  const { editing, startEditing, inputProps } = useClickToEdit(
+    section.name,
+    (next) => {
+      if (next !== section.name) onPatch({ name: next });
+    },
+  );
 
   if (editing) {
     return (
       <input
-        ref={inputRef}
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => {
-          flush();
-          setEditing(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") {
-            setName(section.name);
-            setEditing(false);
-          }
-        }}
+        {...inputProps}
         placeholder="Section name (e.g. Part A)"
         className="w-full bg-transparent font-body text-base font-semibold text-hestia-text placeholder:font-normal placeholder:text-hestia-text-muted/35 focus:outline-none"
       />
@@ -51,7 +33,7 @@ export const SectionTitleInput = ({ section, onPatch }: Props) => {
   return (
     <button
       type="button"
-      onClick={() => setEditing(true)}
+      onClick={startEditing}
       className="group flex max-w-full items-center gap-1.5 text-left font-body text-base font-semibold leading-tight text-hestia-text transition-colors hover:text-hestia-primary"
     >
       <span className="truncate">

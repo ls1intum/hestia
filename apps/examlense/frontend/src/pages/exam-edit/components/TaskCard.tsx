@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
+import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
   GripVertical,
-  MoreVertical,
   Trash2,
   AlertTriangle,
   ChevronDown,
@@ -11,41 +10,23 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
-import { useAutosizeTextarea } from "@/hooks/ui/use-autosize-textarea";
-import { useDebouncedCallback } from "@/hooks/ui/use-debounced-callback";
-import { cn } from "@/lib/utils/utils";
-import {
-  MarkdownView,
-  markdownSurfaceClassName,
-  markdownTextareaClassName,
-} from "@/components/shared/exam-content/MarkdownView";
+import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
+import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
+import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
+import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
+import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 import {
   TASK_TYPES,
   mcWarning,
@@ -54,10 +35,6 @@ import {
   type TaskOption,
   type TaskType,
 } from "@/lib/exam/exam-helpers";
-
-const preventNumberWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
-  event.currentTarget.blur();
-};
 
 interface Props {
   task: Task;
@@ -93,40 +70,13 @@ export const TaskCard = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingConvert, setPendingConvert] = useState<TaskType | null>(null);
 
-  // Local mirror for fast typing; flush via onPatch on change
-  const [prompt, setPrompt] = useState(task.prompt);
-  useEffect(() => setPrompt(task.prompt), [task.id, task.prompt]);
-  const promptRef = useAutosizeTextarea<HTMLTextAreaElement>(prompt);
-  const [editingPrompt, setEditingPrompt] = useState(() => (task.prompt ?? "").trim() === "");
-  const justEnteredPromptEdit = useRef(false);
-
-  useEffect(() => {
-    if (editingPrompt && justEnteredPromptEdit.current) {
-      justEnteredPromptEdit.current = false;
-      const el = promptRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        try {
-          el.setSelectionRange(len, len);
-        } catch {
-          /* noop */
-        }
-      }
-    }
-  }, [editingPrompt, promptRef]);
-
-  const enterPromptEdit = () => {
-    justEnteredPromptEdit.current = true;
-    setEditingPrompt(true);
-  };
-
-  // Debounce text-field patches so each keystroke does NOT cascade into a
-  // full editor re-render (which would recompute a/b/c labels for every task).
-  const debouncedPatchPrompt = useDebouncedCallback(
-    (value: string) => onPatch({ prompt: value }),
-    250,
-  );
+  // Local mirror + click-to-edit machine for the prompt. Debounced patches
+  // keep each keystroke from cascading into a full editor re-render (which
+  // would recompute a/b/c labels for every task).
+  const field = useInlineTextEdit({
+    value: task.prompt,
+    onCommit: (prompt) => onPatch({ prompt }),
+  });
 
   const hasEmptyPrompt = (task.prompt ?? "").trim() === "";
 
@@ -236,7 +186,24 @@ export const TaskCard = ({
           </Popover>
         }
         actionsMenu={
-          <TaskActionsMenu {...{ task, onDuplicate, onConvert, setConfirmDelete }} />
+          <BlockActionsMenu
+            ariaLabel="Task actions"
+            onDelete={() => setConfirmDelete(true)}
+          >
+            <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Convert type</DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  {TASK_TYPES.filter((tp) => tp !== task.type).map((tp) => (
+                    <DropdownMenuItem key={tp} onClick={() => onConvert(tp)}>
+                      {TASK_TYPE_LABELS[tp]}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+          </BlockActionsMenu>
         }
         dragHandleProps={dragHandleProps}
       />
@@ -251,45 +218,13 @@ export const TaskCard = ({
         <WarningBanner text="No task description added." />
       )}
 
-      {editingPrompt || prompt.trim() === "" ? (
-        <>
-          <Textarea
-            ref={promptRef}
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-              debouncedPatchPrompt(e.target.value);
-            }}
-            onBlur={() => {
-              debouncedPatchPrompt.flush();
-              if (prompt !== task.prompt) onPatch({ prompt });
-              if (prompt.trim() !== "") setEditingPrompt(false);
-            }}
-            placeholder="Enter the task question…"
-            rows={2}
-            className={cn(markdownTextareaClassName, "max-h-[550px] overflow-y-auto")}
-          />
-          <p className="mt-1 text-xs text-hestia-text-muted">
-            Code blocks and snippets (Markdown) supported
-          </p>
-        </>
-      ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={enterPromptEdit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              enterPromptEdit();
-            }
-          }}
-          aria-label="Enter the task question…"
-          className={markdownSurfaceClassName}
-        >
-          <MarkdownView content={prompt} />
-        </div>
-      )}
+      <MarkdownEditField
+        field={field}
+        placeholder="Enter the task question…"
+        ariaLabel="Enter the task question…"
+        rows={2}
+        textareaClassName="max-h-[550px] overflow-y-auto"
+      />
 
       {task.type === "text" ? null : task.type === "single_choice" ? (
         <div className="mt-hestia-3">
@@ -347,99 +282,34 @@ export const TaskCard = ({
         body={body}
       />
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onDelete}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this task?"
+        description="This action cannot be undone."
+        onConfirm={onDelete}
+      />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={pendingConvert !== null}
         onOpenChange={(open) => {
           if (!open) setPendingConvert(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Change task type?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConvert === "text"
-                ? "Switching to a free-text task will remove all answer options and correctness settings. This cannot be undone."
-                : "Switching from a free-text task to a choice task will discard the current free-text answer setup. This cannot be undone."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (pendingConvert) onConvert(pendingConvert);
-                setPendingConvert(null);
-              }}
-              className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
-            >
-              Change type
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Change task type?"
+        description={
+          pendingConvert === "text"
+            ? "Switching to a free-text task will remove all answer options and correctness settings. This cannot be undone."
+            : "Switching from a free-text task to a choice task will discard the current free-text answer setup. This cannot be undone."
+        }
+        onConfirm={() => {
+          if (pendingConvert) onConvert(pendingConvert);
+          setPendingConvert(null);
+        }}
+        confirmLabel="Change type"
+      />
     </>
   );
 };
-
-const TaskActionsMenu = ({
-  task,
-  onDuplicate,
-  onConvert,
-  setConfirmDelete,
-}: {
-  task: Task;
-  onDuplicate: () => void;
-  onConvert: (toType: TaskType) => void;
-  setConfirmDelete: (v: boolean) => void;
-}) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger
-      aria-label="Task actions"
-      className="rounded-hestia-sm p-1 text-hestia-text-muted hover:bg-hestia-primary-muted/40 hover:text-hestia-text"
-    >
-      <MoreVertical size={16} />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Convert type</DropdownMenuSubTrigger>
-        <DropdownMenuPortal>
-          <DropdownMenuSubContent>
-            {TASK_TYPES.filter((tp) => tp !== task.type).map((tp) => (
-              <DropdownMenuItem key={tp} onClick={() => onConvert(tp)}>
-                {TASK_TYPE_LABELS[tp]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuPortal>
-      </DropdownMenuSub>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        onClick={() => setConfirmDelete(true)}
-        className="text-hestia-danger focus:text-hestia-danger"
-      >
-        Delete
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
 
 const WarningBanner = ({ text }: { text: string }) => (
   <div className="mt-hestia-3 flex items-start gap-2 rounded-hestia-sm border-l-4 border-hestia-warning bg-hestia-warning/10 px-hestia-3 py-2 text-xs text-hestia-text">

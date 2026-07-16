@@ -102,6 +102,19 @@ export const scoreRollup = (
   return { count: tasks.length, earned, max, pct: max > 0 ? Math.round((earned / max) * 100) : 0 };
 };
 
+/** Compact "{count} tasks · {earned}/{max} ({pct}%)" label for a score rollup. */
+export const formatScoreSummary = ({
+  count,
+  earned,
+  max,
+  pct,
+}: {
+  count: number;
+  earned: number;
+  max: number;
+  pct: number;
+}): string => `${count} tasks · ${earned}/${max} (${pct}%)`;
+
 export interface GoalRollup {
   goalId: number;
   count: number;
