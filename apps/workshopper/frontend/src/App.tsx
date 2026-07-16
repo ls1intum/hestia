@@ -85,6 +85,8 @@ export default function App() {
 
 
   /** Persist current draft state to the backend, debounced. Returns the session id. */
+  const pendingResolvers = useRef<Array<(id: string) => void>>([]);
+
   const persistDraft = useCallback(
     async (
       draft: DraftState,
@@ -95,13 +97,18 @@ export default function App() {
     ): Promise<string> => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
       return new Promise((resolve) => {
+        pendingResolvers.current.push(resolve);
         draftSaveTimeout.current = setTimeout(async () => {
           try {
             const id = await saveDraft(draft, currentSessionId, currentStep, type, lectureId ?? undefined);
-            resolve(id);
+            const resolvers = pendingResolvers.current;
+            pendingResolvers.current = [];
+            resolvers.forEach(r => r(id));
           } catch (e) {
             console.warn("Draft save failed", e);
-            resolve(currentSessionId ?? "");
+            const resolvers = pendingResolvers.current;
+            pendingResolvers.current = [];
+            resolvers.forEach(r => r(currentSessionId ?? ""));
           }
         }, 300);
       });
@@ -347,9 +354,15 @@ export default function App() {
     try {
       const skeleton = generateDefaultSkeleton(goals, updatedInput.duration || 90);
       setCurrentSkeleton(skeleton);
+      
+      // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
+      const initialDraft = buildDraft(updatedInput, goals, skeleton);
+      const currentId = await persistDraft(initialDraft, "goals", sessionId, entityType, currentLectureId);
+      if (!sessionId) setSessionId(currentId);
+      
       const skeletonWithId: SessionSkeleton = {
         ...skeleton,
-        sessionId: sessionId ?? undefined,
+        sessionId: currentId,
       };
       const result = await generateSession(
         goals,
@@ -360,13 +373,9 @@ export default function App() {
         result.title = updatedInput.title.trim();
       }
       setSession(result);
-      if (result.id && result.id !== sessionId) {
-        setSessionId(result.id);
-      }
       
       const draft = buildDraft(updatedInput, goals, skeleton, result);
-      const id = await persistDraft(draft, "timeline", sessionId ?? result.id ?? null, entityType, currentLectureId);
-      if (!sessionId) setSessionId(id);
+      await persistDraft(draft, "timeline", currentId, entityType, currentLectureId);
       setStep("timeline");
     } catch (err) {
       toast({
@@ -392,6 +401,7 @@ export default function App() {
     setCurrentSkeleton(null);
     setCompletedTasks([]);
     setIsFinished(false);
+    setIsLoading(false);
     setStep("input-1");
   };
 

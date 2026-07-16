@@ -22,6 +22,7 @@ public class WorkshopService {
     private final LlmService llm;
     private final WorkshopSessionRepository repo;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final java.util.concurrent.ExecutorService llmExecutor = java.util.concurrent.Executors.newFixedThreadPool(20);
 
     public WorkshopService(LlmService llm, WorkshopSessionRepository repo) {
         this.llm = llm;
@@ -241,24 +242,47 @@ public class WorkshopService {
                 skeleton.learningGoal(), filteredBlocks,
                 skeleton.omittedGoalIndices(), skeleton.sessionId());
 
-        // LLM generates full activities for the blocks provided by the frontend
-        String systemPrompt = """
-                You are an expert learning designer creating a practical instructor script for a teaching session.
-                Your task is to take a timed session skeleton and produce a concrete, step-by-step timeline that tells the instructor exactly what to do and when.
-                Return ONLY a valid JSON object containing a 'title' string and a 'blocks' array, no prose, no markdown.
-                """;
-
         String sessionTypeLabel = resolveSessionType(meta.sessionType(), meta.sessionTypeOther());
-        String userPrompt = buildHydrationPrompt(filteredSkeleton, goals, meta, sessionTypeLabel);
 
-        log.debug("Hydrating session skeleton for {} goals", goals.size());
-        String rawSkeleton = llm.call(systemPrompt, userPrompt);
-        String hydratedJson = llm.extractJsonObject(rawSkeleton);
-        com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(hydratedJson);
-        String sessionTitle = rootNode.path("title").asText("Workshop Session Plan");
-        List<ActivityBlockDto> hydratedBlocks = mapper.convertValue(
-                rootNode.path("blocks"), new TypeReference<List<ActivityBlockDto>>() {
-                });
+        // 1. Generate title concurrently
+        java.util.concurrent.CompletableFuture<String> titleFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                return generateSessionTitle(filteredSkeleton, goals, meta, sessionTypeLabel);
+            }, llmExecutor);
+
+            // 2. Generate blocks concurrently with concurrency limit of 3
+            java.util.concurrent.Semaphore concurrencySemaphore = new java.util.concurrent.Semaphore(3);
+            List<java.util.concurrent.CompletableFuture<ActivityBlockDto>> blockFutures = new ArrayList<>();
+            
+            for (SkeletonBlockDto block : filteredBlocks) {
+                java.util.concurrent.CompletableFuture<ActivityBlockDto> future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    concurrencySemaphore.acquire();
+                    log.debug("Hydrating block phase={}, lgIndex={}", block.phase(), block.lgIndex());
+                    String prompt = buildHydrationPromptForBlock(block, filteredSkeleton, goals, meta, sessionTypeLabel);
+                    String sysPrompt = "You are an expert learning designer. Return ONLY valid JSON representing the requested block.";
+                    String rawJson = llm.call(sysPrompt, prompt);
+                    String cleanedJson = llm.extractJsonObject(rawJson);
+                    return mapper.readValue(cleanedJson, ActivityBlockDto.class);
+                } catch (Exception e) {
+                    log.error("Failed to hydrate block", e);
+                    throw new RuntimeException(e);
+                } finally {
+                    concurrencySemaphore.release();
+                }
+            });
+            blockFutures.add(future);
+        }
+
+        // Wait for all blocks to finish
+        java.util.concurrent.CompletableFuture<Void> allBlocksFuture = java.util.concurrent.CompletableFuture.allOf(blockFutures.toArray(new java.util.concurrent.CompletableFuture[0]));
+        allBlocksFuture.join();
+
+        // Collect results in order
+        List<ActivityBlockDto> hydratedBlocks = blockFutures.stream()
+                .map(java.util.concurrent.CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        String sessionTitle = titleFuture.join();
 
         // Build omitted goals list from skeleton indices
         List<String> omittedGoals = new ArrayList<>();
@@ -309,10 +333,29 @@ public class WorkshopService {
             log.warn("Could not persist session: {}", e.getMessage());
         }
 
-        return session;
+            return session;
     }
 
-    private String buildHydrationPrompt(SessionSkeletonDto skeleton,
+    private String generateSessionTitle(SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel) {
+        String systemPrompt = "You are an expert learning designer. Create a short, engaging title for this workshop session. Return ONLY the title as a plain string, no quotes, no JSON.";
+        
+        var sb = new StringBuilder();
+        sb.append("SESSION CONTEXT:\n");
+        sb.append("- Type: ").append(sessionTypeLabel).append("\n");
+        sb.append("- Topic/Main Goal: ").append(skeleton.learningGoal() != null ? skeleton.learningGoal() : "").append("\n");
+        sb.append("LEARNING GOALS:\n");
+        for (int i = 0; i < goals.size(); i++) {
+            sb.append("- ").append(goals.get(i).goal()).append("\n");
+        }
+        try {
+            return llm.call(systemPrompt, sb.toString()).trim().replaceAll("^\"|\"$", "");
+        } catch (Exception e) {
+            log.warn("Failed to generate title, using fallback", e);
+            return "Workshop Session Plan";
+        }
+    }
+
+    private String buildHydrationPromptForBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton,
             List<LearningGoalPlanDto> goals,
             WorkshopInputDto meta,
             String sessionTypeLabel) throws Exception {
@@ -339,87 +382,64 @@ public class WorkshopService {
             sb.append("LG").append(i + 1).append(": ").append(g.goal()).append("\n");
         }
 
-        sb.append("\nSKELETON TO HYDRATE:\n");
+        sb.append("\nFULL SESSION OUTLINE (For context only):\n");
         sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(skeleton.blocks()));
+
+        sb.append("\nTARGET BLOCK TO HYDRATE:\n");
+        sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(targetBlock));
 
         sb.append(
                 """
 
                         INSTRUCTIONS:
-                        For each skeleton block, generate a concrete instructor script. The key output per block is 'sections' — each section is a phase of the block (e.g. You explain, Participants Practice, Check Understanding) with a step-by-step timed todo list telling the instructor EXACTLY what to do.
+                        You are an expert learning designer. Your task is to generate a concrete instructor script for the TARGET BLOCK ONLY.
+                        The key output is 'sections' — each section is a phase of the block with a step-by-step timed todo list telling the instructor EXACTLY what to do.
 
                         CRITICAL RULES:
                         1. DO NOT invent or elaborate on the teaching content. Focus entirely on the PROCESS.
-                        2. Keep the step descriptions short and precise. Avoid fluff. For example, instead of "Instructor welcomes participants, introduces themselves, and creates a friendly atmosphere", just write "Greetings and introduction". Instead of "Instructor outlines the session agenda, learning goal (LG1: do a backflip), and timing", write "Agenda and LGs".
-                        3. Each step in the todo list should be timed and action-oriented. Do NOT use the word "instructor" in the steps, as this is implicitly understood. For example, use "Summarize: highlight correct examples" instead of "Summarize: instructor highlights correct examples".
+                        2. Keep the step descriptions short and precise. Avoid fluff.
+                        3. Each step in the todo list should be timed and action-oriented. Do NOT use the word "instructor".
                         4. Within a learning cycle block, the "Participants Practice" section MUST be led by the chosen activity and ideally broken down into these four distinct steps:
-                           - Explain (e.g., "1 min - Explain: [provide highly specific, step-by-step instructions and mechanics for how the students will execute the activity]")
-                           - Prompt (e.g., "1 min - Prompt: [insert the detailed prompt, scenario, or specific questions that students need to work on]")
+                           - Explain (e.g., "1 min - Explain: [provide highly specific, step-by-step instructions]")
+                           - Prompt (e.g., "1 min - Prompt: [insert the detailed prompt]")
                            - Activity (e.g., "6 min - Activity: students do the activity in pairs")
-                           - Summarize (e.g., "2 min - Summarize: [insert the possible answers to the question (if it has a correct answer), or the expected discussion outcomes to review]")
+                           - Summarize (e.g., "2 min - Summarize: [insert possible answers]")
                         5. Match activities to the SELECTED ACTIVITIES list where appropriate.
                         6. Every section's steps must sum exactly to that section's duration.
-                        7. CRITICAL: Do NOT change the `phase`, `lgIndex`, section titles, or section durations from what is provided in the skeleton.
-                        8. For non-learning-cycle blocks (ARRIVE, ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break" or "Lunch Break".
-                        9. The 'phaseLabel' should be a short, topic-focused title (e.g. "Intro to Regression" not the raw LG text).
-                        10. Do NOT list "Lecture" or "Presentation" under 'methods', as they are not considered interactive activities.
-                        11. CRITICAL: You might receive only a partial skeleton (e.g. a single block) if the user is regenerating a specific activity. Do NOT automatically turn it into a "Welcome" or "Arrival" block. STRICTLY respect the `phase` and `lgIndex` provided in the skeleton!
+                        7. CRITICAL: Do NOT change the `phase`, `lgIndex`, section titles, or section durations from what is provided in the target block.
+                        8. For non-learning-cycle blocks (ARRIVE, ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
+                        9. The 'phaseLabel' should be a short, topic-focused title.
+                        10. Do NOT list "Lecture" or "Presentation" under 'methods'.
 
-                        OUTPUT FORMAT (return only this JSON, no markdown):
+                        OUTPUT FORMAT (return only this JSON object, no markdown):
                         {
-                          "title": "A meaningful, engaging session title",
-                          "blocks": [
+                          "phase": "LEARNING_CYCLE",
+                          "lgIndex": 1,
+                          "duration": 20,
+                          "phaseLabel": "Topic Label Here",
+                          "methods": ["Think-Pair-Share"],
+                          "materials": ["Worksheet"],
+                          "sections": [
                             {
-                              "phase": "ARRIVE",
-                              "lgIndex": 0,
-                              "duration": 5,
-                              "phaseLabel": "Welcome & Setup",
+                              "title": "You explain",
+                              "duration": 10,
+                              "steps": [
+                                "10 min — Lecture on [topic of LG1] using slides"
+                              ],
                               "methods": [],
-                              "materials": [],
-                              "sections": [
-                                {
-                                  "title": "Arrival",
-                                  "duration": 5,
-                                  "steps": [
-                                    "2 min — Greetings and introduction",
-                                    "2 min — Agenda and LGs",
-                                    "1 min — Housekeeping (toilets, breaks, phone policy)"
-                                  ],
-                                  "methods": [],
-                                  "materials": []
-                                }
-                              ]
+                              "materials": ["Slides"]
                             },
                             {
-                              "phase": "LEARNING_CYCLE",
-                              "lgIndex": 1,
-                              "duration": 20,
-                              "phaseLabel": "Topic Label Here",
-                              "methods": [],
-                              "materials": [],
-                              "sections": [
-                                {
-                                  "title": "You explain",
-                                  "duration": 10,
-                                  "steps": [
-                                    "10 min — Lecture on [topic of LG1] using slides"
-                                  ],
-                                  "methods": [],
-                                  "materials": ["Slides"]
-                                },
-                                {
-                                  "title": "Participants Practice",
-                                  "duration": 10,
-                                  "steps": [
-                                    "1 min — Explain: rules for Think-Pair-Share (now you will discuss in groups...)",
-                                    "1 min — Prompt: [insert the detailed prompt or question to solve]",
-                                    "6 min — Activity: students discuss in pairs",
-                                    "2 min — Summarize: cold-call pairs to share and provide feedback. Correct answers/outcomes: [insert possible answers]"
-                                  ],
-                                  "methods": ["Think-Pair-Share"],
-                                  "materials": ["Worksheet"]
-                                }
-                              ]
+                              "title": "Participants Practice",
+                              "duration": 10,
+                              "steps": [
+                                "1 min — Explain: rules for Think-Pair-Share",
+                                "1 min — Prompt: [insert prompt]",
+                                "6 min — Activity: students discuss in pairs",
+                                "2 min — Summarize: cold-call pairs"
+                              ],
+                              "methods": ["Think-Pair-Share"],
+                              "materials": ["Worksheet"]
                             }
                           ]
                         }

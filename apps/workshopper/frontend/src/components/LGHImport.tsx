@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Server, Check } from "lucide-react";
+import { Loader2, Plus, Server } from "lucide-react";
 import { fetchCourses, fetchGoalsBySession, Course, SessionGroup } from "@/lib/learning-goal-hub";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,7 +17,7 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
   const [sessions, setSessions] = useState<SessionGroup[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   
-  const [selectedGoalIds, setSelectedGoalIds] = useState<Set<number>>(new Set());
+  const [selectedGoalId, setSelectedGoalId] = useState<number | "">("");
 
   useEffect(() => {
     async function load() {
@@ -38,7 +38,7 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
   useEffect(() => {
     if (!selectedCourseId) {
       setSessions([]);
-      setSelectedGoalIds(new Set());
+      setSelectedGoalId("");
       return;
     }
     async function loadSessions() {
@@ -46,7 +46,7 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
       try {
         const data = await fetchGoalsBySession(selectedCourseId as number);
         setSessions(data);
-        setSelectedGoalIds(new Set());
+        setSelectedGoalId("");
       } catch (e) {
         console.error(e);
         toast({ title: "Error", description: "Failed to fetch learning goals", variant: "destructive" });
@@ -57,28 +57,23 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
     loadSessions();
   }, [selectedCourseId]);
 
-  const toggleGoal = (id: number) => {
-    setSelectedGoalIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const handleAdd = () => {
-    const goalsToAdd: string[] = [];
-    sessions.forEach((s) => {
-      s.goals.forEach((g) => {
-        if (selectedGoalIds.has(g.id)) {
-          goalsToAdd.push(g.text);
-        }
-      });
-    });
-    if (goalsToAdd.length > 0) {
-      onAddGoals(goalsToAdd);
-      setSelectedGoalIds(new Set());
-      toast({ title: "Goals Added", description: `Added ${goalsToAdd.length} goals.` });
+    if (selectedGoalId === "") return;
+    
+    // Find the text of the selected goal
+    let goalText = "";
+    for (const s of sessions) {
+      const g = s.goals.find(g => g.id === selectedGoalId);
+      if (g) {
+        goalText = g.text;
+        break;
+      }
+    }
+    
+    if (goalText) {
+      onAddGoals([goalText]);
+      setSelectedGoalId("");
+      toast({ title: "Goal Added", description: "Successfully imported learning goal." });
     }
   };
 
@@ -88,7 +83,7 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
         <Server className="h-4 w-4 text-muted-foreground shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-body text-foreground font-medium">Import from LearningGoalHub</p>
-          <p className="text-xs text-muted-foreground">Select a course to view approved learning goals</p>
+          <p className="text-xs text-muted-foreground">Select a course and a learning goal</p>
         </div>
       </div>
       
@@ -113,38 +108,28 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
 
         {loadingSessions && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading sessions...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading learning goals...
           </div>
         )}
 
         {!loadingSessions && sessions.length > 0 && (
-          <div className="space-y-4 mt-4 border border-border rounded-md p-3 max-h-[300px] overflow-y-auto">
+          <select
+            className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            value={selectedGoalId}
+            onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : "")}
+            disabled={disabled}
+          >
+            <option value="">-- Select Learning Goal --</option>
             {sessions.map((group, i) => (
-              <div key={group.nodeId ?? `group-${i}`} className="space-y-2">
-                <h4 className="text-sm font-semibold text-foreground sticky top-0 bg-background py-1">
-                  {group.label || "Course Goals"}
-                </h4>
-                <div className="space-y-1 pl-2">
-                  {group.goals.map(goal => (
-                    <label key={goal.id} className="flex items-start gap-2 cursor-pointer group">
-                      <div className={`mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 ${selectedGoalIds.has(goal.id) ? 'bg-primary border-primary text-primary-foreground' : 'border-input'}`}>
-                        {selectedGoalIds.has(goal.id) && <Check className="h-3 w-3" />}
-                      </div>
-                      <span className="text-sm text-muted-foreground group-hover:text-foreground">
-                        {goal.text}
-                      </span>
-                      <input 
-                        type="checkbox" 
-                        className="hidden" 
-                        checked={selectedGoalIds.has(goal.id)}
-                        onChange={() => toggleGoal(goal.id)}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <optgroup key={group.nodeId ?? `group-${i}`} label={group.label || "Course Goals"}>
+                {group.goals.map(goal => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.text.length > 80 ? goal.text.substring(0, 80) + "..." : goal.text}
+                  </option>
+                ))}
+              </optgroup>
             ))}
-          </div>
+          </select>
         )}
 
         {sessions.length > 0 && !loadingSessions && (
@@ -153,10 +138,10 @@ export function LGHImport({ onAddGoals, disabled }: Props) {
             variant="secondary" 
             size="sm" 
             className="w-full gap-2"
-            disabled={selectedGoalIds.size === 0 || disabled}
+            disabled={selectedGoalId === "" || disabled}
             onClick={handleAdd}
           >
-            <Plus className="h-4 w-4" /> Add {selectedGoalIds.size} Selected Goals
+            <Plus className="h-4 w-4" /> Add Goal
           </Button>
         )}
       </div>

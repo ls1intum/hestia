@@ -264,8 +264,8 @@ public class WorkshopController {
             var fixed = service.fixGoalsGrammar(goals);
             return ResponseEntity.ok(fixed);
         } catch (Exception e) {
-            log.error("Grammar fix failed", e);
-            return ResponseEntity.internalServerError().body(goals); // Fallback to original
+            log.warn("Grammar fix failed, falling back to original goals. Error: {}", e.getMessage());
+            return ResponseEntity.ok(goals); // Fallback to original, return 200 to avoid scary console errors
         }
     }
 
