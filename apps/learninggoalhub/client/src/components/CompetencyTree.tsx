@@ -42,14 +42,14 @@ type Row = {
   childCount: number;
 };
 
-type FilterKey = "role" | "bloom" | "solo";
-type SortKey = "text" | "bloom" | "solo" | "items";
+type FilterKey = "role" | "bloom" | "solo" | "session";
+type SortKey = "text" | "bloom" | "solo" | "items" | "session";
 type SortState = { key: SortKey; dir: 1 | -1 } | null;
 
 // Shared grid template so the sticky header row and every body row line their columns up: a
 // flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
 // rows can never drift apart.
-const GRID_COLS = "minmax(240px,1fr) 108px 128px 138px 72px";
+const GRID_COLS = "minmax(240px,1fr) 108px 128px 138px 72px 152px";
 
 const BLOOM_ORDER = [
   "REMEMBER",
@@ -85,12 +85,20 @@ function valueOf(row: Row, key: FilterKey): string {
       return row.goal.bloomLevel ?? "";
     case "solo":
       return row.goal.soloLevel ?? "";
+    case "session":
+      return sessionTitleOf(row.goal);
   }
+}
+
+/** Session is preferred; exercise titles preserve useful context for exercise-only goals. */
+function sessionTitleOf(goal: LearningGoal): string {
+  return goal.hierarchy?.session ?? goal.hierarchy?.exercise ?? "";
 }
 
 /** Human label for a raw column value (role names, title-cased enums). */
 function displayValue(key: FilterKey, value: string): string {
   if (key === "role") return COMPETENCY_ROLE_META[value as CompetencyRole].label;
+  if (key === "session") return value || "—";
   return value ? titleCase(value) : "—";
 }
 
@@ -106,6 +114,7 @@ const COLUMNS: {
   { key: "bloom", label: "Bloom", sortKey: "bloom", filterKey: "bloom" },
   { key: "solo", label: "SOLO", sortKey: "solo", filterKey: "solo" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
+  { key: "session", label: "Session", sortKey: "session", filterKey: "session" },
 ];
 
 export default function CompetencyTree({
@@ -134,6 +143,7 @@ export default function CompetencyTree({
     role: new Set(),
     bloom: new Set(),
     solo: new Set(),
+    session: new Set(),
   });
   const [sort, setSort] = useState<SortState>(null);
   const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
@@ -178,7 +188,7 @@ export default function CompetencyTree({
     return { matchIds: matches, contextIds: context };
   }, [rows, byId, search, filters, filtering]);
 
-  // Only offer filter values that actually occur, in taxonomy (not alphabetical) order.
+  // Only offer filter values that actually occur, in taxonomy order or alphabetically for titles.
   const filterOptions = useMemo(() => {
     const present = (key: FilterKey) =>
       new Set(rows.map((r) => valueOf(r, key)).filter((v) => v !== ""));
@@ -188,6 +198,7 @@ export default function CompetencyTree({
       role: ordered(ROLE_ORDER, present("role")),
       bloom: ordered(BLOOM_ORDER, present("bloom")),
       solo: ordered(SOLO_ORDER, present("solo")),
+      session: [...present("session")].sort((a, b) => a.localeCompare(b)),
     };
   }, [rows]);
 
@@ -204,6 +215,8 @@ export default function CompetencyTree({
           return SOLO_ORDER.indexOf(row.goal.soloLevel ?? "");
         case "items":
           return row.childCount;
+        case "session":
+          return sessionTitleOf(row.goal);
       }
     };
     return [...siblings].sort((a, b) => {
@@ -323,7 +336,12 @@ export default function CompetencyTree({
 
   const clearAll = () => {
     setSearch("");
-    setFilters({ role: new Set(), bloom: new Set(), solo: new Set() });
+    setFilters({
+      role: new Set(),
+      bloom: new Set(),
+      solo: new Set(),
+      session: new Set(),
+    });
   };
 
   const cycleSort = (key: SortKey) =>
@@ -662,6 +680,7 @@ function GridRow({
     row.role === "knowledge"
       ? `color-mix(in srgb, ${meta.color} 55%, transparent)`
       : meta.color;
+  const session = sessionTitleOf(row.goal);
   return (
     <div
       role="row"
@@ -754,6 +773,13 @@ function GridRow({
         className="py-1.5 pl-2.5 pr-4 text-right text-sm tabular-nums text-hestia-text-muted"
       >
         {row.childCount > 0 ? row.childCount : "—"}
+      </div>
+      <div
+        role="gridcell"
+        title={session || undefined}
+        className="max-w-[18ch] truncate px-2.5 py-1.5 text-xs text-hestia-text-muted"
+      >
+        {session || "—"}
       </div>
     </div>
   );

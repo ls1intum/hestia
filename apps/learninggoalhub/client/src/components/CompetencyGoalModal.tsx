@@ -45,6 +45,7 @@ export default function CompetencyGoalModal({
   if (!goal) return null;
   const sources = goal.sources ?? [];
   const rels = relationships ?? [];
+  const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
 
   return (
     <div
@@ -136,11 +137,27 @@ export default function CompetencyGoalModal({
             )}
           </div>
         )}
-        {sources.length > 0 && (
+        {session && (
           <div
             className="comp-unfold rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg"
             style={{
               animationDelay: "140ms",
+              animationFillMode: "backwards",
+            }}
+          >
+            <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+              Session
+            </span>
+            <p className="mt-2 text-sm font-semibold text-hestia-text">
+              {session}
+            </p>
+          </div>
+        )}
+        {sources.length > 0 && (
+          <div
+            className="comp-unfold rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg"
+            style={{
+              animationDelay: session ? "175ms" : "140ms",
               animationFillMode: "backwards",
             }}
           >
@@ -167,7 +184,7 @@ export default function CompetencyGoalModal({
           <div
             className="comp-unfold rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg"
             style={{
-              animationDelay: "175ms",
+              animationDelay: session ? "210ms" : "175ms",
               animationFillMode: "backwards",
             }}
           >
