@@ -19,14 +19,11 @@ const CONNECTOR_H = 40;
  * Competency map: a focus-and-context tree. The overview shows every terminal competency as a
  * collapsed tree — a card with sub-skill/knowledge counts and a small root-to-leaves schematic
  * hinting that three tiers unfold beneath it. Click one and it becomes the focused tree: the
- * card moves to the centre with its sub-skills fanned out below it. Its siblings collapse into
- * a quiet pill above ("Other skills · 7"); one tier down, the focused sub-skill's siblings
- * collapse into a pill sitting ON the skill → sub-skill edge, joined by short trunk segments.
- * Clicking a pill opens an overlay with the overview-style card grid (cards staggering in) to
- * switch the focus at that tier; any navigation closes it. The centre column is always the
- * drill path. The whole tree shares one horizontal scroll container so boxes and connectors
- * stay aligned; each focus change re-centres it. Clicking a leaf, or an already-focused box a
- * second time, opens the goal detail modal.
+ * card moves to the centre with its sub-skills fanned out below it. A quiet pill above returns
+ * to the all-skills overview, and a focused sub-skill keeps its siblings visible as subdued,
+ * directly selectable context. The whole tree shares one horizontal scroll container so boxes
+ * and connectors stay aligned; each focus change centres the focused sub-skill. Clicking a leaf,
+ * or an already-focused box a second time, opens the goal detail modal.
  */
 export default function CompetencyGraph({
   goals,
@@ -47,10 +44,6 @@ export default function CompetencyGraph({
   // Drill path: [selected competency id, selected sub-skill id]. Empty = overview only.
   const [path, setPath] = useState<number[]>([]);
 
-  // Which sibling picker overlay is open; any focus change closes it again.
-  const [picker, setPicker] = useState<"skills" | "subs" | null>(null);
-  useEffect(() => setPicker(null), [path]);
-
   const competency = useMemo(
     () => forest.find((n) => n.goal.id === path[0]) ?? null,
     [forest, path],
@@ -70,9 +63,9 @@ export default function CompetencyGraph({
 
   // FLIP: `navigate` snapshots every visible box (by goal id) before the path changes; after the
   // new layout is in, each box that survived the transition — the clicked one gliding into its
-  // focus slot, the parent rising onto the path, a card flying out of the picker overlay — is
-  // animated from its old viewport rect to its new one. Boxes without a previous rect simply
-  // appear (their `comp-pop` entrance), so a programmatic path change animates nothing.
+  // focus slot or the parent rising onto the path — is animated from its old viewport rect to its
+  // new one. Boxes without a previous rect simply appear (their `comp-pop` entrance), so a
+  // programmatic path change animates nothing.
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const flipRects = useRef<Map<string, DOMRect> | null>(null);
@@ -87,10 +80,25 @@ export default function CompetencyGraph({
   };
 
   useLayoutEffect(() => {
-    // Re-centre the tree first, so the boxes are measured in their final resting places.
+    // Centre the active sub-skill, rather than the entire canvas, so its knowledge is immediately
+    // readable even when a wide sibling row overflows the shared scroller.
     const scroller = scrollRef.current;
-    if (scroller)
+    const focusedBox = subSkill
+      ? containerRef.current?.querySelector<HTMLElement>(
+          `[data-goal-id="${subSkill.goal.id}"]`,
+        )
+      : null;
+    if (scroller && focusedBox) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const focusedRect = focusedBox.getBoundingClientRect();
+      scroller.scrollLeft +=
+        focusedRect.left -
+        scrollerRect.left -
+        scroller.clientWidth / 2 +
+        focusedRect.width / 2;
+    } else if (scroller) {
       scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+    }
 
     const prev = flipRects.current;
     flipRects.current = null;
@@ -132,13 +140,31 @@ export default function CompetencyGraph({
           { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
         );
       });
-  }, [path]);
+  }, [path, subSkill]);
 
   // Toggle selection at a tier: re-selecting the active node collapses it (and everything below).
   const pickCompetency = (id: number) =>
     navigate(path[0] === id ? [] : [id]);
   const pickSubSkill = (id: number) =>
     navigate(path[1] === id ? [path[0]] : [path[0], id]);
+
+  // Escape retraces the drill path. The detail modal owns Escape while it is open, so this
+  // listener deliberately leaves that event alone.
+  useEffect(() => {
+    if (path.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.key !== "Escape" ||
+        e.defaultPrevented ||
+        detail ||
+        document.querySelector('[role="dialog"]')
+      )
+        return;
+      navigate(path.length > 1 ? [path[0]] : []);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detail, path]);
 
   if (forest.length === 0) {
     return (
@@ -155,7 +181,7 @@ export default function CompetencyGraph({
       <div ref={containerRef} className="flex flex-col gap-3 pt-1">
         <p className="px-1 text-sm text-hestia-text-muted">
           Click a skill to focus its tree — sub-skills unfold below it, the
-          other skills move to a shelf above.
+          focused sub-skill reveals its knowledge.
         </p>
         <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {forest.map((node) => {
@@ -198,31 +224,59 @@ export default function CompetencyGraph({
 
   const skillColor = COMPETENCY_ROLE_META.competency.color;
   const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
-  const otherSkills = forest.filter((n) => n.goal.id !== competency.goal.id);
-  const otherSubs = subSkill
-    ? competency.children.filter((n) => n.goal.id !== subSkill.goal.id)
-    : [];
+  const focusedSubIndex = subSkill
+    ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
+    : -1;
+  // Every visible sub-skill retains the default fixed width. This keeps the connector geometry
+  // deterministic while the active box can use its full height and sibling text stays clamped.
+  const focusedSubOffset =
+    focusedSubIndex >= 0
+      ? (focusedSubIndex - (competency.children.length - 1) / 2) * (BOX_W + GAP)
+      : 0;
+  const siblingRowWidth =
+    competency.children.length * BOX_W +
+    Math.max(0, competency.children.length - 1) * GAP;
+  const focusedSubCentre =
+    focusedSubIndex >= 0
+      ? BOX_W / 2 + focusedSubIndex * (BOX_W + GAP)
+      : siblingRowWidth / 2;
+  const knowledgeBranchWidth = subSkill
+    ? subSkill.children.length * WIDE_W +
+      Math.max(0, subSkill.children.length - 1) * GAP
+    : 0;
+  // Relative positioning paints the knowledge branch at the focused sub-skill, but does not
+  // enlarge the canvas. These layout paddings cover its overhang past the sibling row at either
+  // edge, making the full shifted branch part of the horizontal scroll range.
+  const knowledgeLeftOverhang = Math.max(
+    0,
+    knowledgeBranchWidth / 2 - focusedSubCentre,
+  );
+  const knowledgeRightOverhang = Math.max(
+    0,
+    focusedSubCentre + knowledgeBranchWidth / 2 - siblingRowWidth,
+  );
 
   // Focused tree. The canvas is keyed by the drill path so a focus change replays the unfold
   // animation; `w-max` + `mx-auto` centre it when it fits and let it scroll as one unit when not.
   return (
     <div ref={containerRef} className="flex flex-col gap-2 px-1 pt-1">
-      {otherSkills.length > 0 && (
-        <div className="flex justify-center">
-          <ShelfPill
-            label="Other skills"
-            count={otherSkills.length}
-            color={skillColor}
-            onClick={() => setPicker("skills")}
-          />
-        </div>
-      )}
+      <div className="flex justify-center">
+        <BackPill count={forest.length} color={skillColor} onClick={() => navigate([])} />
+      </div>
       <div ref={scrollRef} className="overflow-x-auto pb-2">
         {/* Keyed by the drill path so every navigation remounts the tiers — the connectors
             redraw and the children replay their entrance, while surviving boxes FLIP. */}
         <div
           key={`tree-${competency.goal.id}-${subSkill?.goal.id ?? "none"}`}
           className="mx-auto flex w-max min-w-full flex-col items-center"
+          style={
+            subSkill
+              ? {
+                  paddingLeft: knowledgeLeftOverhang,
+                  paddingRight: knowledgeRightOverhang,
+                }
+              : undefined
+          }
         >
           {subSkill == null ? (
             <>
@@ -242,6 +296,7 @@ export default function CompetencyGraph({
               <div className="flex justify-center gap-3">
                 {competency.children.map((child, i) => {
                   const expandable = child.children.length > 0;
+                  const isSubSkill = child.role === "sub-skill";
                   return (
                     // Column cell: the box plus, when knowledge waits beneath, the mini leaf
                     // indicator branching off below it. Stub width < box width, so the cell
@@ -258,11 +313,12 @@ export default function CompetencyGraph({
                         active={false}
                         expandable={expandable}
                         onClick={() =>
-                          expandable
+                          isSubSkill
                             ? pickSubSkill(child.goal.id!)
                             : onOpenDetail(child)
                         }
                         actions={actions}
+                        title={isSubSkill ? "Focus this sub-skill" : undefined}
                       />
                       {expandable && (
                         <LeafStub count={child.children.length} />
@@ -275,91 +331,95 @@ export default function CompetencyGraph({
           ) : (
             <>
               {/* The drill path's parent: quieter than the focus node, click to go back up. */}
-              <Box
-                node={competency}
-                active={false}
-                open
-                expandable
-                onClick={() => navigate([competency.goal.id!])}
-                actions={actions}
-                subdued
-                wide
-              />
-              {otherSubs.length > 0 ? (
-                <>
-                  {/* The sibling picker pill sits at its own tree depth, ON the edge between
-                      parent and focus; the trunk segments keep that edge readable through it. */}
-                  <VLine color={skillColor} />
-                  <ShelfPill
-                    label="Other sub-skills"
-                    count={otherSubs.length}
-                    color={subColor}
-                    onClick={() => setPicker("subs")}
-                  />
-                  <VLine color={skillColor} />
-                </>
-              ) : (
-                <Connector count={1} color={skillColor} />
-              )}
-              {/* Already unfolded — a second click opens the goal detail instead. */}
-              <Box
-                node={subSkill}
-                active
-                expandable
-                onClick={() => onOpenDetail(subSkill)}
-                actions={actions}
-                wide
-              />
+              <div style={{ position: "relative", left: focusedSubOffset }}>
+                <Box
+                  node={competency}
+                  active={false}
+                  open
+                  expandable
+                  onClick={() => navigate([competency.goal.id!])}
+                  actions={actions}
+                  subdued
+                  wide
+                />
+              </div>
               <Connector
-                count={subSkill.children.length}
-                color={subColor}
-                childW={WIDE_W}
+                count={competency.children.length}
+                color={skillColor}
+                focusedIndex={focusedSubIndex}
               />
               <div className="flex justify-center gap-3">
-                {subSkill.children.map((leaf, i) => (
-                  // The knowledge pops in after the focused sub-skill has slid into place.
-                  <div
-                    key={leaf.goal.id}
-                    className="comp-pop"
-                    style={{ animationDelay: `${180 + i * 30}ms` }}
-                  >
-                    <Box
-                      node={leaf}
-                      active={false}
-                      expandable={false}
-                      onClick={() => onOpenDetail(leaf)}
-                      actions={actions}
-                      wide
-                    />
-                  </div>
-                ))}
+                {competency.children.map((child, i) => {
+                  const isFocused = child.goal.id === subSkill.goal.id;
+                  const isSubSkill = child.role === "sub-skill";
+                  return (
+                    <div
+                      key={child.goal.id}
+                      className="comp-pop"
+                      style={{ animationDelay: `${180 + i * 30}ms` }}
+                    >
+                      <Box
+                        node={child}
+                        active={isFocused}
+                        expandable={child.children.length > 0}
+                        onClick={() =>
+                          isFocused
+                            ? onOpenDetail(child)
+                            : isSubSkill
+                              ? pickSubSkill(child.goal.id!)
+                              : onOpenDetail(child)
+                        }
+                        actions={actions}
+                        dimmed={!isFocused}
+                        clampText={!isFocused}
+                        title={
+                          isFocused
+                            ? "View goal details"
+                            : isSubSkill
+                              ? "Focus this sub-skill"
+                              : "View goal details"
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              {/* The active sub-skill sits at a known fixed position in the sibling row. Moving
+                  this whole knowledge branch by that same offset makes its connector originate
+                  at the focused sub-skill instead of the row centre. */}
+              <div
+                className="relative flex flex-col items-center"
+                style={{ left: focusedSubOffset }}
+              >
+                <Connector
+                  count={subSkill.children.length}
+                  color={subColor}
+                  childW={WIDE_W}
+                />
+                <div className="flex justify-center gap-3">
+                  {subSkill.children.map((leaf, i) => (
+                    // The knowledge pops in after the focused sub-skill has slid into place.
+                    <div
+                      key={leaf.goal.id}
+                      className="comp-pop"
+                      style={{ animationDelay: `${240 + i * 30}ms` }}
+                    >
+                      <Box
+                        node={leaf}
+                        active={false}
+                        expandable={false}
+                        onClick={() => onOpenDetail(leaf)}
+                        actions={actions}
+                        wide
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}
         </div>
       </div>
-      {picker === "skills" && (
-        <ShelfOverlay
-          label="Other skills"
-          items={otherSkills}
-          kind="skills"
-          onPick={pickCompetency}
-          onOpenDetail={onOpenDetail}
-          actions={actions}
-          onClose={() => setPicker(null)}
-        />
-      )}
-      {picker === "subs" && subSkill != null && (
-        <ShelfOverlay
-          label="Other sub-skills"
-          items={otherSubs}
-          kind="subs"
-          onPick={pickSubSkill}
-          onOpenDetail={onOpenDetail}
-          actions={actions}
-          onClose={() => setPicker(null)}
-        />
-      )}
       <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
     </div>
   );
@@ -370,17 +430,12 @@ function countGrandchildren(node: CompetencyNode) {
   return node.children.reduce((n, child) => n + child.children.length, 0);
 }
 
-/**
- * Collapsed sibling picker: one quiet pill naming the tier and how many siblings wait behind
- * it. Clicking opens the ShelfOverlay to switch the focus at that tier.
- */
-function ShelfPill({
-  label,
+/** Quiet back navigation from a focused tree to the all-skills overview. */
+function BackPill({
   count,
   color,
   onClick,
 }: {
-  label: string;
   count: number;
   color: string;
   onClick: () => void;
@@ -396,7 +451,6 @@ function ShelfPill({
         color: `color-mix(in srgb, ${color} 80%, var(--hestia-text))`,
       }}
     >
-      {label} · {count}
       <svg
         viewBox="0 0 20 20"
         fill="none"
@@ -407,133 +461,10 @@ function ShelfPill({
         aria-hidden="true"
         className="h-2.5 w-2.5"
       >
-        <path d="M7 5l6 5-6 5" />
+        <path d="M13 5l-6 5 6 5" />
       </svg>
+      All skills · {count}
     </button>
-  );
-}
-
-/**
- * Sibling picker overlay: the same cards as the page-one overview (skills keep their counts and
- * collapsed-tree schematic), staggering onto the page over the tree. Picking one focuses it —
- * the path change closes the overlay; backdrop click, Escape and the ✕ close it without picking.
- * Sits at z-40 so the goal detail modal (z-50, reachable via a card's ⓘ) stacks above it.
- */
-function ShelfOverlay({
-  label,
-  items,
-  kind,
-  onPick,
-  onOpenDetail,
-  actions,
-  onClose,
-}: {
-  label: string;
-  items: CompetencyNode[];
-  kind: "skills" | "subs";
-  onPick: (id: number) => void;
-  onOpenDetail: (node: CompetencyNode) => void;
-  actions: GoalActions;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-hestia-bg/75 p-4 backdrop-blur-[2px] sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={label}
-    >
-      {/* No panel chrome — the cards float freely over the dimmed tree. */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-4xl flex-col gap-3"
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text">
-            {label}
-          </span>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="h-4 w-4"
-            >
-              <path d="M5 5l10 10M15 5L5 15" />
-            </svg>
-          </button>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((node, i) => {
-            const expandable = node.children.length > 0;
-            const deep = kind === "skills" ? countGrandchildren(node) : null;
-            return (
-              // Two-row grid wrapper: carries the staggered entrance without disturbing the
-              // box's own layout, stretches it to the row height, and hangs the collapsed-tree
-              // indicator underneath — the same footprint the card has in the tree/overview.
-              <div
-                key={node.goal.id}
-                className="comp-unfold grid grid-rows-[1fr_auto]"
-                style={{
-                  animationDelay: `${i * 35}ms`,
-                  animationFillMode: "backwards",
-                }}
-              >
-                <Box
-                  node={node}
-                  active={false}
-                  expandable={expandable}
-                  onClick={() =>
-                    expandable ? onPick(node.goal.id!) : onOpenDetail(node)
-                  }
-                  actions={actions}
-                  fluid
-                  deepKnowledge={deep}
-                />
-                {expandable && (
-                  <div className="justify-self-center">
-                    {kind === "skills" ? (
-                      <Stub
-                        childCount={node.children.length}
-                        hasKnowledge={(deep ?? 0) > 0}
-                      />
-                    ) : (
-                      <LeafStub count={node.children.length} />
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Short vertical trunk segment continuing the parent → focus edge through a `between` shelf. */
-function VLine({ color }: { color: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="h-[18px] w-[1.5px] shrink-0 rounded-full"
-      style={{ backgroundColor: color }}
-    />
   );
 }
 
@@ -548,16 +479,20 @@ function Connector({
   count,
   color,
   childW = BOX_W,
+  focusedIndex,
 }: {
   count: number;
   color: string;
   /** Width of the child boxes below — matches their `wide`/default Tailwind width. */
   childW?: number;
+  /** Keeps a focused sub-skill's parent and knowledge branches aligned to its row position. */
+  focusedIndex?: number;
 }) {
   if (count === 0) return null;
   const pitch = childW + GAP; // centre-to-centre distance between adjacent children
   const width = (count - 1) * pitch + childW;
-  const trunk = width / 2;
+  const trunk =
+    focusedIndex == null ? width / 2 : childW / 2 + focusedIndex * pitch;
   const mid = CONNECTOR_H / 2;
   const r = 8; // corner radius for the rounded joins
 
@@ -581,6 +516,9 @@ function Connector({
               <path
                 key={i}
                 pathLength={1}
+                opacity={
+                  focusedIndex != null && i !== focusedIndex ? 0.38 : undefined
+                }
                 d={`M ${trunk} 0 C ${trunk} ${mid} ${cx} ${mid} ${cx} ${CONNECTOR_H}`}
               />
             );
@@ -590,6 +528,9 @@ function Connector({
             <path
               key={i}
               pathLength={1}
+              opacity={
+                focusedIndex != null && i !== focusedIndex ? 0.38 : undefined
+              }
               d={`M ${trunk} 0 V ${mid - r} Q ${trunk} ${mid} ${trunk + sg * r} ${mid} H ${cx - sg * r} Q ${cx} ${mid} ${cx} ${mid + r} V ${CONNECTOR_H}`}
             />
           );
@@ -621,6 +562,9 @@ function Box({
   fluid = false,
   wide = false,
   subdued = false,
+  dimmed = false,
+  clampText = false,
+  title,
   deepKnowledge = null,
 }: {
   node: CompetencyNode;
@@ -638,6 +582,12 @@ function Box({
   wide?: boolean;
   /** The drill path's parent box: readable but quieter than the focus node. */
   subdued?: boolean;
+  /** An unfocused sub-skill in the visible sibling row. */
+  dimmed?: boolean;
+  /** Keeps sibling context compact without truncating the focused sub-skill. */
+  clampText?: boolean;
+  /** Overrides the default branch/detail tooltip. */
+  title?: string;
   /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
   deepKnowledge?: number | null;
 }) {
@@ -656,22 +606,27 @@ function Box({
           onClick();
         }
       }}
-      title={!active && expandable ? "Unfold" : "View goal details"}
-      className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 text-left shadow-sm transition ${
+      title={title ?? (!active && expandable ? "Unfold" : "View goal details")}
+      className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border border-l-[3px] p-3 text-left shadow-sm transition ${
         fluid ? "" : wide ? "w-80 shrink-0" : "w-56 shrink-0"
       } ${
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
+          : node.role === "knowledge"
+            ? "border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_2.5%,var(--hestia-surface))] hover:border-hestia-primary hover:bg-hestia-bg"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"
-      } ${subdued ? "opacity-80 hover:opacity-100" : ""}`}
+      } ${subdued ? "opacity-80 hover:opacity-100" : ""} ${
+        dimmed ? "opacity-60 hover:opacity-100" : ""
+      }`}
       style={{
-        // The focused box keeps only this quiet tint — the shelved siblings do the highlighting.
+        // The focused box keeps a quiet role tint while its row siblings remain subdued context.
         ...(active
           ? {
               backgroundColor: `color-mix(in srgb, ${meta.color} 12%, var(--hestia-surface))`,
               borderColor: meta.color,
             }
           : {}),
+        borderLeftColor: meta.color,
       }}
     >
       {/* Header: the role badge on the left, edit / delete pinned right. */}
@@ -721,7 +676,7 @@ function Box({
       <p
         className={`text-[0.8rem] font-medium leading-snug ${
           isGap ? "text-hestia-danger" : "text-hestia-text"
-        }`}
+        } ${clampText ? "line-clamp-3" : ""}`}
       >
         {node.goal.text}
       </p>
@@ -907,4 +862,3 @@ function BoxAction({
     </span>
   );
 }
-
