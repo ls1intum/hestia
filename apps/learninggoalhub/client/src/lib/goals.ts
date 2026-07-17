@@ -269,11 +269,6 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     .sort((a, b) => (a.goal.text ?? "").localeCompare(b.goal.text ?? ""));
 }
 
-/** Whether a course has a synthesised competency tree to show (≥1 terminal competency). */
-export function hasCompetencyTree(goals: LearningGoal[]): boolean {
-  return goals.some((g) => g.origin === "TERMINAL");
-}
-
 /** Distinct source filenames backing a goal, preserving first-seen order. */
 export function sourceFilenames(goal: LearningGoal): string[] {
   const seen = new Set<string>();

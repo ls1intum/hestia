@@ -6,12 +6,13 @@ import type { LearningGoal } from "../api/client.ts";
 import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import CompetencyGoalModal from "../components/CompetencyGoalModal.tsx";
+import ConceptInfoDialog from "../components/ConceptInfoDialog.tsx";
 import FilterPopover from "../components/FilterPopover.tsx";
 import {
   LEVEL_META,
+  buildCompetencyForest,
   groupGoalsByUnit,
   groupRelationships,
-  hasCompetencyTree,
   levelOf,
   presentLevels,
   titleCase,
@@ -19,14 +20,12 @@ import {
   type GoalGroup,
 } from "../lib/goals.ts";
 
-// The competency map is the home view; the goal list ("goals by session") and the skills table are
-// reached from it. `map`/`tree` are the skill-based views, `list` the session-based one.
-type GoalsView = "list" | "tree" | "map";
+// The course page switches between two concepts: `list` is the extracted learning-goals review
+// flow, while `map`/`table` are the synthesised skills concept's representations
+// (focus-and-drill map, filterable tree-grid).
+type GoalsView = "list" | "table" | "map";
+type SkillsView = Extract<GoalsView, "table" | "map">;
 
-// Quiet text-and-icon jump links in the header, used both to leave the map (to the table / list)
-// and to return to it.
-const VIEW_LINK_CLS =
-  "inline-flex items-center gap-1.5 text-sm font-medium text-hestia-text-muted transition hover:text-hestia-text";
 // The list view filters like the tree-grid: each column is a multi-select set (empty = all),
 // surfaced as a funnel popover + active-filter chips.
 type ListFilterKey = "level" | "kind" | "status" | "bloom" | "solo";
@@ -62,9 +61,8 @@ export default function CoursePage() {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [goalsView, setGoalsView] = useState<GoalsView>("list");
-  // The map is the home view once a competency tree exists; this guards the one-time default so a
-  // later manual switch is never overridden.
-  const didInitView = useRef(false);
+  const [lastSkillsView, setLastSkillsView] = useState<SkillsView>("map");
+  const [conceptInfoOpen, setConceptInfoOpen] = useState(false);
   const [detailGoal, setDetailGoal] = useState<LearningGoal | null>(null);
   const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
@@ -169,22 +167,24 @@ export default function CoursePage() {
   );
 
   // The competency-tree view only appears once the pipeline has synthesised one.
-  const competencyAvailable = useMemo(() => hasCompetencyTree(goals), [goals]);
+  const skillCount = useMemo(() => buildCompetencyForest(goals).length, [goals]);
+  const competencyAvailable = skillCount > 0;
   // The competency views ignore the goal-level filter bar (filtering would prune tree nodes).
-  const isCompetencyView = goalsView === "tree" || goalsView === "map";
-
-  // Land on the competency map once, as soon as we know the course has one; otherwise stay on the
-  // session goal list. A later manual switch sticks (guarded by the ref).
-  useEffect(() => {
-    if (didInitView.current || !goalsQuery.isSuccess) return;
-    didInitView.current = true;
-    if (competencyAvailable) setGoalsView("map");
-  }, [goalsQuery.isSuccess, competencyAvailable]);
+  const isCompetencyView = goalsView !== "list";
 
   // Fall back to the list if a competency view is active but none exists (yet).
   useEffect(() => {
     if (isCompetencyView && !competencyAvailable) setGoalsView("list");
   }, [isCompetencyView, competencyAvailable]);
+
+  const showLearningGoals = () => setGoalsView("list");
+  const showSkills = () => {
+    if (competencyAvailable) setGoalsView(lastSkillsView);
+  };
+  const showSkillsView = (view: SkillsView) => {
+    setLastSkillsView(view);
+    setGoalsView(view);
+  };
 
   // Only offer filter values that actually appear among the loaded goals, in a sensible order.
   const levels = useMemo(() => presentLevels(goals), [goals]);
@@ -303,63 +303,129 @@ export default function CoursePage() {
   }
 
   const showToc = goalsView === "list" && groups.length > 0;
+  const explainerText = isCompetencyView
+    ? "What this course builds towards — skills with their sub-skills and knowledge, synthesised from the learning goals."
+    : "What each session teaches — goals extracted from the uploaded materials. Review, edit and approve them here.";
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
-  // Count the loaded (gap-filtered) goals — the server-side goalCount still includes gap goals.
-  const totalGoals = goalsQuery.data
-    ? goals.length
-    : (courseQuery.data?.goalCount ?? 0);
   return (
     <div className="flex flex-col gap-6">
-      {/* Header — title + count and the view toggle / menu on a single line */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex flex-wrap items-baseline gap-x-2">
+      {/* Header — course identity stays separate from the concept switch below. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <h1 className="text-2xl">{courseName}</h1>
-          <span className="text-sm text-hestia-text-muted">
-            · {totalGoals} learning goal{totalGoals === 1 ? "" : "s"}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {goals.length > 0 && (
-            <nav className="flex items-center gap-4">
-              {goalsView === "map" ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setGoalsView("tree")}
-                    className={VIEW_LINK_CLS}
-                  >
-                    <TableIcon />
-                    Skills as table
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGoalsView("list")}
-                    className={VIEW_LINK_CLS}
-                  >
-                    <ListIcon />
-                    Learning goals by session
-                  </button>
-                </>
-              ) : (
-                competencyAvailable && (
-                  <button
-                    type="button"
-                    onClick={() => setGoalsView("map")}
-                    className={VIEW_LINK_CLS}
-                  >
-                    <BackIcon />
-                    Skill trees
-                  </button>
-                )
-              )}
-            </nav>
-          )}
           <CourseMenu
             exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
+
+        {goals.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div
+                role="tablist"
+                aria-label="Course concept"
+                className="inline-flex gap-0.5 rounded-[0.625rem] bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] p-0.5"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!isCompetencyView}
+                  onClick={showLearningGoals}
+                  className={`inline-flex items-baseline gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${
+                    !isCompetencyView
+                      ? "bg-hestia-surface font-semibold text-hestia-text shadow-sm"
+                      : "font-medium text-hestia-text-muted hover:text-hestia-text"
+                  }`}
+                >
+                  Learning goals{" "}
+                  <span
+                    className={`text-xs tabular-nums ${
+                      !isCompetencyView
+                        ? "text-hestia-primary"
+                        : "text-hestia-text-muted"
+                    }`}
+                  >
+                    {goals.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isCompetencyView}
+                  aria-disabled={!competencyAvailable}
+                  disabled={!competencyAvailable}
+                  title={
+                    competencyAvailable ? undefined : "No skills synthesised yet"
+                  }
+                  onClick={showSkills}
+                  className={`inline-flex items-baseline gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${
+                    isCompetencyView
+                      ? "bg-hestia-surface font-semibold text-hestia-text shadow-sm"
+                      : competencyAvailable
+                        ? "font-medium text-hestia-text-muted hover:text-hestia-text"
+                        : "cursor-not-allowed font-medium text-hestia-text-muted opacity-60"
+                  }`}
+                >
+                  Skills{" "}
+                  <span
+                    className={`text-xs tabular-nums ${
+                      isCompetencyView
+                        ? "text-hestia-primary"
+                        : "text-hestia-text-muted"
+                    }`}
+                  >
+                    {skillCount}
+                  </span>
+                </button>
+              </div>
+
+              {isCompetencyView && (
+                <div
+                  className="inline-flex items-center gap-1"
+                  aria-label="Skills representation"
+                >
+                  <button
+                    type="button"
+                    onClick={() => showSkillsView("map")}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+                      goalsView === "map"
+                        ? "bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] font-medium text-hestia-text"
+                        : "text-hestia-text-muted hover:text-hestia-text"
+                    }`}
+                  >
+                    <MapIcon />
+                    Map
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => showSkillsView("table")}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+                      goalsView === "table"
+                        ? "bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] font-medium text-hestia-text"
+                        : "text-hestia-text-muted hover:text-hestia-text"
+                    }`}
+                  >
+                    <TableIcon />
+                    Table
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-hestia-text-muted">
+              <span>{explainerText}</span>
+              <button
+                type="button"
+                onClick={() => setConceptInfoOpen(true)}
+                className="text-sm text-hestia-primary underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] transition hover:decoration-hestia-primary"
+              >
+                How do these relate?
+              </button>
+            </p>
+          </div>
+        )}
       </div>
       {deleteMutation.isError && (
         <p className="text-sm text-hestia-danger">
@@ -425,6 +491,10 @@ export default function CoursePage() {
             setEditGoal(null);
           }}
         />
+      )}
+
+      {conceptInfoOpen && (
+        <ConceptInfoDialog onClose={() => setConceptInfoOpen(false)} />
       )}
 
       {/* Filter bar — hidden on the competency views, which render the full synthesised tree.
@@ -598,8 +668,8 @@ export default function CoursePage() {
         </div>
       )}
 
-      {/* Competency tree view: the full synthesised tree, terminal → sub-skill → knowledge/gap. */}
-      {goals.length > 0 && goalsView === "tree" && (
+      {/* Competency table view: the forest as a filterable Excel-style tree-grid. */}
+      {goals.length > 0 && goalsView === "table" && (
         <CompetencyTree goals={goals} />
       )}
 
@@ -796,7 +866,27 @@ function CardAction({
   );
 }
 
-/** Icons for the header jump links. Sized to sit inline with the link text. */
+/** Icons for the Skills representation toggle. Sized to sit inline with the label text. */
+function MapIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <rect x="7.5" y="2.5" width="5" height="4" rx="1" />
+      <rect x="2" y="13.5" width="5" height="4" rx="1" />
+      <rect x="13" y="13.5" width="5" height="4" rx="1" />
+      <path d="M10 6.5v3M10 9.5H4.5v4M10 9.5h5.5v4" />
+    </svg>
+  );
+}
+
 function TableIcon() {
   return (
     <svg
@@ -811,40 +901,6 @@ function TableIcon() {
     >
       <rect x="3" y="4" width="14" height="12" rx="1.5" />
       <path d="M3 8h14M8 8v8" />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-4 w-4"
-    >
-      <path d="M7 5h10M7 10h10M7 15h10M3.5 5h.01M3.5 10h.01M3.5 15h.01" />
-    </svg>
-  );
-}
-
-function BackIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-4 w-4"
-    >
-      <path d="M11 5l-5 5 5 5M6 10h9" />
     </svg>
   );
 }
