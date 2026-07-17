@@ -151,6 +151,12 @@ public class ExtractionRunner {
             unitsByDocument.put(d.getId(), buildUnits(course, moduleRoot, d));
             run.increment();
         }
+        Map<Long, Unit> unitsByNode = new HashMap<>();
+        for (List<Unit> units : unitsByDocument.values()) {
+            for (Unit unit : units) {
+                unitsByNode.put(unit.node().getId(), unit);
+            }
+        }
 
         // Each session's text range is chunked and every chunk inherits that session's node directly,
         // by offset — fully deterministic, no LLM section guessing.
@@ -226,7 +232,15 @@ public class ExtractionRunner {
 
             GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
             if (!goalSourceRepository.existsById(sourceId)) {
-                goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet()));
+                HierarchyNode sourceNode = eg.classified().node();
+                Unit unit = sourceNode == null ? null : unitsByNode.get(sourceNode.getId());
+                int textLength = document.getRawText() == null ? 0 : document.getRawText().length();
+                int unitStart = unit == null ? 0 : unit.start();
+                int unitEnd = unit == null ? textLength : unit.end();
+                Integer page = SourcePageResolver.resolve(
+                        document.getRawText(), document.getPageOffsets(), unitStart, unitEnd,
+                        e.sourceSnippet()).orElse(null);
+                goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(), page));
             }
 
             // Record which raw candidates this (possibly deduplicated) goal was consolidated from, so

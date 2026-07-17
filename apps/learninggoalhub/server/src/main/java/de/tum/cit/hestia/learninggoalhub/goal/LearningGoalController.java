@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyPath;
@@ -14,10 +15,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
@@ -46,17 +50,20 @@ public class LearningGoalController {
     private final CourseRepository courseRepository;
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
+    private final DocumentContentRepository documentContentRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
     private final LearningGoalCsvWriter csvWriter;
 
     public LearningGoalController(CourseRepository courseRepository,
                                   LearningGoalRepository goalRepository,
                                   GoalSourceRepository goalSourceRepository,
+                                  DocumentContentRepository documentContentRepository,
                                   GoalRelationshipRepository goalRelationshipRepository,
                                   LearningGoalCsvWriter csvWriter) {
         this.courseRepository = courseRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
+        this.documentContentRepository = documentContentRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
         this.csvWriter = csvWriter;
     }
@@ -160,12 +167,16 @@ public class LearningGoalController {
     }
 
     private Map<Long, List<GoalSourceResponse>> sourcesByGoal(List<Long> goalIds) {
-        return goalIds.isEmpty()
-                ? Map.of()
-                : goalSourceRepository.findByGoalIdIn(goalIds).stream()
-                        .collect(Collectors.groupingBy(
-                                s -> s.getGoal().getId(),
-                                Collectors.mapping(GoalSourceResponse::from, Collectors.toList())));
+        if (goalIds.isEmpty()) {
+            return Map.of();
+        }
+        List<GoalSource> sources = goalSourceRepository.findByGoalIdIn(goalIds);
+        Set<Long> contentDocumentIds = contentDocumentIds(sources);
+        return sources.stream()
+                .collect(Collectors.groupingBy(
+                        s -> s.getGoal().getId(),
+                        Collectors.mapping(s -> GoalSourceResponse.from(s,
+                                contentDocumentIds.contains(s.getDocument().getId())), Collectors.toList())));
     }
 
     private Map<Long, List<GoalRelationshipResponse>> relationshipsByGoal(List<Long> goalIds) {
@@ -206,8 +217,10 @@ public class LearningGoalController {
             goal.setSoloLevel(request.soloLevel());
         }
 
-        List<GoalSourceResponse> sources = goalSourceRepository.findByGoalIdIn(List.of(goalId)).stream()
-                .map(GoalSourceResponse::from)
+        List<GoalSource> goalSources = goalSourceRepository.findByGoalIdIn(List.of(goalId));
+        Set<Long> contentDocumentIds = contentDocumentIds(goalSources);
+        List<GoalSourceResponse> sources = goalSources.stream()
+                .map(s -> GoalSourceResponse.from(s, contentDocumentIds.contains(s.getDocument().getId())))
                 .toList();
         List<GoalRelationshipResponse> relationships = goalRelationshipRepository
                 .findBySourceIdInWithTarget(List.of(goalId)).stream()
@@ -215,6 +228,16 @@ public class LearningGoalController {
                 .sorted(GoalRelationshipResponse.ORDER)
                 .toList();
         return LearningGoalResponse.from(goal, sources, relationships);
+    }
+
+    private Set<Long> contentDocumentIds(Collection<GoalSource> sources) {
+        Set<Long> documentIds = new HashSet<>();
+        for (GoalSource source : sources) {
+            documentIds.add(source.getDocument().getId());
+        }
+        return documentIds.isEmpty()
+                ? Set.of()
+                : documentContentRepository.findExistingDocumentIds(documentIds);
     }
 
     @DeleteMapping("/{goalId}")
@@ -301,9 +324,11 @@ public class LearningGoalController {
                                             SoloLevel soloLevel) {
     }
 
-    public record GoalSourceResponse(Long documentId, String filename, String snippet) {
-        static GoalSourceResponse from(GoalSource s) {
-            return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(), s.getSnippet());
+    public record GoalSourceResponse(Long documentId, String filename, String snippet,
+                                     Integer page, boolean contentAvailable) {
+        static GoalSourceResponse from(GoalSource s, boolean contentAvailable) {
+            return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(),
+                    s.getSnippet(), s.getPage(), contentAvailable);
         }
     }
 

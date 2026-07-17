@@ -30,14 +30,22 @@ public class GoalSource {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String snippet;
 
+    @Column
+    private Integer page;
+
     protected GoalSource() {
     }
 
     public GoalSource(LearningGoal goal, Document document, String snippet) {
+        this(goal, document, snippet, null);
+    }
+
+    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page) {
         this.goal = goal;
         this.document = document;
         this.id = new GoalSourceId(goal.getId(), document.getId());
         this.snippet = snippet;
+        this.page = page;
     }
 
     public GoalSourceId getId() {
@@ -54,5 +62,9 @@ public class GoalSource {
 
     public String getSnippet() {
         return snippet;
+    }
+
+    public Integer getPage() {
+        return page;
     }
 }

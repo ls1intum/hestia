@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
 import {
   BLOOM_DESC,
@@ -48,6 +50,9 @@ export default function CompetencyGoalModal({
   /** Delete action in the header; the modal closes itself before handing the goal over. */
   onDelete?: (goal: LearningGoal) => void;
 }) {
+  // The modal only renders under /courses/:courseId; the id builds the source deep links.
+  const { courseId } = useParams();
+
   // Edits show immediately: changes overlay the goal until the refetched goal (a new object
   // identity) confirms them. Editing state for the text field lives here too.
   const [pending, setPending] = useState<GoalChanges>({});
@@ -301,9 +306,29 @@ export default function CompetencyGoalModal({
             <ul className="mt-2 space-y-2.5">
               {sources.map((source, i) => (
                 <li key={i} className="text-xs text-hestia-text">
-                  {source.filename && (
-                    <p className="truncate font-medium">{source.filename}</p>
-                  )}
+                  {source.filename &&
+                    (source.contentAvailable ? (
+                      // Opens the stored document in the browser's PDF viewer; #page=N jumps to the
+                      // page the snippet was located on (or the session's first page as fallback).
+                      <a
+                        href={`${API_PREFIX}/api/courses/${courseId}/documents/${source.documentId}/content${source.page ? `#page=${source.page}` : ""}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="group/source flex items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
+                      >
+                        <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
+                          {source.filename}
+                        </span>
+                        {source.page && (
+                          <span className="shrink-0 text-hestia-text-muted">
+                            p. {source.page}
+                          </span>
+                        )}
+                      </a>
+                    ) : (
+                      <p className="truncate font-medium">{source.filename}</p>
+                    ))}
                   {source.snippet && (
                     <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
                       “{source.snippet}”

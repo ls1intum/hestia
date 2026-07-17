@@ -13,6 +13,8 @@ import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
@@ -45,6 +47,9 @@ class LearningGoalControllerTest {
     private DocumentRepository documentRepository;
 
     @Autowired
+    private DocumentContentRepository documentContentRepository;
+
+    @Autowired
     private LearningGoalRepository goalRepository;
 
     @Autowired
@@ -61,6 +66,7 @@ class LearningGoalControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise"));
+        documentContentRepository.save(new DocumentContent(lecture, new byte[]{1, 2, 3}));
 
         LearningGoal tdd = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
         LearningGoal refactor = goalRepository.save(new LearningGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
@@ -82,6 +88,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.content[1].kind").value("IMPLICIT"))
                 .andExpect(jsonPath("$.content[1].sources", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.content[1].sources[0].filename").value("lecture.pdf"))
+                .andExpect(jsonPath("$.content[1].sources[0].contentAvailable").value(true))
                 // goals without hierarchy/taxonomy/relationships expose null/empty, not missing keys
                 .andExpect(jsonPath("$.content[0].hierarchy").doesNotExist())
                 .andExpect(jsonPath("$.content[0].bloomLevel").doesNotExist())

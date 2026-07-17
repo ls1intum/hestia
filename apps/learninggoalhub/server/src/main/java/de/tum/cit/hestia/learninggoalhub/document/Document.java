@@ -31,8 +31,16 @@ public class Document {
     @Column(name = "content_type", nullable = false)
     private String contentType;
 
+    // Instructor-chosen display label; null means "show the filename". The filename itself stays
+    // immutable because goal sources and the CSV export cite it as provenance.
+    @Column(name = "display_name")
+    private String displayName;
+
     @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
+
+    @Column(name = "page_offsets")
+    private int[] pageOffsets;
 
     @CreationTimestamp
     @Column(name = "uploaded_at", nullable = false, updatable = false)
@@ -64,8 +72,24 @@ public class Document {
         return contentType;
     }
 
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     public String getRawText() {
         return rawText;
+    }
+
+    public int[] getPageOffsets() {
+        return pageOffsets;
+    }
+
+    public void setPageOffsets(int[] pageOffsets) {
+        this.pageOffsets = pageOffsets;
     }
 
     public OffsetDateTime getUploadedAt() {
