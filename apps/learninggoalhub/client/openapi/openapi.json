@@ -598,15 +598,7 @@
             "type": "integer",
             "format": "int32"
           },
-          "candidatesExtracted": {
-            "type": "integer",
-            "format": "int32"
-          },
           "goalsCreated": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "goalsDeduplicated": {
             "type": "integer",
             "format": "int32"
           },
@@ -978,7 +970,6 @@
               "OUTLINING",
               "PARSING",
               "EXTRACTING",
-              "CONSOLIDATING",
               "CLASSIFYING",
               "EMBEDDING",
               "PERSISTING"

@@ -21,10 +21,9 @@ const PHASES: { key: Phase; label: string }[] = [
   { key: "OUTLINING", label: "Outlining documents" },
   { key: "PARSING", label: "Parsing documents" },
   { key: "EXTRACTING", label: "Extracting learning goals" },
-  { key: "CONSOLIDATING", label: "Consolidating learning goals" },
   { key: "CLASSIFYING", label: "Classifying (Bloom & SOLO)" },
   { key: "EMBEDDING", label: "Computing embeddings" },
-  { key: "PERSISTING", label: "Saving & deduplicating" },
+  { key: "PERSISTING", label: "Saving learning goals" },
 ];
 
 /**
@@ -136,7 +135,6 @@ export default function ExtractionProgressModal({ open, status, result, error, o
             <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Stat label="Documents" value={result?.documentsProcessed} />
               <Stat label="Goals created" value={result?.goalsCreated} />
-              <Stat label="Deduplicated" value={result?.goalsDeduplicated} />
               <Stat label="Terminal competencies" value={result?.terminalCompetencies} />
               <Stat label="Competency gaps" value={result?.competencyGaps} />
             </dl>

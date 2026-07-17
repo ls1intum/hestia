@@ -19,12 +19,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class ExtractionProgressTracker {
 
-    /** Ordered to match the pipeline so the client can show "step N of 9" if it wants. */
+    /** Ordered to match the pipeline so the client can show "step N of 6" if it wants. */
     public enum Phase {
         OUTLINING,
         PARSING,
         EXTRACTING,
-        CONSOLIDATING,
         CLASSIFYING,
         EMBEDDING,
         PERSISTING

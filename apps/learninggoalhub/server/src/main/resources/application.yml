@@ -53,6 +53,9 @@ hestia:
     # tripping SAIA's rate limit (see tuning notes), which dominates wall-clock time on big PDFs.
     chunk-size: 16000
     parallelism: 16
+    # Sessions at or below this length use one full-session extraction call; 0 disables the direct
+    # path entirely for shadow-run comparison with the legacy chunked pipeline.
+    direct-max-chars: 80000
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.

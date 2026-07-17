@@ -19,11 +19,11 @@ import java.time.OffsetDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 
 /**
- * One fine-grained learning goal as extracted from a single chunk by the first stage
- * ({@link ExtractionService}). The second stage ({@link SessionGoalConsolidator}) merges a session's
- * candidates into the few broad {@link LearningGoal}s that actually get surfaced; candidates are
- * persisted purely for traceability — {@link #consolidatedGoal} records which consolidated goal a
- * candidate was merged into (null when it was dropped or the goal not yet persisted).
+ * One fine-grained learning goal as extracted from a single chunk by the legacy fallback path
+ * ({@link ExtractionService}). {@link SessionGoalConsolidator} merges a fallback session's candidates
+ * into the broad {@link LearningGoal}s that get surfaced; candidates are persisted purely for
+ * traceability — {@link #consolidatedGoal} records which consolidated goal a candidate was merged into
+ * (null when it was dropped or the goal not yet persisted).
  */
 @Entity
 @Table(name = "goal_candidate")

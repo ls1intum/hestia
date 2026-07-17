@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,8 +28,10 @@ import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,12 +39,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "hestia.extraction.direct-max-chars=80")
 class ExtractionControllerTest {
 
     @Autowired
@@ -69,8 +72,17 @@ class ExtractionControllerTest {
     @Autowired
     private GoalCandidateRepository goalCandidateRepository;
 
+    @Autowired
+    private ExtractionRunRepository extractionRunRepository;
+
+    @Autowired
+    private ExtractionRunAuditService extractionRunAuditService;
+
     @MockitoBean
     private ExtractionService extractionService;
+
+    @MockitoBean
+    private SessionExtractionService sessionExtractionService;
 
     @MockitoBean
     private SessionGoalConsolidator sessionGoalConsolidator;
@@ -78,10 +90,12 @@ class ExtractionControllerTest {
     @MockitoBean
     private EmbeddingService embeddingService;
 
+    @MockitoBean
+    private TaxonomyService taxonomyService;
+
     /**
      * Identity consolidation: pass each session's candidates through unchanged (one outcome per
-     * candidate, each supported by itself). This isolates the rest of the pipeline from the
-     * consolidation LLM so the existing dedup/source/hierarchy assertions still describe behaviour.
+     * candidate, each supported by itself). This isolates the fallback path from the consolidation LLM.
      */
     @BeforeEach
     void stubIdentityConsolidation() {
@@ -99,11 +113,11 @@ class ExtractionControllerTest {
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
-        when(extractionService.extract(eq("lecture text about TDD"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...write a failing test first..."),
                 new ExtractedGoal("Value short feedback loops.", GoalKind.IMPLICIT, "...keep tests fast...")
         ));
-        when(extractionService.extract(eq("exercise on refactoring"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise on refactoring"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Refactor without changing behaviour.", GoalKind.EXPLICIT, "...extract method...")
         ));
         stubEmbedAll(Map.of(
@@ -114,7 +128,6 @@ class ExtractionControllerTest {
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentsProcessed").value(2))
-                .andExpect(jsonPath("$.candidatesExtracted").value(3))
                 .andExpect(jsonPath("$.goalsCreated").value(3));
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
@@ -125,10 +138,9 @@ class ExtractionControllerTest {
         // All goals are embedded in one batched call rather than one call per goal.
         verify(embeddingService).embedAll(anyList());
 
-        // The raw candidates are persisted and each points at the goal it was consolidated into.
+        // Direct extraction does not create legacy raw candidate rows.
         List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
-        assertThat(candidates).hasSize(3);
-        assertThat(candidates).allSatisfy(c -> assertThat(c.getConsolidatedGoal()).isNotNull());
+        assertThat(candidates).isEmpty();
 
         long sourcesForLecture = goalSourceRepository.findAll().stream()
                 .filter(s -> s.getDocument().getId().equals(lecture.getId()))
@@ -138,44 +150,118 @@ class ExtractionControllerTest {
                 .count();
         assertThat(sourcesForLecture).isEqualTo(2);
         assertThat(sourcesForExercise).isEqualTo(1);
+
+        ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
+                .findFirst()
+                .orElseThrow();
+        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getPromptVersion()).isEqualTo(SessionExtractionService.PROMPT_VERSION);
+        assertThat(run.getGoalsCreated()).isEqualTo(3);
+        assertThat(run.getFinishedAt()).isNotNull();
+        assertThat(run.getParams()).contains("direct-max-chars");
     }
 
     @Test
-    void identicalGoalsAcrossDocumentsCollapseIntoSingleGoalWithTwoSources() throws Exception {
+    void auditServicePersistsRunningThenSucceededInSeparateTransactions() {
+        Course course = courseRepository.save(new Course("Audit lifecycle"));
+
+        Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
+                "{\"chunk-size\":16000,\"direct-max-chars\":80000,\"parallelism\":16}");
+        assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
+                .isEqualTo(ExtractionRun.Status.RUNNING);
+
+        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, "direct-v1");
+
+        ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
+        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getGoalsCreated()).isEqualTo(4);
+        assertThat(run.getFinishedAt()).isNotNull();
+    }
+
+    @Test
+    void oversizedSessionUsesFallbackCandidatesAndProvenance() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        String oversizedText = "This session is deliberately longer than the direct extraction threshold. "
+                .repeat(3);
+        Document document = documentRepository.save(
+                new Document(course, "fallback.pdf", "application/pdf", oversizedText));
+
+        when(extractionService.extract(eq(oversizedText), eq(null))).thenReturn(List.of(
+                new ExtractedGoal("Apply the fallback procedure.", GoalKind.EXPLICIT, "...fallback procedure...")));
+        stubEmbedAll(Map.of("Apply the fallback procedure.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.goalsCreated").value(1));
+
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), eq(null));
+        List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
+        assertThat(candidates)
+                .singleElement()
+                .satisfies(candidate -> assertThat(candidate.getConsolidatedGoal()).isNotNull());
+        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v1"));
+        assertThat(goalSourceRepository.findAll())
+                .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
+                .hasSize(1);
+    }
+
+    @Test
+    void failedExtractionLeavesFailedAuditRun() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        String text = "short session text";
+        documentRepository.save(new Document(course, "failed.pdf", "application/pdf", text));
+        when(sessionExtractionService.extract(eq("failed.pdf"), eq(text), eq(null)))
+                .thenThrow(new RuntimeException("direct extraction failed"));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .satisfies(run -> {
+                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getError()).isEqualTo("direct extraction failed");
+                    assertThat(run.getFinishedAt()).isNotNull();
+                    assertThat(run.getGoalsCreated()).isNull();
+                });
+    }
+
+    @Test
+    void identicalGoalsAcrossDocumentsRemainSeparateGoals() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise body"));
 
-        when(extractionService.extract(eq("lecture body"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...lecture snippet...")
         ));
-        when(extractionService.extract(eq("exercise body"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet...")
         ));
-        // Both goals get the exact same embedding → cosine similarity = 1.0, above the 0.92 threshold.
+        // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
         stubEmbedAll(Map.of());
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(1))
-                .andExpect(jsonPath("$.goalsDeduplicated").value(1));
+                .andExpect(jsonPath("$.goalsCreated").value(2));
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
-        assertThat(goals).hasSize(1);
-        LearningGoal goal = goals.get(0);
-        assertThat(goalSourceRepository.findByGoalId(goal.getId()))
+        assertThat(goals).hasSize(2);
+        assertThat(goals)
+                .flatExtracting(goal -> goalSourceRepository.findByGoalId(goal.getId()))
                 .extracting(s -> s.getDocument().getId())
                 .containsExactlyInAnyOrder(lecture.getId(), exercise.getId());
     }
 
     @Test
-    void duplicateExtractionsFromSameDocumentReuseSingleSource() throws Exception {
+    void duplicateExtractionsFromSameDocumentCreateSeparateGoals() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
 
-        // Chunk overlap can yield the same goal twice from a single document; the second
-        // attempt must not blow up on the (goal_id, document_id) composite PK.
-        when(extractionService.extract(eq("lecture body"), eq(null))).thenReturn(List.of(
+        // A direct response can contain closely related goals; each enriched goal is persisted.
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet..."),
                 new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet...")
         ));
@@ -183,14 +269,14 @@ class ExtractionControllerTest {
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(1))
-                .andExpect(jsonPath("$.goalsDeduplicated").value(1));
+                .andExpect(jsonPath("$.goalsCreated").value(2));
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
-        assertThat(goals).hasSize(1);
-        assertThat(goalSourceRepository.findByGoalId(goals.get(0).getId()))
-                .singleElement()
-                .satisfies(s -> assertThat(s.getDocument().getId()).isEqualTo(lecture.getId()));
+        assertThat(goals).hasSize(2);
+        assertThat(goals)
+                .flatExtracting(goal -> goalSourceRepository.findByGoalId(goal.getId()))
+                .hasSize(2)
+                .allSatisfy(s -> assertThat(s.getDocument().getId()).isEqualTo(lecture.getId()));
     }
 
     @Test
@@ -212,7 +298,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
 
-        when(extractionService.extract(eq("lecture text about TDD"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first...")
         ));
         stubEmbedAll(Map.of());
@@ -229,7 +315,6 @@ class ExtractionControllerTest {
     }
 
     @Test
-    @Transactional
     void extractionSplitsOneDocumentIntoItsStructuralSectionsAndRoutesChunksByOffset() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         // One uploaded PDF whose bookmarks split it into a lecture chapter and an exercise chapter.
@@ -243,11 +328,11 @@ class ExtractionControllerTest {
         documentSectionRepository.save(new DocumentSection(combined, 1, "Exercise 3.2: Kata",
                 sessionText.length(), sessionText.length() + exerciseText.length()));
 
-        when(extractionService.extract(contains("apply TDD"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("Lecture 3: Testing"), eq(sessionText), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...failing test first..."),
                 new ExtractedGoal("Understand SE scope.", GoalKind.IMPLICIT, "...overview...")
         ));
-        when(extractionService.extract(contains("refactoring kata"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata...")
         ));
         stubEmbedAll(Map.of(
@@ -264,17 +349,23 @@ class ExtractionControllerTest {
         assertThat(nodes).extracting(HierarchyNode::getLevel)
                 .containsExactlyInAnyOrder(HierarchyLevel.MODULE, HierarchyLevel.SESSION, HierarchyLevel.EXERCISE);
 
-        // Each goal is attached to the node of the section its chunk came from (deterministic, by offset).
+        // Each goal is attached to the node of the section its chunk came from (deterministic, by
+        // offset). Labels are resolved through the already-loaded nodes: the goal's hierarchyNode is a
+        // lazy proxy and the session is closed, but reading its id never triggers initialization.
+        Map<Long, String> labelsByNodeId = nodes.stream()
+                .collect(Collectors.toMap(HierarchyNode::getId, HierarchyNode::getLabel));
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
         assertThat(goals).allSatisfy(g -> assertThat(g.getHierarchyNode()).isNotNull());
         assertThat(goals)
                 .filteredOn(g -> g.getText().equals("Practise TDD kata."))
                 .singleElement()
-                .satisfies(g -> assertThat(g.getHierarchyNode().getLabel()).isEqualTo("Exercise 3.2: Kata"));
+                .satisfies(g -> assertThat(labelsByNodeId.get(g.getHierarchyNode().getId()))
+                        .isEqualTo("Exercise 3.2: Kata"));
         assertThat(goals)
                 .filteredOn(g -> g.getText().equals("Apply TDD."))
                 .singleElement()
-                .satisfies(g -> assertThat(g.getHierarchyNode().getLabel()).isEqualTo("Lecture 3: Testing"));
+                .satisfies(g -> assertThat(labelsByNodeId.get(g.getHierarchyNode().getId()))
+                        .isEqualTo("Lecture 3: Testing"));
     }
 
     private static float[] orthogonalEmbedding(int slot) {

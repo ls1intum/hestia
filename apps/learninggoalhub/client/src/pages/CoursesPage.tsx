@@ -41,8 +41,7 @@ export default function CoursesPage() {
         <div>
           <h1 className="text-3xl">Courses</h1>
           <p className="mt-1 text-sm text-hestia-text-muted">
-            Each course groups the documents you upload; learning goals are extracted and
-            deduplicated across all of them.
+            Each course groups the documents you upload; learning goals are extracted from all of them.
           </p>
         </div>
         <Link
