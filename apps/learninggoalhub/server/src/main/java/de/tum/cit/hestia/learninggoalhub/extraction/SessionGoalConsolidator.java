@@ -14,9 +14,8 @@ import org.springframework.stereotype.Service;
  * with the session title — merges overlapping and narrow candidates into the handful of broad,
  * lecture-level outcomes an instructor would actually state.
  *
- * <p>Structurally a sibling of {@link ModuleGoalSynthesizer} one level lower in the bottom-up
- * pipeline: it returns each outcome's {@code text} plus the indices of the candidates it was merged
- * from, so {@link ExtractionRunner} can derive the outcome's kind and source snippet and record the
+ * <p>It returns each outcome's {@code text} plus the indices of the candidates it was merged from, so
+ * {@link ExtractionRunner} can derive the outcome's kind and source snippet and record the
  * candidate→goal provenance.
  */
 @Service

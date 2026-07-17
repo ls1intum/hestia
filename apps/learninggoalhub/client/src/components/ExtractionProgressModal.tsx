@@ -21,11 +21,10 @@ const PHASES: { key: Phase; label: string }[] = [
   { key: "OUTLINING", label: "Outlining documents" },
   { key: "PARSING", label: "Parsing documents" },
   { key: "EXTRACTING", label: "Extracting learning goals" },
+  { key: "CONSOLIDATING", label: "Consolidating learning goals" },
   { key: "CLASSIFYING", label: "Classifying (Bloom & SOLO)" },
   { key: "EMBEDDING", label: "Computing embeddings" },
   { key: "PERSISTING", label: "Saving & deduplicating" },
-  { key: "SYNTHESIZING", label: "Synthesizing module goals" },
-  { key: "LINKING", label: "Linking relationships" },
 ];
 
 /**
@@ -138,10 +137,8 @@ export default function ExtractionProgressModal({ open, status, result, error, o
               <Stat label="Documents" value={result?.documentsProcessed} />
               <Stat label="Goals created" value={result?.goalsCreated} />
               <Stat label="Deduplicated" value={result?.goalsDeduplicated} />
-              <Stat label="Module goals" value={result?.moduleGoalsSynthesized} />
-              <Stat label="Contributes-to" value={result?.contributesToLinks} />
-              <Stat label="Overlaps-with" value={result?.overlapsWithLinks} />
-              <Stat label="Prerequisite-of" value={result?.prerequisiteOfLinks} />
+              <Stat label="Terminal competencies" value={result?.terminalCompetencies} />
+              <Stat label="Competency gaps" value={result?.competencyGaps} />
             </dl>
             <div className="mt-6 flex justify-end">
               <button

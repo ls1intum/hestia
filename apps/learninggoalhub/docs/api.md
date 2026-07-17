@@ -151,7 +151,7 @@ a group whose `level` is `EXAM` and whose `label` is `Exam`.
 Field semantics:
 
 - `kind` — `EXPLICIT`: stated as a learning goal in the material; `IMPLICIT`: inferred from
-  the content (includes synthesized module-level goals).
+  the content.
 - `status` — review lifecycle: extraction produces `PENDING`; an instructor approves to
   `APPROVED`. Rejected goals are deleted, so there is no rejected state.
 - `hierarchy` — flattened module → session → exercise labels of the goal's node; `null` when
@@ -159,9 +159,11 @@ Field semantics:
 - `bloomLevel` (`REMEMBER` … `CREATE`) and `soloLevel` (`PRESTRUCTURAL` … `EXTENDED_ABSTRACT`)
   — taxonomy classification; `null` when not (yet) classified.
 - `sources` — document provenance with a text snippet per supporting document.
-- `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (session goal feeds a
-  module goal), `PREREQUISITE_OF`, `OVERLAPS_WITH`. `origin` says how the edge was found
-  (`HIERARCHY`, `EMBEDDING`, `LLM`); `confidence` is in `[0, 1]`.
+- `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (a goal feeds the goal
+  above it in the competency tree). `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy types
+  that may still appear on courses extracted before mid-2026; new extractions no longer
+  produce them. `origin` says how the edge was found (`HIERARCHY`, `EMBEDDING`, `LLM`);
+  `confidence` is in `[0, 1]`.
 
 ## Errors
 

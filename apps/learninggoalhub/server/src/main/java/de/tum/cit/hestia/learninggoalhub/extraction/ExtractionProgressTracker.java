@@ -27,9 +27,7 @@ public class ExtractionProgressTracker {
         CONSOLIDATING,
         CLASSIFYING,
         EMBEDDING,
-        PERSISTING,
-        SYNTHESIZING,
-        LINKING
+        PERSISTING
     }
 
     public enum Status {

@@ -7,9 +7,9 @@ import java.util.List;
  * perform after completing the course ("deploy a cloud-native application"), derived by the
  * {@link TerminalCompetencySynthesizer} by clustering the course's higher-Bloom goals across topics.
  *
- * <p>Unlike a {@link SynthesizedModuleGoal} it is not a conservative bottom-up summary of a session's
- * topic; it is the top of a competency tree, deliberately framed around a <em>doing</em> verb and
- * built primarily from the course's {@code APPLY}/{@code CREATE} goals (the {@code ANALYZE}/
+ * <p>It is not a conservative bottom-up summary of a session's topic; it is the top of a competency
+ * tree, deliberately framed around a <em>doing</em> verb and built primarily from the course's
+ * {@code APPLY}/{@code CREATE} goals (the {@code ANALYZE}/
  * {@code EVALUATE} "compare/understand" goals usually sit beneath it as supporting knowledge). It is
  * an abstraction over several sub-goals, so it carries no verbatim source snippet.
  *

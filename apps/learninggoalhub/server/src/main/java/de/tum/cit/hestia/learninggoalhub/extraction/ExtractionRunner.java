@@ -19,11 +19,8 @@ import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.EmbeddingOverlapLinker;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.HierarchyContributionLinker;
-import de.tum.cit.hestia.learninggoalhub.relationships.PrerequisiteLinker;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
@@ -35,7 +32,6 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.EnumSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -66,7 +62,6 @@ public class ExtractionRunner {
     private final SessionGoalConsolidator sessionGoalConsolidator;
     private final GoalCandidateRepository goalCandidateRepository;
     private final DocumentSectionRepository documentSectionRepository;
-    private final ModuleGoalSynthesizer moduleGoalSynthesizer;
     private final TerminalCompetencySynthesizer terminalCompetencySynthesizer;
     private final CompetencyTreeSynthesizer competencyTreeSynthesizer;
     private final DocumentChunker documentChunker;
@@ -74,9 +69,6 @@ public class ExtractionRunner {
     private final TaxonomyService taxonomyService;
     private final EmbeddingService embeddingService;
     private final GoalDeduplicator goalDeduplicator;
-    private final HierarchyContributionLinker hierarchyContributionLinker;
-    private final EmbeddingOverlapLinker embeddingOverlapLinker;
-    private final PrerequisiteLinker prerequisiteLinker;
     private final ExtractionProgressTracker progressTracker;
     private final int parallelism;
     private final int taxonomyBatchSize;
@@ -91,7 +83,6 @@ public class ExtractionRunner {
                             SessionGoalConsolidator sessionGoalConsolidator,
                             GoalCandidateRepository goalCandidateRepository,
                             DocumentSectionRepository documentSectionRepository,
-                            ModuleGoalSynthesizer moduleGoalSynthesizer,
                             TerminalCompetencySynthesizer terminalCompetencySynthesizer,
                             CompetencyTreeSynthesizer competencyTreeSynthesizer,
                             DocumentChunker documentChunker,
@@ -99,9 +90,6 @@ public class ExtractionRunner {
                             TaxonomyService taxonomyService,
                             EmbeddingService embeddingService,
                             GoalDeduplicator goalDeduplicator,
-                            HierarchyContributionLinker hierarchyContributionLinker,
-                            EmbeddingOverlapLinker embeddingOverlapLinker,
-                            PrerequisiteLinker prerequisiteLinker,
                             ExtractionProgressTracker progressTracker,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
@@ -115,7 +103,6 @@ public class ExtractionRunner {
         this.sessionGoalConsolidator = sessionGoalConsolidator;
         this.goalCandidateRepository = goalCandidateRepository;
         this.documentSectionRepository = documentSectionRepository;
-        this.moduleGoalSynthesizer = moduleGoalSynthesizer;
         this.terminalCompetencySynthesizer = terminalCompetencySynthesizer;
         this.competencyTreeSynthesizer = competencyTreeSynthesizer;
         this.documentChunker = documentChunker;
@@ -123,9 +110,6 @@ public class ExtractionRunner {
         this.taxonomyService = taxonomyService;
         this.embeddingService = embeddingService;
         this.goalDeduplicator = goalDeduplicator;
-        this.hierarchyContributionLinker = hierarchyContributionLinker;
-        this.embeddingOverlapLinker = embeddingOverlapLinker;
-        this.prerequisiteLinker = prerequisiteLinker;
         this.progressTracker = progressTracker;
         this.parallelism = parallelism;
         this.taxonomyBatchSize = taxonomyBatchSize;
@@ -259,36 +243,15 @@ public class ExtractionRunner {
 
         // Drop units the outline detected but the extraction routed no goals to (e.g. a chapter the
         // section LLM never labelled, or a region with nothing extractable). Without this the tree
-        // carries empty phantom sections. Run before synthesis/linking so the tree is already clean.
+        // carries empty phantom sections. Run before building the competency tree so the tree is clean.
         pruneEmptyUnits(course);
 
-        // Module-level outcomes are derived bottom-up from the persisted session/exercise goals. The
-        // synthesis also emits the session/exercise→module CONTRIBUTES_TO edges from the provenance
-        // the synthesiser reports, so each sub-goal links only to the outcome(s) it actually serves.
-        ModuleSynthesis synthesis = synthesizeModuleGoals(course, moduleRoot, modelOverride, run);
-        int moduleGoalsSynthesized = synthesis.goals();
-
-        // Three relationship linkers run sequentially; report them as a 3-step phase. The contribution
-        // linker now only covers non-module ancestors (e.g. exercise→session); the module-level edges
-        // come from synthesis provenance above, so add the two counts for the reported total.
-        run.phase(ExtractionProgressTracker.Phase.LINKING, 3);
-        int contributesToLinks = synthesis.contributionLinks()
-                + hierarchyContributionLinker.linkCourse(course.getId());
-        run.increment();
-        int overlapsWithLinks = embeddingOverlapLinker.linkCourse(course.getId());
-        run.increment();
-        int prerequisiteOfLinks = prerequisiteLinker.linkCourse(course.getId(), modelOverride);
-        run.increment();
-
-        // Top-down competency view, ALONGSIDE the module goals above (not a replacement): a three-tier
-        // tree (terminal competency → sub-skill → knowledge) under its own COMPETENCY root, with
-        // CONTRIBUTES_TO edges threading the tiers. Runs last, after the embedding linkers, so the tree
-        // picks up only these explicit edges, not the auto overlap/prerequisite ones.
+        // Top-down competency view: a three-tier tree (terminal competency → sub-skill → knowledge)
+        // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
         CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride);
 
         return new ExtractionSummary(documents.size(), consolidation.candidatesExtracted(), goalsCreated,
-                goalsDeduplicated, moduleGoalsSynthesized, contributesToLinks, overlapsWithLinks,
-                prerequisiteOfLinks, competencyTree.competencies(), competencyTree.gaps());
+                goalsDeduplicated, competencyTree.competencies(), competencyTree.gaps());
     }
 
     /**
@@ -421,8 +384,8 @@ public class ExtractionRunner {
     /**
      * Deletes SESSION/EXERCISE units that ended up with no goals (e.g. a session whose only goals were
      * all deduplicated into another session's). Only leaf units are removed and only when no goal
-     * references them, so nothing is orphaned; the MODULE root is always kept (it carries the
-     * synthesized module goals and is the tree's anchor). The pruned units' goal candidates are
+     * references them, so nothing is orphaned; the MODULE root is always kept as the tree's anchor.
+     * The pruned units' goal candidates are
      * deleted first — they reference the node and, although the DB cascades on delete, Hibernate would
      * otherwise choke flushing those still-managed rows against a removed node.
      */
@@ -447,174 +410,19 @@ public class ExtractionRunner {
         return empty.size();
     }
 
-    /**
-     * Derives module-level outcomes from the course's persisted session-/exercise-level goals and
-     * attaches them to the module root with a SYNTHESIZED origin. Conservative by design: an empty
-     * synthesis result yields no goals. Skipped only when synthesis has already run for this course
-     * (idempotent re-extraction) or when there are no sub-goals to build on. It deliberately does NOT
-     * skip merely because EXTRACTED goals sit on the module root — the outline routinely labels some
-     * overview chunks MODULE, dumping extracted goals there, and treating those as "module goals
-     * already exist" would wrongly suppress synthesis (and with it the CONTRIBUTES_TO provenance).
-     * Synthesized goals are not deduplicated against the sub-goals — they are meant to sit one level
-     * above them, not collapse into them.
-     */
-    private ModuleSynthesis synthesizeModuleGoals(Course course, HierarchyNode moduleRoot, String modelOverride,
-                                                  ExtractionProgressTracker.Run run) {
-        run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
-        List<LearningGoal> withNode = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId());
-        boolean alreadySynthesized = withNode.stream()
-                .anyMatch(g -> g.getHierarchyNode().getLevel() == HierarchyLevel.MODULE
-                        && g.getOrigin() == GoalOrigin.SYNTHESIZED);
-        List<LearningGoal> subGoals = withNode.stream()
-                .filter(g -> g.getHierarchyNode().getLevel() != HierarchyLevel.MODULE)
-                .toList();
-        if (alreadySynthesized || subGoals.isEmpty()) {
-            run.increment();
-            return ModuleSynthesis.NONE;
-        }
-
-        // MAP — condense each session's goals into its single-topic headlines (one LLM call per
-        // session, in parallel). Each headline carries the session goal entities it subsumes, so the
-        // final CONTRIBUTES_TO edges can land on the real session goals after the reduce step.
-        List<Intermediate> intermediates = condensePerSession(subGoals, modelOverride);
-        if (intermediates.isEmpty()) {
-            run.increment();
-            return ModuleSynthesis.NONE;
-        }
-
-        // REDUCE — integrate the clean per-session headlines into the course's cross-cutting outcomes.
-        List<String> headlineTexts = intermediates.stream().map(Intermediate::text).toList();
-        int created = 0;
-        int contributionLinks = 0;
-        for (SynthesizedModuleGoal sg : safeIntegrate(headlineTexts, modelOverride)) {
-            if (sg.text() == null || sg.text().isBlank()) {
-                continue;
-            }
-            LearningGoal goal = new LearningGoal(course, sg.text(), GoalKind.IMPLICIT);
-            goal.setOrigin(GoalOrigin.SYNTHESIZED);
-            goal.setHierarchyNode(moduleRoot);
-            TaxonomyClassification classification = safeClassify(sg.text(), modelOverride);
-            if (classification != null) {
-                goal.setBloomLevel(classification.bloom());
-                goal.setSoloLevel(classification.solo());
-            }
-            float[] embedding = safeEmbed(sg.text());
-            if (embedding != null) {
-                goal.setEmbedding(embedding);
-            }
-            goalRepository.saveAndFlush(goal);
-            created++;
-            // Resolve the headline indices back through the intermediate tier to the session goals
-            // that ultimately support this outcome (deduplicated across the merged headlines).
-            Set<LearningGoal> supporters = new LinkedHashSet<>();
-            for (int index : sg.supporting().stream().distinct().toList()) {
-                if (index >= 0 && index < intermediates.size()) {
-                    supporters.addAll(intermediates.get(index).supporters());
-                }
-            }
-            contributionLinks += linkContributors(supporters, goal);
-        }
-        run.increment();
-        return new ModuleSynthesis(created, contributionLinks);
-    }
-
-    /**
-     * Map stage of module synthesis. Groups the course's session-/exercise-level goals by their
-     * hierarchy node and condenses each session's goals into its single-topic headlines (the LLM
-     * calls run in parallel, with no DB access since JPA isn't safe across worker threads). Returns
-     * the flattened headlines, each carrying the session goal entities it subsumes — resolved here
-     * from the per-session {@code supporting} indices while the per-session grouping is still in view.
-     * A session whose condense call fails falls back to passing its goals through as their own
-     * headlines so no topic is dropped.
-     */
-    private List<Intermediate> condensePerSession(List<LearningGoal> subGoals, String modelOverride) {
-        Map<HierarchyNode, List<LearningGoal>> bySession = subGoals.stream()
-                .collect(Collectors.groupingBy(LearningGoal::getHierarchyNode, LinkedHashMap::new,
-                        Collectors.toList()));
-        List<HierarchyNode> sessions = new ArrayList<>(bySession.keySet());
-
-        List<List<SynthesizedModuleGoal>> headlinesBySession;
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
-        try {
-            List<CompletableFuture<List<SynthesizedModuleGoal>>> futures = sessions.stream()
-                    .map(node -> CompletableFuture.supplyAsync(
-                            () -> {
-                                List<String> texts = bySession.get(node).stream()
-                                        .map(LearningGoal::getText).toList();
-                                return safeCondense(node.getLabel(), texts, modelOverride);
-                            },
-                            executor))
-                    .toList();
-            headlinesBySession = futures.stream().map(CompletableFuture::join).toList();
-        } finally {
-            executor.shutdown();
-        }
-
-        List<Intermediate> intermediates = new ArrayList<>();
-        for (int i = 0; i < sessions.size(); i++) {
-            List<LearningGoal> sessionGoals = bySession.get(sessions.get(i));
-            for (SynthesizedModuleGoal headline : headlinesBySession.get(i)) {
-                if (headline.text() == null || headline.text().isBlank()) {
-                    continue;
-                }
-                List<LearningGoal> supporters = new ArrayList<>();
-                for (int index : headline.supporting().stream().distinct().toList()) {
-                    if (index >= 0 && index < sessionGoals.size()) {
-                        supporters.add(sessionGoals.get(index));
-                    }
-                }
-                // A headline with no resolvable support still abstracts the whole session, so attribute
-                // it to all of the session's goals rather than dropping its provenance.
-                intermediates.add(new Intermediate(headline.text(),
-                        supporters.isEmpty() ? sessionGoals : supporters));
-            }
-        }
-        return intermediates;
-    }
-
-    private List<SynthesizedModuleGoal> safeCondense(String sessionTitle, List<String> sessionGoals,
-                                                     String modelOverride) {
-        try {
-            List<SynthesizedModuleGoal> result =
-                    moduleGoalSynthesizer.condenseSession(sessionTitle, sessionGoals, modelOverride);
-            if (result != null && !result.isEmpty()) {
-                return result;
-            }
-        } catch (RuntimeException ex) {
-            log.warn("Session condense failed for '{}', passing its goals through as headlines: {}",
-                    sessionTitle, ex.getMessage());
-        }
-        // Fall back to each session goal as its own headline so the topic still reaches the reduce step.
-        List<SynthesizedModuleGoal> fallback = new ArrayList<>(sessionGoals.size());
-        for (int i = 0; i < sessionGoals.size(); i++) {
-            fallback.add(new SynthesizedModuleGoal(sessionGoals.get(i), List.of(i)));
-        }
-        return fallback;
-    }
-
-    /** A condensed per-session headline and the session goal entities it subsumes (map-stage output). */
-    private record Intermediate(String text, List<LearningGoal> supporters) {
-    }
-
-    /**
-     * Materializes CONTRIBUTES_TO edges from the session goals that support this module outcome (as
-     * resolved through the condense→integrate provenance chain) to the module goal. This replaces the
-     * old cartesian "every sub-goal contributes to every module goal" with content-grounded
-     * provenance. Self-edges and duplicates are guarded against, so a malformed verdict cannot corrupt
-     * the graph.
-     */
-    private int linkContributors(Collection<LearningGoal> supporters, LearningGoal moduleGoal) {
+    /** Materializes idempotent CONTRIBUTES_TO edges between competency-tree goals. */
+    private int linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
         int created = 0;
         for (LearningGoal source : supporters) {
-            if (source.getId().equals(moduleGoal.getId())) {
+            if (source.getId().equals(targetGoal.getId())) {
                 continue;
             }
             if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
-                    source.getId(), moduleGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
+                    source.getId(), targetGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
                 continue;
             }
             goalRelationshipRepository.save(new GoalRelationship(
-                    source, moduleGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+                    source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
             created++;
         }
         return created;
@@ -922,21 +730,6 @@ public class ExtractionRunner {
         return goalRepository.saveAndFlush(gapGoal);
     }
 
-    /** Result of the module-synthesis step: how many module goals and provenance edges it created. */
-    private record ModuleSynthesis(int goals, int contributionLinks) {
-        static final ModuleSynthesis NONE = new ModuleSynthesis(0, 0);
-    }
-
-    private List<SynthesizedModuleGoal> safeIntegrate(List<String> headlines, String modelOverride) {
-        try {
-            List<SynthesizedModuleGoal> result = moduleGoalSynthesizer.integrate(headlines, modelOverride);
-            return result == null ? List.of() : result;
-        } catch (RuntimeException ex) {
-            log.warn("Module goal integration failed, continuing without module goals: {}", ex.getMessage());
-            return List.of();
-        }
-    }
-
     /**
      * Classifies every extracted goal along Bloom + SOLO. Goals are flattened into one ordered list
      * and grouped into fixed-size batches ({@code hestia.taxonomy.batch-size}); each batch is a single
@@ -1151,8 +944,6 @@ public class ExtractionRunner {
     }
 
     public record ExtractionSummary(int documentsProcessed, int candidatesExtracted, int goalsCreated,
-                                    int goalsDeduplicated, int moduleGoalsSynthesized, int contributesToLinks,
-                                    int overlapsWithLinks, int prerequisiteOfLinks, int terminalCompetencies,
-                                    int competencyGaps) {
+                                    int goalsDeduplicated, int terminalCompetencies, int competencyGaps) {
     }
 }
