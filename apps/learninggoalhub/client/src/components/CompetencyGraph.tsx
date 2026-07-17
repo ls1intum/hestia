@@ -351,7 +351,8 @@ export default function CompetencyGraph({
               <div className="flex justify-center gap-3">
                 {competency.children.map((child, i) => {
                   const isFocused = child.goal.id === subSkill.goal.id;
-                  const isSubSkill = child.role === "sub-skill";
+                  // Only a non-focused sub-skill navigates; everything else opens the detail.
+                  const focusable = child.role === "sub-skill" && !isFocused;
                   return (
                     <div
                       key={child.goal.id}
@@ -363,21 +364,17 @@ export default function CompetencyGraph({
                         active={isFocused}
                         expandable={child.children.length > 0}
                         onClick={() =>
-                          isFocused
-                            ? onOpenDetail(child)
-                            : isSubSkill
-                              ? pickSubSkill(child.goal.id!)
-                              : onOpenDetail(child)
+                          focusable
+                            ? pickSubSkill(child.goal.id!)
+                            : onOpenDetail(child)
                         }
                         actions={actions}
                         dimmed={!isFocused}
                         clampText={!isFocused}
                         title={
-                          isFocused
-                            ? "View goal details"
-                            : isSubSkill
-                              ? "Focus this sub-skill"
-                              : "View goal details"
+                          focusable
+                            ? "Focus this sub-skill"
+                            : "View goal details"
                         }
                       />
                     </div>
@@ -509,6 +506,8 @@ function Connector({
         {Array.from({ length: count }, (_, i) => {
           const cx = childW / 2 + i * pitch;
           const dx = cx - trunk;
+          const dimmed =
+            focusedIndex != null && i !== focusedIndex ? 0.38 : undefined;
           // Too close to the trunk for the rail-and-corners route: a gentle S-curve instead
           // (straight drop when the child sits exactly under the trunk).
           if (Math.abs(dx) < 2 * r) {
@@ -516,9 +515,7 @@ function Connector({
               <path
                 key={i}
                 pathLength={1}
-                opacity={
-                  focusedIndex != null && i !== focusedIndex ? 0.38 : undefined
-                }
+                opacity={dimmed}
                 d={`M ${trunk} 0 C ${trunk} ${mid} ${cx} ${mid} ${cx} ${CONNECTOR_H}`}
               />
             );
@@ -528,9 +525,7 @@ function Connector({
             <path
               key={i}
               pathLength={1}
-              opacity={
-                focusedIndex != null && i !== focusedIndex ? 0.38 : undefined
-              }
+              opacity={dimmed}
               d={`M ${trunk} 0 V ${mid - r} Q ${trunk} ${mid} ${trunk + sg * r} ${mid} H ${cx - sg * r} Q ${cx} ${mid} ${cx} ${mid + r} V ${CONNECTOR_H}`}
             />
           );
