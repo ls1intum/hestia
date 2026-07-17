@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +66,98 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$[0].contentType").value(MediaType.APPLICATION_PDF_VALUE))
                 .andExpect(jsonPath("$[0].uploadedAt").exists())
                 .andExpect(jsonPath("$[1].filename").value("exercise-01.pdf"));
+    }
+
+    @Test
+    void listsCourseDocumentsInUploadOrder() throws Exception {
+        MvcResult courseResult = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Databases\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode course = objectMapper.readTree(courseResult.getResponse().getContentAsString());
+        long courseId = course.get("id").asLong();
+
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated());
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture-02.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/courses/{id}/documents", courseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].filename").value("lecture-01.pdf"))
+                .andExpect(jsonPath("$[1].filename").value("lecture-02.pdf"));
+    }
+
+    @Test
+    void listReturns404WhenCourseMissing() throws Exception {
+        mockMvc.perform(get("/api/courses/{id}/documents", 999999L))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void renamesDocumentAndClearsBackToFilename() throws Exception {
+        long courseId = createCourse("Operating Systems");
+        long documentId = uploadDocument(courseId, "lecture-01.pdf");
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"  Scheduling  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Scheduling"))
+                .andExpect(jsonPath("$.filename").value("lecture-01.pdf"));
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").doesNotExist())
+                .andExpect(jsonPath("$.filename").value("lecture-01.pdf"));
+    }
+
+    @Test
+    void rejectsBlankDisplayName() throws Exception {
+        long courseId = createCourse("Compilers");
+        long documentId = uploadDocument(courseId, "lecture-01.pdf");
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void renameReturns404WhenDocumentBelongsToOtherCourse() throws Exception {
+        long courseId = createCourse("Networks");
+        long otherCourseId = createCourse("Security");
+        long documentId = uploadDocument(courseId, "lecture-01.pdf");
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", otherCourseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"X\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    private long createCourse(String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + name + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private long uploadDocument(long courseId, String filename) throws Exception {
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        MvcResult result = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", filename, MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get(0).get("id").asLong();
     }
 
     @Test

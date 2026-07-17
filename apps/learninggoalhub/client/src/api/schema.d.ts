@@ -63,9 +63,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["list"];
         put?: never;
         post: operations["upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/competency-tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rebuildCompetencyTree"];
         delete?: never;
         options?: never;
         head?: never;
@@ -86,6 +102,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_1"];
         trace?: never;
     };
     "/api/courses/{id}": {
@@ -111,7 +143,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -239,7 +271,7 @@ export interface components {
             /** @enum {string} */
             status?: "PENDING" | "APPROVED";
             /** @enum {string} */
-            origin?: "EXTRACTED" | "SYNTHESIZED" | "TERMINAL" | "GAP";
+            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
             hierarchy?: components["schemas"]["HierarchyPath"];
             /** @enum {string} */
             bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
@@ -256,9 +288,16 @@ export interface components {
             /** Format: int64 */
             courseId?: number;
             filename?: string;
+            displayName?: string;
             contentType?: string;
             /** Format: date-time */
             uploadedAt?: string;
+        };
+        CompetencyTreeResult: {
+            /** Format: int32 */
+            competencies?: number;
+            /** Format: int32 */
+            gaps?: number;
         };
         UpdateLearningGoalRequest: {
             text?: string;
@@ -268,6 +307,9 @@ export interface components {
             bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
             /** @enum {string} */
             soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+        };
+        UpdateDocumentRequest: {
+            displayName?: string;
         };
         CourseSummaryResponse: {
             /** Format: int64 */
@@ -302,7 +344,7 @@ export interface components {
             /** Format: int64 */
             nodeId?: number;
             /** @enum {string} */
-            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM";
+            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
             label?: string;
             goals?: components["schemas"]["LearningGoalResponse"][];
         };
@@ -432,6 +474,28 @@ export interface operations {
             };
         };
     };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DocumentResponse"][];
+                };
+            };
+        };
+    };
     upload: {
         parameters: {
             query: {
@@ -452,6 +516,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["DocumentResponse"][];
+                };
+            };
+        };
+    };
+    rebuildCompetencyTree: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CompetencyTreeResult"];
                 };
             };
         };
@@ -504,6 +592,33 @@ export interface operations {
             };
         };
     };
+    update_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                documentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DocumentResponse"];
+                };
+            };
+        };
+    };
     getCourse: {
         parameters: {
             query?: never;
@@ -546,7 +661,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_1: {
         parameters: {
             query?: {
                 status?: "PENDING" | "APPROVED";

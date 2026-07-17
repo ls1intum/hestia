@@ -5,10 +5,14 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -36,6 +40,17 @@ public class DocumentController {
         this.documentSectionRepository = documentSectionRepository;
         this.structureService = structureService;
         this.titleService = titleService;
+    }
+
+    @GetMapping
+    public List<DocumentResponse> list(@PathVariable Long courseId) {
+        if (!courseRepository.existsById(courseId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
+        }
+        return documentRepository.findByCourseId(courseId).stream()
+                .sorted(Comparator.comparing(Document::getId))
+                .map(DocumentResponse::from)
+                .toList();
     }
 
     @PostMapping
@@ -91,9 +106,32 @@ public class DocumentController {
         }
     }
 
+    /**
+     * Renames a document for display. The filename is immutable provenance (goal sources and the
+     * CSV export cite it), so only the display name changes; null clears it back to the filename.
+     */
+    @PatchMapping("/{documentId}")
+    public DocumentResponse update(@PathVariable Long courseId,
+                                   @PathVariable Long documentId,
+                                   @RequestBody UpdateDocumentRequest request) {
+        Document document = documentRepository.findById(documentId)
+                .filter(d -> d.getCourse().getId().equals(courseId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
+        String displayName = request.displayName() == null ? null : request.displayName().trim();
+        if (displayName != null && displayName.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "displayName must not be blank");
+        }
+        document.setDisplayName(displayName);
+        return DocumentResponse.from(documentRepository.save(document));
+    }
+
+    public record UpdateDocumentRequest(String displayName) {
+    }
+
     public record DocumentResponse(Long id,
                                    Long courseId,
                                    String filename,
+                                   String displayName,
                                    String contentType,
                                    OffsetDateTime uploadedAt) {
         static DocumentResponse from(Document document) {
@@ -101,6 +139,7 @@ public class DocumentController {
                     document.getId(),
                     document.getCourse().getId(),
                     document.getFilename(),
+                    document.getDisplayName(),
                     document.getContentType(),
                     document.getUploadedAt()
             );

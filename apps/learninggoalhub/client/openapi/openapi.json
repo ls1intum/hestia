@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost",
+      "url": "http://localhost:8082",
       "description": "Generated server url"
     }
   ],
@@ -193,6 +193,38 @@
       }
     },
     "/api/courses/{courseId}/documents": {
+      "get": {
+        "tags": [
+          "document-controller"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "document-controller"
@@ -231,6 +263,45 @@
                   "items": {
                     "$ref": "#/components/schemas/DocumentResponse"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/competency-tree": {
+      "post": {
+        "tags": [
+          "extraction-controller"
+        ],
+        "operationId": "rebuildCompetencyTree",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetencyTreeResult"
                 }
               }
             }
@@ -319,6 +390,56 @@
         }
       }
     },
+    "/api/courses/{courseId}/documents/{documentId}": {
+      "patch": {
+        "tags": [
+          "document-controller"
+        ],
+        "operationId": "update_1",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/courses/{id}": {
       "get": {
         "tags": [
@@ -377,7 +498,7 @@
         "tags": [
           "learning-goal-controller"
         ],
-        "operationId": "list",
+        "operationId": "list_1",
         "parameters": [
           {
             "name": "courseId",
@@ -756,6 +877,7 @@
             "enum": [
               "EXTRACTED",
               "SYNTHESIZED",
+              "EXAM",
               "TERMINAL",
               "GAP"
             ]
@@ -816,12 +938,28 @@
           "filename": {
             "type": "string"
           },
+          "displayName": {
+            "type": "string"
+          },
           "contentType": {
             "type": "string"
           },
           "uploadedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "CompetencyTreeResult": {
+        "type": "object",
+        "properties": {
+          "competencies": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "gaps": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -858,6 +996,14 @@
               "RELATIONAL",
               "EXTENDED_ABSTRACT"
             ]
+          }
+        }
+      },
+      "UpdateDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
           }
         }
       },
@@ -947,7 +1093,8 @@
               "MODULE",
               "SESSION",
               "EXERCISE",
-              "EXAM"
+              "EXAM",
+              "COMPETENCY"
             ]
           },
           "label": {

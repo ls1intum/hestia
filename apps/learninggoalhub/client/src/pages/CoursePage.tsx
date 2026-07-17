@@ -7,6 +7,7 @@ import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import CompetencyGoalModal from "../components/CompetencyGoalModal.tsx";
 import ConceptInfoDialog from "../components/ConceptInfoDialog.tsx";
+import DocumentsDialog from "../components/DocumentsDialog.tsx";
 import FilterPopover from "../components/FilterPopover.tsx";
 import {
   LEVEL_META,
@@ -60,6 +61,7 @@ export default function CoursePage() {
   const queryClient = useQueryClient();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
   const [goalsView, setGoalsView] = useState<GoalsView>("table");
   const [lastSkillsView, setLastSkillsView] = useState<SkillsView>("table");
   const [conceptInfoOpen, setConceptInfoOpen] = useState(false);
@@ -329,6 +331,7 @@ export default function CoursePage() {
             <h1 className="text-2xl">{courseName}</h1>
             <CourseMenu
               exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
+              onManageDocuments={() => setDocumentsOpen(true)}
               onDelete={() => setConfirmDelete(true)}
             />
           </div>
@@ -508,6 +511,13 @@ export default function CoursePage() {
 
         {conceptInfoOpen && (
           <ConceptInfoDialog onClose={() => setConceptInfoOpen(false)} />
+        )}
+
+        {documentsOpen && (
+          <DocumentsDialog
+            courseId={courseId}
+            onClose={() => setDocumentsOpen(false)}
+          />
         )}
 
         {/* Filter bar — hidden on the competency views, which render the full synthesised tree.
@@ -1016,12 +1026,14 @@ function GoalTOC({
   );
 }
 
-/** Kebab (⋮) overflow menu holding the course's Export and Delete actions. */
+/** Kebab (⋮) overflow menu holding the course's Documents, Export and Delete actions. */
 function CourseMenu({
   exportHref,
+  onManageDocuments,
   onDelete,
 }: {
   exportHref: string;
+  onManageDocuments: () => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1048,6 +1060,29 @@ function CourseMenu({
           role="menu"
           className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-hestia-border bg-hestia-surface py-1 shadow-lg"
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onManageDocuments();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-hestia-text transition hover:bg-hestia-bg"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4 text-hestia-text-muted"
+            >
+              <path d="M5 2.5h6.5L15.5 6.5V17.5H5z" />
+              <path d="M11.5 2.5v4h4" />
+            </svg>
+            Documents
+          </button>
           <a
             href={exportHref}
             role="menuitem"

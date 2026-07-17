@@ -31,6 +31,11 @@ public class Document {
     @Column(name = "content_type", nullable = false)
     private String contentType;
 
+    // Instructor-chosen display label; null means "show the filename". The filename itself stays
+    // immutable because goal sources and the CSV export cite it as provenance.
+    @Column(name = "display_name")
+    private String displayName;
+
     @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
 
@@ -62,6 +67,14 @@ public class Document {
 
     public String getContentType() {
         return contentType;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getRawText() {
