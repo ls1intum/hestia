@@ -60,8 +60,8 @@ export default function CoursePage() {
   const queryClient = useQueryClient();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [goalsView, setGoalsView] = useState<GoalsView>("list");
-  const [lastSkillsView, setLastSkillsView] = useState<SkillsView>("map");
+  const [goalsView, setGoalsView] = useState<GoalsView>("table");
+  const [lastSkillsView, setLastSkillsView] = useState<SkillsView>("table");
   const [conceptInfoOpen, setConceptInfoOpen] = useState(false);
   const [detailGoal, setDetailGoal] = useState<LearningGoal | null>(null);
   const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
@@ -172,10 +172,12 @@ export default function CoursePage() {
   // The competency views ignore the goal-level filter bar (filtering would prune tree nodes).
   const isCompetencyView = goalsView !== "list";
 
-  // Fall back to the list if a competency view is active but none exists (yet).
+  // Fall back to the list if a competency view is active but none exists — only once the goals
+  // have loaded, so the skills-first default survives the initial empty state.
   useEffect(() => {
-    if (isCompetencyView && !competencyAvailable) setGoalsView("list");
-  }, [isCompetencyView, competencyAvailable]);
+    if (goalsQuery.data && isCompetencyView && !competencyAvailable)
+      setGoalsView("list");
+  }, [goalsQuery.data, isCompetencyView, competencyAvailable]);
 
   const showLearningGoals = () => setGoalsView("list");
   const showSkills = () => {
@@ -310,46 +312,25 @@ export default function CoursePage() {
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (
     <div className="flex flex-col gap-6">
-      {/* Header — course identity stays separate from the concept switch below. */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h1 className="text-2xl">{courseName}</h1>
-          <CourseMenu
-            exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
-            onDelete={() => setConfirmDelete(true)}
-          />
-        </div>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        {/* Header — course identity stays separate from the concept switch below. */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <h1 className="text-2xl">{courseName}</h1>
+            <CourseMenu
+              exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
+              onDelete={() => setConfirmDelete(true)}
+            />
+          </div>
 
-        {goals.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div
-                role="tablist"
-                aria-label="Course concept"
-                className="inline-flex gap-0.5 rounded-[0.625rem] bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] p-0.5"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={!isCompetencyView}
-                  onClick={showLearningGoals}
-                  className={`inline-flex items-baseline gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${
-                    !isCompetencyView
-                      ? "bg-hestia-surface font-semibold text-hestia-text shadow-sm"
-                      : "font-medium text-hestia-text-muted hover:text-hestia-text"
-                  }`}
+          {goals.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div
+                  role="tablist"
+                  aria-label="Course concept"
+                  className="inline-flex gap-0.5 rounded-[0.625rem] bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] p-0.5"
                 >
-                  Learning goals{" "}
-                  <span
-                    className={`text-xs tabular-nums ${
-                      !isCompetencyView
-                        ? "text-hestia-primary"
-                        : "text-hestia-text-muted"
-                    }`}
-                  >
-                    {goals.length}
-                  </span>
-                </button>
                 <button
                   type="button"
                   role="tab"
@@ -379,25 +360,35 @@ export default function CoursePage() {
                     {skillCount}
                   </span>
                 </button>
-              </div>
-
-              {isCompetencyView && (
-                <div
-                  className="inline-flex items-center gap-1"
-                  aria-label="Skills representation"
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!isCompetencyView}
+                  onClick={showLearningGoals}
+                  className={`inline-flex items-baseline gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${
+                    !isCompetencyView
+                      ? "bg-hestia-surface font-semibold text-hestia-text shadow-sm"
+                      : "font-medium text-hestia-text-muted hover:text-hestia-text"
+                  }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => showSkillsView("map")}
-                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
-                      goalsView === "map"
-                        ? "bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] font-medium text-hestia-text"
-                        : "text-hestia-text-muted hover:text-hestia-text"
+                  Learning goals{" "}
+                  <span
+                    className={`text-xs tabular-nums ${
+                      !isCompetencyView
+                        ? "text-hestia-primary"
+                        : "text-hestia-text-muted"
                     }`}
                   >
-                    <MapIcon />
-                    Map
-                  </button>
+                    {goals.length}
+                  </span>
+                </button>
+                </div>
+
+                {isCompetencyView && (
+                  <div
+                    className="inline-flex items-center gap-1"
+                    aria-label="Skills representation"
+                  >
                   <button
                     type="button"
                     onClick={() => showSkillsView("table")}
@@ -410,270 +401,288 @@ export default function CoursePage() {
                     <TableIcon />
                     Table
                   </button>
-                </div>
-              )}
-            </div>
-
-            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-hestia-text-muted">
-              <span>{explainerText}</span>
-              <button
-                type="button"
-                onClick={() => setConceptInfoOpen(true)}
-                className="text-sm text-hestia-primary underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] transition hover:decoration-hestia-primary"
-              >
-                How do these relate?
-              </button>
-            </p>
-          </div>
-        )}
-      </div>
-      {deleteMutation.isError && (
-        <p className="text-sm text-hestia-danger">
-          {(deleteMutation.error as Error).message}
-        </p>
-      )}
-      {/* Approve toggles run without a dialog, so their failures surface here. */}
-      {updateGoalMutation.isError && !editGoal && (
-        <p className="text-sm text-hestia-danger">
-          {(updateGoalMutation.error as Error).message}
-        </p>
-      )}
-
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Delete course?"
-          message={`This permanently removes "${courseName}" and all of its learning goals. This cannot be undone.`}
-          confirmLabel={
-            deleteMutation.isPending ? "Deleting…" : "Delete course"
-          }
-          busy={deleteMutation.isPending}
-          onConfirm={() => deleteMutation.mutate()}
-          onCancel={() => setConfirmDelete(false)}
-        />
-      )}
-
-      {goalToDelete && (
-        <ConfirmDialog
-          title="Delete learning goal?"
-          message={`This permanently removes "${goalToDelete.text}" together with its sources and relationships. This cannot be undone.`}
-          confirmLabel={
-            deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
-          }
-          busy={deleteGoalMutation.isPending}
-          error={
-            deleteGoalMutation.isError
-              ? (deleteGoalMutation.error as Error).message
-              : undefined
-          }
-          onConfirm={() => deleteGoalMutation.mutate(goalToDelete.id!)}
-          onCancel={() => {
-            deleteGoalMutation.reset();
-            setGoalToDelete(null);
-          }}
-        />
-      )}
-
-      {editGoal && (
-        <EditGoalDialog
-          key={editGoal.id}
-          goal={editGoal}
-          busy={updateGoalMutation.isPending}
-          error={
-            updateGoalMutation.isError
-              ? (updateGoalMutation.error as Error).message
-              : undefined
-          }
-          onSave={(changes) =>
-            updateGoalMutation.mutate({ goalId: editGoal.id!, ...changes })
-          }
-          onCancel={() => {
-            updateGoalMutation.reset();
-            setEditGoal(null);
-          }}
-        />
-      )}
-
-      {conceptInfoOpen && (
-        <ConceptInfoDialog onClose={() => setConceptInfoOpen(false)} />
-      )}
-
-      {/* Filter bar — hidden on the competency views, which render the full synthesised tree.
-          Filters the same way as the tree-grid: funnel popovers (multi-select) + active chips. */}
-      {goals.length > 0 && !isCompetencyView && (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hestia-border bg-hestia-surface p-3 shadow-sm">
-            <label className="relative flex min-w-48 max-w-sm flex-1 items-center">
-              <svg
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="pointer-events-none absolute left-3 h-4 w-4 text-hestia-text-muted"
-              >
-                <circle cx="9" cy="9" r="6" />
-                <path d="M14 14l4 4" />
-              </svg>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search learning goals…"
-                className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface py-1.5 pl-9 pr-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
-              />
-            </label>
-            {filterDefs.map((def) => {
-              if (def.options.length === 0) return null;
-              const count = filters[def.key].size;
-              return (
-                <div key={def.key} className="relative">
                   <button
                     type="button"
-                    onClick={() =>
-                      setOpenFilter((prev) =>
-                        prev === def.key ? null : def.key,
-                      )
-                    }
-                    aria-haspopup="true"
-                    aria-expanded={openFilter === def.key}
-                    className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium transition ${
-                      count > 0
-                        ? "border-hestia-primary bg-hestia-primary-muted text-hestia-text"
-                        : "border-hestia-border text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
+                    onClick={() => showSkillsView("map")}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition ${
+                      goalsView === "map"
+                        ? "bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] font-medium text-hestia-text"
+                        : "text-hestia-text-muted hover:text-hestia-text"
                     }`}
                   >
-                    {def.label}
-                    {count > 0 && (
-                      <span className="tabular-nums text-hestia-primary">
-                        {count}
-                      </span>
-                    )}
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill={count > 0 ? "currentColor" : "none"}
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={`h-3 w-3 ${count > 0 ? "text-hestia-primary" : "text-hestia-text-muted"}`}
-                    >
-                      <path d="M2.5 4h15l-6 7v5l-3 1.5V11z" />
-                    </svg>
+                    <MapIcon />
+                    Map
                   </button>
-                  {openFilter === def.key && (
-                    <FilterPopover
-                      options={def.options}
-                      selected={filters[def.key]}
-                      display={def.display}
-                      onToggle={(v) => toggleFilterValue(def.key, v)}
-                      onClear={() => {
-                        clearFilter(def.key);
-                        setOpenFilter(null);
-                      }}
-                      onClose={() => setOpenFilter(null)}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  </div>
+                )}
+              </div>
 
-          {activeChips.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {activeChips.map((chip, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--hestia-primary)_35%,transparent)] bg-hestia-primary-muted py-0.5 pl-2.5 pr-1.5 text-xs"
-                >
-                  <span>
-                    <b className="font-semibold">{chip.label}:</b> {chip.value}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={chip.onRemove}
-                    aria-label={`Remove filter ${chip.label} ${chip.value}`}
-                    className="flex rounded-full text-hestia-text-muted transition hover:text-hestia-danger"
-                  >
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      aria-hidden="true"
-                      className="h-3 w-3"
-                    >
-                      <path d="M5 5l10 10M15 5L5 15" />
-                    </svg>
-                  </button>
-                </span>
-              ))}
-              {activeChips.length > 1 && (
+              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-hestia-text-muted">
+                <span>{explainerText}</span>
                 <button
                   type="button"
-                  onClick={clearFilters}
-                  className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text"
+                  onClick={() => setConceptInfoOpen(true)}
+                  className="text-sm text-hestia-primary underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] transition hover:decoration-hestia-primary"
                 >
-                  Clear all
+                  How do these relate?
                 </button>
-              )}
+              </p>
             </div>
           )}
         </div>
-      )}
+        {deleteMutation.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(deleteMutation.error as Error).message}
+          </p>
+        )}
+        {/* Approve toggles run without a dialog, so their failures surface here. */}
+        {updateGoalMutation.isError && !editGoal && (
+          <p className="text-sm text-hestia-danger">
+            {(updateGoalMutation.error as Error).message}
+          </p>
+        )}
 
-      {/* States */}
-      {goalsQuery.isLoading && (
-        <p className="text-sm text-hestia-text-muted">Loading…</p>
-      )}
-      {goalsQuery.isError && (
-        <p className="text-sm text-hestia-danger">
-          {(goalsQuery.error as Error).message}
-        </p>
-      )}
-      {!goalsQuery.isLoading && goals.length === 0 && (
-        <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
-          No learning goals yet for this course.
-        </p>
-      )}
+        {confirmDelete && (
+          <ConfirmDialog
+            title="Delete course?"
+            message={`This permanently removes "${courseName}" and all of its learning goals. This cannot be undone.`}
+            confirmLabel={
+              deleteMutation.isPending ? "Deleting…" : "Delete course"
+            }
+            busy={deleteMutation.isPending}
+            onConfirm={() => deleteMutation.mutate()}
+            onCancel={() => setConfirmDelete(false)}
+          />
+        )}
+
+        {goalToDelete && (
+          <ConfirmDialog
+            title="Delete learning goal?"
+            message={`This permanently removes "${goalToDelete.text}" together with its sources and relationships. This cannot be undone.`}
+            confirmLabel={
+              deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
+            }
+            busy={deleteGoalMutation.isPending}
+            error={
+              deleteGoalMutation.isError
+                ? (deleteGoalMutation.error as Error).message
+                : undefined
+            }
+            onConfirm={() => deleteGoalMutation.mutate(goalToDelete.id!)}
+            onCancel={() => {
+              deleteGoalMutation.reset();
+              setGoalToDelete(null);
+            }}
+          />
+        )}
+
+        {editGoal && (
+          <EditGoalDialog
+            key={editGoal.id}
+            goal={editGoal}
+            busy={updateGoalMutation.isPending}
+            error={
+              updateGoalMutation.isError
+                ? (updateGoalMutation.error as Error).message
+                : undefined
+            }
+            onSave={(changes) =>
+              updateGoalMutation.mutate({ goalId: editGoal.id!, ...changes })
+            }
+            onCancel={() => {
+              updateGoalMutation.reset();
+              setEditGoal(null);
+            }}
+          />
+        )}
+
+        {conceptInfoOpen && (
+          <ConceptInfoDialog onClose={() => setConceptInfoOpen(false)} />
+        )}
+
+        {/* Filter bar — hidden on the competency views, which render the full synthesised tree.
+            Filters the same way as the tree-grid: funnel popovers (multi-select) + active chips. */}
+        {goals.length > 0 && !isCompetencyView && (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hestia-border bg-hestia-surface p-3 shadow-sm">
+              <label className="relative flex min-w-48 max-w-sm flex-1 items-center">
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="pointer-events-none absolute left-3 h-4 w-4 text-hestia-text-muted"
+                >
+                  <circle cx="9" cy="9" r="6" />
+                  <path d="M14 14l4 4" />
+                </svg>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search learning goals…"
+                  className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface py-1.5 pl-9 pr-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
+                />
+              </label>
+              {filterDefs.map((def) => {
+                if (def.options.length === 0) return null;
+                const count = filters[def.key].size;
+                return (
+                  <div key={def.key} className="relative">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenFilter((prev) =>
+                          prev === def.key ? null : def.key,
+                        )
+                      }
+                      aria-haspopup="true"
+                      aria-expanded={openFilter === def.key}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium transition ${
+                        count > 0
+                          ? "border-hestia-primary bg-hestia-primary-muted text-hestia-text"
+                          : "border-hestia-border text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
+                      }`}
+                    >
+                      {def.label}
+                      {count > 0 && (
+                        <span className="tabular-nums text-hestia-primary">
+                          {count}
+                        </span>
+                      )}
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill={count > 0 ? "currentColor" : "none"}
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`h-3 w-3 ${count > 0 ? "text-hestia-primary" : "text-hestia-text-muted"}`}
+                      >
+                        <path d="M2.5 4h15l-6 7v5l-3 1.5V11z" />
+                      </svg>
+                    </button>
+                    {openFilter === def.key && (
+                      <FilterPopover
+                        options={def.options}
+                        selected={filters[def.key]}
+                        display={def.display}
+                        onToggle={(v) => toggleFilterValue(def.key, v)}
+                        onClear={() => {
+                          clearFilter(def.key);
+                          setOpenFilter(null);
+                        }}
+                        onClose={() => setOpenFilter(null)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {activeChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {activeChips.map((chip, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--hestia-primary)_35%,transparent)] bg-hestia-primary-muted py-0.5 pl-2.5 pr-1.5 text-xs"
+                  >
+                    <span>
+                      <b className="font-semibold">{chip.label}:</b> {chip.value}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={chip.onRemove}
+                      aria-label={`Remove filter ${chip.label} ${chip.value}`}
+                      className="flex rounded-full text-hestia-text-muted transition hover:text-hestia-danger"
+                    >
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                        className="h-3 w-3"
+                      >
+                        <path d="M5 5l10 10M15 5L5 15" />
+                      </svg>
+                    </button>
+                  </span>
+                ))}
+                {activeChips.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* States */}
+        {goalsQuery.isLoading && (
+          <p className="text-sm text-hestia-text-muted">Loading…</p>
+        )}
+        {goalsQuery.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(goalsQuery.error as Error).message}
+          </p>
+        )}
+        {!goalsQuery.isLoading && goals.length === 0 && (
+          <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
+            No learning goals yet for this course.
+          </p>
+        )}
+      </div>
 
       {/* List view: table-of-contents on the left, the selected group's goals on the right. */}
       {goals.length > 0 && goalsView === "list" && (
-        <div
-          className={`grid gap-4 ${showToc ? "lg:grid-cols-[14rem_minmax(0,1fr)]" : ""}`}
-        >
-          {showToc && (
-            <GoalTOC
-              groups={groups}
-              activeKey={activeGroup?.key ?? null}
-              onSelect={setSelectedGroupKey}
-            />
-          )}
-          <div className="min-w-0">
-            {!activeGroup ? (
-              <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
-                No goals match the current filters.
-              </p>
-            ) : (
-              <GoalCards
-                group={activeGroup}
-                onOpenDetail={setDetailGoal}
-                onToggleApproved={toggleApproved}
-                onEdit={setEditGoal}
-                onDelete={setGoalToDelete}
+        <div className="mx-auto w-full max-w-5xl">
+          <div
+            className={`grid gap-4 ${showToc ? "lg:grid-cols-[14rem_minmax(0,1fr)]" : ""}`}
+          >
+            {showToc && (
+              <GoalTOC
+                groups={groups}
+                activeKey={activeGroup?.key ?? null}
+                onSelect={setSelectedGroupKey}
               />
             )}
+            <div className="min-w-0">
+              {!activeGroup ? (
+                <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
+                  No goals match the current filters.
+                </p>
+              ) : (
+                <GoalCards
+                  group={activeGroup}
+                  onOpenDetail={setDetailGoal}
+                  onToggleApproved={toggleApproved}
+                  onEdit={setEditGoal}
+                  onDelete={setGoalToDelete}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* Competency table view: the forest as a filterable Excel-style tree-grid. */}
       {goals.length > 0 && goalsView === "table" && (
-        <CompetencyTree goals={goals} />
+        <div className="mx-auto w-full max-w-5xl">
+          <CompetencyTree goals={goals} />
+        </div>
       )}
 
-      {/* Competency map view: focus-and-drill graph, one layer at a time. */}
+      {/* Competency map view: focus-and-drill graph, one layer at a time. The graph widens
+          itself only while a skill is focused, so no width cap here. */}
       {goals.length > 0 && goalsView === "map" && (
         <CompetencyGraph
           goals={goals}
