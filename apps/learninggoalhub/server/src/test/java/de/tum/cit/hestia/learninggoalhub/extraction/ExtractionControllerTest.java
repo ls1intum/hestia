@@ -22,16 +22,12 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
-import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,9 +67,6 @@ class ExtractionControllerTest {
     private HierarchyNodeRepository hierarchyRepository;
 
     @Autowired
-    private GoalRelationshipRepository relationshipRepository;
-
-    @Autowired
     private GoalCandidateRepository goalCandidateRepository;
 
     @MockitoBean
@@ -81,9 +74,6 @@ class ExtractionControllerTest {
 
     @MockitoBean
     private SessionGoalConsolidator sessionGoalConsolidator;
-
-    @MockitoBean
-    private ModuleGoalSynthesizer moduleGoalSynthesizer;
 
     @MockitoBean
     private EmbeddingService embeddingService;
@@ -233,7 +223,7 @@ class ExtractionControllerTest {
         mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.phase").value("LINKING"))
+                .andExpect(jsonPath("$.phase").value("PERSISTING"))
                 .andExpect(jsonPath("$.summary.goalsCreated").value(1))
                 .andExpect(jsonPath("$.error").doesNotExist());
     }
@@ -285,89 +275,6 @@ class ExtractionControllerTest {
                 .filteredOn(g -> g.getText().equals("Apply TDD."))
                 .singleElement()
                 .satisfies(g -> assertThat(g.getHierarchyNode().getLabel()).isEqualTo("Lecture 3: Testing"));
-    }
-
-    @Test
-    @Transactional
-    void synthesizesModuleGoalsFromSessionGoalsAndAttachesThemToModuleRoot() throws Exception {
-        Course course = courseRepository.save(new Course("Introduction to Machine Learning"));
-        documentRepository.save(new Document(course, "lecture1.pdf", "application/pdf",
-                "Lecture 1: Intro\nUnderstand ML terminology and the main ML directions."));
-
-        when(extractionService.extract(anyString(), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Understand ML terminology.", GoalKind.IMPLICIT, "...terminology..."),
-                new ExtractedGoal("Know the main directions of ML.", GoalKind.IMPLICIT, "...supervised...")
-        ));
-        // Map stage condenses the session's goals into one headline; reduce integrates it into the
-        // module outcome. The intermediate headline is scaffolding and is not persisted/embedded.
-        when(moduleGoalSynthesizer.condenseSession(anyString(), anyList(), any())).thenReturn(List.of(
-                new SynthesizedModuleGoal("Summarise the foundations of machine learning.", List.of(0, 1))));
-        when(moduleGoalSynthesizer.integrate(anyList(), any())).thenReturn(List.of(
-                new SynthesizedModuleGoal("Explain how the core ML paradigms fit together.")));
-        // Session goals are embedded in a batch; the synthesized module goal is embedded singly.
-        stubEmbedAll(Map.of(
-                "Understand ML terminology.", orthogonalEmbedding(0),
-                "Know the main directions of ML.", orthogonalEmbedding(1)));
-        when(embeddingService.embed(eq("Explain how the core ML paradigms fit together.")))
-                .thenReturn(orthogonalEmbedding(2));
-
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(2))
-                .andExpect(jsonPath("$.moduleGoalsSynthesized").value(1));
-
-        List<LearningGoal> moduleGoals = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.SYNTHESIZED)
-                .toList();
-        assertThat(moduleGoals).singleElement().satisfies(g -> {
-            assertThat(g.getText()).isEqualTo("Explain how the core ML paradigms fit together.");
-            assertThat(g.getHierarchyNode().getLevel()).isEqualTo(HierarchyLevel.MODULE);
-        });
-    }
-
-    @Test
-    @Transactional
-    void linksOnlyTheSupportingSubGoalsToTheModuleOutcome() throws Exception {
-        Course course = courseRepository.save(new Course("Introduction to Machine Learning"));
-        documentRepository.save(new Document(course, "lecture1.pdf", "application/pdf",
-                "Lecture 1: Intro\nML terminology and unrelated trivia."));
-
-        when(extractionService.extract(anyString(), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Understand ML terminology.", GoalKind.IMPLICIT, "...terminology..."),
-                new ExtractedGoal("Recall an unrelated anecdote.", GoalKind.IMPLICIT, "...anecdote...")
-        ));
-        // The map stage emits one headline per session goal; only the first headline (and through it
-        // only session goal 0) feeds the module outcome, so the reduce stage links just that one.
-        when(moduleGoalSynthesizer.condenseSession(anyString(), anyList(), any())).thenReturn(List.of(
-                new SynthesizedModuleGoal("Headline covering terminology.", List.of(0)),
-                new SynthesizedModuleGoal("Headline covering the anecdote.", List.of(1))));
-        when(moduleGoalSynthesizer.integrate(anyList(), any())).thenReturn(List.of(
-                new SynthesizedModuleGoal("Explain core ML concepts.", List.of(0))));
-        stubEmbedAll(Map.of(
-                "Understand ML terminology.", orthogonalEmbedding(0),
-                "Recall an unrelated anecdote.", orthogonalEmbedding(1)));
-        when(embeddingService.embed(eq("Explain core ML concepts."))).thenReturn(orthogonalEmbedding(2));
-
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.moduleGoalsSynthesized").value(1))
-                // Exactly one CONTRIBUTES_TO edge — provenance, not the old cartesian (which would be 2).
-                .andExpect(jsonPath("$.contributesToLinks").value(1));
-
-        LearningGoal moduleGoal = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.SYNTHESIZED)
-                .findFirst().orElseThrow();
-        List<GoalRelationship> contributions = relationshipRepository.findAll().stream()
-                .filter(r -> r.getType() == RelationshipType.CONTRIBUTES_TO)
-                .toList();
-        // One supporting index → one edge into the module goal from a session goal (not cartesian,
-        // which would link both session goals). Source identity depends on DB ordering, so only assert
-        // it is one of the two extracted sub-goals, never the module goal itself.
-        assertThat(contributions).singleElement().satisfies(r -> {
-            assertThat(r.getTarget().getId()).isEqualTo(moduleGoal.getId());
-            assertThat(r.getSource().getOrigin()).isNotEqualTo(GoalOrigin.SYNTHESIZED);
-            assertThat(r.getSource().getText()).isIn("Understand ML terminology.", "Recall an unrelated anecdote.");
-        });
     }
 
     private static float[] orthogonalEmbedding(int slot) {

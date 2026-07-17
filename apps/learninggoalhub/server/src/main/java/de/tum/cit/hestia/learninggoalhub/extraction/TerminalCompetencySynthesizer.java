@@ -11,9 +11,8 @@ import org.springframework.stereotype.Service;
  * able to perform after the whole course — by clustering its already-extracted, higher-Bloom goals
  * across topics, top-down rather than bottom-up.
  *
- * <p>This is the inverse of {@link ModuleGoalSynthesizer}: that one conservatively summarises each
- * session's topic and (correctly) keeps "understand" goals at "understand", which makes every module
- * goal read like "Explain &lt;topic&gt;". A competency tree instead needs the <em>doing</em>
+ * <p>This keeps "understand" goals at "understand" in the ordinary extracted hierarchy. A
+ * competency tree instead needs the <em>doing</em>
  * capabilities, which live in the {@code APPLY}/{@code CREATE} goals and cut across several sessions
  * (e.g. Docker + Kubernetes → "containerise and orchestrate applications"). So this synthesiser:
  *

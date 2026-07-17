@@ -190,13 +190,9 @@ export interface components {
             /** Format: int32 */
             goalsDeduplicated?: number;
             /** Format: int32 */
-            moduleGoalsSynthesized?: number;
+            terminalCompetencies?: number;
             /** Format: int32 */
-            contributesToLinks?: number;
-            /** Format: int32 */
-            overlapsWithLinks?: number;
-            /** Format: int32 */
-            prerequisiteOfLinks?: number;
+            competencyGaps?: number;
         };
         ExamBlock: {
             blockId?: string;
@@ -314,7 +310,7 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "OUTLINING" | "PARSING" | "EXTRACTING" | "CONSOLIDATING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING" | "LINKING";
+            phase?: "OUTLINING" | "PARSING" | "EXTRACTING" | "CONSOLIDATING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */

@@ -610,19 +610,11 @@
             "type": "integer",
             "format": "int32"
           },
-          "moduleGoalsSynthesized": {
+          "terminalCompetencies": {
             "type": "integer",
             "format": "int32"
           },
-          "contributesToLinks": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "overlapsWithLinks": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "prerequisiteOfLinks": {
+          "competencyGaps": {
             "type": "integer",
             "format": "int32"
           }
@@ -989,9 +981,7 @@
               "CONSOLIDATING",
               "CLASSIFYING",
               "EMBEDDING",
-              "PERSISTING",
-              "SYNTHESIZING",
-              "LINKING"
+              "PERSISTING"
             ]
           },
           "completed": {
