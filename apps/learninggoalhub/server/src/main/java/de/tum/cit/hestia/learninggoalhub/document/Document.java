@@ -39,6 +39,9 @@ public class Document {
     @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
 
+    @Column(name = "page_offsets")
+    private int[] pageOffsets;
+
     @CreationTimestamp
     @Column(name = "uploaded_at", nullable = false, updatable = false)
     private OffsetDateTime uploadedAt;
@@ -79,6 +82,14 @@ public class Document {
 
     public String getRawText() {
         return rawText;
+    }
+
+    public int[] getPageOffsets() {
+        return pageOffsets;
+    }
+
+    public void setPageOffsets(int[] pageOffsets) {
+        this.pageOffsets = pageOffsets;
     }
 
     public OffsetDateTime getUploadedAt() {

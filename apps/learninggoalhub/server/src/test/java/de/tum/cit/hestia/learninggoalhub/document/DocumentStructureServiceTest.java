@@ -49,6 +49,9 @@ class DocumentStructureServiceTest {
                 .contains("alpha").doesNotContain("bravo", "charlie");
         assertThat(parsed.rawText().substring(sections.get(1).startOffset(), sections.get(1).endOffset()))
                 .contains("bravo", "charlie").doesNotContain("alpha");
+        assertThat(parsed.pageOffsets()).hasSize(4);
+        assertThat(parsed.pageOffsets()[0]).isZero();
+        assertThat(parsed.pageOffsets()[3]).isEqualTo(parsed.rawText().length());
     }
 
     @Test
@@ -64,6 +67,7 @@ class DocumentStructureServiceTest {
 
         assertThat(parsed.sections()).isEmpty();
         assertThat(parsed.rawText()).contains("alpha", "bravo", "charlie");
+        assertThat(parsed.pageOffsets()).hasSize(4);
     }
 
     @Test
@@ -74,6 +78,7 @@ class DocumentStructureServiceTest {
 
         assertThat(parsed.sections()).isEmpty();
         assertThat(parsed.rawText()).contains("solo lecture content");
+        assertThat(parsed.pageOffsets()).hasSize(2);
     }
 
     @Test
@@ -98,6 +103,7 @@ class DocumentStructureServiceTest {
 
         assertThat(parsed.sections()).isEmpty();
         assertThat(parsed.rawText()).contains("Just some plain notes about testing.");
+        assertThat(parsed.pageOffsets()).isNull();
     }
 
     private record Bookmark(String title, int pageIndex) {

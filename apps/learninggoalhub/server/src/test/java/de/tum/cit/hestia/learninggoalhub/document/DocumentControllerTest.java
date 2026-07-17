@@ -1,15 +1,19 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
+import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +35,12 @@ class DocumentControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     // Bookmark-less PDFs would otherwise trigger a real vision-model call at upload; the default mock
     // returns null, exercising the filename-fallback path without touching the network.
@@ -91,6 +101,56 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].filename").value("lecture-01.pdf"))
                 .andExpect(jsonPath("$[1].filename").value("lecture-02.pdf"));
+    }
+
+    @Test
+    void uploadsAndServesDocumentContentForBrowserViewer() throws Exception {
+        long courseId = createCourse("Distributed Systems");
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        MvcResult upload = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long documentId = objectMapper.readTree(upload.getResponse().getContentAsString())
+                .get(0).get("id").asLong();
+
+        mockMvc.perform(get("/api/courses/{courseId}/documents/{documentId}/content", courseId, documentId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().longValue("Content-Length", pdf.length))
+                .andExpect(header().string("Content-Disposition",
+                        "inline; filename*=UTF-8''lecture.pdf"))
+                .andExpect(content().bytes(pdf));
+    }
+
+    @Test
+    void persistsPdfPageOffsetsAndRejectsWrongCourseOrLegacyContent() throws Exception {
+        long courseId = createCourse("Programming Languages");
+        long otherCourseId = createCourse("Databases");
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        MvcResult upload = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long documentId = objectMapper.readTree(upload.getResponse().getContentAsString())
+                .get(0).get("id").asLong();
+
+        Document persisted = documentRepository.findById(documentId).orElseThrow();
+        assertThat(persisted.getPageOffsets()).isNotNull().hasSizeGreaterThan(1);
+        assertThat(persisted.getPageOffsets()[0]).isZero();
+        assertThat(persisted.getPageOffsets()[persisted.getPageOffsets().length - 1])
+                .isEqualTo(persisted.getRawText().length());
+
+        mockMvc.perform(get("/api/courses/{courseId}/documents/{documentId}/content",
+                        otherCourseId, documentId))
+                .andExpect(status().isNotFound());
+
+        Document legacy = documentRepository.save(
+                new Document(courseRepository.findById(courseId).orElseThrow(),
+                        "legacy.pdf", MediaType.APPLICATION_PDF_VALUE, "legacy"));
+        mockMvc.perform(get("/api/courses/{courseId}/documents/{documentId}/content",
+                        courseId, legacy.getId()))
+                .andExpect(status().isNotFound());
     }
 
     @Test

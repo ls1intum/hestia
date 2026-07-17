@@ -684,6 +684,47 @@
           }
         }
       }
+    },
+    "/api/courses/{courseId}/documents/{documentId}/content": {
+      "get": {
+        "tags": [
+          "document-controller"
+        ],
+        "operationId": "content",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -831,6 +872,13 @@
           },
           "snippet": {
             "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "contentAvailable": {
+            "type": "boolean"
           }
         }
       },
