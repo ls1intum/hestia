@@ -106,6 +106,15 @@
   }
 }
 
+/* Horizontal map scrollers keep their fallback behaviour without showing browser scrollbar chrome. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Unfold a newly revealed competency-map tier (connector + row). Kept separate from the per-row
    auto-animate reorder so the two never fight over the same element (see CompetencyGraph). */
 @keyframes comp-unfold {

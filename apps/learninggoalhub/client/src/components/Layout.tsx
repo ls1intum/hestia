@@ -5,7 +5,7 @@ import ThemeToggle from "./ThemeToggle.tsx";
 import wordmarkLight from "../assets/logos/wordmark-light.svg";
 import wordmarkDark from "../assets/logos/wordmark-dark.svg";
 
-/** App shell: HESTIA top nav (logo + theme toggle) over a centered page container. */
+/** App shell: HESTIA top nav (logo + theme toggle) over per-view page containers. */
 export default function Layout({ children }: { children: ReactNode }) {
   const { resolved } = useTheme();
   // Transparent logo variants are named for the background they sit on (light bg / dark bg).
@@ -24,7 +24,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <ThemeToggle />
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      <main className="mx-auto px-6 py-8">{children}</main>
     </div>
   );
 }

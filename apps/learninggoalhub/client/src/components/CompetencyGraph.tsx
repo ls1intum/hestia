@@ -8,12 +8,29 @@ import {
 } from "../lib/goals.ts";
 
 // Box geometry, kept in sync with the Tailwind classes below so the SVG connectors can be drawn
-// from the layout alone (no DOM measuring): w-56 = 14rem, w-80 = 20rem and gap-3 = 0.75rem at a
-// 16px root.
+// from the layout alone (no DOM measuring): w-40 = 10rem, w-56 = 14rem, w-60 = 15rem,
+// w-80 = 20rem and gap-3 = 0.75rem at a 16px root.
 const BOX_W = 224;
-const WIDE_W = 320; // drill-path boxes and the knowledge row under a focused sub-skill
+const COMPACT_W = 160; // dimmed sibling boxes in a focused sub-skill row
+const DRILL_W = 320; // drill-path boxes
+const KNOWLEDGE_W = 240; // knowledge boxes under a focused sub-skill
 const GAP = 12;
 const CONNECTOR_H = 40;
+
+function rowWidth(widths: number[]) {
+  return widths.reduce((total, width) => total + width, 0) +
+    Math.max(0, widths.length - 1) * GAP;
+}
+
+/** Centre positions measured from the left edge of a flex row with the given child widths. */
+function childCentres(widths: number[]) {
+  let left = 0;
+  return widths.map((width) => {
+    const centre = left + width / 2;
+    left += width + GAP;
+    return centre;
+  });
+}
 
 /**
  * Competency map: a focus-and-context tree. The overview shows every terminal competency as a
@@ -69,6 +86,7 @@ export default function CompetencyGraph({
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const flipRects = useRef<Map<string, DOMRect> | null>(null);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
 
   const navigate = (next: number[]) => {
     const map = new Map<string, DOMRect>();
@@ -81,7 +99,7 @@ export default function CompetencyGraph({
 
   useLayoutEffect(() => {
     // Centre the active sub-skill, rather than the entire canvas, so its knowledge is immediately
-    // readable even when a wide sibling row overflows the shared scroller.
+    // readable even when the expanded sibling row overflows the shared scroller.
     const scroller = scrollRef.current;
     const focusedBox = subSkill
       ? containerRef.current?.querySelector<HTMLElement>(
@@ -142,6 +160,38 @@ export default function CompetencyGraph({
       });
   }, [path, subSkill]);
 
+  // The canvas is deterministic, but its rendered width depends on the current tree. Observe both
+  // the scrollport and its canvas so the cosmetic affordances only appear when overflow exists;
+  // the scroll listener keeps the visible edge fades in sync while the user or an arrow scrolls.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const updateScrollEdges = () => {
+      const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      const next = {
+        left: maxScroll > 1 && scroller.scrollLeft > 1,
+        right: maxScroll > 1 && scroller.scrollLeft < maxScroll - 1,
+      };
+      setScrollEdges((previous) =>
+        previous.left === next.left && previous.right === next.right
+          ? previous
+          : next,
+      );
+    };
+    const canvas = scroller.firstElementChild;
+    const resizeObserver = new ResizeObserver(updateScrollEdges);
+    resizeObserver.observe(scroller);
+    if (canvas instanceof HTMLElement) resizeObserver.observe(canvas);
+    scroller.addEventListener("scroll", updateScrollEdges, { passive: true });
+    updateScrollEdges();
+
+    return () => {
+      resizeObserver.disconnect();
+      scroller.removeEventListener("scroll", updateScrollEdges);
+    };
+  }, [competency, subSkill]);
+
   // Toggle selection at a tier: re-selecting the active node collapses it (and everything below).
   const pickCompetency = (id: number) =>
     navigate(path[0] === id ? [] : [id]);
@@ -178,7 +228,10 @@ export default function CompetencyGraph({
   // Overview: every competency as a collapsed tree in a wrapped grid.
   if (!competency) {
     return (
-      <div ref={containerRef} className="flex flex-col gap-3 pt-1">
+      <div
+        ref={containerRef}
+        className="mx-auto flex w-full max-w-5xl flex-col gap-3 pt-1"
+      >
         <p className="px-1 text-sm text-hestia-text-muted">
           Click a skill to focus its tree — sub-skills unfold below it, the
           focused sub-skill reveals its knowledge.
@@ -227,22 +280,19 @@ export default function CompetencyGraph({
   const focusedSubIndex = subSkill
     ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
     : -1;
-  // Every visible sub-skill retains the default fixed width. This keeps the connector geometry
-  // deterministic while the active box can use its full height and sibling text stays clamped.
-  const focusedSubOffset =
-    focusedSubIndex >= 0
-      ? (focusedSubIndex - (competency.children.length - 1) / 2) * (BOX_W + GAP)
-      : 0;
-  const siblingRowWidth =
-    competency.children.length * BOX_W +
-    Math.max(0, competency.children.length - 1) * GAP;
+  // In the focused row, the active box keeps its normal width while dimmed context boxes compact
+  // to w-40. Prefix sums keep the row, the parent offset and both connector trunks aligned.
+  const siblingWidths = competency.children.map((child) =>
+    subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
+  );
+  const siblingRowWidth = rowWidth(siblingWidths);
+  const siblingCentres = childCentres(siblingWidths);
   const focusedSubCentre =
-    focusedSubIndex >= 0
-      ? BOX_W / 2 + focusedSubIndex * (BOX_W + GAP)
-      : siblingRowWidth / 2;
+    focusedSubIndex >= 0 ? siblingCentres[focusedSubIndex] : siblingRowWidth / 2;
+  const focusedSubOffset =
+    focusedSubIndex >= 0 ? focusedSubCentre - siblingRowWidth / 2 : 0;
   const knowledgeBranchWidth = subSkill
-    ? subSkill.children.length * WIDE_W +
-      Math.max(0, subSkill.children.length - 1) * GAP
+    ? rowWidth(subSkill.children.map(() => KNOWLEDGE_W))
     : 0;
   // Relative positioning paints the knowledge branch at the focused sub-skill, but does not
   // enlarge the canvas. These layout paddings cover its overhang past the sibling row at either
@@ -258,12 +308,20 @@ export default function CompetencyGraph({
 
   // Focused tree. The canvas is keyed by the drill path so a focus change replays the unfold
   // animation; `w-max` + `mx-auto` centre it when it fits and let it scroll as one unit when not.
+  // Only this focused state widens beyond the reading width — the overview keeps max-w-5xl above.
   return (
-    <div ref={containerRef} className="flex flex-col gap-2 px-1 pt-1">
+    <div
+      ref={containerRef}
+      className="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-1 pt-1"
+    >
       <div className="flex justify-center">
         <BackPill count={forest.length} color={skillColor} onClick={() => navigate([])} />
       </div>
-      <div ref={scrollRef} className="overflow-x-auto pb-2">
+      <div className="relative">
+        <div
+          ref={scrollRef}
+          className="scrollbar-none overflow-x-auto pb-2"
+        >
         {/* Keyed by the drill path so every navigation remounts the tiers — the connectors
             redraw and the children replay their entrance, while surviving boxes FLIP. */}
         <div
@@ -290,7 +348,7 @@ export default function CompetencyGraph({
                 wide
               />
               <Connector
-                count={competency.children.length}
+                childWidths={siblingWidths}
                 color={skillColor}
               />
               <div className="flex justify-center gap-3">
@@ -344,7 +402,7 @@ export default function CompetencyGraph({
                 />
               </div>
               <Connector
-                count={competency.children.length}
+                childWidths={siblingWidths}
                 color={skillColor}
                 focusedIndex={focusedSubIndex}
               />
@@ -370,6 +428,7 @@ export default function CompetencyGraph({
                         }
                         actions={actions}
                         dimmed={!isFocused}
+                        compact={!isFocused}
                         clampText={!isFocused}
                         title={
                           focusable
@@ -389,9 +448,8 @@ export default function CompetencyGraph({
                 style={{ left: focusedSubOffset }}
               >
                 <Connector
-                  count={subSkill.children.length}
+                  childWidths={subSkill.children.map(() => KNOWLEDGE_W)}
                   color={subColor}
-                  childW={WIDE_W}
                 />
                 <div className="flex justify-center gap-3">
                   {subSkill.children.map((leaf, i) => (
@@ -407,7 +465,7 @@ export default function CompetencyGraph({
                         expandable={false}
                         onClick={() => onOpenDetail(leaf)}
                         actions={actions}
-                        wide
+                        knowledge
                       />
                     </div>
                   ))}
@@ -416,6 +474,75 @@ export default function CompetencyGraph({
             </>
           )}
         </div>
+        </div>
+        {scrollEdges.left && (
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-14 items-center justify-start pl-1"
+            style={{
+              background:
+                "linear-gradient(to right, var(--hestia-bg), color-mix(in srgb, var(--hestia-bg) 80%, transparent), transparent)",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Scroll skill map left"
+              className="pointer-events-auto rounded-full border border-hestia-border bg-hestia-bg/90 p-1 text-hestia-text-muted shadow-sm transition hover:bg-hestia-surface hover:text-hestia-text"
+              onClick={() =>
+                scrollRef.current?.scrollBy({
+                  left: -(DRILL_W + GAP),
+                  behavior: "smooth",
+                })
+              }
+            >
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="h-4 w-4"
+              >
+                <path d="M12.5 4.5 7 10l5.5 5.5" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {scrollEdges.right && (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-14 items-center justify-end pr-1"
+            style={{
+              background:
+                "linear-gradient(to left, var(--hestia-bg), color-mix(in srgb, var(--hestia-bg) 80%, transparent), transparent)",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Scroll skill map right"
+              className="pointer-events-auto rounded-full border border-hestia-border bg-hestia-bg/90 p-1 text-hestia-text-muted shadow-sm transition hover:bg-hestia-surface hover:text-hestia-text"
+              onClick={() =>
+                scrollRef.current?.scrollBy({
+                  left: DRILL_W + GAP,
+                  behavior: "smooth",
+                })
+              }
+            >
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="h-4 w-4"
+              >
+                <path d="m7.5 4.5 5.5 5.5-5.5 5.5" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
       <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
     </div>
@@ -470,26 +597,26 @@ function BackPill({
  * parent's centre, turns onto a horizontal rail and drops a stub to each child — the standard
  * tree routing, mirrored for children left of the trunk; joins are rounded so there are no sharp
  * corners. Geometry comes from the shared box constants, so no DOM measuring is needed: parent
- * and children are centred in the same column, which puts the trunk at the row's midpoint.
+ * and children are centred in the same column, which puts the trunk at the row's midpoint. Child
+ * centres are derived from their explicit widths, so compact siblings and knowledge boxes remain
+ * aligned without DOM measuring.
  */
 function Connector({
-  count,
+  childWidths,
   color,
-  childW = BOX_W,
   focusedIndex,
 }: {
-  count: number;
+  childWidths: number[];
   color: string;
-  /** Width of the child boxes below — matches their `wide`/default Tailwind width. */
-  childW?: number;
   /** Keeps a focused sub-skill's parent and knowledge branches aligned to its row position. */
   focusedIndex?: number;
 }) {
+  const count = childWidths.length;
   if (count === 0) return null;
-  const pitch = childW + GAP; // centre-to-centre distance between adjacent children
-  const width = (count - 1) * pitch + childW;
+  const width = rowWidth(childWidths);
+  const centres = childCentres(childWidths);
   const trunk =
-    focusedIndex == null ? width / 2 : childW / 2 + focusedIndex * pitch;
+    focusedIndex == null ? width / 2 : centres[focusedIndex] ?? width / 2;
   const mid = CONNECTOR_H / 2;
   const r = 8; // corner radius for the rounded joins
 
@@ -504,7 +631,7 @@ function Connector({
     >
       <g stroke={color} strokeWidth={1.5} fill="none" strokeLinecap="round">
         {Array.from({ length: count }, (_, i) => {
-          const cx = childW / 2 + i * pitch;
+          const cx = centres[i];
           const dx = cx - trunk;
           const dimmed =
             focusedIndex != null && i !== focusedIndex ? 0.38 : undefined;
@@ -558,6 +685,8 @@ function Box({
   wide = false,
   subdued = false,
   dimmed = false,
+  compact = false,
+  knowledge = false,
   clampText = false,
   title,
   deepKnowledge = null,
@@ -579,6 +708,10 @@ function Box({
   subdued?: boolean;
   /** An unfocused sub-skill in the visible sibling row. */
   dimmed?: boolean;
+  /** Shrinks a dimmed sibling to keep focused context rows compact. */
+  compact?: boolean;
+  /** Knowledge-row width (w-60), distinct from the wider drill-path boxes. */
+  knowledge?: boolean;
   /** Keeps sibling context compact without truncating the focused sub-skill. */
   clampText?: boolean;
   /** Overrides the default branch/detail tooltip. */
@@ -603,7 +736,15 @@ function Box({
       }}
       title={title ?? (!active && expandable ? "Unfold" : "View goal details")}
       className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border border-l-[3px] p-3 text-left shadow-sm transition ${
-        fluid ? "" : wide ? "w-80 shrink-0" : "w-56 shrink-0"
+        fluid
+          ? ""
+          : knowledge
+            ? "w-60 shrink-0"
+            : compact
+              ? "w-40 shrink-0"
+              : wide
+                ? "w-80 shrink-0"
+                : "w-56 shrink-0"
       } ${
         isGap
           ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
