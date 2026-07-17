@@ -83,16 +83,24 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     let hasError = false;
 
     try {
-      for (let i = 0; i < session.blocks.length; i++) {
-        const block = session.blocks[i];
-        const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/block-slides", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ block, meta }),
+      const concurrencyLimit = 3;
+      for (let i = 0; i < session.blocks.length; i += concurrencyLimit) {
+        const chunk = session.blocks.slice(i, i + concurrencyLimit);
+        const promises = chunk.map(async (block, chunkIdx) => {
+          const actualIdx = i + chunkIdx;
+          const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/block-slides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ block, meta }),
+          });
+          if (!res.ok) throw new Error("Failed to generate slides for block " + block.phaseLabel);
+          return { idx: actualIdx, slides: await res.json() };
         });
-        if (!res.ok) throw new Error("Failed to generate slides for block " + block.phaseLabel);
-        const slides = await res.json();
-        newCache[i] = slides;
+        
+        const results = await Promise.all(promises);
+        for (const { idx, slides } of results) {
+          newCache[idx] = slides;
+        }
       }
       setSlidesCache(newCache);
 

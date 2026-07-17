@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 
 export function InlineEditText({
-  value, editing, onStartEdit, onSave, multiline = false, className = "", inputClassName = "text-sm px-2 py-0.5", boxStyle = false
+  value, editing, onStartEdit, onSave, multiline = false, className = "", inputClassName = "text-sm px-2 py-0.5", boxStyle = false, disabled = false
 }: {
   value: string;
   editing: boolean;
@@ -11,6 +11,7 @@ export function InlineEditText({
   className?: string;
   inputClassName?: string;
   boxStyle?: boolean;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
@@ -52,15 +53,20 @@ export function InlineEditText({
 
   return (
     <span
-      className={`cursor-text select-text ${boxStyle ? "inline-block border border-border/60 rounded px-1 py-0.5 bg-background/50 hover:bg-background transition-colors" : ""} ${className}`}
-      onDoubleClick={e => { e.stopPropagation(); onStartEdit(); }}
+      className={`${disabled ? "" : "cursor-text"} select-text ${boxStyle ? "inline-block border border-border/60 rounded px-1 py-0.5 bg-background/50 hover:bg-background transition-colors" : ""} ${className}`}
+      onDoubleClick={e => { 
+        if (disabled) return;
+        e.stopPropagation(); 
+        onStartEdit(); 
+      }}
       onClick={e => {
+        if (disabled) return;
         if (boxStyle) {
           e.stopPropagation();
           onStartEdit();
         }
       }}
-      title={boxStyle ? "Click to edit" : "Double-click to edit"}
+      title={disabled ? "" : (boxStyle ? "Click to edit" : "Double-click to edit")}
     >
       {value || (boxStyle ? "0" : "Click to edit...")}
     </span>

@@ -19,6 +19,8 @@ export default defineConfig({
       [`${BASE_PATH}/api`]: {
         target: API_TARGET,
         changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
         rewrite: (path) => path.replace(new RegExp(`^${BASE_PATH}`), ""),
       },
       "/learninggoalhub/api": {

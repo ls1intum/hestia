@@ -34,7 +34,7 @@ export async function fetchCourses(): Promise<Course[]> {
 }
 
 export async function fetchGoalsBySession(courseId: number): Promise<SessionGroup[]> {
-  const res = await fetch(`${BASE_URL}/courses/${courseId}/learning-goals/by-session?status=APPROVED`);
+  const res = await fetch(`${BASE_URL}/courses/${courseId}/learning-goals/by-session`);
   if (!res.ok) throw new Error("Failed to fetch learning goals");
   return await res.json();
 }

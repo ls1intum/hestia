@@ -2,7 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   GripVertical, ChevronDown, ChevronUp,
-  Trash2, Plus, Loader2,
+  Trash2, Plus, Loader2, Info,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -20,7 +20,7 @@ export function SortableBlockRow({
   onToggleExpand, onEditTitle, onSaveTitle, onEditStep, onSaveStep,
   onEditStepTime, onSaveStepTime,
   onEditBlockDuration, onSaveBlockDuration, onEditSectionDuration, onSaveSectionDuration,
-  onDeleteBlock, onSwitchActivity, onAddStep, onDeleteStep,
+  onDeleteBlock, onSwitchActivity, onAddStep, onDeleteStep, isEditMode = false,
 }: {
   block: DndActivityBlock;
   isExpanded: boolean;
@@ -43,8 +43,12 @@ export function SortableBlockRow({
   onSwitchActivity: (method: string) => void;
   onAddStep: (text: string) => void;
   onDeleteStep: (sectionIdx: number, stepIdx: number) => void;
+  isEditMode?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.dndId });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+    id: block.dndId,
+    disabled: !isEditMode // Disable dragging when not in edit mode
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -81,6 +85,7 @@ export function SortableBlockRow({
                   onStartEdit={onEditTitle}
                   onSave={onSaveTitle}
                   className="font-body font-semibold text-sm"
+                  disabled={!isEditMode}
                 />
                 {allMethods.length > 0 && (
                   <div className="flex items-center gap-1 flex-wrap">
@@ -134,6 +139,7 @@ export function SortableBlockRow({
                   onSave={onSaveBlockDuration}
                   className="w-8 text-right text-xs font-mono"
                   boxStyle
+                  disabled={false}
                 />
               )}
               <span className="text-[10px] text-muted-foreground font-mono -ml-0.5">m</span>
@@ -146,14 +152,16 @@ export function SortableBlockRow({
               ) : (
                 <div className="h-8 w-8 ml-1" />
               )}
-              <Button
-                variant="ghost" size="icon"
-                className="h-7 w-7 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                onClick={onDeleteBlock}
-                title="Delete block"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {isEditMode && (
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                  onClick={onDeleteBlock}
+                  title="Delete block"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -185,13 +193,21 @@ export function SortableBlockRow({
                       return (
                         <div key={stIdx} className={`flex items-start gap-2 group px-2 py-1.5 rounded-lg border ${subColorClass} shadow-sm`}>
                           <span className="text-sm mt-0.5 opacity-80" title="Activity Type">{subEmoji}</span>
-                          <InlineEditText
-                            value={contentText}
-                            editing={isStepEditing}
-                            onStartEdit={() => onEditStep(sIdx, stIdx)}
-                            onSave={v => onSaveStep(sIdx, stIdx, v)}
-                            className="flex-1 text-sm text-foreground/85 leading-snug py-0.5"
-                          />
+                          <div className="flex items-center flex-1 min-w-0">
+                            <InlineEditText
+                              value={contentText}
+                              editing={isStepEditing}
+                              onStartEdit={() => onEditStep(sIdx, stIdx)}
+                              onSave={v => onSaveStep(sIdx, stIdx, v)}
+                              className="flex-1 text-sm text-foreground/85 leading-snug py-0.5 truncate"
+                              disabled={!isEditMode}
+                            />
+                            {!isEditMode && (
+                              <div title="you don't like this prompt, you can change this by going into edit mode" className="ml-1.5 text-muted-foreground/40 hover:text-muted-foreground/80 cursor-help transition-colors shrink-0">
+                                <Info className="h-3.5 w-3.5" />
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                             <InlineEditText
                               value={timeVal || "0"}
@@ -200,15 +216,18 @@ export function SortableBlockRow({
                               onSave={v => onSaveStepTime(sIdx, stIdx, v)}
                               className="w-8 text-right text-xs font-mono"
                               boxStyle
+                              disabled={false}
                             />
                             <span className="text-[10px] text-muted-foreground font-mono">m</span>
-                            <Button 
-                              variant="ghost" size="icon" 
-                              className="h-5 w-5 ml-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" 
-                              onClick={() => onDeleteStep(sIdx, stIdx)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                            {isEditMode && (
+                              <Button 
+                                variant="ghost" size="icon" 
+                                className="h-5 w-5 ml-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" 
+                                onClick={() => onDeleteStep(sIdx, stIdx)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -216,19 +235,21 @@ export function SortableBlockRow({
                   </div>
                 </div>
               ))}
-              <div className="flex items-center gap-3 pl-2 mt-2 group">
-                <Plus className="h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                <input 
-                  placeholder="Add detailed step..." 
-                  className="flex-1 text-sm bg-transparent border-b border-transparent focus:border-primary/50 focus:outline-none py-0.5 text-foreground/85 placeholder:text-muted-foreground/50 transition-colors"
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                      onAddStep(e.currentTarget.value.trim());
-                      e.currentTarget.value = "";
-                    }
-                  }}
-                />
-              </div>
+              {isEditMode && (
+                <div className="flex items-center gap-3 pl-2 mt-2 group">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                  <input 
+                    placeholder="Add detailed step..." 
+                    className="flex-1 text-sm bg-transparent border-b border-transparent focus:border-primary/50 focus:outline-none py-0.5 text-foreground/85 placeholder:text-muted-foreground/50 transition-colors"
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                        onAddStep(e.currentTarget.value.trim());
+                        e.currentTarget.value = "";
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </CollapsibleContent>
         </div>
       </Collapsible>

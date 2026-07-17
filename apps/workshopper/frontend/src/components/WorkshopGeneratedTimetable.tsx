@@ -11,12 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, ArrowRight, GripVertical, ChevronDown, ChevronUp,
-  Clock, Trash2, Plus, Loader2,
+  Clock, Trash2, Plus, Loader2, Pencil, Save, X
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors, DragEndEvent,
@@ -77,6 +81,11 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const [editing, setEditing] = useState<EditTarget>(null);
   const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
 
+  // Edit Mode State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [originalBlocks, setOriginalBlocks] = useState<DndActivityBlock[] | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -93,14 +102,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     title: sessionTitle,
     blocks: blocks.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
   }), [initialSession, sessionTitle, blocks]);
-
-  // Auto-save changes to the parent (debounced)
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      onSaveSession?.(buildSession());
-    }, 500);
-    return () => clearTimeout(timeout);
-  }, [buildSession, onSaveSession]);
 
   const handleSaveTitle = (dndId: string, v: string) => {
     updateBlock(dndId, { phaseLabel: v });
@@ -128,19 +129,45 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const handleSaveBlockDuration = (dndId: string, v: string) => {
     let num = parseInt(v, 10);
     if (isNaN(num) || num < 0) num = 0;
-    updateBlock(dndId, { duration: num });
+    
+    setBlocks(prev => {
+      const next = prev.map(b => b.dndId === dndId ? { ...b, duration: num } : b);
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
     setEditing(null);
   };
 
   const handleSaveSectionDuration = (dndId: string, sectionIdx: number, v: string) => {
     const num = parseInt(v, 10);
     if (!isNaN(num) && num >= 0) {
-      setBlocks(prev => prev.map(b => {
-        if (b.dndId !== dndId || !b.sections) return b;
-        const sections = b.sections.map((sec, si) => si === sectionIdx ? { ...sec, duration: num } : sec);
-        const newDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-        return { ...b, sections, duration: newDuration };
-      }));
+      setBlocks(prev => {
+        const next = prev.map(b => {
+          if (b.dndId !== dndId || !b.sections) return b;
+          const sections = b.sections.map((sec, si) => si === sectionIdx ? { ...sec, duration: num } : sec);
+          const newDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+          return { ...b, sections, duration: newDuration };
+        });
+        
+        if (!isEditMode && onSaveSession) {
+          setTimeout(() => {
+            onSaveSession({
+              ...initialSession,
+              title: sessionTitle,
+              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+            });
+          }, 0);
+        }
+        return next;
+      });
     }
     setEditing(null);
   };
@@ -149,25 +176,39 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     let num = parseInt(newTime, 10);
     if (isNaN(num) || num < 0) num = 0;
     
-    setBlocks(prev => prev.map(b => {
-      if (b.dndId !== dndId || !b.sections) return b;
-      const sections = b.sections.map((sec, si) => {
-        let steps = sec.steps || [];
-        if (si === sectionIdx) {
-          steps = steps.map((st, ti) => {
-            if (ti !== stepIdx) return st;
-            const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
-            const contentText = match ? match[2] : st;
-            return `${num} min - ${contentText}`;
-          });
-        }
-        const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
-        const finalDuration = steps.length > 0 ? newDuration : (sec.duration || 0);
-        return { ...sec, steps, duration: finalDuration };
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId || !b.sections) return b;
+        const sections = b.sections.map((sec, si) => {
+          let steps = sec.steps || [];
+          if (si === sectionIdx) {
+            steps = steps.map((st, ti) => {
+              if (ti !== stepIdx) return st;
+              const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
+              const contentText = match ? match[2] : st;
+              return `${num} min - ${contentText}`;
+            });
+          }
+          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
+          const finalDuration = steps.length > 0 ? newDuration : (sec.duration || 0);
+          return { ...sec, steps, duration: finalDuration };
+        });
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
       });
-      const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-      return { ...b, sections, duration: newBlockDuration };
-    }));
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+    setEditing(null);
   };
 
   const handleAddStep = (dndId: string, text: string) => {
@@ -202,13 +243,66 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!isEditMode) return;
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      setBlocks(prev => {
-        const oldIndex = prev.findIndex(b => b.dndId === active.id);
-        const newIndex = prev.findIndex(b => b.dndId === over.id);
-        return arrayMove(prev, oldIndex, newIndex);
+      setBlocks((items) => {
+        const oldIndex = items.findIndex((item) => item.dndId === active.id);
+        const newIndex = items.findIndex((item) => item.dndId === over.id);
+        return arrayMove(items, oldIndex, newIndex);
       });
+    }
+  };
+
+  const enterEditMode = () => {
+    setOriginalBlocks(JSON.parse(JSON.stringify(blocks)));
+    setIsEditMode(true);
+  };
+
+  const saveEditMode = () => {
+    const latest = buildSession();
+    onSaveSession?.(latest);
+    setIsEditMode(false);
+    setOriginalBlocks(null);
+  };
+
+  const cancelEditMode = () => {
+    if (originalBlocks) setBlocks(originalBlocks);
+    setIsEditMode(false);
+    setOriginalBlocks(null);
+    setEditing(null);
+  };
+
+  const executePendingNavigation = () => {
+    if (pendingNavigation === "back") {
+      onBack();
+    } else if (pendingNavigation === "next") {
+      const latest = buildSession();
+      onNext(latest);
+    }
+    setPendingNavigation(null);
+  };
+
+  const confirmNavigation = () => {
+    cancelEditMode();
+    executePendingNavigation();
+  };
+
+  const handleBack = () => {
+    if (isEditMode) {
+      setPendingNavigation("back");
+    } else {
+      onBack();
+    }
+  };
+
+  const handleNext = () => {
+    if (isEditMode) {
+      setPendingNavigation("next");
+    } else {
+      const latest = buildSession();
+      onSaveSession?.(latest);
+      onNext(latest);
     }
   };
 
@@ -246,11 +340,25 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       const newSession = await res.json();
       if (newSession.blocks?.[0]) {
         const updatedBlock = newSession.blocks[0];
-        updateBlock(dndId, {
-          ...updatedBlock,
-          dndId,
-          lgIndex,
-          blockId: block.blockId,
+        setBlocks(prev => {
+          const next = prev.map(b => b.dndId === dndId ? {
+            ...b,
+            ...updatedBlock,
+            dndId,
+            lgIndex,
+            blockId: block.blockId,
+          } : b);
+          
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSession({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
         });
         toast({ title: "Activity updated", description: `Switched to ${newActivity}` });
       }
@@ -259,12 +367,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     } finally {
       setRegeneratingBlockId(null);
     }
-  };
-
-  const handleNext = () => {
-    const latest = buildSession();
-    onSaveSession?.(latest);
-    onNext(latest);
   };
 
   const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
@@ -277,14 +379,18 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <InlineEditText
-                value={sessionTitle}
-                editing={editing?.type === "sessionTitle"}
-                onStartEdit={() => setEditing({ type: "sessionTitle" })}
-                onSave={(v) => { setSessionTitle(v); setEditing(null); }}
-                className="font-display font-bold text-3xl block w-full"
-                inputClassName="py-1.5 px-3 w-full"
-              />
+              <h2 className="font-display font-semibold text-2xl text-foreground mt-0.5">
+                {isEditMode ? (
+                  <Input
+                    value={sessionTitle}
+                    onChange={(e) => setSessionTitle(e.target.value)}
+                    className="font-display text-2xl font-semibold h-auto py-1 px-2 -ml-2 border-primary/50 focus-visible:ring-1 focus-visible:ring-primary w-[300px]"
+                    placeholder="Workshop Title"
+                  />
+                ) : (
+                  <span className="py-1">{sessionTitle || "Workshop Title"}</span>
+                )}
+              </h2>
               <CardDescription className="mt-1">
                 Double-click any title, activity, or step to edit it inline. Click an activity badge to switch it.
               </CardDescription>
@@ -303,6 +409,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   meta={meta}
                   isRegenerating={regeneratingBlockId === block.dndId}
                   selectedActivities={meta.selectedActivities || []}
+                  isEditMode={isEditMode}
                   onToggleExpand={() => toggleExpand(block.dndId)}
                   onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
                   onSaveTitle={v => handleSaveTitle(block.dndId, v)}
@@ -322,35 +429,37 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               ))}
             </SortableContext>
             
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="outline"
-                className="w-full border-dashed border-2 py-6 text-muted-foreground hover:text-foreground hover:border-primary/50"
-                onClick={() => {
-                  const newId = `custom-${Date.now()}`;
-                  setBlocks(prev => [...prev, {
-                    dndId: newId,
-                    phase: "CUSTOM",
-                    phaseLabel: "Custom Block",
-                    goalTag: "",
-                    objective: "",
-                    description: "",
-                    methods: [],
-                    materials: [],
-                    duration: 10,
-                  }]);
-                  setExpandedBlocks(prev => ({ ...prev, [newId]: true }));
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Add Custom Block
-              </Button>
-            </div>
+            {isEditMode && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed border-2 py-6 text-muted-foreground hover:text-foreground hover:border-primary/50"
+                  onClick={() => {
+                    const newId = `custom-${Date.now()}`;
+                    setBlocks(prev => [...prev, {
+                      dndId: newId,
+                      phase: "CUSTOM",
+                      phaseLabel: "Custom Block",
+                      goalTag: "",
+                      objective: "",
+                      description: "",
+                      methods: [],
+                      materials: [],
+                      duration: 10,
+                    }]);
+                    setExpandedBlocks(prev => ({ ...prev, [newId]: true }));
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Add Custom Block
+                </Button>
+              </div>
+            )}
           </DndContext>
         </CardContent>
 
         {/* Sticky footer */}
         <div className="sticky bottom-4 z-20 mx-4 mb-4 rounded-xl border border-border/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">
-          <Button variant="outline" size="sm" onClick={onBack} className="gap-2 font-body shrink-0">
+          <Button variant="outline" size="sm" onClick={handleBack} className="gap-2 font-body shrink-0">
             <ArrowLeft className="h-4 w-4" /> Previous
           </Button>
 
@@ -385,6 +494,66 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           </Button>
         </div>
       </Card>
+
+      {/* Floating Action Buttons for Edit Mode */}
+      <div className="fixed bottom-24 right-8 z-50 flex flex-col items-end gap-3 pointer-events-none">
+        <div className="pointer-events-auto flex flex-col gap-3">
+          {isEditMode ? (
+            <>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={cancelEditMode}
+                className="h-12 w-12 rounded-full shadow-lg border-muted bg-white hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200"
+                title="Cancel Changes"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+              <Button
+                size="icon"
+                onClick={saveEditMode}
+                className="h-14 w-14 rounded-full shadow-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 hover:scale-105"
+                title="Save Changes"
+              >
+                <Save className="h-6 w-6" />
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="icon"
+              onClick={enterEditMode}
+              className="h-14 w-14 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-white transition-all duration-200 hover:scale-105"
+              title="Edit Session"
+            >
+              <Pencil className="h-6 w-6" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={pendingNavigation !== null} onOpenChange={(open) => {
+        if (!open) setPendingNavigation(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You have unsaved work</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to proceed?
+              <br/><br/>
+              If you click <strong>Yes</strong>, your recent edits will be undone.
+              <br/>
+              If you click <strong>No</strong>, you will remain on this page with your edits intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingNavigation(null)}>No, stay here</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmNavigation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Yes, undo changes & proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
