@@ -335,7 +335,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                           <div className="absolute left-[39px] top-2.5 w-2.5 h-2.5 rounded-full bg-card border-[2.5px] border-primary/50 shadow-sm z-10 ring-2 ring-background group-hover:border-primary transition-colors" />
 
                                           {/* Content box */}
-                                          <div className={`border ${subColorClass} group-hover:border-primary/40 group-hover:shadow-md transition-all rounded-lg px-3 py-2.5 text-sm font-body text-foreground/90 leading-snug shadow-sm flex-1`}>
+                                          <div className={`border ${subColorClass} group-hover:border-primary/40 group-hover:shadow-md transition-all rounded-lg px-3 py-2.5 text-sm font-body text-foreground/90 leading-relaxed shadow-sm flex-1`}>
                                             {subEmoji && <span className="mr-1.5">{subEmoji}</span>}
                                             {contentText}
                                           </div>

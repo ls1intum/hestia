@@ -269,7 +269,7 @@ public class WorkshopService {
                 } finally {
                     concurrencySemaphore.release();
                 }
-            });
+            }, llmExecutor);
             blockFutures.add(future);
         }
 
@@ -617,7 +617,9 @@ public class WorkshopService {
                     zos.closeEntry();
 
                     // PPTX
-                    byte[] pptxBytes = pptxService.exportToPptx(requestDto);
+                    byte[] templateData = getTemplate(e.getId());
+                    java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+                    byte[] pptxBytes = pptxService.exportToPptx(requestDto, templateStream);
                     zos.putNextEntry(new java.util.zip.ZipEntry(safeTitle + "/slides.pptx"));
                     zos.write(pptxBytes);
                     zos.closeEntry();

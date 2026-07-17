@@ -110,7 +110,9 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
         try {
-            byte[] pptxBytes = pptxService.exportToPptx(request);
+            byte[] templateData = (request.session() != null && request.session().id() != null) ? service.getTemplate(request.session().id()) : null;
+            java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+            byte[] pptxBytes = pptxService.exportToPptx(request, templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
@@ -130,7 +132,9 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) {
         try {
-            byte[] pptxBytes = pptxService.assembleFromSlides(request.session(), request.meta(), request.prebuiltSlides(), null);
+            byte[] templateData = (request.session() != null && request.session().id() != null) ? service.getTemplate(request.session().id()) : null;
+            java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+            byte[] pptxBytes = pptxService.assembleFromSlides(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
@@ -150,7 +154,7 @@ public class WorkshopController {
     @PostMapping("/export/block-slides")
     public ResponseEntity<?> exportBlockSlides(@RequestBody BlockSlidesRequestDto request) {
         try {
-            List<Map<String, Object>> slides = pptxService.generateBlockSlides(request.block(), request.meta());
+            List<Map<String, Object>> slides = pptxService.generateBlockSlides(request.block(), request.meta(), request.goals());
             return ResponseEntity.ok(slides);
         } catch (Exception e) {
             log.error("Block slides generation failed", e);

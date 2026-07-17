@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.ActivityBlockDto;
 import com.workshopper.dto.ActivitySectionDto;
+import com.workshopper.dto.LearningGoalPlanDto;
 import com.workshopper.dto.PdfExportRequestDto;
 import com.workshopper.dto.WorkshopInputDto;
 import com.workshopper.dto.WorkshopSessionDto;
@@ -15,8 +16,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class PptxExportService {
@@ -25,14 +31,69 @@ public class PptxExportService {
     private final LlmService llm;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private static final Map<String, List<String>> FIXED_INSTRUCTIONS = new HashMap<>();
+    private static final Map<String, String> FIXED_INSTRUCTION_TITLES = new HashMap<>();
+    static {
+        addFixedInstruction("groupdiscussion", "Group Discussion", List.of(
+            "1. Form groups and briefly introduce your perspectives",
+            "2. Listen actively and build upon your peers' points",
+            "3. Summarize your group's consensus to share with the class"
+        ));
+        addFixedInstruction("casestudy", "Case Study", List.of(
+            "1. Read the provided scenario and identify the core problem",
+            "2. Analyze the decisions and discuss alternative approaches",
+            "3. Connect the case outcomes to today's learning objectives"
+        ));
+        addFixedInstruction("roleplay", "Role Play", List.of(
+            "1. Review your assigned character's goals and background",
+            "2. Stay in character and respond naturally to the scenario",
+            "3. Step out of character afterwards to debrief the experience"
+        ));
+        addFixedInstruction("handsonpractice", "Hands-on Practice", List.of(
+            "1. Attempt the task independently using provided materials",
+            "2. Ask questions immediately if you hit a blocking issue",
+            "3. Compare your solution with peers or the reference solution"
+        ));
+        addFixedInstruction("quizpolls", "Quiz / Polls", List.of(
+            "1. Read the question and all options carefully",
+            "2. Answer honestly based on your current understanding",
+            "3. Discuss the correct answer when revealed by the instructor"
+        ));
+        addFixedInstruction("qasession", "Q&A Session", List.of(
+            "1. Formulate your question clearly and specifically",
+            "2. Raise your hand or use the digital Q&A tool to submit it",
+            "3. Listen to others' questions to avoid duplicates"
+        ));
+        addFixedInstruction("peerreview", "Peer Review", List.of(
+            "1. Review your partner's work thoroughly and objectively",
+            "2. Provide specific, actionable, and constructive feedback",
+            "3. Discuss the feedback together to clarify misunderstandings"
+        ));
+        addFixedInstruction("brainstorming", "Brainstorming", List.of(
+            "1. Share every idea that comes to mind, no matter how unusual",
+            "2. Focus on quantity first, without filtering or judging",
+            "3. Categorize and evaluate the ideas only after brainstorming ends"
+        ));
+        addFixedInstruction("thinkpairshare", "Think-Pair-Share", List.of(
+            "1. THINK: Reflect silently on the prompt and note your thoughts",
+            "2. PAIR: Discuss your reflections with a partner and compare views",
+            "3. SHARE: Present your pair's conclusions to the entire group"
+        ));
+    }
+
+    private static void addFixedInstruction(String key, String title, List<String> bullets) {
+        FIXED_INSTRUCTIONS.put(key, bullets);
+        FIXED_INSTRUCTION_TITLES.put(key, title);
+    }
+
     public PptxExportService(LlmService llm) {
         this.llm = llm;
     }
 
     // ── Public: export full session to PPTX (optionally using pre-built slides cache) ──────────
 
-    public byte[] exportToPptx(PdfExportRequestDto request) throws Exception {
-        return exportToPptxInternal(request.session(), request.meta(), null, null);
+    public byte[] exportToPptx(PdfExportRequestDto request, java.io.InputStream templateStream) throws Exception {
+        return exportToPptxInternal(request.session(), request.meta(), null, templateStream);
     }
 
     /**
@@ -70,18 +131,102 @@ public class PptxExportService {
 
     // ── Public: generate slide JSON for a single block ──────────────────────────────────────────
 
-    public List<Map<String, Object>> generateBlockSlides(ActivityBlockDto block, WorkshopInputDto meta) throws Exception {
+    public List<Map<String, Object>> generateBlockSlides(ActivityBlockDto block, WorkshopInputDto meta, java.util.List<LearningGoalPlanDto> goals) throws Exception {
         String systemPrompt = buildSlideSystemPrompt();
+        String phase = block.phase() != null ? block.phase().toUpperCase() : "";
+        String label = block.phaseLabel() != null ? block.phaseLabel() : (block.phase() != null ? block.phase() : "");
+        String labelUpper = label.toUpperCase();
 
+        log.info("generateBlockSlides: phase='{}' phaseLabel='{}' labelUpper='{}'", phase, label, labelUpper);
+
+        // Check both phase code and phaseLabel for robust matching
+        boolean isIntro    = phase.contains("WELCOME") || phase.contains("SETUP") || phase.contains("INTRODUCTION") || phase.equals("INTRO") || phase.equals("ARRIVE")
+                          || labelUpper.contains("WELCOME") || labelUpper.contains("SETUP") || labelUpper.contains("INTRODUCTION") || labelUpper.contains("ARRIVE");
+        boolean isClosing  = phase.contains("WRAP") || phase.contains("CLOSING") || phase.contains("CONCLUSION")
+                          || labelUpper.contains("WRAP") || labelUpper.contains("CLOSING") || labelUpper.contains("CONCLUSION");
+        boolean isActivity = phase.contains("LEARNING") || phase.contains("CYCLE") || phase.contains("ACTIVATE") || phase.equals("CUSTOM") || phase.contains("CHECK")
+                          || labelUpper.contains("LEARNING") || labelUpper.contains("CYCLE") || labelUpper.contains("ACTIVATE") || labelUpper.contains("CHECK");
+
+        // ── 1. Intro block: placeholder first, then Agenda from learning goals ──────────────────
+        if (isIntro) {
+            List<Map<String, Object>> slides = new java.util.ArrayList<>();
+
+            // Placeholder for instructor's own welcome/setup slides (comes first)
+            Map<String, Object> placeholder = new java.util.LinkedHashMap<>();
+            placeholder.put("subtitle", label);
+            placeholder.put("title", "[Placeholder] " + label);
+            placeholder.put("bullets", java.util.List.of("Insert your welcome & setup slides here"));
+            placeholder.put("notes", "Instructor's own slides for welcome and setup.");
+            slides.add(placeholder);
+
+            // Agenda slide using the actual learning goals (comes after)
+            Map<String, Object> agendaSlide = new java.util.LinkedHashMap<>();
+            agendaSlide.put("subtitle", label);
+            agendaSlide.put("title", "Agenda");
+            if (goals != null && !goals.isEmpty()) {
+                agendaSlide.put("bullets", goals.stream()
+                        .map(g -> g.goal() != null ? g.goal() : g.originalGoal())
+                        .filter(g -> g != null && !g.isBlank())
+                        .collect(java.util.stream.Collectors.toList()));
+            } else {
+                agendaSlide.put("bullets", java.util.List.of("See session plan for today's agenda"));
+            }
+            agendaSlide.put("notes", "Agenda slide — learning goals for this session.");
+            slides.add(agendaSlide);
+
+            return slides;
+        }
+
+        // ── 2. Closing block: no agenda, just a debrief placeholder ──────────────────────────
+        if (isClosing) {
+            List<Map<String, Object>> slides = new java.util.ArrayList<>();
+            Map<String, Object> placeholder = new java.util.LinkedHashMap<>();
+            placeholder.put("subtitle", label);
+            placeholder.put("title", "[Placeholder] " + label);
+            placeholder.put("bullets", java.util.List.of("Insert your closing & summary slides here"));
+            placeholder.put("notes", "Instructor's own slides for session wrap-up.");
+            slides.add(placeholder);
+            return slides;
+        }
+
+        // ── 3. Activity blocks: prepend a Lecturer Explains placeholder, then ask LLM for 2 activity slides ──
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+
+        if (isActivity) {
+            boolean isCheck = phase.contains("CHECK") || labelUpper.contains("CHECK");
+            Map<String, Object> explainPlaceholder = new java.util.LinkedHashMap<>();
+            explainPlaceholder.put("subtitle", label);
+            if (isCheck) {
+                explainPlaceholder.put("title", "[Placeholder] Quiz / Poll Questions");
+                explainPlaceholder.put("bullets", java.util.List.of("Insert your actual quiz or poll questions here"));
+                explainPlaceholder.put("notes", "Instructor inserts the specific questions to check understanding.");
+            } else {
+                explainPlaceholder.put("title", "[Placeholder] You Explain \u2014 " + label);
+                explainPlaceholder.put("bullets", java.util.List.of("Insert your lecture slides here"));
+                explainPlaceholder.put("notes", "Instructor teaches the concept before the activity. Replace with your own content slides.");
+            }
+            result.add(explainPlaceholder);
+        }
+
+        // ── 4. Ask LLM only for the interactive activity slides ────────────────────────────────
         StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("Generate slides for a SINGLE session block only.\n\n");
-        userPrompt.append("Block Label: ").append(block.phaseLabel()).append("\n");
-        userPrompt.append("Phase: ").append(block.phase()).append("\n");
+        userPrompt.append("Block Label: ").append(label).append("\n");
+        userPrompt.append("Phase: ").append(phase).append("\n");
         userPrompt.append("Duration: ").append(block.duration()).append(" minutes\n");
         if (block.objective() != null) userPrompt.append("Objective: ").append(block.objective()).append("\n");
-        if (block.description() != null) userPrompt.append("Description: ").append(block.description()).append("\n");
 
-        // Collect all methods: block-level + section-level (deduplicated)
+        if (isActivity) {
+            userPrompt.append("\nRULES FOR THIS BLOCK:\n");
+            userPrompt.append("- Generate EXACTLY 2 slides for the PARTICIPANT ACTIVITY part:\n");
+            userPrompt.append("  1. PROMPT slide: The actual question/prompt students must work on. The TITLE must start with the primary activity type, followed by the exact question text (e.g. 'Poll: What do you think...'). Bullets are minimal.\n");
+            userPrompt.append("  2. SUMMARY / DEBRIEF slide: Must be student-facing. Generate dynamic key takeaways or debrief questions based on the prompt/activity.\n");
+            userPrompt.append("     - Address the students directly (e.g. 'Compare your reasoning...', 'Reflect on...', or open questions like 'How did you approach...').\n");
+            userPrompt.append("     - NEVER write instructions for the instructor.\n");
+            userPrompt.append("- Do NOT generate a slide for activity instructions.\n");
+            userPrompt.append("- Do NOT generate a slide for students silently doing the activity.\n");
+        }
+
+        // Collect methods
         java.util.Set<String> allMethods = new java.util.LinkedHashSet<>();
         if (block.methods() != null) allMethods.addAll(block.methods());
         if (block.sections() != null) {
@@ -93,30 +238,22 @@ public class PptxExportService {
             userPrompt.append("Teaching Methods / Activities: ").append(String.join(", ", allMethods)).append("\n");
         }
 
-        // ── CRITICAL: explicitly surface the exact activity steps from the timetable ──
-        // These strings (e.g. "5 min - Poll: What is the P vs NP problem?") are what
-        // the instructor will actually run. Slides MUST match them exactly.
+        // Surface the exact activity steps
         if (block.sections() != null && !block.sections().isEmpty()) {
             boolean hasSteps = block.sections().stream()
                     .anyMatch(s -> s.steps() != null && !s.steps().isEmpty());
             if (hasSteps) {
-                userPrompt.append("\nDetailed Activity Steps (MUST be reflected in slides — use these exact prompts/questions):\n");
+                userPrompt.append("\nDetailed Activity Steps (use as source material — do NOT create one slide per step):\n");
                 for (ActivitySectionDto sec : block.sections()) {
                     if (sec.steps() != null && !sec.steps().isEmpty()) {
                         if (sec.title() != null && !sec.title().isBlank()) {
                             userPrompt.append("  [").append(sec.title()).append("]\n");
                         }
                         for (String step : sec.steps()) {
-                            userPrompt.append("    • ").append(step).append("\n");
+                            userPrompt.append("    \u2022 ").append(step).append("\n");
                         }
                     }
                 }
-            } else {
-                // No step-level detail — fall back to structured JSON
-                userPrompt.append("\nSection Structure:\n");
-                try {
-                    userPrompt.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(block.sections())).append("\n");
-                } catch (Exception ignored) {}
             }
         }
 
@@ -125,19 +262,37 @@ public class PptxExportService {
             if (text.length() > 8000) text = text.substring(0, 8000) + "\n[...truncated]";
             userPrompt.append("\nReference Materials:\n").append(text);
         }
-        userPrompt.append("\nTask: Return ONLY a JSON array of slides for this block. Each slide must directly correspond to the activity steps listed above. If a step is a poll, quiz, or question prompt, the slide should present that exact question/prompt to students.");
 
-        log.info("Requesting LLM to generate slides for block: {}", block.phaseLabel());
+        userPrompt.append("\nTask: Return ONLY a JSON array of slides. Respect the EXACTLY 2 slide count rule above strictly.");
+
+        log.info("Requesting LLM to generate slides for block: {}", label);
         String rawResponse = llm.callSecondary(systemPrompt, userPrompt.toString());
         String json = llm.extractJsonArray(rawResponse);
-        List<Map<String, Object>> slides = mapper.readValue(json, new TypeReference<>() {});
+        List<Map<String, Object>> llmSlides = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {});
 
-        // Extract section label into subtitle for clarity in the deck
-        String label = block.phaseLabel() != null ? block.phaseLabel() : block.phase();
-        for (Map<String, Object> slide : slides) {
+        // Attach subtitle to LLM slides
+        for (Map<String, Object> slide : llmSlides) {
             slide.put("subtitle", label);
         }
-        return slides;
+
+        // Programmatically prepend fixed instruction slides if applicable
+        if (isActivity && !allMethods.isEmpty()) {
+            for (String method : allMethods) {
+                String normalized = method.toLowerCase().replaceAll("[^a-z]", "");
+                if (FIXED_INSTRUCTIONS.containsKey(normalized)) {
+                    Map<String, Object> instSlide = new LinkedHashMap<>();
+                    instSlide.put("subtitle", label);
+                    instSlide.put("title", "Instructions: " + FIXED_INSTRUCTION_TITLES.get(normalized));
+                    instSlide.put("bullets", FIXED_INSTRUCTIONS.get(normalized));
+                    instSlide.put("notes", "Fixed instructions for " + FIXED_INSTRUCTION_TITLES.get(normalized));
+                    instSlide.put("fixedInstructionFor", normalized);
+                    result.add(instSlide);
+                }
+            }
+        }
+
+        result.addAll(llmSlides);
+        return result;
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────────────────────────
@@ -262,16 +417,10 @@ public class PptxExportService {
         }
     }
 
-    // HESTIA design palette — matches CSS variables in index.css
-    // --primary: hsl(33 65% 32%)  → rgb(135, 84, 29)
-    // --foreground: hsl(10 15% 15%) → rgb(44, 39, 37)
-    // --muted-foreground: hsl(10 15% 42%) → rgb(120, 105, 100)
-    // --background: hsl(40 21% 87%) → rgb(226, 216, 198)
     private static final java.awt.Color HESTIA_PRIMARY        = new java.awt.Color(135, 84, 29);
-    private static final java.awt.Color HESTIA_PRIMARY_LIGHT  = new java.awt.Color(200, 155, 90);  // lighter tint for breadcrumb
+    private static final java.awt.Color HESTIA_PRIMARY_LIGHT  = new java.awt.Color(200, 155, 90);
     private static final java.awt.Color HESTIA_FOREGROUND     = new java.awt.Color(44, 39, 37);
-    private static final java.awt.Color HESTIA_MUTED          = new java.awt.Color(120, 105, 100);
-    private static final java.awt.Color HESTIA_BG             = new java.awt.Color(242, 237, 228);  // very light warm white, close to card
+    private static final java.awt.Color HESTIA_BG             = new java.awt.Color(242, 237, 228);
     private static final java.awt.Color HESTIA_SEPARATOR      = new java.awt.Color(218, 208, 193);
 
     private java.awt.Color getTemplateAccentColor(XMLSlideShow ppt) {
@@ -306,7 +455,7 @@ public class PptxExportService {
                 r.setText(subtitle);
                 r.setFontColor(subtitleColor);
                 r.setFontSize(16d);
-                p.setSpaceBefore(0d); // Ensure it sits right under the title
+                p.setSpaceBefore(0d);
             }
         } catch (IndexOutOfBoundsException e) {
             shape.clearText();
@@ -331,7 +480,6 @@ public class PptxExportService {
                 if (shape.getTextType() != null && shape.getTextType().name().equals(type)) return shape;
             }
         }
-        // Fallback to indices if nothing matches
         if (slide.getPlaceholders().length > 0 && types.length > 0 && (types[0].equals("TITLE") || types[0].equals("CENTER_TITLE") || types[0].equals("CENTERED_TITLE"))) {
             return slide.getPlaceholders()[0];
         }
@@ -497,31 +645,39 @@ public class PptxExportService {
 
     private String buildSlideSystemPrompt() {
         return """
-                You are an expert instructional designer creating presentation slides.
-                You will be provided with a session plan and optionally existing reference materials.
-                
-                CRITICAL INSTRUCTIONS:
-                1. DO NOT create "complete" lecture content slides. The user already knows their lecture content.
-                2. INSTEAD, create slides that the instructor can insert into their existing slide deck to facilitate the activities.
-                3. The slides MUST be student-facing (e.g., "Discuss with your neighbor...", "Take 5 minutes to solve...").
-                4. NEVER copy the session plan's description or timetable details verbatim onto the slides.
-                5. For interactive activities (questions, quizzes, polls), you MUST create a dedicated slide that contains ONLY the question(s) and options (if any).
-                6. IMPORTANT: For non-interactive blocks like "Lecture", "Introduction", or "Break", you MUST create a single placeholder slide. Title it "Placeholder: [Block Name]" and add a single bullet like "Insert your lecture slides here" or "10 Minute Break".
-                7. The interactive slides should be similar to typical active-learning in-class slides, featuring:
-                   - Question prompts or polls (e.g., "True or False? Raise your hand if you think...")
-                   - Activity instructions (e.g., "Work through Question 1 in your group:", "Think-Pair-Share")
-                   - Case studies or scenarios (e.g., "The research group is tackling...")
-                   - Exit cards (e.g., "A classifier is called linear because...")
-                8. Keep slides uncluttered and punchy. MAXIMUM 3-4 bullet points per slide. MAXIMUM 15 words per bullet point.
-                9. Use the 'notes' field to add the description, context, and timing of the activity for the instructor.
-                
-                Return ONLY a valid JSON array of slide objects. No prose, no markdown fences.
+                You are an expert instructional designer creating presentation slides for an active-learning workshop.
+                You will be provided with a single session block and its detailed steps.
+
+                CRITICAL RULES — YOU MUST FOLLOW THESE EXACTLY:
+                1. DO NOT create one slide per step or per content line. Combine related steps into one slide.
+                2. NEVER copy the session plan's description or timetable details verbatim.
+                3. ALL SLIDES ARE STRICTLY STUDENT-FACING. You must address the students directly (e.g., "What are your thoughts on...", "Discuss with your partner..."). NEVER address the instructor or describe what the instructor will do (e.g., NO "Ask students to...", NO "Explain the concept of...").
+                4. Any instructions or tips for the instructor MUST go exclusively into the 'notes' field.
+                5. DO NOT create slides for Buffer or Break blocks.
+
+                SLIDE COUNT LIMITS (STRICT):
+                - Welcome / Setup / Introduction / Closing / Summary blocks: MAXIMUM 2 slides total.
+                  → Always include an Agenda slide for Intros. Combine all other content into one placeholder slide.
+                - Activity / Check Understanding blocks: EXACTLY 2 slides:
+                  1. PROMPT: The slide title IS the actual question or prompt text, preceded by the activity type (e.g., 'Poll: What do you think?'). Keep bullets minimal.
+                  2. SUMMARY / DEBRIEF slide: Generate dynamic key takeaways or debrief questions based on the activity, written directly to the students.
+                     - Address students directly (e.g. 'Reflect on...', 'Compare your reasoning...', 'What were the challenges?').
+                     - NEVER address the instructor or write instructions for them.
+                  → Do NOT generate a slide for activity instructions or silent work.
+
+                FORMATTING RULES:
+                - MAXIMUM 3–4 bullet points per slide.
+                - MAXIMUM 15 words per bullet.
+                - Use 'notes' field for instructor-facing context and timing.
+                - For placeholder slides, set title to "Placeholder: [Block Name]" and a single bullet like "Insert your slides here".
+
+                Return ONLY a valid JSON array. No prose, no markdown fences.
                 Schema:
                 [
                   {
-                    "title": "Activity: Think-Pair-Share",
-                    "bullets": ["Form a pair with your neighbor", "Take 2 minutes to discuss the next question"],
-                    "notes": "Activity block: Think-Pair-Share. 5 minutes."
+                    "title": "List all possible linear functions for one feature. What parameters define each?",
+                    "bullets": ["5 minutes individual"],
+                    "notes": "Prompt activity: students write down their answers before group share."
                   }
                 ]
                 """;

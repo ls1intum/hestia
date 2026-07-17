@@ -5,9 +5,10 @@ import {
   Trash2, Plus, Loader2, Info,
 } from "lucide-react";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { InlineEditText } from "./InlineEditText";
@@ -20,7 +21,7 @@ export function SortableBlockRow({
   onToggleExpand, onEditTitle, onSaveTitle, onEditStep, onSaveStep,
   onEditStepTime, onSaveStepTime,
   onEditBlockDuration, onSaveBlockDuration, onEditSectionDuration, onSaveSectionDuration,
-  onDeleteBlock, onSwitchActivity, onAddStep, onDeleteStep, isEditMode = false,
+  onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep, isEditMode = false,
 }: {
   block: DndActivityBlock;
   isExpanded: boolean;
@@ -41,13 +42,14 @@ export function SortableBlockRow({
   onSaveSectionDuration: (sectionIdx: number, v: string) => void;
   onDeleteBlock: () => void;
   onSwitchActivity: (method: string) => void;
+  onDeleteActivity: (method: string) => void;
+  onAddActivity: (method: string) => void;
   onAddStep: (text: string) => void;
   onDeleteStep: (sectionIdx: number, stepIdx: number) => void;
   isEditMode?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
-    id: block.dndId,
-    disabled: !isEditMode // Disable dragging when not in edit mode
+    id: block.dndId
   });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -57,10 +59,14 @@ export function SortableBlockRow({
   };
 
   const colorClass = phaseRowColors[block.phase] || "bg-muted/30 before:bg-transparent";
-  const allMethods = Array.from(new Set([
+  const rawMethods = Array.from(new Set([
     ...(block.methods || []),
     ...(block.sections || []).flatMap(s => s.methods || []),
   ])).filter(m => m && !m.toLowerCase().includes("lecture") && !m.toLowerCase().includes("presentation"));
+
+  const allMethods = rawMethods.filter(m => {
+    return !rawMethods.some(other => other !== m && other.toLowerCase().includes(m.toLowerCase()));
+  });
 
   const isTitleEditing = editing?.type === "title" && editing.blockId === block.dndId;
 
@@ -82,15 +88,16 @@ export function SortableBlockRow({
                 <InlineEditText
                   value={block.phaseLabel || block.phase}
                   editing={isTitleEditing}
+                  alwaysEdit={isEditMode}
                   onStartEdit={onEditTitle}
                   onSave={onSaveTitle}
                   className="font-body font-semibold text-sm"
                   disabled={!isEditMode}
                 />
-                {allMethods.length > 0 && (
+                {(allMethods.length > 0 || isEditMode) && (
                   <div className="flex items-center gap-1 flex-wrap">
-                    <div className="h-3 w-[1px] bg-border/60 mx-0.5 shrink-0" />
-                    {allMethods.map((m, j) => (
+                    {allMethods.length > 0 && <div className="h-3 w-[1px] bg-border/60 mx-0.5 shrink-0" />}
+                    {allMethods.map((m, j) => isEditMode ? (
                       <DropdownMenu key={j}>
                         <DropdownMenuTrigger asChild>
                           <div
@@ -110,9 +117,47 @@ export function SortableBlockRow({
                               Switch to {act}
                             </DropdownMenuItem>
                           ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                            onClick={e => { e.stopPropagation(); onDeleteActivity(m); }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Activity
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                    ) : (
+                      <TooltipProvider key={j}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border h-6 px-2 text-[10px] font-medium bg-primary/10 text-primary border-primary/20 shrink-0 cursor-help transition-colors hover:bg-primary/20">
+                              <Info className="h-2.5 w-2.5 opacity-50" />
+                              {m}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p className="text-[11px]">Click "Edit" in the actions menu to change or delete this activity.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     ))}
+                    {isEditMode && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 ml-0.5 text-muted-foreground hover:text-primary hover:bg-primary/10 shrink-0" title="Add activity method">
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent onClick={e => e.stopPropagation()}>
+                          {Array.from(new Set([...selectedActivities, ...DEFAULT_ACTIVITIES])).map(act => (
+                            <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onAddActivity(act); }}>
+                              Add {act}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 )}
               </div>
@@ -135,6 +180,7 @@ export function SortableBlockRow({
                 <InlineEditText
                   value={block.duration.toString()}
                   editing={editing?.type === "blockDuration" && editing.blockId === block.dndId}
+                  alwaysEdit={isEditMode}
                   onStartEdit={onEditBlockDuration}
                   onSave={onSaveBlockDuration}
                   className="w-8 text-right text-xs font-mono"
@@ -197,21 +243,19 @@ export function SortableBlockRow({
                             <InlineEditText
                               value={contentText}
                               editing={isStepEditing}
+                              alwaysEdit={isEditMode}
+                              multiline={true}
                               onStartEdit={() => onEditStep(sIdx, stIdx)}
                               onSave={v => onSaveStep(sIdx, stIdx, v)}
-                              className="flex-1 text-sm text-foreground/85 leading-snug py-0.5 truncate"
+                              className="flex-1 text-sm text-foreground/85 leading-relaxed py-0.5"
                               disabled={!isEditMode}
                             />
-                            {!isEditMode && (
-                              <div title="you don't like this prompt, you can change this by going into edit mode" className="ml-1.5 text-muted-foreground/40 hover:text-muted-foreground/80 cursor-help transition-colors shrink-0">
-                                <Info className="h-3.5 w-3.5" />
-                              </div>
-                            )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                             <InlineEditText
                               value={timeVal || "0"}
                               editing={isStepTimeEditing}
+                              alwaysEdit={isEditMode}
                               onStartEdit={() => onEditStepTime(sIdx, stIdx)}
                               onSave={v => onSaveStepTime(sIdx, stIdx, v)}
                               className="w-8 text-right text-xs font-mono"

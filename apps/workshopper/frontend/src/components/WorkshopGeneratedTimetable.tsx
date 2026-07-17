@@ -212,44 +212,204 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   };
 
   const handleAddStep = (dndId: string, text: string) => {
-    setBlocks(prev => prev.map(b => {
-      if (b.dndId !== dndId) return b;
-      const sections = b.sections ? [...b.sections] : [];
-      if (sections.length === 0) {
-        sections.push({ title: "", duration: 5, steps: [`5 min - ${text}`], methods: [], materials: [] });
-      } else {
-        const lastSection = { ...sections[sections.length - 1] };
-        lastSection.steps = [...(lastSection.steps || []), `5 min - ${text}`];
-        lastSection.duration = (lastSection.duration || 0) + 5;
-        sections[sections.length - 1] = lastSection;
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId) return b;
+        const sections = b.sections ? [...b.sections] : [];
+        if (sections.length === 0) {
+          sections.push({ title: "", duration: 5, steps: [`5 min - ${text}`], methods: [], materials: [] });
+        } else {
+          const lastSection = { ...sections[sections.length - 1] };
+          lastSection.steps = [...(lastSection.steps || []), `5 min - ${text}`];
+          lastSection.duration = (lastSection.duration || 0) + 5;
+          sections[sections.length - 1] = lastSection;
+        }
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
+      });
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
       }
-      const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-      return { ...b, sections, duration: newBlockDuration };
-    }));
+      return next;
+    });
   };
 
   const handleDeleteStep = (dndId: string, sectionIdx: number, stepIdx: number) => {
-    setBlocks(prev => prev.map(b => {
-      if (b.dndId !== dndId || !b.sections) return b;
-      const sections = b.sections.map((sec, si) => {
-        if (si !== sectionIdx) return sec;
-        const steps = (sec.steps || []).filter((_, ti) => ti !== stepIdx);
-        const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
-        return { ...sec, steps, duration: newDuration };
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId || !b.sections) return b;
+        const sections = b.sections.map((sec, si) => {
+          if (si !== sectionIdx) return sec;
+          const steps = (sec.steps || []).filter((_, ti) => ti !== stepIdx);
+          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
+          return { ...sec, steps, duration: newDuration };
+        });
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
       });
-      const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-      return { ...b, sections, duration: newBlockDuration };
-    }));
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteBlock = (dndId: string) => {
+    setBlocks(prev => {
+      const next = prev.filter(b => b.dndId !== dndId);
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteActivity = (dndId: string, methodToRemove: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId) return b;
+        const newMethods = (b.methods || []).filter(m => m !== methodToRemove);
+        const newSections = (b.sections || []).map(s => ({
+          ...s,
+          methods: (s.methods || []).filter(m => m !== methodToRemove),
+        }));
+        return { ...b, methods: newMethods, sections: newSections };
+      });
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSession({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleAddActivity = async (dndId: string, methodToAdd: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
+
+      // Try to find the existing practice/activity section to use as a baseline duration
+      const practiceSection = (block.sections || []).find(s => {
+        const t = (s.title || "").toLowerCase();
+        return t.includes("activity") || t.includes("practice") || t.includes("application");
+      });
+      const requestedDuration = practiceSection?.duration 
+        ? practiceSection.duration 
+        : Math.max(10, Math.floor((block.duration || 40) / 2));
+
+      // Generate a fresh set of sections for the new activity
+      const singleBlockSkeleton = {
+        learningGoal: initialSession.learningGoal,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: (block.objective || "") + "\nIMPORTANT: Only generate the interactive participant practice section and setup. Skip the 'Explain' or 'Lecture' phase since it was already covered.",
+          lgIndex,
+          duration: requestedDuration,
+          sections: [], // Empty sections so AI generates a fresh loop
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goals,
+          meta: { ...meta, selectedActivities: [methodToAdd] },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to add activity");
+      const newSession = await res.json();
+      
+      if (newSession.blocks?.[0]) {
+        const generatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            
+            // Append the new sections (filtering out intro/explain since it's an addition to an existing block)
+            const filteredSections = (generatedBlock.sections || []).filter((s: any) => {
+              const t = (s.title || "").toLowerCase();
+              return !t.includes("explain") && !t.includes("lecture") && !t.includes("introduction") && !t.includes("theory");
+            });
+            const newSections = [...(b.sections || []), ...filteredSections];
+            const newDuration = (b.duration || 0) + filteredSections.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
+            
+            return {
+              ...b,
+              sections: newSections,
+              duration: newDuration,
+              methods: Array.from(new Set([...(b.methods || []), methodToAdd])),
+            };
+          });
+          
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSession({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity added", description: `Added ${methodToAdd}` });
+      }
+    } catch (e) {
+      toast({ title: "Addition failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    if (!isEditMode) return;
     const { active, over } = event;
     if (over && active.id !== over.id) {
       setBlocks((items) => {
         const oldIndex = items.findIndex((item) => item.dndId === active.id);
         const newIndex = items.findIndex((item) => item.dndId === over.id);
-        return arrayMove(items, oldIndex, newIndex);
+        const next = arrayMove(items, oldIndex, newIndex);
+        if (!isEditMode && onSaveSession) {
+          setTimeout(() => {
+            onSaveSession({
+              ...initialSession,
+              title: sessionTitle,
+              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+            });
+          }, 0);
+        }
+        return next;
       });
     }
   };
@@ -318,7 +478,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         omittedGoalIndices: [],
         blocks: [{
           phase: block.phase,
-          title: block.phaseLabel,
+          title: block.phaseLabel || block.phase,
           description: block.objective,
           lgIndex,
           duration: block.duration,
@@ -341,13 +501,24 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       if (newSession.blocks?.[0]) {
         const updatedBlock = newSession.blocks[0];
         setBlocks(prev => {
-          const next = prev.map(b => b.dndId === dndId ? {
-            ...b,
-            ...updatedBlock,
-            dndId,
-            lgIndex,
-            blockId: block.blockId,
-          } : b);
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            
+            // If the backend returns a generic phase name as the label, preserve the user's custom label
+            const finalPhaseLabel = (updatedBlock.phaseLabel && updatedBlock.phaseLabel !== updatedBlock.phase)
+              ? updatedBlock.phaseLabel
+              : (b.phaseLabel || b.phase);
+
+            return {
+              ...b,
+              ...updatedBlock,
+              phaseLabel: finalPhaseLabel,
+              methods: Array.from(new Set([...(updatedBlock.methods || []), newActivity])),
+              dndId,
+              lgIndex,
+              blockId: block.blockId,
+            };
+          });
           
           if (!isEditMode && onSaveSession) {
             setTimeout(() => {
@@ -392,7 +563,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                 )}
               </h2>
               <CardDescription className="mt-1">
-                Double-click any title, activity, or step to edit it inline. Click an activity badge to switch it.
+                Edit any title, activity, or step inline. Click an activity badge to switch it.
               </CardDescription>
             </div>
           </div>
@@ -421,8 +592,10 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   onSaveBlockDuration={v => handleSaveBlockDuration(block.dndId, v)}
                   onEditSectionDuration={(sIdx) => setEditing({ type: "sectionDuration", blockId: block.dndId, sectionIdx: sIdx })}
                   onSaveSectionDuration={(sIdx, v) => handleSaveSectionDuration(block.dndId, sIdx, v)}
-                  onDeleteBlock={() => setBlocks(prev => prev.filter(b => b.dndId !== block.dndId))}
+                  onDeleteBlock={() => handleDeleteBlock(block.dndId)}
                   onSwitchActivity={act => switchActivity(block.dndId, act)}
+                  onDeleteActivity={method => handleDeleteActivity(block.dndId, method)}
+                  onAddActivity={method => handleAddActivity(block.dndId, method)}
                   onAddStep={text => handleAddStep(block.dndId, text)}
                   onDeleteStep={(sIdx, stIdx) => handleDeleteStep(block.dndId, sIdx, stIdx)}
                 />

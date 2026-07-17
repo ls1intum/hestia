@@ -64,8 +64,9 @@ export interface ActivityBlock {
 export interface SlideData {
   title: string;
   subtitle?: string;
-  bullets: string[];
+  bullets?: string[];
   notes?: string;
+  fixedInstructionFor?: string;
 }
 
 /** The full generated session returned after step 2 */

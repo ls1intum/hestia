@@ -49,47 +49,77 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
   const closeDialog = useCallback(() => { setOpenSlideDialog(null); setLightboxIndex(null); }, []);
 
   const allPrepItems = useMemo(() => {
-    const rawMethods: string[] = [];
-    const rawMaterials: string[] = [];
+    if (!session?.blocks) return [];
+    
+    const baseItems: any[] = [];
+    const contentTasks: string[] = [];
+    const activityTasks: string[] = [];
+    const materialTasks: string[] = [];
+    
+    session.blocks.forEach((block, index) => {
+        const phase = (block.phase || "").toUpperCase();
+        const labelUpper = (block.phaseLabel || block.phase || "").toUpperCase();
+        const label = block.phaseLabel || block.phase || `Block ${index + 1}`;
+        
+        const isIntro = phase.includes("WELCOME") || phase.includes("SETUP") || phase.includes("INTRODUCTION") || phase === "INTRO" || phase === "ARRIVE" || labelUpper.includes("WELCOME") || labelUpper.includes("SETUP") || labelUpper.includes("INTRODUCTION") || labelUpper.includes("ARRIVE");
+        const isClosing = phase.includes("WRAP") || phase.includes("CLOSING") || phase.includes("CONCLUSION") || phase.includes("SUMMARY") || labelUpper.includes("WRAP") || labelUpper.includes("CLOSING") || labelUpper.includes("CONCLUSION") || labelUpper.includes("SUMMARY");
+        const isCheck = phase.includes("CHECK") || labelUpper.includes("CHECK");
+        const isActivity = phase.includes("LEARNING") || phase.includes("CYCLE") || phase.includes("ACTIVATE") || phase === "CUSTOM" || isCheck || labelUpper.includes("LEARNING") || labelUpper.includes("CYCLE") || labelUpper.includes("ACTIVATE");
 
-    (session?.blocks || []).forEach(block => {
-      rawMethods.push(
-        ...(block.methods || []),
-        ...(block.sections || []).flatMap(s => s.methods || [])
-      );
-      rawMaterials.push(
-        ...(block.materials || []) as string[],
-        ...(block.sections || []).flatMap(s => s.materials || [])
-      );
+        if (isIntro) {
+             contentTasks.push(`"${label}" (Welcome/Setup slides)`);
+        }
+        else if (isClosing) {
+             contentTasks.push(`"${label}" (Closing/Summary slides)`);
+        }
+        else if (isActivity) {
+             if (isCheck) {
+                 activityTasks.push(`"${label}" (Quiz/Poll Questions)`);
+                 activityTasks.push(`"${label}" (Check debrief/summary)`);
+             } else {
+                 contentTasks.push(`"${label}" (Lecture Content)`);
+                 activityTasks.push(`"${label}" (Prompts and Debriefs)`);
+             }
+        }
+        
+        const materials = [...(block.materials || []), ...(block.sections || []).flatMap(s => s.materials || [])]
+            .filter(Boolean)
+            .map(m => String(m).trim())
+            .filter(m => {
+                const lower = m.toLowerCase();
+                return !lower.includes("slide") && !lower.includes("prompt card");
+            });
+        const uniqueMaterials = Array.from(new Set(materials));
+        if (uniqueMaterials.length > 0) {
+             materialTasks.push(`"${label}": ${uniqueMaterials.join(', ')}`);
+        }
     });
 
-    const uniqueMethods = Array.from(new Map(rawMethods
-      .filter(m => m && !String(m).toLowerCase().includes("lecture") && !String(m).toLowerCase().includes("presentation"))
-      .map(m => [String(m).toLowerCase().trim(), m])
-    ).values());
-
-    const uniqueMaterials = Array.from(new Map(rawMaterials
-      .filter(Boolean)
-      .map(m => [String(m).toLowerCase().trim(), m])
-    ).values());
-
-    const baseItems = [
-      { id: 'slide-all', label: 'Finalize all slides' }
-    ];
-
-    if (uniqueMaterials.length > 0) {
-      baseItems.push({
-        id: 'mat-all',
-        label: `Prepare all materials: ${uniqueMaterials.join(', ')}`
-      });
+    if (contentTasks.length > 0) {
+        baseItems.unshift({
+            id: 'all-content',
+            label: 'Replace all placeholder slides with your own lecture and intro/closing content',
+            category: 'content',
+            subTodos: contentTasks.map((task, i) => ({ id: `cnt-sub-${i}`, label: task }))
+        });
     }
 
-    if (uniqueMethods.length > 0) {
-      baseItems.push({
-        id: 'meth-all',
-        label: `Review all mechanics: ${uniqueMethods.join(', ')}`,
-        methods: uniqueMethods
-      } as any);
+    if (activityTasks.length > 0) {
+        baseItems.push({
+            id: 'all-activities',
+            label: 'Review and finalize all activity prompts, quizzes, and debriefs',
+            category: 'activity',
+            subTodos: activityTasks.map((task, i) => ({ id: `act-sub-${i}`, label: task }))
+        });
+    }
+
+    if (materialTasks.length > 0) {
+        baseItems.push({
+            id: 'all-materials',
+            label: 'Prepare all additional materials for the session',
+            category: 'prep',
+            subTodos: materialTasks.map((task, i) => ({ id: `mat-sub-${i}`, label: task }))
+        });
     }
 
     return baseItems;
@@ -98,7 +128,34 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
   const toggleTask = (taskId: string) => {
     setCompletedTasks(prev => {
       const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+      const item = allPrepItems.find((i: any) => i.id === taskId);
+      
+      if (next.has(taskId)) {
+        next.delete(taskId);
+        if (item && item.subTodos) item.subTodos.forEach((sub: any) => next.delete(sub.id));
+      } else {
+        next.add(taskId);
+        if (item && item.subTodos) item.subTodos.forEach((sub: any) => next.add(sub.id));
+      }
+      
+      const isAllDone = allPrepItems.length > 0 && allPrepItems.every((item: any) => next.has(item.id));
+      onUpdateTasks?.(Array.from(next), isAllDone);
+      return next;
+    });
+  };
+
+  const toggleSubTask = (parentId: string, subId: string) => {
+    setCompletedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId); else next.add(subId);
+      
+      const item = allPrepItems.find((i: any) => i.id === parentId);
+      if (item && item.subTodos) {
+        const allSubDone = item.subTodos.every((sub: any) => next.has(sub.id));
+        if (allSubDone) next.add(parentId);
+        else next.delete(parentId);
+      }
+
       const isAllDone = allPrepItems.length > 0 && allPrepItems.every((item: any) => next.has(item.id));
       onUpdateTasks?.(Array.from(next), isAllDone);
       return next;
@@ -223,11 +280,11 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
                                   >
                                     {item.label}
                                   </span>
-                                  {item.id === 'meth-all' && (
+                                  {item.subTodos && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); setShowMechanics(!showMechanics); }}
-                                      className={`shrink-0 transition-colors p-1.5 rounded-md hover:bg-muted ${showMechanics ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
-                                      title="Show detailed mechanics"
+                                      onClick={(e) => { e.stopPropagation(); toggleCollapsed(item.id); }}
+                                      className={`shrink-0 transition-colors p-1.5 rounded-md hover:bg-muted ${!collapsed[item.id] ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
+                                      title="Show details"
                                     >
                                       <Info className="h-4 w-4" />
                                     </button>
@@ -238,17 +295,34 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
                                     You can incorporate the generated slides into your own lecture slides or vice versa.
                                   </p>
                                 )}
+                                {item.category && (
+                                  <div className="mt-2.5">
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
+                                      item.category === 'tech' ? 'bg-slate-200/60 text-slate-700' :
+                                      item.category === 'content' ? 'bg-[#f0e8d5] text-[#7a5e3a]' :
+                                      item.category === 'activity' ? 'bg-[#e0eceb] text-[#3f6567]' :
+                                      'bg-[#fdeed9] text-[#c07a30]' // prep
+                                    }`}>
+                                      {item.category}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                            {item.id === 'meth-all' && showMechanics && (
+                            {item.subTodos && !collapsed[item.id] && (
                               <div className="mt-2 p-3 bg-muted/30 rounded-md border border-border/50 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Detailed Mechanics</h4>
-                                {((item as any).methods || []).map((m: string, idx: number) => (
-                                  <div key={idx} className="text-xs font-body leading-relaxed">
-                                    <span className="font-bold text-foreground/80">{m}:</span>{" "}
-                                    <span className="text-muted-foreground">{getMechanicDescription(m)}</span>
-                                  </div>
-                                ))}
+                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Required Updates</h4>
+                                {item.subTodos.map((task: any) => {
+                                  const isSubDone = completedTasks.has(task.id);
+                                  return (
+                                    <div key={task.id} className={`flex items-start gap-2 text-xs font-body leading-relaxed group/sub cursor-pointer ${isSubDone ? 'opacity-60' : ''}`} onClick={(e) => { e.stopPropagation(); toggleSubTask(item.id, task.id); }}>
+                                      <div className={`mt-0.5 w-3.5 h-3.5 rounded-[3px] border ${isSubDone ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600' : 'border-muted-foreground/40 group-hover/sub:border-primary/50'} flex-shrink-0 flex items-center justify-center transition-colors`}>
+                                        {isSubDone && <Check className="h-2.5 w-2.5" />}
+                                      </div>
+                                      <span className={`${isSubDone ? 'line-through decoration-muted-foreground/40 text-muted-foreground' : 'text-foreground/90 select-none'}`}>{task.label}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -306,15 +380,20 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
                                 )}
                               </div>
                             </div>
-                            {item.id === 'meth-all' && showMechanics && (
+                            {item.subTodos && !collapsed[item.id] && (
                               <div className="mt-2 p-3 bg-muted/20 rounded-md border border-border/30 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200 opacity-80">
-                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Detailed Mechanics</h4>
-                                {((item as any).methods || []).map((m: string, idx: number) => (
-                                  <div key={idx} className="text-xs font-body leading-relaxed">
-                                    <span className="font-bold text-foreground/60">{m}:</span>{" "}
-                                    <span className="text-muted-foreground/80">{getMechanicDescription(m)}</span>
-                                  </div>
-                                ))}
+                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Required Updates</h4>
+                                {item.subTodos.map((task: any) => {
+                                  const isSubDone = completedTasks.has(task.id);
+                                  return (
+                                    <div key={task.id} className="flex items-start gap-2 text-xs font-body leading-relaxed group/sub cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleSubTask(item.id, task.id); }}>
+                                      <div className={`mt-0.5 w-3.5 h-3.5 rounded-[3px] border ${isSubDone ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600' : 'border-muted-foreground/40 group-hover/sub:border-primary/50'} flex-shrink-0 flex items-center justify-center transition-colors`}>
+                                        {isSubDone && <Check className="h-2.5 w-2.5" />}
+                                      </div>
+                                      <span className={`${isSubDone ? 'line-through decoration-muted-foreground/40 text-muted-foreground' : 'text-foreground/90 select-none'}`}>{task.label}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

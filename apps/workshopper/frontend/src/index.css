@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@400;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,6 +6,28 @@
 /* ── HESTIA Design System ─────────────────────────────────────────── */
 @layer base {
   :root {
+    --hestia-bg:              #e9e5db;
+    --hestia-surface:         #ffffff;
+    --hestia-primary:         #865c1d;
+    --hestia-text:            #2c2420;
+    --hestia-accent:          #386570;
+    --hestia-warning:         #D4880A;
+    --hestia-danger:          #C0281F;
+    --hestia-primary-hover:   color-mix(in srgb, var(--hestia-primary) 85%, black);
+    --hestia-primary-muted:   color-mix(in srgb, var(--hestia-primary) 12%, var(--hestia-bg));
+    --hestia-border:          color-mix(in srgb, var(--hestia-text) 15%, transparent);
+    --hestia-text-muted:      color-mix(in srgb, var(--hestia-text) 60%, transparent);
+    --hestia-font-display:    'Playfair Display', Georgia, serif;
+    --hestia-font-body:       'Inter', system-ui, sans-serif;
+    --hestia-font-mono:       'JetBrains Mono', ui-monospace, monospace;
+    --hestia-radius-sm:       0.375rem;
+    --hestia-radius-md:       0.5rem;
+    --hestia-radius-lg:       0.75rem;
+    --hestia-radius-xl:       1rem;
+    --hestia-radius-full:     9999px;
+    --hestia-shadow-sm:       0 1px 2px rgba(0,0,0,0.06);
+    --hestia-shadow-md:       0 4px 12px rgba(0,0,0,0.08);
+
     /* Light Mode — HESTIA */
     --background: 40 21% 87%;
     --foreground: 10 15% 15%;

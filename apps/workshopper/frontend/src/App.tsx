@@ -603,7 +603,16 @@ export default function App() {
             meta={workshopInput as WorkshopInput}
             completedTasks={completedTasks}
             slidesCache={slidesCache}
-            setSlidesCache={setSlidesCache}
+            setSlidesCache={(val) => {
+              setSlidesCache((prev) => {
+                const nextCache = typeof val === 'function' ? val(prev) : val;
+                const newSession = { ...session, slides: nextCache };
+                setSession(newSession);
+                // Background save of the draft so slides are persisted
+                persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, entityType, currentLectureId);
+                return nextCache;
+              });
+            }}
             onUpdateTasks={(tasks, isAllDone) => {
               setCompletedTasks(tasks);
               let nextStep = isFinished ? "finished" : "prepare";
