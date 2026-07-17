@@ -42,14 +42,14 @@ type Row = {
   childCount: number;
 };
 
-type FilterKey = "role" | "bloom" | "solo" | "session";
-type SortKey = "text" | "bloom" | "solo" | "items" | "session";
+type FilterKey = "role" | "bloom" | "session";
+type SortKey = "text" | "bloom" | "items" | "session";
 type SortState = { key: SortKey; dir: 1 | -1 } | null;
 
 // Shared grid template so the sticky header row and every body row line their columns up: a
 // flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
 // rows can never drift apart.
-const GRID_COLS = "minmax(240px,1fr) 108px 128px 138px 72px 152px";
+const GRID_COLS = "minmax(240px,1fr) 108px 128px 72px 152px";
 
 const BLOOM_ORDER = [
   "REMEMBER",
@@ -58,13 +58,6 @@ const BLOOM_ORDER = [
   "ANALYZE",
   "EVALUATE",
   "CREATE",
-];
-const SOLO_ORDER = [
-  "PRESTRUCTURAL",
-  "UNISTRUCTURAL",
-  "MULTISTRUCTURAL",
-  "RELATIONAL",
-  "EXTENDED_ABSTRACT",
 ];
 const ROLE_ORDER: CompetencyRole[] = [
   "competency",
@@ -83,8 +76,6 @@ function valueOf(row: Row, key: FilterKey): string {
       return row.role;
     case "bloom":
       return row.goal.bloomLevel ?? "";
-    case "solo":
-      return row.goal.soloLevel ?? "";
     case "session":
       return sessionTitleOf(row.goal);
   }
@@ -112,15 +103,25 @@ const COLUMNS: {
   { key: "text", label: "Learning goal", sortKey: "text" },
   { key: "role", label: "Level", filterKey: "role" },
   { key: "bloom", label: "Bloom", sortKey: "bloom", filterKey: "bloom" },
-  { key: "solo", label: "SOLO", sortKey: "solo", filterKey: "solo" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
   { key: "session", label: "Session", sortKey: "session", filterKey: "session" },
 ];
 
 export default function CompetencyTree({
   goals,
+  onUpdate,
+  onDelete,
 }: {
   goals: LearningGoal[];
+  onUpdate: (
+    goalId: number,
+    changes: {
+      text?: string;
+      bloomLevel?: LearningGoal["bloomLevel"];
+      soloLevel?: LearningGoal["soloLevel"];
+    },
+  ) => void;
+  onDelete: (goal: LearningGoal) => void;
 }) {
   const forest = useMemo(() => buildCompetencyForest(goals), [goals]);
   const rows = useMemo(() => flattenForest(forest), [forest]);
@@ -142,7 +143,6 @@ export default function CompetencyTree({
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     role: new Set(),
     bloom: new Set(),
-    solo: new Set(),
     session: new Set(),
   });
   const [sort, setSort] = useState<SortState>(null);
@@ -197,7 +197,6 @@ export default function CompetencyTree({
     return {
       role: ordered(ROLE_ORDER, present("role")),
       bloom: ordered(BLOOM_ORDER, present("bloom")),
-      solo: ordered(SOLO_ORDER, present("solo")),
       session: [...present("session")].sort((a, b) => a.localeCompare(b)),
     };
   }, [rows]);
@@ -211,8 +210,6 @@ export default function CompetencyTree({
           return row.goal.text ?? "";
         case "bloom":
           return BLOOM_ORDER.indexOf(row.goal.bloomLevel ?? "");
-        case "solo":
-          return SOLO_ORDER.indexOf(row.goal.soloLevel ?? "");
         case "items":
           return row.childCount;
         case "session":
@@ -339,7 +336,6 @@ export default function CompetencyTree({
     setFilters({
       role: new Set(),
       bloom: new Set(),
-      solo: new Set(),
       session: new Set(),
     });
   };
@@ -552,10 +548,15 @@ export default function CompetencyTree({
           </div>
         </div>
       </div>
+      {/* The modal always gets the freshest goal for its id, so in-modal edits survive refetches. */}
       <CompetencyGoalModal
-        goal={detail?.goal ?? null}
+        goal={
+          detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null
+        }
         role={detail?.role}
         onClose={() => setDetail(null)}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
       />
     </div>
   );
@@ -756,14 +757,6 @@ function GridRow({
         {row.goal.bloomLevel && (
           <Pill
             label={titleCase(row.goal.bloomLevel)}
-            color="var(--hestia-text-muted)"
-          />
-        )}
-      </div>
-      <div role="gridcell" className="px-2.5 py-1.5">
-        {row.goal.soloLevel && (
-          <Pill
-            label={titleCase(row.goal.soloLevel)}
             color="var(--hestia-text-muted)"
           />
         )}

@@ -46,13 +46,27 @@ export default function CompetencyGraph({
   goals,
   onEdit,
   onDelete,
+  onUpdate,
 }: {
   goals: LearningGoal[];
   onEdit: (goal: LearningGoal) => void;
   onDelete: (goal: LearningGoal) => void;
+  onUpdate: (
+    goalId: number,
+    changes: {
+      text?: string;
+      bloomLevel?: LearningGoal["bloomLevel"];
+      soloLevel?: LearningGoal["soloLevel"];
+    },
+  ) => void;
 }) {
   const forest = useMemo(() => buildCompetencyForest(goals), [goals]);
   const actions = { onEdit, onDelete };
+  // The detail modal always gets the freshest goal for its id, so in-modal edits survive refetches.
+  const goalById = useMemo(
+    () => new Map(goals.map((g) => [g.id, g])),
+    [goals],
+  );
 
   // The node whose classification the map-own detail overlay is showing.
   const [detail, setDetail] = useState<CompetencyNode | null>(null);
@@ -270,7 +284,7 @@ export default function CompetencyGraph({
             );
           })}
         </div>
-        <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
+        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
       </div>
     );
   }
@@ -544,7 +558,7 @@ export default function CompetencyGraph({
           </div>
         )}
       </div>
-      <CompetencyGoalModal goal={detail?.goal ?? null} role={detail?.role} onClose={() => setDetail(null)} />
+      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
     </div>
   );
 }

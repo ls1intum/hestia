@@ -153,6 +153,16 @@ export default function CoursePage() {
     },
   });
 
+  // In-modal edits (goal text, Bloom/SOLO dot clicks) go straight through the update mutation.
+  const updateGoal = (
+    goalId: number,
+    changes: {
+      text?: string;
+      bloomLevel?: LearningGoal["bloomLevel"];
+      soloLevel?: LearningGoal["soloLevel"];
+    },
+  ) => updateGoalMutation.mutate({ goalId, ...changes });
+
   const toggleApproved = (goal: LearningGoal) =>
     updateGoalMutation.mutate({
       goalId: goal.id!,
@@ -677,7 +687,11 @@ export default function CoursePage() {
       {/* Competency table view: the forest as a filterable Excel-style tree-grid. */}
       {goals.length > 0 && goalsView === "table" && (
         <div className="mx-auto w-full max-w-5xl">
-          <CompetencyTree goals={goals} />
+          <CompetencyTree
+            goals={goals}
+            onUpdate={updateGoal}
+            onDelete={setGoalToDelete}
+          />
         </div>
       )}
 
@@ -688,13 +702,21 @@ export default function CoursePage() {
           goals={goals}
           onEdit={setEditGoal}
           onDelete={setGoalToDelete}
+          onUpdate={updateGoal}
         />
       )}
 
+      {/* The modal always gets the freshest goal for its id, so in-modal edits survive refetches. */}
       <CompetencyGoalModal
-        goal={detailGoal}
+        goal={
+          detailGoal
+            ? (goals.find((g) => g.id === detailGoal.id) ?? detailGoal)
+            : null
+        }
         relationships={detailGoal ? groupRelationships(detailGoal) : []}
         onClose={() => setDetailGoal(null)}
+        onUpdate={updateGoal}
+        onDelete={setGoalToDelete}
       />
     </div>
   );
