@@ -8,8 +8,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Derives a course's <em>terminal competencies</em> — the applied capabilities a student should be
- * able to perform after the whole course — by clustering its already-extracted, higher-Bloom goals
- * across topics, top-down rather than bottom-up.
+ * able to perform after the whole course — and assigns all of the course's extracted goals to them
+ * in one course-wide LLM call.
  *
  * <p>This keeps "understand" goals at "understand" in the ordinary extracted hierarchy. A
  * competency tree instead needs the <em>doing</em>
@@ -22,15 +22,17 @@ import org.springframework.stereotype.Service;
  *       their own right;</li>
  *   <li>clusters across the whole course in a single call, so a capability spanning several topics
  *       is named once instead of split per session;</li>
+ *   <li>assigns every input goal, including lower-Bloom knowledge goals, through complete
+ *       {@code supporting} index lists;</li>
  *   <li>drops course-administration / tooling-trivia candidates that carry a high-Bloom verb but are
  *       not learning competencies;</li>
  *   <li>does <b>not</b> target a fixed number — it names as many distinct competencies as the
  *       material genuinely supports.</li>
  * </ul>
  *
- * <p>The caller selects which goals to pass (typically the course's {@code APPLY}+ goals); each
- * candidate carries its Bloom level so the prompt can tell seeds from supporting knowledge. The
- * returned {@code supporting} indices point back into the candidate list positionally.
+ * <p>The caller passes every session/exercise goal; each candidate carries its Bloom level so the
+ * prompt can tell seeds from supporting knowledge. The returned {@code supporting} indices are the
+ * complete per-goal assignment and point back into the candidate list positionally.
  */
 @Service
 public class TerminalCompetencySynthesizer {
@@ -44,8 +46,9 @@ public class TerminalCompetencySynthesizer {
             would list as "by the end of this course you can ...", each built around a concrete DOING
             verb (deploy, build, configure, secure, automate, design ...).
 
-            Below are the course's higher-level learning goals, each prefixed with its index in square
-            brackets and its Bloom level in parentheses. They come from many different sessions.
+            Below are ALL of the course's session/exercise learning goals, each prefixed with its index
+            in square brackets and its Bloom level in parentheses. They come from many different
+            sessions and include higher-level goals as well as lower-level knowledge goals.
 
             How to read the input:
               - APPLY and CREATE goals are the SEEDS: they describe things the student actually does and
@@ -69,9 +72,13 @@ public class TerminalCompetencySynthesizer {
                 folds into a broader competency before keeping it standalone.
 
             Other rules:
+              - ASSIGNMENT: use each competency's supporting list to assign every input goal to exactly
+                ONE competency. This includes ANALYZE, EVALUATE, REMEMBER and UNDERSTAND goals. The
+                first matching competency in list order wins if a goal appears more than once.
               - COVERAGE: every APPLY and CREATE candidate must end up under at least one competency.
                 If a genuine doing-capability fits none of the broad competencies, that is a signal to
-                ADD its own competency for it — NOT to drop it.
+                ADD its own competency for it — NOT to drop it. Likewise, place every lower-level goal
+                under the best-fit competency when it supports one.
               - The ONLY candidates you may leave unassigned are course administration, logistics,
                 exam/submission mechanics, ONE-OFF tool usage (e.g. a tunneling utility), or a single
                 exercise's throwaway implementation task — these are not course-level competencies.
@@ -86,8 +93,9 @@ public class TerminalCompetencySynthesizer {
 
             For each terminal competency return:
               - text: the competency as a single concise sentence built around ONE action verb.
-              - supporting: the indices (the numbers in square brackets) of the candidate goals this
-                competency genuinely builds on.
+              - supporting: the complete list of indices (the numbers in square brackets) of the
+                candidate goals assigned to this competency. Do not use supporting as sparse hints:
+                every non-administrative candidate should occur in exactly one supporting list.
 
             Candidate goals:
             ---
@@ -102,11 +110,11 @@ public class TerminalCompetencySynthesizer {
     }
 
     /**
-     * Clusters the course's candidate goals into its terminal competencies.
+     * Clusters all course candidate goals into terminal competencies and assigns each relevant goal
+     * through the returned {@code supporting} indices.
      *
-     * @param candidates    the course's higher-Bloom goals (typically {@code APPLY}+), each with its
-     *                      Bloom level; the returned {@code supporting} indices point back into this
-     *                      list positionally.
+     * @param candidates    every session/exercise goal in the course, each with its Bloom level; the
+     *                      returned {@code supporting} indices point back into this list positionally.
      * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
      * @return zero or more terminal competencies; empty when there is nothing to cluster.
      */

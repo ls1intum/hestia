@@ -3,10 +3,11 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import java.util.List;
 
 /**
- * The result of the competency-tree <em>expansion</em> pass (LAYER 2, pass B) for ONE terminal
- * competency. The caller has already split that competency's assigned goals by Bloom into its
- * <em>sub-skills</em> (the {@code APPLY}/{@code CREATE} doing-goals) and its candidate <em>knowledge</em>
- * goals (the lower-Bloom ones). This pass arranges them into the fixed three-tier shape
+ * The result of the course-wide competency-tree <em>expansion</em> pass for ONE terminal competency.
+ * The caller has already split that competency's assigned goals by Bloom into its
+ * <em>sub-skills</em> (the {@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE} doing-goals)
+ * and its candidate <em>knowledge</em> goals (the lower-Bloom ones). This pass arranges them into the
+ * fixed three-tier shape
  * {@code terminal → sub-skill → knowledge}: it attaches each knowledge goal under the sub-skill it
  * supports, and — because the lowest node must always be a knowledge aspect — names the knowledge a
  * sub-skill clearly needs but the material does NOT cover, as gap nodes.
@@ -19,13 +20,14 @@ import java.util.List;
  * needs but no sub-skill covers (tier 2); to keep the lowest node a knowledge aspect it must bottom
  * out in knowledge — existing knowledge re-mapped under it and/or its own tier-3 knowledge gaps.
  *
+ * @param competencyIndex the zero-based index of the terminal competency in the expansion request.
  * @param knowledge        each grounded knowledge goal attached under the sub-skill it supports.
  * @param gaps             "should-be-taught" knowledge an existing sub-skill needs but the material
  *                         lacks; persisted as unanchored {@code GAP}-origin goals.
  * @param missingSubSkills doing-capabilities the competency needs but no sub-skill covers; each a
  *                         {@code GAP}-origin sub-skill node bottoming out in knowledge.
  */
-public record CompetencyExpansion(List<KnowledgeLink> knowledge, List<Gap> gaps,
+public record CompetencyExpansion(int competencyIndex, List<KnowledgeLink> knowledge, List<Gap> gaps,
                                   List<MissingSubSkill> missingSubSkills) {
 
     public CompetencyExpansion {
