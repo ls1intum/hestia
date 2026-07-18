@@ -232,11 +232,7 @@ export interface components {
             /** Format: int32 */
             documentsProcessed?: number;
             /** Format: int32 */
-            candidatesExtracted?: number;
-            /** Format: int32 */
             goalsCreated?: number;
-            /** Format: int32 */
-            goalsDeduplicated?: number;
             /** Format: int32 */
             terminalCompetencies?: number;
             /** Format: int32 */
@@ -371,7 +367,7 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "OUTLINING" | "PARSING" | "EXTRACTING" | "CONSOLIDATING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
+            phase?: "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */

@@ -7,10 +7,10 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
 /**
- * Consolidates the fine-grained candidate goals extracted from a single session's chunks into the
- * few broad outcomes the session as a whole teaches. This is the second stage of the two-stage
- * extraction: the per-chunk pass ({@link ExtractionService}) over-produces narrow candidates from
- * 8000-character windows, and this stage — seeing every candidate of one session at once together
+ * Consolidates the fine-grained candidate goals extracted from a single fallback session's chunks into
+ * the few broad outcomes the session as a whole teaches. This is the second stage of the legacy
+ * fallback extraction: the per-chunk pass ({@link ExtractionService}) over-produces narrow candidates
+ * from configured-size windows, and this stage — seeing every candidate of one session at once together
  * with the session title — merges overlapping and narrow candidates into the handful of broad,
  * lecture-level outcomes an instructor would actually state.
  *

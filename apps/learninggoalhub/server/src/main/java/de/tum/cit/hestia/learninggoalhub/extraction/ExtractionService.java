@@ -7,10 +7,10 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
 /**
- * First stage of the two-stage extraction: reads one chunk (an 8000-character window of a session's
- * text) in isolation and returns the learning-goal CANDIDATES it conveys. Because a chunk is only a
- * slice of a session, this stage is deliberately exhaustive rather than selective — it captures every
- * candidate it can find. The {@link SessionGoalConsolidator} then sees all of a session's candidates
+ * First stage of the legacy fallback extraction: reads one configured-size chunk of a session's text
+ * in isolation and returns the learning-goal CANDIDATES it conveys. Because a chunk is only a slice of
+ * a session, this stage is deliberately exhaustive rather than selective — it captures every candidate
+ * it can find. The {@link SessionGoalConsolidator} then sees all of a fallback session's candidates
  * together and merges them into the handful of broad outcomes the session actually teaches, so the
  * "a lecture has only a few broad goals" judgement is made there, where the whole session is visible.
  */

@@ -2,7 +2,6 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
-import de.tum.cit.hestia.learninggoalhub.dedup.GoalDeduplicator;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -37,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -52,6 +52,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v1";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -59,7 +60,9 @@ public class ExtractionRunner {
     private final GoalSourceRepository goalSourceRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
     private final ExtractionService extractionService;
+    private final SessionExtractionService sessionExtractionService;
     private final SessionGoalConsolidator sessionGoalConsolidator;
+    private final ExtractionRunAuditService extractionRunAuditService;
     private final GoalCandidateRepository goalCandidateRepository;
     private final DocumentSectionRepository documentSectionRepository;
     private final TerminalCompetencySynthesizer terminalCompetencySynthesizer;
@@ -68,9 +71,10 @@ public class ExtractionRunner {
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
     private final EmbeddingService embeddingService;
-    private final GoalDeduplicator goalDeduplicator;
     private final ExtractionProgressTracker progressTracker;
     private final int parallelism;
+    private final int directMaxChars;
+    private final String configuredDefaultModel;
     private final int taxonomyBatchSize;
     private final int embeddingBatchSize;
 
@@ -80,7 +84,9 @@ public class ExtractionRunner {
                             GoalSourceRepository goalSourceRepository,
                             GoalRelationshipRepository goalRelationshipRepository,
                             ExtractionService extractionService,
+                            SessionExtractionService sessionExtractionService,
                             SessionGoalConsolidator sessionGoalConsolidator,
+                            ExtractionRunAuditService extractionRunAuditService,
                             GoalCandidateRepository goalCandidateRepository,
                             DocumentSectionRepository documentSectionRepository,
                             TerminalCompetencySynthesizer terminalCompetencySynthesizer,
@@ -89,9 +95,10 @@ public class ExtractionRunner {
                             HierarchyNodeRepository hierarchyNodeRepository,
                             TaxonomyService taxonomyService,
                             EmbeddingService embeddingService,
-                            GoalDeduplicator goalDeduplicator,
                             ExtractionProgressTracker progressTracker,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
+                            @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
+                            @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
                             @Value("${hestia.embedding.batch-size:64}") int embeddingBatchSize) {
         this.courseRepository = courseRepository;
@@ -100,7 +107,9 @@ public class ExtractionRunner {
         this.goalSourceRepository = goalSourceRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
         this.extractionService = extractionService;
+        this.sessionExtractionService = sessionExtractionService;
         this.sessionGoalConsolidator = sessionGoalConsolidator;
+        this.extractionRunAuditService = extractionRunAuditService;
         this.goalCandidateRepository = goalCandidateRepository;
         this.documentSectionRepository = documentSectionRepository;
         this.terminalCompetencySynthesizer = terminalCompetencySynthesizer;
@@ -109,9 +118,10 @@ public class ExtractionRunner {
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
         this.embeddingService = embeddingService;
-        this.goalDeduplicator = goalDeduplicator;
         this.progressTracker = progressTracker;
         this.parallelism = parallelism;
+        this.directMaxChars = directMaxChars;
+        this.configuredDefaultModel = configuredDefaultModel;
         this.taxonomyBatchSize = taxonomyBatchSize;
         this.embeddingBatchSize = embeddingBatchSize;
     }
@@ -126,20 +136,31 @@ public class ExtractionRunner {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
 
+        List<Document> documents = documentRepository.findByCourseId(courseId);
+        String promptVersion = promptVersionFor(documents);
+        String effectiveModel = modelOverride == null || modelOverride.isBlank()
+                ? configuredDefaultModel : modelOverride;
+        if (effectiveModel != null && effectiveModel.isBlank()) {
+            effectiveModel = null;
+        }
+        Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion, runParams());
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         try {
-            ExtractionSummary summary = doRun(course, modelOverride, run);
+            ExtractionSummary summary = doRun(course, documents, modelOverride, run);
             run.succeed(summary);
+            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.SUCCEEDED, null,
+                    summary.goalsCreated(), promptVersion);
             return summary;
         } catch (RuntimeException ex) {
-            run.fail(ex.getMessage());
+            String error = errorMessage(ex);
+            run.fail(error);
+            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.FAILED, error, null, promptVersion);
             throw ex;
         }
     }
 
-    private ExtractionSummary doRun(Course course, String modelOverride, ExtractionProgressTracker.Run run) {
-        List<Document> documents = documentRepository.findByCourseId(course.getId());
-
+    private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
+                                    ExtractionProgressTracker.Run run) {
         // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
         // one module root. Sessions come from the document's persisted structural sections (PDF
         // bookmarks, detected deterministically at upload); a document with none is one session.
@@ -158,77 +179,50 @@ public class ExtractionRunner {
             }
         }
 
-        // Each session's text range is chunked and every chunk inherits that session's node directly,
-        // by offset — fully deterministic, no LLM section guessing.
+        // Each session gets the complete text range of its structural node. The extraction phase below
+        // chooses the direct or legacy chunked path for each session independently.
         run.phase(ExtractionProgressTracker.Phase.PARSING, documents.size());
-        List<PendingChunk> chunks = new ArrayList<>();
+        List<SessionUnit> sessions = new ArrayList<>();
         for (Document d : documents) {
             String text = d.getRawText();
             if (text != null && !text.isBlank()) {
                 for (Unit unit : unitsByDocument.getOrDefault(d.getId(), List.of())) {
                     String unitText = text.substring(unit.start(), Math.min(unit.end(), text.length()));
-                    for (String chunkText : documentChunker.chunk(unitText)) {
-                        chunks.add(new PendingChunk(d, unit.node(), chunkText));
+                    if (!unitText.isBlank()) {
+                        sessions.add(new SessionUnit(d, unit.node(), unit.node().getLabel(), unitText));
                     }
                 }
             }
             run.increment();
         }
 
-        run.phase(ExtractionProgressTracker.Phase.EXTRACTING, chunks.size());
-        List<ChunkExtraction> extractions;
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
-        try {
-            List<CompletableFuture<ChunkExtraction>> futures = chunks.stream()
-                    .map(c -> CompletableFuture.supplyAsync(
-                            () -> {
-                                List<ExtractedGoal> goals = extractionService.extract(c.text(), modelOverride);
-                                run.increment();
-                                return new ChunkExtraction(c.document(), c.node(), goals);
-                            },
-                            executor))
-                    .toList();
-            extractions = futures.stream().map(CompletableFuture::join).toList();
-        } finally {
-            executor.shutdown();
-        }
+        run.phase(ExtractionProgressTracker.Phase.EXTRACTING, sessions.size());
+        List<SessionExtraction> extractedSessions = extractSessions(sessions, modelOverride, run);
+        SessionAssembly assembly = assembleSessions(course, extractedSessions);
 
-        // Second extraction stage: the per-chunk pass above over-produces narrow candidates from
-        // isolated 8000-char windows. Here each session's candidates are consolidated — with the whole
-        // session in view — into the few broad outcomes it teaches, replacing the old reliance on
-        // embedding-dedup to collapse near-duplicate fragments. Candidates are persisted for
-        // traceability and the consolidated goals carry their provenance forward.
-        Consolidation consolidation = consolidateSessions(course, extractions, modelOverride, run);
-
-        List<ClassifiedGoal> classified = classifyInParallel(consolidation.sessionGoals(), modelOverride, run);
+        List<ClassifiedGoal> classified = classifyInParallel(assembly.sessionGoals(), modelOverride, run);
         List<EnrichedGoal> enriched = embedInParallel(classified, run);
 
         run.phase(ExtractionProgressTracker.Phase.PERSISTING, enriched.size());
         int goalsCreated = 0;
-        int goalsDeduplicated = 0;
         for (EnrichedGoal eg : enriched) {
             ExtractedGoal e = eg.classified().extracted();
             Document document = eg.classified().document();
 
-            LearningGoal target = goalDeduplicator.findDuplicate(course.getId(), eg.embedding()).orElse(null);
-            if (target == null) {
-                LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
-                HierarchyNode node = eg.classified().node();
-                if (node != null) {
-                    goal.setHierarchyNode(node);
-                }
-                if (eg.classified().classification() != null) {
-                    goal.setBloomLevel(eg.classified().classification().bloom());
-                    goal.setSoloLevel(eg.classified().classification().solo());
-                }
-                if (eg.embedding() != null) {
-                    goal.setEmbedding(eg.embedding());
-                }
-                target = goalRepository.saveAndFlush(goal);
-                goalsCreated++;
-            } else {
-                goalsDeduplicated++;
+            LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
+            HierarchyNode node = eg.classified().node();
+            if (node != null) {
+                goal.setHierarchyNode(node);
             }
+            if (eg.classified().classification() != null) {
+                goal.setBloomLevel(eg.classified().classification().bloom());
+                goal.setSoloLevel(eg.classified().classification().solo());
+            }
+            if (eg.embedding() != null) {
+                goal.setEmbedding(eg.embedding());
+            }
+            LearningGoal target = goalRepository.saveAndFlush(goal);
+            goalsCreated++;
 
             GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
             if (!goalSourceRepository.existsById(sourceId)) {
@@ -243,9 +237,8 @@ public class ExtractionRunner {
                 goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(), page));
             }
 
-            // Record which raw candidates this (possibly deduplicated) goal was consolidated from, so
-            // the goal_candidate audit trail points at the goal that actually surfaced.
-            List<GoalCandidate> supporters = consolidation.provenance().get(e);
+            // Only fallback outcomes have raw candidates to connect to their surfaced goal.
+            List<GoalCandidate> supporters = assembly.provenance().get(e);
             if (supporters != null) {
                 for (GoalCandidate candidate : supporters) {
                     candidate.setConsolidatedGoal(target);
@@ -255,92 +248,132 @@ public class ExtractionRunner {
             run.increment();
         }
 
-        // Drop units the outline detected but the extraction routed no goals to (e.g. a chapter the
-        // section LLM never labelled, or a region with nothing extractable). Without this the tree
-        // carries empty phantom sections. Run before building the competency tree so the tree is clean.
+        // Drop units the outline detected but the extraction routed no goals to (e.g. a session with
+        // no extractable outcomes). Without this the tree carries empty phantom sections.
         pruneEmptyUnits(course);
 
         // Top-down competency view: a three-tier tree (terminal competency → sub-skill → knowledge)
         // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
         CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride);
 
-        return new ExtractionSummary(documents.size(), consolidation.candidatesExtracted(), goalsCreated,
-                goalsDeduplicated, competencyTree.competencies(), competencyTree.gaps());
+        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies(),
+                competencyTree.gaps());
     }
 
-    /**
-     * Second extraction stage. Groups every chunk's candidates by the session node they came from,
-     * consolidates each session's candidates (the LLM calls run in parallel, with no DB access since
-     * JPA isn't safe across worker threads), then — single-threaded — persists the raw candidates for
-     * traceability and builds one consolidated {@link ChunkExtraction} per session. A consolidated
-     * goal's kind and source snippet are derived from the candidates it was merged from, and the
-     * candidate→goal provenance is captured in an identity map keyed by the consolidated goal instance
-     * (which flows by reference through classify/embed/persist) so it can be wired up after dedup.
-     */
-    private Consolidation consolidateSessions(Course course, List<ChunkExtraction> extractions,
-                                              String modelOverride, ExtractionProgressTracker.Run run) {
-        Map<HierarchyNode, List<ExtractedGoal>> candidatesByNode = new LinkedHashMap<>();
-        Map<HierarchyNode, Document> documentByNode = new HashMap<>();
-        for (ChunkExtraction ce : extractions) {
-            if (ce.node() == null) {
-                continue;
-            }
-            candidatesByNode.computeIfAbsent(ce.node(), n -> new ArrayList<>()).addAll(ce.goals());
-            documentByNode.putIfAbsent(ce.node(), ce.document());
-        }
-
-        run.phase(ExtractionProgressTracker.Phase.CONSOLIDATING, candidatesByNode.size());
-        List<HierarchyNode> nodes = new ArrayList<>(candidatesByNode.keySet());
-
-        List<List<ConsolidatedGoal>> outcomesByNode;
+    /** Runs one direct call per small session, or the complete legacy pipeline for oversized sessions. */
+    private List<SessionExtraction> extractSessions(List<SessionUnit> sessions, String modelOverride,
+                                                     ExtractionProgressTracker.Run run) {
         ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
         try {
-            List<CompletableFuture<List<ConsolidatedGoal>>> futures = nodes.stream()
-                    .map(node -> CompletableFuture.supplyAsync(
-                            () -> {
-                                List<String> texts = candidatesByNode.get(node).stream()
-                                        .map(ExtractedGoal::text).toList();
-                                List<ConsolidatedGoal> result = safeConsolidate(node.getLabel(), texts, modelOverride);
-                                run.increment();
-                                return result;
-                            },
-                            executor))
+            List<CompletableFuture<SessionExtraction>> futures = sessions.stream()
+                    .map(session -> CompletableFuture.supplyAsync(() -> {
+                        if (usesDirectPath(session.text())) {
+                            List<ExtractedGoal> goals = sessionExtractionService.extract(
+                                    session.title(), session.text(), modelOverride);
+                            run.increment();
+                            return SessionExtraction.direct(session, goals == null ? List.of() : goals);
+                        }
+
+                        List<ExtractedGoal> candidates = new ArrayList<>();
+                        for (String chunk : documentChunker.chunk(session.text())) {
+                            List<ExtractedGoal> extracted = extractionService.extract(chunk, modelOverride);
+                            if (extracted != null) {
+                                candidates.addAll(extracted);
+                            }
+                        }
+                        List<ConsolidatedGoal> consolidated = candidates.isEmpty()
+                                ? List.of()
+                                : safeConsolidate(session.title(),
+                                        candidates.stream().map(ExtractedGoal::text).toList(), modelOverride);
+                        run.increment();
+                        return SessionExtraction.fallback(session, candidates, consolidated);
+                    }, executor))
                     .toList();
-            outcomesByNode = futures.stream().map(CompletableFuture::join).toList();
+            return futures.stream().map(CompletableFuture::join).toList();
         } finally {
             executor.shutdown();
         }
+    }
 
+    private boolean usesDirectPath(String text) {
+        return directMaxChars > 0 && text.length() <= directMaxChars;
+    }
+
+    private String promptVersionFor(List<Document> documents) {
+        if (directMaxChars <= 0) {
+            return FALLBACK_PROMPT_VERSION;
+        }
+        for (Document document : documents) {
+            String text = document.getRawText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            List<DocumentSection> sections = documentSectionRepository
+                    .findByDocumentIdOrderByOrdinal(document.getId());
+            if (sections.isEmpty() && usesDirectPath(text)) {
+                return SessionExtractionService.PROMPT_VERSION;
+            }
+            for (DocumentSection section : sections) {
+                int start = Math.max(0, Math.min(section.getStartOffset(), text.length()));
+                int end = Math.max(start, Math.min(section.getEndOffset(), text.length()));
+                if (start < end && usesDirectPath(text.substring(start, end))) {
+                    return SessionExtractionService.PROMPT_VERSION;
+                }
+            }
+        }
+        return FALLBACK_PROMPT_VERSION;
+    }
+
+    private String runParams() {
+        return "{\"chunk-size\":" + documentChunker.getChunkSize()
+                + ",\"direct-max-chars\":" + directMaxChars
+                + ",\"parallelism\":" + parallelism + "}";
+    }
+
+    private static String errorMessage(RuntimeException ex) {
+        Throwable cause = ex;
+        while (cause instanceof CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (cause.getMessage() != null && !cause.getMessage().isBlank()) {
+            return cause.getMessage();
+        }
+        return cause.getClass().getSimpleName();
+    }
+
+    private SessionAssembly assembleSessions(Course course, List<SessionExtraction> extractedSessions) {
         List<ChunkExtraction> sessionGoals = new ArrayList<>();
         Map<ExtractedGoal, List<GoalCandidate>> provenance = new IdentityHashMap<>();
-        int candidatesExtracted = 0;
-        for (int i = 0; i < nodes.size(); i++) {
-            HierarchyNode node = nodes.get(i);
-            Document document = documentByNode.get(node);
-            List<ExtractedGoal> candidates = candidatesByNode.get(node);
-
-            List<GoalCandidate> saved = new ArrayList<>(candidates.size());
-            for (ExtractedGoal c : candidates) {
-                saved.add(goalCandidateRepository.save(
-                        new GoalCandidate(course, node, c.text(), c.kind(), c.sourceSnippet())));
+        for (SessionExtraction extraction : extractedSessions) {
+            if (extraction.direct()) {
+                if (!extraction.goals().isEmpty()) {
+                    sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(),
+                            extraction.goals()));
+                }
+                continue;
             }
-            candidatesExtracted += saved.size();
 
+            List<GoalCandidate> saved = new ArrayList<>(extraction.candidates().size());
+            for (ExtractedGoal c : extraction.candidates()) {
+                saved.add(goalCandidateRepository.save(new GoalCandidate(course, extraction.node(), c.text(),
+                        c.kind(), c.sourceSnippet())));
+            }
             List<ExtractedGoal> outcomes = new ArrayList<>();
-            for (ConsolidatedGoal cg : outcomesByNode.get(i)) {
+            for (ConsolidatedGoal cg : extraction.consolidated()) {
                 if (cg.text() == null || cg.text().isBlank()) {
                     continue;
                 }
-                List<GoalCandidate> supporters = supportersFor(cg.supporting(), saved);
+                List<GoalCandidate> supporters = supportersFor(
+                        cg.supporting() == null ? List.of() : cg.supporting(), saved);
                 ExtractedGoal outcome = new ExtractedGoal(cg.text(), deriveKind(supporters), snippetFor(supporters));
                 outcomes.add(outcome);
                 provenance.put(outcome, supporters);
             }
             if (!outcomes.isEmpty()) {
-                sessionGoals.add(new ChunkExtraction(document, node, outcomes));
+                sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(), outcomes));
             }
         }
-        return new Consolidation(sessionGoals, provenance, candidatesExtracted);
+        return new SessionAssembly(sessionGoals, provenance);
     }
 
     private List<ConsolidatedGoal> safeConsolidate(String sessionTitle, List<String> candidates, String modelOverride) {
@@ -385,19 +418,28 @@ public class ExtractionRunner {
                 .orElse("");
     }
 
-    /**
-     * Result of the consolidation stage: one {@link ChunkExtraction} per session carrying its broad
-     * outcomes, the candidate→outcome provenance (identity-keyed by the consolidated goal instance),
-     * and how many raw candidates the first stage produced.
-     */
-    private record Consolidation(List<ChunkExtraction> sessionGoals,
-                                 Map<ExtractedGoal, List<GoalCandidate>> provenance,
-                                 int candidatesExtracted) {
+    /** One session's direct result or its legacy candidates and reduced outcomes. */
+    private record SessionExtraction(Document document, HierarchyNode node, boolean direct,
+                                     List<ExtractedGoal> goals, List<ExtractedGoal> candidates,
+                                     List<ConsolidatedGoal> consolidated) {
+
+        private static SessionExtraction direct(SessionUnit session, List<ExtractedGoal> goals) {
+            return new SessionExtraction(session.document(), session.node(), true, goals, List.of(), List.of());
+        }
+
+        private static SessionExtraction fallback(SessionUnit session, List<ExtractedGoal> candidates,
+                                                  List<ConsolidatedGoal> consolidated) {
+            return new SessionExtraction(session.document(), session.node(), false, List.of(), candidates,
+                    consolidated);
+        }
+    }
+
+    private record SessionAssembly(List<ChunkExtraction> sessionGoals,
+                                   Map<ExtractedGoal, List<GoalCandidate>> provenance) {
     }
 
     /**
-     * Deletes SESSION/EXERCISE units that ended up with no goals (e.g. a session whose only goals were
-     * all deduplicated into another session's). Only leaf units are removed and only when no goal
+     * Deletes SESSION/EXERCISE units that ended up with no goals. Only leaf units are removed and only when no goal
      * references them, so nothing is orphaned; the MODULE root is always kept as the tree's anchor.
      * The pruned units' goal candidates are
      * deleted first — they reference the node and, although the DB cascades on delete, Hibernate would
@@ -903,7 +945,7 @@ public class ExtractionRunner {
      * (each a character range of the raw text), under the course's module root. A document with no
      * sections (non-PDF, or a PDF without bookmarks) becomes a single session spanning its whole
      * text, titled by the filename. Returns the units with their text ranges so the parsing step can
-     * chunk each range and attach its chunks to the right node.
+     * route each complete range to the right node.
      */
     private List<Unit> buildUnits(Course course, HierarchyNode moduleRoot, Document document) {
         String text = document.getRawText();
@@ -944,7 +986,7 @@ public class ExtractionRunner {
     private record Unit(HierarchyNode node, int start, int end) {
     }
 
-    private record PendingChunk(Document document, HierarchyNode node, String text) {
+    private record SessionUnit(Document document, HierarchyNode node, String title, String text) {
     }
 
     private record ChunkExtraction(Document document, HierarchyNode node, List<ExtractedGoal> goals) {
@@ -957,7 +999,7 @@ public class ExtractionRunner {
     private record EnrichedGoal(ClassifiedGoal classified, float[] embedding) {
     }
 
-    public record ExtractionSummary(int documentsProcessed, int candidatesExtracted, int goalsCreated,
-                                    int goalsDeduplicated, int terminalCompetencies, int competencyGaps) {
+    public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies,
+                                    int competencyGaps) {
     }
 }
