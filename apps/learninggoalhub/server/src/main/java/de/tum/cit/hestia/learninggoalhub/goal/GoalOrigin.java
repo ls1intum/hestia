@@ -11,8 +11,9 @@ package de.tum.cit.hestia.learninggoalhub.goal;
  *   <li>{@code EXAM} — derived from an exam task submitted by an API consumer (ExamLens); grounded in
  *       the task's wording rather than uploaded course material, so it has no source snippet. Attached
  *       to the course's EXAM hierarchy root. See {@code ExamGoalService}.</li>
- *   <li>{@code TERMINAL} — a course-level terminal competency clustered top-down from the course's
- *       higher-Bloom goals (the root of a competency tree); an abstraction without a source snippet.
+ *   <li>{@code TERMINAL} — a course-level terminal competency clustered top-down from all of the
+ *       course's goals, seeded by its higher-Bloom goals (the root of a competency tree); an
+ *       abstraction without a source snippet.
  *       See {@code TerminalCompetencySynthesizer}.</li>
  *   <li>{@code GAP} — a "should-be-taught" knowledge aspect the gap analysis judges MISSING from the
  *       material beneath a sub-skill of a terminal competency; deliberately UNANCHORED (no source

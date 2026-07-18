@@ -12,75 +12,28 @@ import org.springframework.stereotype.Service;
  * knowledge} — where every node except the gap nodes is an already-extracted, grounded goal; this
  * synthesiser only decides how those goals hang together and what knowledge is missing.
  *
- * <p>Two passes, called in order by {@link ExtractionRunner}:
+ * <p>This is the second of two course-wide synthesis calls made by {@link ExtractionRunner}; it is
+ * called once after terminal synthesis:
  *
  * <ul>
- *   <li><b>Assignment</b> ({@link #assign}) — course-wide, one call: routes every session/exercise
- *       goal to the single terminal competency it belongs under, giving the tree full coverage (the
- *       terminal clustering only saw the higher-Bloom goals and left its {@code supporting} hints
- *       sparse). The caller then splits each competency's goals by Bloom into sub-skills
- *       ({@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE}) and candidate knowledge
- *       ({@code REMEMBER}/{@code UNDERSTAND}).</li>
- *   <li><b>Expansion</b> ({@link #expand}) — per competency: attaches each knowledge goal under the
- *       sub-skill it supports and, since the lowest node must always be a knowledge aspect, names the
- *       knowledge a sub-skill needs but the material does not cover (the gap analysis).</li>
+ *   <li><b>Expansion</b> ({@link #expandAll}) — one course-wide call: for every terminal competency
+ *       that has sub-skills, attaches each knowledge goal under the sub-skill it supports and, since
+ *       the lowest node must always be a knowledge aspect, names the knowledge a sub-skill needs but
+ *       the material does not cover (the gap analysis).</li>
  * </ul>
  */
 @Service
 public class CompetencyTreeSynthesizer {
 
-    /** One candidate goal handed to a pass: its text and its Bloom level (may be null). */
-    public record Candidate(String text, String bloomLevel) {}
-
-    static final String ASSIGN_PROMPT = """
-            You organise a course's learning goals into a competency tree. The course's TERMINAL
-            COMPETENCIES — the broad applied capabilities a student gains — are already fixed and listed
-            below, each prefixed with a competency index like [C0]. Beneath them are the course's
-            individual learning goals, each prefixed with its own index in square brackets and its Bloom
-            level in parentheses.
-
-            Assign EVERY learning goal to the SINGLE terminal competency whose capability it most
-            directly serves — a "doing/judgement" goal (apply, analyze, evaluate, create) as a
-            sub-skill of that competency, a lower-level "understand/remember" goal as supporting
-            knowledge for it. Judge by topic and capability, not by wording.
-
-            Rules:
-              - Assign each goal to exactly ONE competency: the best fit. Do not assign a goal to several.
-              - Prefer to place a goal rather than discard it: most goals support some competency.
-              - ONLY leave a goal unassigned (competency = -1) when it genuinely serves no competency —
-                course administration, logistics, exam/submission mechanics, or one-off throwaway trivia.
-              - Do NOT invent competencies; use only the indices listed.
-
-            For every learning goal return its index (goal) and the chosen competency index (competency,
-            or -1 if none).
-
-            Terminal competencies:
-            ---
-            %s
-            ---
-
-            Learning goals:
-            ---
-            %s
-            ---
-            """;
-
     static final String EXPAND_PROMPT = """
-            You arrange the goals of ONE terminal competency into a tree of shape
-            sub-skill → knowledge. The competency is:
+            You arrange the goals of ALL listed terminal competencies into independent trees of shape
+            sub-skill → knowledge. Process each competency separately. Competencies are prefixed with
+            an index like [C0]. Within EACH competency, its SUB-SKILLS (the things a student does
+            toward it) are prefixed with local indices like [S0], and its candidate KNOWLEDGE goals
+            (lower-level understanding that underpins those sub-skills) are prefixed with local indices
+            like [K0]. Do not use indices from one competency for another.
 
-            %s
-
-            Its SUB-SKILLS (the things a student does toward this competency) are listed first, each
-            prefixed with an index like [S0]. Its candidate KNOWLEDGE goals (lower-level understanding
-            that underpins those sub-skills) follow, each prefixed like [K0].
-
-            Sub-skills:
-            ---
-            %s
-            ---
-
-            Knowledge goals:
+            Competencies:
             ---
             %s
             ---
@@ -146,7 +99,10 @@ public class CompetencyTreeSynthesizer {
             A competency the course fully covers yields no gaps at all — returning empty lists is the
             correct, expected answer in that case.
 
-            Return knowledge links, missing sub-skills and gaps.
+            Return one result for every competency, each with its competencyIndex (the C number),
+            knowledge links, missing sub-skills and gaps. A result has the shape
+            {competencyIndex, knowledge, missingSubSkills, gaps}. Use the local S/K index spaces shown
+            for that competency.
             """;
 
     private final ChatClient chatClient;
@@ -155,47 +111,38 @@ public class CompetencyTreeSynthesizer {
         this.chatClient = chatClientBuilder.build();
     }
 
-    /**
-     * Routes every candidate goal to the terminal competency it belongs under.
-     *
-     * @param competencies  the fixed terminal-competency texts; an assignment's {@code competency} is
-     *                      a positional index into this list (or negative for "no competency").
-     * @param candidates    every session/exercise goal, each with its Bloom level; an assignment's
-     *                      {@code goal} is a positional index into this list.
-     * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
-     * @return one assignment per goal the model placed; empty when there is nothing to assign.
-     */
-    public List<CompetencyAssignment> assign(List<String> competencies, List<Candidate> candidates,
-                                             String modelOverride) {
-        if (competencies == null || competencies.isEmpty() || candidates == null || candidates.isEmpty()) {
-            return List.of();
+    /** One terminal competency's local input for the course-wide expansion call. */
+    public record ExpansionInput(String text, List<String> subSkills, List<String> knowledge) {
+        public ExpansionInput {
+            subSkills = subSkills == null ? List.of() : List.copyOf(subSkills);
+            knowledge = knowledge == null ? List.of() : List.copyOf(knowledge);
         }
-        String prompt = ASSIGN_PROMPT.formatted(numberedCompetencies(competencies), numbered(candidates));
-        return chat(prompt, modelOverride, new ParameterizedTypeReference<List<CompetencyAssignment>>() {});
     }
 
     /**
-     * Arranges one competency's sub-skills and knowledge into the {@code sub-skill → knowledge} tier
-     * and names the knowledge missing beneath each sub-skill.
+     * Expands all terminal competencies that have sub-skills in one course-wide LLM call.
      *
-     * @param competencyText the terminal competency being expanded.
-     * @param subSkills      its {@code APPLY}/{@code ANALYZE}/{@code EVALUATE}/{@code CREATE} goals,
-     *                       in order; links index into this.
-     * @param knowledge      its {@code REMEMBER}/{@code UNDERSTAND} candidate knowledge goals, in
-     *                       order; links index into this.
-     * @param modelOverride  optional SAIA model id; falls back to the configured default when blank.
-     * @return the knowledge attachments and gaps; never null.
+     * @param competencies terminal competencies with local sub-skill and knowledge lists; their
+     *                     position is the {@code competencyIndex} used in the response.
+     * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
+     * @return one mapped expansion per response item; missing competency indices are handled by the
+     *         caller as failed expansions.
      */
-    public CompetencyExpansion expand(String competencyText, List<String> subSkills, List<String> knowledge,
-                                      String modelOverride) {
-        if (subSkills == null || subSkills.isEmpty()) {
-            return new CompetencyExpansion(List.of(), List.of(), List.of());
+    public List<CompetencyExpansion> expandAll(List<ExpansionInput> competencies, String modelOverride) {
+        if (competencies == null || competencies.isEmpty()) {
+            return List.of();
         }
-        String prompt = EXPAND_PROMPT.formatted(
-                competencyText, numberedLines("S", subSkills), numberedLines("K", knowledge));
-        CompetencyExpansion result = chat(prompt, modelOverride,
-                new ParameterizedTypeReference<CompetencyExpansion>() {});
-        return result == null ? new CompetencyExpansion(List.of(), List.of(), List.of()) : result;
+        String prompt = EXPAND_PROMPT.formatted(numberedExpansionInputs(competencies));
+        List<CompetencyExpansion> result = chat(prompt, modelOverride,
+                new ParameterizedTypeReference<List<CompetencyExpansion>>() {});
+        if (result == null) {
+            return List.of();
+        }
+        return result.stream()
+                .filter(expansion -> expansion != null
+                        && expansion.competencyIndex() >= 0
+                        && expansion.competencyIndex() < competencies.size())
+                .toList();
     }
 
     private <T> T chat(String prompt, String modelOverride, ParameterizedTypeReference<T> type) {
@@ -206,22 +153,17 @@ public class CompetencyTreeSynthesizer {
         return spec.user(prompt).call().entity(type);
     }
 
-    /** Numbers the candidate goals and labels each with its Bloom level so the model can cite them back. */
-    private static String numbered(List<Candidate> candidates) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < candidates.size(); i++) {
-            Candidate c = candidates.get(i);
-            String bloom = (c.bloomLevel() == null || c.bloomLevel().isBlank()) ? "?" : c.bloomLevel();
-            sb.append('[').append(i).append("] (").append(bloom).append(") ").append(c.text()).append('\n');
-        }
-        return sb.toString();
-    }
-
-    /** Numbers the fixed terminal competencies as [C0], [C1], … for the assignment prompt. */
-    private static String numberedCompetencies(List<String> competencies) {
+    /** Numbers each competency and its local S/K lists for the course-wide expansion prompt. */
+    private static String numberedExpansionInputs(List<ExpansionInput> competencies) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < competencies.size(); i++) {
-            sb.append("[C").append(i).append("] ").append(competencies.get(i)).append('\n');
+            ExpansionInput input = competencies.get(i);
+            sb.append("[C").append(i).append("] ").append(input.text()).append('\n');
+            sb.append("Sub-skills:\n---\n")
+                    .append(numberedLines("S", input.subSkills()))
+                    .append("---\nKnowledge goals:\n---\n")
+                    .append(numberedLines("K", input.knowledge()))
+                    .append("---\n\n");
         }
         return sb.toString();
     }

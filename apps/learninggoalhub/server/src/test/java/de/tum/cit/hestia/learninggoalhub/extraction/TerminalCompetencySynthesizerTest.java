@@ -59,6 +59,7 @@ class TerminalCompetencySynthesizerTest {
     void promptSeedsFromDoingVerbsAndMergesAggressively() {
         assertThat(TerminalCompetencySynthesizer.PROMPT)
                 .contains("TERMINAL COMPETENCIES")
+                .contains("ALL of the course's session/exercise learning goals")
                 .contains("APPLY and CREATE goals are the SEEDS")
                 .contains("ANALYZE and EVALUATE goals are usually")
                 .contains("MERGE AGGRESSIVELY")
@@ -66,9 +67,12 @@ class TerminalCompetencySynthesizerTest {
                 .contains("supported by only ONE goal is SUSPICIOUS")
                 .contains("COVERAGE: every APPLY and CREATE candidate")
                 .contains("ADD its own competency")
+                .contains("assign every input goal to exactly")
+                .contains("REMEMBER and UNDERSTAND")
                 .contains("SINGLE leading action verb")
                 .contains("ERR ON THE SIDE OF FEWER")
                 .contains("not target or pad to a number")
+                .contains("complete list")
                 .contains("supporting");
     }
 
@@ -82,13 +86,16 @@ class TerminalCompetencySynthesizerTest {
 
         clearInvocations(chatClient.prompt());
         new TerminalCompetencySynthesizer(builder)
-                .synthesize(List.of(new Candidate("UNIQUE-GOAL-MARKER-99", "CREATE")), null);
+                .synthesize(List.of(new Candidate("UNIQUE-GOAL-MARKER-99", "CREATE"),
+                        new Candidate("LOWER-KNOWLEDGE-MARKER-100", "UNDERSTAND")), null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(chatClient.prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
                 .contains("UNIQUE-GOAL-MARKER-99")
-                .contains("(CREATE)");
+                .contains("(CREATE)")
+                .contains("LOWER-KNOWLEDGE-MARKER-100")
+                .contains("(UNDERSTAND)");
     }
 
     @Test
