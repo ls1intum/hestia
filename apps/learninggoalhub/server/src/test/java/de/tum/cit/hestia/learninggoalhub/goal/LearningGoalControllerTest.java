@@ -89,6 +89,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.content[1].sources", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.content[1].sources[0].filename").value("lecture.pdf"))
                 .andExpect(jsonPath("$.content[1].sources[0].contentAvailable").value(true))
+                .andExpect(jsonPath("$.content[1].sources[0].grounded").value(false))
                 // goals without hierarchy/taxonomy/relationships expose null/empty, not missing keys
                 .andExpect(jsonPath("$.content[0].hierarchy").doesNotExist())
                 .andExpect(jsonPath("$.content[0].bloomLevel").doesNotExist())

@@ -271,6 +271,7 @@ export interface components {
             /** Format: int32 */
             page?: number;
             contentAvailable?: boolean;
+            grounded?: boolean;
         };
         HierarchyPath: {
             module?: string;

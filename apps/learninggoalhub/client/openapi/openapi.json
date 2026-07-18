@@ -871,6 +871,9 @@
           },
           "contentAvailable": {
             "type": "boolean"
+          },
+          "grounded": {
+            "type": "boolean"
           }
         }
       },

@@ -231,10 +231,11 @@ public class ExtractionRunner {
                 int textLength = document.getRawText() == null ? 0 : document.getRawText().length();
                 int unitStart = unit == null ? 0 : unit.start();
                 int unitEnd = unit == null ? textLength : unit.end();
-                Integer page = SourcePageResolver.resolve(
+                SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
                         document.getRawText(), document.getPageOffsets(), unitStart, unitEnd,
-                        e.sourceSnippet()).orElse(null);
-                goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(), page));
+                        e.sourceSnippet());
+                goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(),
+                        resolution.page(), resolution.grounded()));
             }
 
             // Only fallback outcomes have raw candidates to connect to their surfaced goal.
