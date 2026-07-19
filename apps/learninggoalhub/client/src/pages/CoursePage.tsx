@@ -317,9 +317,6 @@ export default function CoursePage() {
   }
 
   const showToc = goalsView === "list" && groups.length > 0;
-  const explainerText = isCompetencyView
-    ? "What this course builds towards — skills with their sub-skills and knowledge, synthesised from the learning goals."
-    : "What each session teaches — goals extracted from the uploaded materials. Review, edit and approve them here.";
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (
@@ -430,16 +427,21 @@ export default function CoursePage() {
                 )}
               </div>
 
-              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-hestia-text-muted">
-                <span>{explainerText}</span>
-                <button
-                  type="button"
-                  onClick={() => setConceptInfoOpen(true)}
-                  className="text-sm text-hestia-primary underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] transition hover:decoration-hestia-primary"
-                >
-                  How do these relate?
-                </button>
-              </p>
+              {!isCompetencyView && (
+                <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-hestia-text-muted">
+                  <span>
+                    What each session teaches — goals extracted from the
+                    uploaded materials. Review, edit and approve them here.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConceptInfoOpen(true)}
+                    className="text-sm text-hestia-primary underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] transition hover:decoration-hestia-primary"
+                  >
+                    How do these relate?
+                  </button>
+                </p>
+              )}
             </div>
           )}
         </div>
