@@ -203,6 +203,7 @@ public class LearningGoalController {
             }
             if (!text.equals(goal.getText())) {
                 goal.setText(text);
+                goal.setShortLabel(null);
                 // The embedding was computed from the old wording; drop it rather than keep a stale one.
                 goal.setEmbedding(null);
             }
@@ -280,6 +281,7 @@ public class LearningGoalController {
 
     public record LearningGoalResponse(Long id,
                                        String text,
+                                       String shortLabel,
                                        GoalKind kind,
                                        GoalStatus status,
                                        GoalOrigin origin,
@@ -298,6 +300,7 @@ public class LearningGoalController {
             return new LearningGoalResponse(
                     g.getId(),
                     g.getText(),
+                    g.getShortLabel(),
                     g.getKind(),
                     g.getStatus(),
                     g.getOrigin(),

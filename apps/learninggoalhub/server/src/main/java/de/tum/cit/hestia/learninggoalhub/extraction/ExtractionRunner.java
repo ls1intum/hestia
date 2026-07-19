@@ -52,7 +52,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
-    private static final String FALLBACK_PROMPT_VERSION = "chunked-v2";
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v3";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -210,6 +210,7 @@ public class ExtractionRunner {
             Document document = eg.classified().document();
 
             LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
+            goal.setShortLabel(e.shortLabel());
             HierarchyNode node = eg.classified().node();
             if (node != null) {
                 goal.setHierarchyNode(node);
@@ -365,7 +366,8 @@ public class ExtractionRunner {
                 }
                 List<GoalCandidate> supporters = supportersFor(
                         cg.supporting() == null ? List.of() : cg.supporting(), saved);
-                ExtractedGoal outcome = new ExtractedGoal(cg.text(), deriveKind(supporters), snippetFor(supporters));
+                ExtractedGoal outcome = new ExtractedGoal(
+                        cg.text(), cg.shortLabel(), deriveKind(supporters), snippetFor(supporters));
                 outcomes.add(outcome);
                 provenance.put(outcome, supporters);
             }
@@ -602,6 +604,7 @@ public class ExtractionRunner {
                 continue;
             }
             LearningGoal goal = new LearningGoal(course, tc.text(), GoalKind.IMPLICIT);
+            goal.setShortLabel(tc.shortLabel());
             goal.setOrigin(GoalOrigin.TERMINAL);
             goal.setHierarchyNode(competencyRoot);
             goalRepository.saveAndFlush(goal);

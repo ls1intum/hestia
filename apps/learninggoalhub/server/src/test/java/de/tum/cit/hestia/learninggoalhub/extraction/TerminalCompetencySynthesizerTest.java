@@ -27,7 +27,8 @@ class TerminalCompetencySynthesizerTest {
         when(builder.build()).thenReturn(chatClient);
 
         List<TerminalCompetency> expected = List.of(
-                new TerminalCompetency("Deploy a cloud-native application to a managed environment.", List.of(0, 1)));
+                new TerminalCompetency("Deploy a cloud-native application to a managed environment.",
+                        "Application Deployment", List.of(0, 1)));
         when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
                 .thenReturn(expected);
 
@@ -70,6 +71,8 @@ class TerminalCompetencySynthesizerTest {
                 .contains("assign every input goal to exactly")
                 .contains("REMEMBER and UNDERSTAND")
                 .contains("SINGLE leading action verb")
+                .contains("shortLabel")
+                .contains("2-5 word noun phrase")
                 .contains("ERR ON THE SIDE OF FEWER")
                 .contains("not target or pad to a number")
                 .contains("complete list")

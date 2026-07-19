@@ -93,6 +93,8 @@ public class TerminalCompetencySynthesizer {
 
             For each terminal competency return:
               - text: the competency as a single concise sentence built around ONE action verb.
+              - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
+                do not start it with a verb or end it with a period.
               - supporting: the complete list of indices (the numbers in square brackets) of the
                 candidate goals assigned to this competency. Do not use supporting as sparse hints:
                 every non-administrative candidate should occur in exactly one supporting list.

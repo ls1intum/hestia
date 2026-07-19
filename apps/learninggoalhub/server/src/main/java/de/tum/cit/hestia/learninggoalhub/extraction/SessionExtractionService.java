@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v2";
+    static final String PROMPT_VERSION = "direct-v3";
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
@@ -42,6 +42,8 @@ public class SessionExtractionService {
 
             Return the list of outcomes, each with:
               - text: the learning outcome as a single concise sentence, starting with a verb.
+              - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
+                do not start it with a verb or end it with a period.
               - kind: EXPLICIT or IMPLICIT.
               - sourceSnippet: ONE contiguous verbatim quote from the document that supports the
                 outcome, copied character-for-character from a single place in the text (1-3

@@ -89,6 +89,10 @@ function sessionTitleOf(goal: LearningGoal): string {
   return goal.hierarchy?.session ?? goal.hierarchy?.exercise ?? "";
 }
 
+function displayedGoalLabel(goal: LearningGoal): string {
+  return goal.shortLabel ?? goal.text ?? "";
+}
+
 /** Human label for a raw column value (role names, title-cased enums). */
 function displayValue(key: FilterKey, value: string): string {
   if (key === "role") return COMPETENCY_ROLE_META[value as CompetencyRole].label;
@@ -173,7 +177,12 @@ export default function CompetencyTree({
       };
     const needle = search.trim().toLowerCase();
     const matchesRow = (row: Row): boolean => {
-      if (needle && !(row.goal.text ?? "").toLowerCase().includes(needle))
+      if (
+        needle &&
+        ![row.goal.shortLabel, row.goal.text].some((value) =>
+          (value ?? "").toLowerCase().includes(needle),
+        )
+      )
         return false;
       for (const key of Object.keys(filters) as FilterKey[]) {
         const set = filters[key];
@@ -213,7 +222,7 @@ export default function CompetencyTree({
     const rank = (row: Row): string | number => {
       switch (key) {
         case "text":
-          return row.goal.text ?? "";
+          return displayedGoalLabel(row.goal);
         case "bloom":
           return BLOOM_ORDER.indexOf(row.goal.bloomLevel ?? "");
         case "items":
@@ -753,7 +762,7 @@ function GridRow({
               row.role === "competency" ? "font-semibold" : ""
             }`}
           >
-            {row.goal.text}
+            {displayedGoalLabel(row.goal)}
           </span>
         </div>
       </div>

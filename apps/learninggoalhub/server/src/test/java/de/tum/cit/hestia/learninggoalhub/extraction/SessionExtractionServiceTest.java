@@ -26,8 +26,10 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
 
         List<ExtractedGoal> expected = List.of(
-                new ExtractedGoal("Explain the testing strategy.", GoalKind.EXPLICIT, "...learning objectives..."),
-                new ExtractedGoal("Apply the strategy to a small project.", GoalKind.IMPLICIT, "...project example..."));
+                new ExtractedGoal("Explain the testing strategy.", "Testing Strategy", GoalKind.EXPLICIT,
+                        "...learning objectives..."),
+                new ExtractedGoal("Apply the strategy to a small project.", "Testing Practice", GoalKind.IMPLICIT,
+                        "...project example..."));
         when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
                 .thenReturn(expected);
 
@@ -45,6 +47,8 @@ class SessionExtractionServiceTest {
                 .contains("learning objectives")
                 .contains("Choose each outcome's verb by what the STUDENT")
                 .contains("Do not invent outcomes")
+                .contains("shortLabel")
+                .contains("2-5 word noun phrase")
                 .contains("sourceSnippet");
     }
 

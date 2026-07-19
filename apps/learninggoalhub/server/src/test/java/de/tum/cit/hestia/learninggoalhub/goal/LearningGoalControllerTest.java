@@ -333,6 +333,7 @@ class LearningGoalControllerTest {
     void patchUpdatesTextAndDropsStaleEmbedding() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        goal.setShortLabel("Test-Driven Development");
         goal.setEmbedding(new float[4096]);
         goal = goalRepository.save(goal);
 
@@ -341,10 +342,12 @@ class LearningGoalControllerTest {
                         .content("{\"text\": \"  Apply test-driven development.  \"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.text").value("Apply test-driven development."))
+                .andExpect(jsonPath("$.shortLabel").doesNotExist())
                 .andExpect(jsonPath("$.status").value("PENDING"));
 
         LearningGoal reloaded = goalRepository.findById(goal.getId()).orElseThrow();
         assertThat(reloaded.getText()).isEqualTo("Apply test-driven development.");
+        assertThat(reloaded.getShortLabel()).isNull();
         assertThat(reloaded.getEmbedding()).isNull();
     }
 

@@ -21,13 +21,17 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +97,12 @@ class ExtractionControllerTest {
     @MockitoBean
     private TaxonomyService taxonomyService;
 
+    @MockitoBean
+    private TerminalCompetencySynthesizer terminalCompetencySynthesizer;
+
+    @MockitoBean
+    private CompetencyTreeSynthesizer competencyTreeSynthesizer;
+
     /**
      * Identity consolidation: pass each session's candidates through unchanged (one outcome per
      * candidate, each supported by itself). This isolates the fallback path from the consolidation LLM.
@@ -114,11 +124,14 @@ class ExtractionControllerTest {
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...write a failing test first..."),
-                new ExtractedGoal("Value short feedback loops.", GoalKind.IMPLICIT, "...keep tests fast...")
+                new ExtractedGoal("Apply test-driven development.", "Test-Driven Development", GoalKind.EXPLICIT,
+                        "...write a failing test first..."),
+                new ExtractedGoal("Value short feedback loops.", "Feedback Loops", GoalKind.IMPLICIT,
+                        "...keep tests fast...")
         ));
         when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise on refactoring"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Refactor without changing behaviour.", GoalKind.EXPLICIT, "...extract method...")
+                new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
+                        GoalKind.EXPLICIT, "...extract method...")
         ));
         stubEmbedAll(Map.of(
                 "Apply test-driven development.", orthogonalEmbedding(0),
@@ -134,6 +147,9 @@ class ExtractionControllerTest {
         assertThat(goals).hasSize(3);
         assertThat(goals).extracting(LearningGoal::getKind)
                 .containsExactlyInAnyOrder(GoalKind.EXPLICIT, GoalKind.IMPLICIT, GoalKind.EXPLICIT);
+        assertThat(goals).extracting(LearningGoal::getShortLabel)
+                .containsExactlyInAnyOrder("Test-Driven Development", "Feedback Loops",
+                        "Behaviour-Preserving Refactoring");
         assertThat(goals).allSatisfy(g -> assertThat(g.getEmbedding()).hasSize(4096));
         // All goals are embedded in one batched call rather than one call per goal.
         verify(embeddingService).embedAll(anyList());
@@ -188,6 +204,8 @@ class ExtractionControllerTest {
 
         when(extractionService.extract(eq(oversizedText), eq(null))).thenReturn(List.of(
                 new ExtractedGoal("Apply the fallback procedure.", GoalKind.EXPLICIT, "...fallback procedure...")));
+        when(sessionGoalConsolidator.consolidate(eq("fallback.pdf"), anyList(), eq(null))).thenReturn(List.of(
+                new ConsolidatedGoal("Apply the fallback procedure.", "Fallback Procedure", List.of(0))));
         stubEmbedAll(Map.of("Apply the fallback procedure.", orthogonalEmbedding(0)));
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
@@ -201,10 +219,38 @@ class ExtractionControllerTest {
                 .satisfies(candidate -> assertThat(candidate.getConsolidatedGoal()).isNotNull());
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
-                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v2"));
+                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v3"));
         assertThat(goalSourceRepository.findAll())
                 .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
                 .hasSize(1);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .extracting(LearningGoal::getShortLabel)
+                .isEqualTo("Fallback Procedure");
+    }
+
+    @Test
+    void extractionPersistsShortLabelOnTerminalCompetencies() throws Exception {
+        Course course = courseRepository.save(new Course("Terminal competency labels"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability", List.of(0))));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .extracting(LearningGoal::getShortLabel)
+                .isEqualTo("Terminal Capability");
     }
 
     @Test
