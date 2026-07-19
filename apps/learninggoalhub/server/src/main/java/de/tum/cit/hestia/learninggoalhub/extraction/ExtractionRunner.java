@@ -52,7 +52,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
-    private static final String FALLBACK_PROMPT_VERSION = "chunked-v1";
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v2";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;

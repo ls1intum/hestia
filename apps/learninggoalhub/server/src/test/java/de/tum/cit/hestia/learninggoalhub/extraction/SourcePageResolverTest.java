@@ -89,4 +89,110 @@ class SourcePageResolverTest {
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.grounded()).isTrue();
     }
+
+    @Test
+    void groundsStitchedSnippetOnItsLongestMatchingFragment() {
+        String rawText = "first page filler text\nData Hazards entstehen durch Datenabhängigkeiten im Code";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Read After Write (RAW) ... Data Hazards entstehen durch Datenabhängigkeiten");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void groundsStitchedSnippetWithUnicodeEllipsis() {
+        String rawText = "first page filler text\nEinfügen von NOPs verhindert den Konflikt im Fließband";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Einfügen von NOPs verhindert den Konflikt … Forwarding als Alternative");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void doesNotGroundOnShortStitchedFragments() {
+        String rawText = "first page filler text\nStalling und Forwarding";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Stalling ... Forwarding");
+
+        assertThat(resolution.page()).isEqualTo(1);
+        assertThat(resolution.grounded()).isFalse();
+    }
+
+    @Test
+    void groundsSnippetWithTrailingEllipsisOnItsPrefix() {
+        String rawText = "first page filler text\nBranch Prediction verringert die Kosten von Kontrollkonflikten";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Branch Prediction verringert die Kosten...");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void groundsSnippetWhenModelDropsBulletGlyphs() {
+        String rawText = "first page filler text\nZweistufige Adressierung\n□ Zunächst Aktivierung einer Zeile der Matrix\n□ Dann Selektion eines Elementes";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Zweistufige Adressierung Zunächst Aktivierung einer Zeile der Matrix Dann Selektion");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void groundsSnippetWhenModelDropsMathOperators() {
+        String rawText = "first page filler text\nKosten eines CRn: C(CRn) = n ⋅ C(FA) = 5n = O(n) → linear";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Kosten eines CRn: C(CRn) = n  C(FA) = 5n = O(n) linear");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void doesNotGroundOnGlyphOnlySnippet() {
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                "first second", new int[]{0, 6, 12}, 6, 12, "→ □ ■ ⋅ = () -- !!");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isFalse();
+    }
+
+    @Test
+    void groundsMultiLineSnippetInterruptedByExtractionGarbage() {
+        String rawText = "first page filler text\nData Hazards entstehen durch Datenabhängigkeiten\n"
+                + "□  bhängigkei  ≠   n  ik  \nControl Hazards entstehen durch Kontrollfluss";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "Data Hazards entstehen durch Datenabhängigkeiten\nControl Hazards entstehen durch Kontrollfluss");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isTrue();
+    }
+
+    @Test
+    void unmatchedStitchedSnippetStillFallsBackUngrounded() {
+        String rawText = "first page filler text\nsecond page other content entirely";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 23, rawText.length(),
+                "a fragment that appears nowhere ... another missing fragment entirely");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.grounded()).isFalse();
+    }
 }
