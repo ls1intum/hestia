@@ -42,14 +42,14 @@ type Row = {
   childCount: number;
 };
 
-type FilterKey = "role" | "bloom" | "session";
+type FilterKey = "role" | "bloom" | "kind" | "session";
 type SortKey = "text" | "bloom" | "items" | "session";
 type SortState = { key: SortKey; dir: 1 | -1 } | null;
 
 // Shared grid template so the sticky header row and every body row line their columns up: a
 // flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
 // rows can never drift apart.
-const GRID_COLS = "minmax(240px,1fr) 108px 128px 72px 152px";
+const GRID_COLS = "minmax(240px,1fr) 108px 128px 96px 72px 152px";
 
 const BLOOM_ORDER = [
   "REMEMBER",
@@ -59,6 +59,7 @@ const BLOOM_ORDER = [
   "EVALUATE",
   "CREATE",
 ];
+const KIND_ORDER = ["EXPLICIT", "IMPLICIT"];
 const ROLE_ORDER: CompetencyRole[] = [
   "competency",
   "sub-skill",
@@ -76,6 +77,8 @@ function valueOf(row: Row, key: FilterKey): string {
       return row.role;
     case "bloom":
       return row.goal.bloomLevel ?? "";
+    case "kind":
+      return row.goal.kind ?? "";
     case "session":
       return sessionTitleOf(row.goal);
   }
@@ -103,6 +106,7 @@ const COLUMNS: {
   { key: "text", label: "Learning goal", sortKey: "text" },
   { key: "role", label: "Level", filterKey: "role" },
   { key: "bloom", label: "Bloom", sortKey: "bloom", filterKey: "bloom" },
+  { key: "kind", label: "Kind", filterKey: "kind" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
   { key: "session", label: "Session", sortKey: "session", filterKey: "session" },
 ];
@@ -143,6 +147,7 @@ export default function CompetencyTree({
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     role: new Set(),
     bloom: new Set(),
+    kind: new Set(),
     session: new Set(),
   });
   const [sort, setSort] = useState<SortState>(null);
@@ -197,6 +202,7 @@ export default function CompetencyTree({
     return {
       role: ordered(ROLE_ORDER, present("role")),
       bloom: ordered(BLOOM_ORDER, present("bloom")),
+      kind: ordered(KIND_ORDER, present("kind")),
       session: [...present("session")].sort((a, b) => a.localeCompare(b)),
     };
   }, [rows]);
@@ -336,6 +342,7 @@ export default function CompetencyTree({
     setFilters({
       role: new Set(),
       bloom: new Set(),
+      kind: new Set(),
       session: new Set(),
     });
   };
@@ -489,7 +496,7 @@ export default function CompetencyTree({
 
       <div className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         <div className="max-h-[72vh] overflow-auto">
-          <div role="table" aria-label="Competency tree" className="min-w-[680px]">
+          <div role="table" aria-label="Competency tree" className="min-w-[780px]">
             <div
               role="row"
               className="sticky top-0 z-10 grid border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
@@ -757,6 +764,14 @@ function GridRow({
         {row.goal.bloomLevel && (
           <Pill
             label={titleCase(row.goal.bloomLevel)}
+            color="var(--hestia-text-muted)"
+          />
+        )}
+      </div>
+      <div role="gridcell" className="px-2.5 py-1.5">
+        {row.goal.kind && (
+          <Pill
+            label={titleCase(row.goal.kind)}
             color="var(--hestia-text-muted)"
           />
         )}

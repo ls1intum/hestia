@@ -246,10 +246,6 @@ export default function CompetencyGraph({
         ref={containerRef}
         className="mx-auto flex w-full max-w-5xl flex-col gap-3 pt-1"
       >
-        <p className="px-1 text-sm text-hestia-text-muted">
-          Click a skill to focus its tree — sub-skills unfold below it, the
-          focused sub-skill reveals its knowledge.
-        </p>
         <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {forest.map((node) => {
             const expandable = node.children.length > 0;
