@@ -52,7 +52,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
-    private static final String FALLBACK_PROMPT_VERSION = "chunked-v1";
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v2";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -257,8 +257,7 @@ public class ExtractionRunner {
         // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
         CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride);
 
-        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies(),
-                competencyTree.gaps());
+        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies());
     }
 
     /** Runs one direct call per small session, or the complete legacy pipeline for oversized sessions. */
@@ -497,15 +496,15 @@ public class ExtractionRunner {
     private static final Set<BloomLevel> SUB_SKILL_BLOOM =
             EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
 
-    /** How many terminal competencies and gap nodes the competency tree produced. */
-    public record CompetencyTreeResult(int competencies, int gaps) {
-        static final CompetencyTreeResult NONE = new CompetencyTreeResult(0, 0);
+    /** How many terminal competencies the competency tree produced. */
+    public record CompetencyTreeResult(int competencies) {
+        static final CompetencyTreeResult NONE = new CompetencyTreeResult(0);
     }
 
     /**
      * Rebuilds ONLY the competency tree for a course from its already-extracted goals — no document
      * re-parsing, extraction or embedding. It runs the same two course-wide synthesis calls and
-     * batched terminal/gap classification as {@link #buildCompetencyTree} does at the end of a full
+     * batched terminal classification as {@link #buildCompetencyTree} does at the end of a full
      * extraction. Tears the existing tree down first so the rebuild starts clean and lets the tree be
      * re-tuned cheaply without re-running the costly pipeline.
      *
@@ -522,7 +521,8 @@ public class ExtractionRunner {
     }
 
     /**
-     * Removes a course's competency tree so it can be rebuilt: its {@code TERMINAL}/{@code GAP} goals,
+     * Removes a course's competency tree so it can be rebuilt: its {@code TERMINAL} goals (plus
+     * {@code GAP} goals left behind by earlier pipeline versions that still generated them),
      * their {@code COMPETENCY} root node and the tree's {@code CONTRIBUTES_TO} edges — leaving the
      * extracted/synthesized goals and the module-goal edges untouched. A tree edge is a
      * {@code CONTRIBUTES_TO}/{@code HIERARCHY} link whose target is NOT a synthesized module goal:
@@ -554,9 +554,9 @@ public class ExtractionRunner {
      * tiers — terminal competency → sub-skill → knowledge — under its own {@code COMPETENCY} root.
      * It uses exactly two course-wide synthesis calls: terminal clustering/assignment, seeded by
      * higher-Bloom goals and assigning all candidates through {@code supporting}, followed by one
-     * expansion call for all competencies with sub-skills. Terminal and gap goals use batched
-     * taxonomy classification. CONTRIBUTES_TO edges thread the tiers (knowledge/gap → sub-skill →
-     * terminal); any synthesis failure is swallowed so it never breaks a run.
+     * expansion call for all competencies with sub-skills. Terminal goals use batched taxonomy
+     * classification. CONTRIBUTES_TO edges thread the tiers (knowledge → sub-skill → terminal);
+     * any synthesis failure is swallowed so it never breaks a run.
      */
     private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride) {
         if (hierarchyNodeRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)) {
@@ -624,11 +624,10 @@ public class ExtractionRunner {
         }
 
         // Tiers 2/3: use terminal synthesis assignments, then expand all populated competencies once.
-        int gaps = expandCompetencyTree(
-                course, competencyRoot, modelOverride, candidates, usableCompetencies, competencyTexts, terminalGoals);
-        log.info("Built competency tree for course {}: {} terminal competencies, {} gaps",
-                course.getId(), terminalGoals.size(), gaps);
-        return new CompetencyTreeResult(terminalGoals.size(), gaps);
+        expandCompetencyTree(course, modelOverride, candidates, usableCompetencies, competencyTexts, terminalGoals);
+        log.info("Built competency tree for course {}: {} terminal competencies",
+                course.getId(), terminalGoals.size());
+        return new CompetencyTreeResult(terminalGoals.size());
     }
 
     /**
@@ -636,12 +635,11 @@ public class ExtractionRunner {
      * every candidate through its {@code supporting} indices; duplicate candidate indices are kept by
      * the first competency in response order. Goals are split by Bloom, sub-skills are linked to their
      * terminal, and all competencies with sub-skills are expanded in one course-wide call. Missing or
-     * failed expansions attach that competency's knowledge directly to its terminal. Returns the
-     * number of gap nodes created.
+     * failed expansions attach that competency's knowledge directly to its terminal.
      */
-    private int expandCompetencyTree(Course course, HierarchyNode competencyRoot, String modelOverride,
-                                     List<LearningGoal> candidates, List<TerminalCompetency> competencies,
-                                     List<String> competencyTexts, List<LearningGoal> terminalGoals) {
+    private void expandCompetencyTree(Course course, String modelOverride,
+                                      List<LearningGoal> candidates, List<TerminalCompetency> competencies,
+                                      List<String> competencyTexts, List<LearningGoal> terminalGoals) {
         Map<Integer, List<LearningGoal>> goalsByCompetency = new LinkedHashMap<>();
         boolean[] assigned = new boolean[candidates.size()];
         for (int ci = 0; ci < competencies.size(); ci++) {
@@ -703,8 +701,6 @@ public class ExtractionRunner {
             }
         }
 
-        List<LearningGoal> gapGoals = new ArrayList<>();
-        int gaps = 0;
         for (int inputIndex = 0; inputIndex < expansionInputs.size(); inputIndex++) {
             int ci = expansionCompetencyIndices.get(inputIndex);
             LearningGoal terminal = terminalGoals.get(ci);
@@ -733,40 +729,8 @@ public class ExtractionRunner {
                 linked[link.knowledgeIndex()] = true;
             }
 
-            // Tier-2 gaps: a doing-capability the competency needs but no sub-skill covers. Each becomes
-            // an unanchored GAP sub-skill under the terminal; to keep the lowest node a knowledge aspect
-            // it must bottom out in knowledge — grounded knowledge re-mapped under it and/or tier-3 gaps.
-            for (CompetencyExpansion.MissingSubSkill missing : expansion.missingSubSkills()) {
-                if (missing == null || missing.subSkill() == null || missing.subSkill().isBlank()) {
-                    continue;
-                }
-                List<LearningGoal> mappedKnowledge = new ArrayList<>();
-                for (int idx : missing.knowledgeIndices()) {
-                    if (idx >= 0 && idx < knowledge.size() && !linked[idx]) {
-                        mappedKnowledge.add(knowledge.get(idx));
-                        linked[idx] = true;
-                    }
-                }
-                List<String> childGaps = missing.knowledgeGaps().stream()
-                        .filter(t -> t != null && !t.isBlank())
-                        .toList();
-                // Invariant: a gap sub-skill that bottoms out in nothing would be a bare leaf — drop it.
-                if (mappedKnowledge.isEmpty() && childGaps.isEmpty()) {
-                    continue;
-                }
-                LearningGoal gapSubSkill = createGapGoal(course, competencyRoot, missing.subSkill(), gapGoals);
-                linkContributors(List.of(gapSubSkill), terminal);
-                gaps++;
-                linkContributors(mappedKnowledge, gapSubSkill);
-                for (String childGap : childGaps) {
-                    linkContributors(List.of(createGapGoal(course, competencyRoot, childGap, gapGoals)),
-                            gapSubSkill);
-                    gaps++;
-                }
-            }
-
-            // Knowledge attached to no sub-skill (real or gap) still belongs to the competency: hang it
-            // on the terminal.
+            // Knowledge attached to no sub-skill still belongs to the competency: hang it on the
+            // terminal.
             List<LearningGoal> leftover = new ArrayList<>();
             for (int k = 0; k < knowledge.size(); k++) {
                 if (!linked[k]) {
@@ -774,49 +738,6 @@ public class ExtractionRunner {
                 }
             }
             linkContributors(leftover, terminal);
-
-            // Tier-3 gaps: missing foundational knowledge beneath an EXISTING sub-skill, so the lowest
-            // node under every real sub-skill is a knowledge aspect too.
-            for (CompetencyExpansion.Gap gap : expansion.gaps()) {
-                if (gap == null || gap.knowledge() == null || gap.knowledge().isBlank()
-                        || gap.subSkillIndex() < 0 || gap.subSkillIndex() >= subSkills.size()) {
-                    continue;
-                }
-                linkContributors(List.of(createGapGoal(course, competencyRoot, gap.knowledge(), gapGoals)),
-                        subSkills.get(gap.subSkillIndex()));
-                gaps++;
-            }
-        }
-
-        classifyGapGoals(gapGoals, modelOverride);
-        return gaps;
-    }
-
-    /** Creates and persists one unclassified unanchored {@code GAP}-origin goal under the root. */
-    private LearningGoal createGapGoal(Course course, HierarchyNode competencyRoot, String text,
-                                       List<LearningGoal> gapGoals) {
-        LearningGoal gapGoal = new LearningGoal(course, text.trim(), GoalKind.IMPLICIT);
-        gapGoal.setOrigin(GoalOrigin.GAP);
-        gapGoal.setHierarchyNode(competencyRoot);
-        LearningGoal saved = goalRepository.saveAndFlush(gapGoal);
-        gapGoals.add(saved);
-        return saved;
-    }
-
-    /** Classifies all newly created gap goals in one taxonomy call after tree links exist. */
-    private void classifyGapGoals(List<LearningGoal> gapGoals, String modelOverride) {
-        if (gapGoals.isEmpty()) {
-            return;
-        }
-        List<String> texts = gapGoals.stream().map(LearningGoal::getText).toList();
-        List<TaxonomyClassification> classifications = safeClassifyBatch(texts, modelOverride);
-        for (int i = 0; i < gapGoals.size(); i++) {
-            TaxonomyClassification classification = classifications.get(i);
-            if (classification != null) {
-                gapGoals.get(i).setBloomLevel(classification.bloom());
-                gapGoals.get(i).setSoloLevel(classification.solo());
-                goalRepository.saveAndFlush(gapGoals.get(i));
-            }
         }
     }
 
@@ -1024,7 +945,6 @@ public class ExtractionRunner {
     private record EnrichedGoal(ClassifiedGoal classified, float[] embedding) {
     }
 
-    public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies,
-                                    int competencyGaps) {
+    public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies) {
     }
 }

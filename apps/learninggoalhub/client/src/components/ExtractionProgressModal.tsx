@@ -136,7 +136,6 @@ export default function ExtractionProgressModal({ open, status, result, error, o
               <Stat label="Documents" value={result?.documentsProcessed} />
               <Stat label="Goals created" value={result?.goalsCreated} />
               <Stat label="Terminal competencies" value={result?.terminalCompetencies} />
-              <Stat label="Competency gaps" value={result?.competencyGaps} />
             </dl>
             <div className="mt-6 flex justify-end">
               <button

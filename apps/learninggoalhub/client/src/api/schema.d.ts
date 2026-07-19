@@ -235,8 +235,6 @@ export interface components {
             goalsCreated?: number;
             /** Format: int32 */
             terminalCompetencies?: number;
-            /** Format: int32 */
-            competencyGaps?: number;
         };
         ExamBlock: {
             blockId?: string;
@@ -312,8 +310,6 @@ export interface components {
         CompetencyTreeResult: {
             /** Format: int32 */
             competencies?: number;
-            /** Format: int32 */
-            gaps?: number;
         };
         UpdateLearningGoalRequest: {
             text?: string;

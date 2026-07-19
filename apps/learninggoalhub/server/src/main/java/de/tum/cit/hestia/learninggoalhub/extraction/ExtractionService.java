@@ -49,8 +49,11 @@ public class ExtractionService {
             Return the list of candidates, each with:
               - text: the learning goal as a single concise sentence, starting with a verb.
               - kind: EXPLICIT or IMPLICIT.
-              - sourceSnippet: a short verbatim quote from the document (1-3 sentences) that supports
-                the goal.
+              - sourceSnippet: ONE contiguous verbatim quote from the document that supports the
+                goal, copied character-for-character from a single place in the text (1-3
+                consecutive sentences). Never stitch together separate passages and never use "..."
+                or any ellipsis to skip text — if several passages support the goal, quote only the
+                single strongest one.
 
             Do not invent goals that are not supported by the text.
 
