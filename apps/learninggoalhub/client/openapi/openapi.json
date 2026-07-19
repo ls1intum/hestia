@@ -767,10 +767,6 @@
           "terminalCompetencies": {
             "type": "integer",
             "format": "int32"
-          },
-          "competencyGaps": {
-            "type": "integer",
-            "format": "int32"
           }
         }
       },
@@ -997,10 +993,6 @@
         "type": "object",
         "properties": {
           "competencies": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "gaps": {
             "type": "integer",
             "format": "int32"
           }
