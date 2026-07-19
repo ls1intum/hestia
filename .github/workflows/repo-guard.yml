@@ -38,4 +38,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Block newly added binary files
-        run: .githooks/file-guard.sh "origin/${{ github.base_ref }}" HEAD
+        # Pin the base by SHA, not branch name: when a stacked PR's base branch is
+        # deleted (e.g. after merging the PR below it), origin/<base_ref> no longer
+        # exists at checkout time and the diff fails.
+        run: .githooks/file-guard.sh "${{ github.event.pull_request.base.sha }}" HEAD
