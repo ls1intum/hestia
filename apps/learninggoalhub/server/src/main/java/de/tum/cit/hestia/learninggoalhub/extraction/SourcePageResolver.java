@@ -8,13 +8,16 @@ public final class SourcePageResolver {
     private SourcePageResolver() {
     }
 
-    public static Optional<Integer> resolve(String rawText, int[] pageOffsets,
-                                            int unitStart, int unitEnd, String snippet) {
+    public record Resolution(Integer page, boolean grounded) {
+    }
+
+    public static Resolution resolve(String rawText, int[] pageOffsets,
+                                     int unitStart, int unitEnd, String snippet) {
         if (pageOffsets == null || pageOffsets.length < 2) {
-            return Optional.empty();
+            return new Resolution(null, false);
         }
         if (rawText == null || snippet == null || snippet.isBlank()) {
-            return pageForOffset(pageOffsets, unitStart);
+            return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), false);
         }
 
         int start = Math.max(0, Math.min(unitStart, rawText.length()));
@@ -22,30 +25,32 @@ public final class SourcePageResolver {
         int match = rawText.indexOf(snippet, start);
         while (match >= 0) {
             if (match + snippet.length() <= end) {
-                return pageForOffset(pageOffsets, match);
+                return new Resolution(pageForOffset(pageOffsets, match).orElse(null), true);
             }
             match = rawText.indexOf(snippet, match + 1);
         }
 
         match = rawText.indexOf(snippet);
         if (match >= 0) {
-            return pageForOffset(pageOffsets, match);
+            return new Resolution(pageForOffset(pageOffsets, match).orElse(null), true);
         }
 
         String normalizedSnippet = normalize(snippet).text();
         NormalizedText normalizedUnit = normalize(rawText.substring(start, end), start);
         match = normalizedUnit.text().indexOf(normalizedSnippet);
         if (match >= 0) {
-            return pageForOffset(pageOffsets, normalizedUnit.originalOffsets()[match]);
+            return new Resolution(pageForOffset(pageOffsets, normalizedUnit.originalOffsets()[match])
+                    .orElse(null), true);
         }
 
         NormalizedText normalizedText = normalize(rawText);
         match = normalizedText.text().indexOf(normalizedSnippet);
         if (match >= 0) {
-            return pageForOffset(pageOffsets, normalizedText.originalOffsets()[match]);
+            return new Resolution(pageForOffset(pageOffsets, normalizedText.originalOffsets()[match])
+                    .orElse(null), true);
         }
 
-        return pageForOffset(pageOffsets, unitStart);
+        return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), false);
     }
 
     private static Optional<Integer> pageForOffset(int[] pageOffsets, int offset) {

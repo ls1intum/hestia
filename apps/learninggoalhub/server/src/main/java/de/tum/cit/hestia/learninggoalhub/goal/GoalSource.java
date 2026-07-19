@@ -33,19 +33,27 @@ public class GoalSource {
     @Column
     private Integer page;
 
+    @Column(nullable = false)
+    private boolean grounded;
+
     protected GoalSource() {
     }
 
     public GoalSource(LearningGoal goal, Document document, String snippet) {
-        this(goal, document, snippet, null);
+        this(goal, document, snippet, null, false);
     }
 
     public GoalSource(LearningGoal goal, Document document, String snippet, Integer page) {
+        this(goal, document, snippet, page, false);
+    }
+
+    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page, boolean grounded) {
         this.goal = goal;
         this.document = document;
         this.id = new GoalSourceId(goal.getId(), document.getId());
         this.snippet = snippet;
         this.page = page;
+        this.grounded = grounded;
     }
 
     public GoalSourceId getId() {
@@ -66,5 +74,9 @@ public class GoalSource {
 
     public Integer getPage() {
         return page;
+    }
+
+    public boolean isGrounded() {
+        return grounded;
     }
 }

@@ -106,9 +106,19 @@ export function GoalDetailContent({ goal }: { goal: LearningGoal }) {
           <ul className="space-y-2 text-sm text-hestia-text">
             {sources.map((source, i) => (
               <li key={i}>
-                {source.filename && (
-                  <p className="truncate font-medium">{source.filename}</p>
-                )}
+                <div className="flex items-baseline gap-2">
+                  {source.filename && (
+                    <p className="min-w-0 truncate font-medium">{source.filename}</p>
+                  )}
+                  {source.grounded === false && (
+                    <span
+                      title="Snippet could not be located in the document"
+                      className="shrink-0 text-[0.65rem] font-normal text-hestia-text-muted"
+                    >
+                      unverified
+                    </span>
+                  )}
+                </div>
                 {source.snippet && (
                   <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 text-xs italic leading-relaxed text-hestia-text-muted">
                     “{source.snippet}”

@@ -306,29 +306,39 @@ export default function CompetencyGoalModal({
             <ul className="mt-2 space-y-2.5">
               {sources.map((source, i) => (
                 <li key={i} className="text-xs text-hestia-text">
-                  {source.filename &&
-                    (source.contentAvailable ? (
-                      // Opens the stored document in the browser's PDF viewer; #page=N jumps to the
-                      // page the snippet was located on (or the session's first page as fallback).
-                      <a
-                        href={`${API_PREFIX}/api/courses/${courseId}/documents/${source.documentId}/content${source.page ? `#page=${source.page}` : ""}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="group/source flex items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
-                      >
-                        <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
-                          {source.filename}
-                        </span>
-                        {source.page && (
-                          <span className="shrink-0 text-hestia-text-muted">
-                            p. {source.page}
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    {source.filename &&
+                      (source.contentAvailable ? (
+                        // Opens the stored document in the browser's PDF viewer; #page=N jumps to the
+                        // page the snippet was located on (or the session's first page as fallback).
+                        <a
+                          href={`${API_PREFIX}/api/courses/${courseId}/documents/${source.documentId}/content${source.page ? `#page=${source.page}` : ""}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="group/source flex min-w-0 items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
+                        >
+                          <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
+                            {source.filename}
                           </span>
-                        )}
-                      </a>
-                    ) : (
-                      <p className="truncate font-medium">{source.filename}</p>
-                    ))}
+                          {source.page && (
+                            <span className="shrink-0 text-hestia-text-muted">
+                              p. {source.page}
+                            </span>
+                          )}
+                        </a>
+                      ) : (
+                        <p className="min-w-0 truncate font-medium">{source.filename}</p>
+                      ))}
+                    {source.grounded === false && (
+                      <span
+                        title="Snippet could not be located in the document"
+                        className="shrink-0 text-[0.65rem] font-normal text-hestia-text-muted"
+                      >
+                        unverified
+                      </span>
+                    )}
+                  </div>
                   {source.snippet && (
                     <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
                       “{source.snippet}”
