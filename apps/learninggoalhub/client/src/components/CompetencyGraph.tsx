@@ -822,9 +822,9 @@ function Box({
       <p
         className={`text-[0.8rem] font-medium leading-snug ${
           isGap ? "text-hestia-danger" : "text-hestia-text"
-        } ${clampText ? "line-clamp-3" : ""}`}
+        } ${!node.goal.shortLabel && clampText ? "line-clamp-3" : ""}`}
       >
-        {node.goal.text}
+        {node.goal.shortLabel ?? node.goal.text}
       </p>
       <div className="mt-auto flex items-center gap-1 pt-1">
         {expandable && (

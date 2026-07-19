@@ -15,18 +15,23 @@ import java.util.List;
  * is an abstraction over several sub-goals, so it carries no verbatim source snippet.
  *
  * @param text       the competency as a single concise sentence built around ONE action verb.
+ * @param shortLabel the compact noun phrase naming the competency's topic.
  * @param supporting the zero-based indices of all input candidate goals assigned to this competency;
  *                   drives the later tree/CONTRIBUTES_TO links so each candidate attaches only to
  *                   the competency it actually serves.
  */
-public record TerminalCompetency(String text, List<Integer> supporting) {
+public record TerminalCompetency(String text, String shortLabel, List<Integer> supporting) {
 
     public TerminalCompetency {
         supporting = supporting == null ? List.of() : List.copyOf(supporting);
     }
 
+    public TerminalCompetency(String text, List<Integer> supporting) {
+        this(text, null, supporting);
+    }
+
     /** Convenience for callers/tests that do not track provenance. */
     public TerminalCompetency(String text) {
-        this(text, List.of());
+        this(text, null, List.of());
     }
 }

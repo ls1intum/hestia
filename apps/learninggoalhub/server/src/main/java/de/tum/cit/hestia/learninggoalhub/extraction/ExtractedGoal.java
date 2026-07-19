@@ -8,5 +8,9 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
  * (see {@link de.tum.cit.hestia.learninggoalhub.document.DocumentStructureService}) and attached
  * during {@link ExtractionRunner}.
  */
-public record ExtractedGoal(String text, GoalKind kind, String sourceSnippet) {
+public record ExtractedGoal(String text, String shortLabel, GoalKind kind, String sourceSnippet) {
+
+    public ExtractedGoal(String text, GoalKind kind, String sourceSnippet) {
+        this(text, null, kind, sourceSnippet);
+    }
 }

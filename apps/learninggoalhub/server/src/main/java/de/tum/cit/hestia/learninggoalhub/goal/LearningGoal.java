@@ -33,6 +33,9 @@ public class LearningGoal {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    @Column(name = "short_label", columnDefinition = "TEXT")
+    private String shortLabel;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private GoalKind kind;
@@ -88,6 +91,14 @@ public class LearningGoal {
 
     public void setText(String text) {
         this.text = text;
+    }
+
+    public String getShortLabel() {
+        return shortLabel;
+    }
+
+    public void setShortLabel(String shortLabel) {
+        this.shortLabel = shortLabel;
     }
 
     public GoalKind getKind() {

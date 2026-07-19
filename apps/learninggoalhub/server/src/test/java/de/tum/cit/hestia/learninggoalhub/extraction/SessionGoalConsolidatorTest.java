@@ -26,7 +26,8 @@ class SessionGoalConsolidatorTest {
         when(builder.build()).thenReturn(chatClient);
 
         List<ConsolidatedGoal> expected = List.of(
-                new ConsolidatedGoal("Explain how gradient descent minimises a loss function.", List.of(0, 2)));
+                new ConsolidatedGoal("Explain how gradient descent minimises a loss function.", "Gradient Descent",
+                        List.of(0, 2)));
         when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
                 .thenReturn(expected);
 
@@ -63,6 +64,8 @@ class SessionGoalConsolidatorTest {
                 .contains("UNRELATED")
                 .contains("cognitive level")
                 .contains("text")
+                .contains("shortLabel")
+                .contains("2-5 word noun phrase")
                 .contains("supporting");
     }
 

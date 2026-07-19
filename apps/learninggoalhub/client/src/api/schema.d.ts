@@ -280,6 +280,7 @@ export interface components {
             /** Format: int64 */
             id?: number;
             text?: string;
+            shortLabel?: string | null;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";
             /** @enum {string} */

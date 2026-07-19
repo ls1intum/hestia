@@ -31,6 +31,8 @@ type GoalChanges = {
   soloLevel?: LearningGoal["soloLevel"];
 };
 
+type PendingChanges = GoalChanges & { shortLabel?: string | null };
+
 export default function CompetencyGoalModal({
   goal: freshGoal,
   role,
@@ -55,7 +57,7 @@ export default function CompetencyGoalModal({
 
   // Edits show immediately: changes overlay the goal until the refetched goal (a new object
   // identity) confirms them. Editing state for the text field lives here too.
-  const [pending, setPending] = useState<GoalChanges>({});
+  const [pending, setPending] = useState<PendingChanges>({});
   const [draft, setDraft] = useState<string | null>(null);
   useEffect(() => setPending({}), [freshGoal]);
   // The draft only resets when another goal opens — a background refetch must not eat typing.
@@ -73,7 +75,11 @@ export default function CompetencyGoalModal({
   if (!freshGoal) return null;
   const goal: LearningGoal = { ...freshGoal, ...pending };
   const update = (changes: GoalChanges) => {
-    setPending((prev) => ({ ...prev, ...changes }));
+    setPending((prev) => ({
+      ...prev,
+      ...changes,
+      ...(changes.text !== undefined ? { shortLabel: null } : {}),
+    }));
     onUpdate!(goal.id!, changes);
   };
   const sources = goal.sources ?? [];
