@@ -1,0 +1,146 @@
+/* Forge loading scene ("the exam is being forged") — styles for ForgeAnimation.tsx.
+   Anvil + hammer + sparks + glowing exam sheet + warm ember halo. One shared 2s
+   beat: the hammer's impact (~50%) is the moment the sparks burst and the sheet's
+   glow flares. Colors come from the HESTIA tokens (defined in index.css) so it
+   adapts to light/dark. Motion is gated behind no-preference; with reduced motion
+   the scene rests as a static tableau (hammer raised, sparks hidden). */
+
+.forge-anvil {
+  fill: color-mix(in srgb, hsl(var(--hestia-primary)) 52%, #140d06 48%);
+}
+.forge-anvil-top {
+  fill: color-mix(in srgb, hsl(var(--hestia-primary)) 78%, #000 22%);
+}
+.forge-hammer-head {
+  fill: color-mix(in srgb, hsl(var(--hestia-primary)) 66%, #ece6d8 34%);
+}
+.forge-hammer-face {
+  fill: color-mix(in srgb, hsl(var(--hestia-primary)) 50%, #000 50%);
+}
+.forge-sheet {
+  fill: hsl(var(--hestia-surface));
+  stroke: color-mix(in srgb, hsl(var(--hestia-warning)) 55%, transparent);
+  stroke-width: 0.6;
+}
+.forge-sheet-line {
+  fill: hsl(var(--hestia-primary) / 0.55);
+}
+.forge-spark {
+  fill: hsl(var(--hestia-warning));
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.forge-glow {
+  fill: hsl(var(--hestia-warning));
+  opacity: 0.4;
+}
+/* Soft warm halo behind the anvil — the forge's heat. Muted; gently breathes
+   (see the animation below) rather than flashing. */
+.forge-ember {
+  fill: hsl(var(--hestia-warning));
+  opacity: 0.14;
+}
+
+/* Rest state (also the reduced-motion tableau): hammer raised above the sheet.
+   Positive angle lifts the head up (the pivot is the grip, upper right), so the
+   strike sweeps DOWN from here onto the anvil. */
+.forge-hammer {
+  transform-box: view-box;
+  transform-origin: 88px 21px;
+  transform: rotate(36deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Per-keyframe easing carries the velocity, so the shorthand timing stays
+     linear here. */
+  .forge-hammer {
+    animation: hestia-forge-strike 2s linear infinite;
+  }
+  .forge-ember {
+    animation: hestia-forge-ember 3s ease-in-out infinite;
+  }
+  .forge-glow {
+    animation: hestia-forge-flare 2s ease-in-out infinite;
+  }
+  .forge-spark {
+    animation: hestia-forge-spark 2s ease-out infinite;
+  }
+}
+
+/* Hammer motion: a slow wind-back (charge up), then a fast accelerating slam
+   DOWN onto the sheet, a rebound off the hot metal, and a lift back to raised.
+   Velocity comes from the per-keyframe easing + uneven time spacing (11° over
+   38% of the loop to cock back, then ~48° in the next 12% to slam). */
+@keyframes hestia-forge-strike {
+  0% {
+    transform: rotate(36deg); /* raised, begin the slow wind-back */
+    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
+  }
+  38% {
+    transform: rotate(47deg); /* fully cocked, then accelerate hard */
+    animation-timing-function: cubic-bezier(0.75, 0, 0.9, 0.35);
+  }
+  50% {
+    transform: rotate(-4deg); /* IMPACT — driven down, pressing into the sheet */
+    animation-timing-function: ease-out;
+  }
+  57% {
+    transform: rotate(8deg); /* rebound off the metal */
+    animation-timing-function: ease-in-out;
+  }
+  64% {
+    transform: rotate(1deg); /* the hit settles */
+    animation-timing-function: ease-in-out;
+  }
+  100% {
+    transform: rotate(36deg); /* lift back up to raised */
+  }
+}
+
+@keyframes hestia-forge-flare {
+  0%,
+  38% {
+    opacity: 0.32;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  66% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0.32;
+  }
+}
+
+/* A slow, subtle breath — just enough to read as a live forge. Decoupled from
+   the hammer strike; no flashing. */
+@keyframes hestia-forge-ember {
+  0%,
+  100% {
+    opacity: 0.11;
+  }
+  50% {
+    opacity: 0.17;
+  }
+}
+
+@keyframes hestia-forge-spark {
+  0%,
+  44% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(calc(var(--sx) * 0.35), calc(var(--sy) * 0.35)) scale(1);
+  }
+  78% {
+    opacity: 0;
+    transform: translate(var(--sx), var(--sy)) scale(0.4);
+  }
+  100% {
+    opacity: 0;
+  }
+}
