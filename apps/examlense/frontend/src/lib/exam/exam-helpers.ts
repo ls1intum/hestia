@@ -104,9 +104,6 @@ export interface Exam {
   id: string;
   title: string;
   course: string | null;
-  semester: string | null;
-  instructor_name: string | null;
-  total_points: number | null;
   language: "de" | "en" | "other";
   source: "pdf" | "manual";
   source_file_url: string | null;
@@ -120,13 +117,40 @@ export interface Exam {
     | "finished";
   parse_error?: string | null;
   parse_phase?: string | null;
+  /** Start of the current parse attempt (initial or retry); anchors the progress
+   *  countdown. Null for exams parsed before this field existed. */
+  parse_started_at?: string | null;
+  /** Set once when parsing successfully finalized (parsing→draft). Distinguishes a
+   *  parse failure (never set) from an evaluation failure (set, then failed while
+   *  solving). Null for manual exams and PDFs that never finished parsing. */
+  parsed_at?: string | null;
   parser_model?: string | null;
   solver_model?: string | null;
   lgh_course_id?: number | null;
+  /** Source document page count (PDF/converted docx); null for manual exams or if unknown. */
+  page_count?: number | null;
   created_at: string;
   updated_at: string;
 }
 
+
+/**
+ * A `failed` exam is a *parsing* failure when it's a PDF import that never
+ * finished parsing — i.e. `parsed_at` was never stamped (the backend sets it
+ * only when parsing finalizes to draft). Every other `failed` exam (a manual
+ * exam, or a PDF that parsed and later failed to solve / was cancelled mid-solve)
+ * is an evaluation failure. Used to gate parse-retry (which re-parses and would
+ * overwrite edited structure) vs. re-evaluation.
+ *
+ * We key off `parsed_at` rather than task count because tasks are committed
+ * before the parse finalizes, so a failure/cancel in that window leaves tasks
+ * present on an exam that never actually completed parsing — a task-count check
+ * would misclassify those as evaluation failures.
+ */
+export const isParseFailure = (
+  exam: Pick<Exam, "status" | "source" | "parsed_at">,
+): boolean =>
+  exam.status === "failed" && exam.source === "pdf" && !exam.parsed_at;
 
 /**
  * The single canonical mode an exam belongs in, keyed off its status. Routing

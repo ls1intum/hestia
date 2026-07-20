@@ -12,17 +12,19 @@ import static app.ai.ProviderKind.OPENAI_COMPATIBLE;
 
 public final class ParserStrategies {
 
-    public static final String DEFAULT_ID = "gemini-2.5-flash";
+    public static final String DEFAULT_ID = "gemini-3.5-flash";
+    /** Used when the default parser fails transiently (busy/unreachable/5xx). A different provider than the default on purpose — a Gemini outage takes both Gemini variants down. */
+    public static final String FALLBACK_ID = "gpt-5.5";
 
     private static final StrategyRegistry<ParserStrategy> REGISTRY =
         new StrategyRegistry<>(ParserStrategy::id, DEFAULT_ID);
 
     static {
         REGISTRY.register(new ParserStrategy(
-            "gemini-2.5-flash",
-            "Gemini 2.5 Flash (Google)",
+            "gemini-3.5-flash",
+            "Gemini 3.5 Flash (Google)",
             "Google Gemini reads the PDF directly (native document parsing, no rasterization).",
-            "gemini-2.5-flash",
+            "gemini-3.5-flash",
             PDF_DIRECT,
             GEMINI
         ));
@@ -50,6 +52,16 @@ public final class ParserStrategies {
             RASTERIZE,
             OPENAI_COMPATIBLE
         ));
+        // Retired models: exams created before the catalog change still
+        // reference these ids, so they stay resolvable but hidden.
+        REGISTRY.legacy(new ParserStrategy(
+            "gemini-2.5-flash",
+            "Gemini 2.5 Flash (Google)",
+            "Google Gemini reads the PDF directly (native document parsing, no rasterization).",
+            "gemini-2.5-flash",
+            PDF_DIRECT,
+            GEMINI
+        ));
         ParserStrategy mistral = new ParserStrategy(
             "mistral-large-3-675b-instruct-2512",
             "Mistral Large 3 675B (GWDG)",
@@ -58,7 +70,7 @@ public final class ParserStrategies {
             RASTERIZE,
             OPENAI_COMPATIBLE
         );
-        REGISTRY.register(mistral);
+        REGISTRY.legacy(mistral);
         REGISTRY.alias("mistral-large-3-text", mistral);
     }
 

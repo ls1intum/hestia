@@ -59,12 +59,18 @@ docker compose up -d postgres
 
 cd backend
 set -a; source .env; set +a
-./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
 Server listens on `http://localhost:8081` (override with `PORT`). The Vite dev
 server uses `:8080`, so they coexist without a port clash. The DB connection
 defaults to `localhost:5433` (the Docker Postgres host port).
+
+The `local` profile (`application-local.yml`) points LearningGoalHub at its
+public web URL instead of the Docker-internal hostname used on the shared VM, so
+goal derivation works from a host `bootRun` (on the TUM VPN — the deployed LGH is
+VPN-only). Omit `SPRING_PROFILES_ACTIVE=local` and the app falls back to the
+`LGH_BASE_URL` env var / default.
 
 ### Smoke test
 
@@ -159,6 +165,19 @@ GEMINI_API_KEY=<your Gemini key>
 
 Available models include Gemma / Mistral / Qwen, GPT, Claude, and Gemini entries
 (see the UI dropdown and `src/lib/llm-models.ts`).
+
+### PDF parsing: model choice + fallback
+
+The parser model is chosen entirely server-side — the client only triggers a parse
+(plus the fast-mode flag). `parse-exam-pdf` uses the default parser
+(`ParserStrategies.DEFAULT_ID` = `gemini-3.5-flash`) and, if that call fails
+**transiently** (busy/429, unreachable/timeout, provider 5xx, or a missing/invalid
+key → 500 — see `AiExceptions.isTransient`), transparently retries the same PDF once
+with `ParserStrategies.FALLBACK_ID` (`gpt-5.5`), honoring the user's fast-mode choice.
+Non-transient failures (unstructured/malformed output, out-of-credits) are not retried.
+The fallback therefore requires a valid `OPENAI_API_KEY`. Exactly one `parse_metrics`
+row is written per parse, stamped with the model that actually served; on a successful
+fallback the exam's `parser_model` is updated to the serving model too.
 
 ## Deploying
 

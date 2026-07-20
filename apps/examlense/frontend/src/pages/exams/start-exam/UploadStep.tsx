@@ -1,41 +1,44 @@
 import { useRef, useState } from "react";
 import { FileText, FileUp, X } from "lucide-react";
-import { MAX_BYTES, formatBytes } from "./shared";
+import { quickCheckUpload, UPLOAD_ACCEPT } from "@/lib/parsing/pdf-precheck";
+import { formatBytes, truncateFilename } from "./shared";
+import { FastModeToggle } from "./FastModeToggle";
 
 interface Props {
   file: File | null;
   onChange: (file: File | null) => void;
   onError: (msg: string) => void;
+  fastMode: boolean;
+  onFastModeChange: (enabled: boolean) => void;
 }
 
 /**
- * First step of the PDF flow: drop or browse for an exam PDF. Validates type
- * and size; the selected file is lifted to the orchestrator via onChange.
+ * First step of the PDF flow: drop or browse for an exam PDF or Word .docx (plus
+ * the Fast Mode parsing toggle). Validates type and size; the selected file is
+ * lifted to the orchestrator via onChange.
  */
-export const UploadStep = ({ file, onChange, onError }: Props) => {
+export const UploadStep = ({
+  file,
+  onChange,
+  onError,
+  fastMode,
+  onFastModeChange,
+}: Props) => {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const validate = (f: File): boolean => {
-    if (f.type !== "application/pdf") {
-      onError("Only PDF files are supported.");
-      return false;
-    }
-    if (f.size > MAX_BYTES) {
-      onError("File is too large. Maximum size is 10 MB.");
-      return false;
-    }
-    return true;
-  };
-
   const handleFile = (f: File | null | undefined) => {
     if (!f) return;
-    if (validate(f)) onChange(f);
+    const msg = quickCheckUpload(f);
+    if (msg) {
+      onError(msg);
+      return;
+    }
+    onChange(f);
   };
 
-  if (file) {
-    return (
-      <div className="relative flex min-h-[200px] w-full flex-col justify-between overflow-hidden rounded-hestia-lg border border-hestia-border bg-hestia-surface px-hestia-5 py-hestia-5 shadow-hestia-sm">
+  const fileArea = file ? (
+    <div className="relative flex min-h-[200px] w-full flex-col justify-between overflow-hidden rounded-hestia-lg border border-hestia-border bg-hestia-surface px-hestia-5 py-hestia-5 shadow-hestia-sm">
         <button
           type="button"
           onClick={() => onChange(null)}
@@ -51,13 +54,13 @@ export const UploadStep = ({ file, onChange, onError }: Props) => {
             <FileText size={30} aria-hidden="true" />
           </div>
           <p className="hestia-eyebrow text-hestia-text-muted">
-            PDF selected
+            File selected
           </p>
           <p
             className="mt-hestia-2 max-w-full truncate text-base font-semibold text-hestia-text"
             title={file.name}
           >
-            {file.name}
+            {truncateFilename(file.name)}
           </p>
           <p className="mt-1 text-sm text-hestia-text-muted">
             {formatBytes(file.size)}
@@ -66,14 +69,11 @@ export const UploadStep = ({ file, onChange, onError }: Props) => {
 
         <div className="mt-hestia-4 rounded-hestia-md border border-hestia-border bg-hestia-bg/40 px-hestia-3 py-hestia-2 text-center">
           <p className="text-xs leading-relaxed text-hestia-text-muted">
-            Ready to continue. Remove this file to choose another PDF.
+            Ready to continue. Remove this file to choose another one.
           </p>
         </div>
       </div>
-    );
-  }
-
-  return (
+  ) : (
     <label
       onDragOver={(e) => {
         e.preventDefault();
@@ -93,18 +93,25 @@ export const UploadStep = ({ file, onChange, onError }: Props) => {
     >
       <FileUp size={28} className="text-hestia-text-muted" />
       <p className="mt-hestia-3 text-sm font-medium text-hestia-text">
-        Drop your PDF here
+        Drop your PDF or Word (.docx) file here
       </p>
       <p className="text-xs text-hestia-text-muted">
-        or click to browse · max 10 MB
+        or click to browse · PDF or .docx · max 10 MB
       </p>
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept={UPLOAD_ACCEPT}
         className="sr-only"
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
     </label>
+  );
+
+  return (
+    <div className="space-y-hestia-3">
+      {fileArea}
+      <FastModeToggle checked={fastMode} onChange={onFastModeChange} />
+    </div>
   );
 };

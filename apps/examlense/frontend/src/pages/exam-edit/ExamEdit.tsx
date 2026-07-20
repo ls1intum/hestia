@@ -42,6 +42,9 @@ import { DEFAULT_SOLVER_MODEL_ID } from "@/lib/exam/llm-models";
 import { solveExam } from "@/lib/api/api-solve";
 import { EvaluatingView } from "@/pages/exam-edit/components/EvaluatingView";
 import { EditorLoadingView } from "@/components/shared/exam-content/EditorLoadingView";
+import { retryParse } from "@/lib/parsing/retry-parse";
+import { retryEvaluation } from "@/lib/exam/retry-evaluation";
+import { isParseFailure } from "@/lib/exam/exam-helpers";
 import { SectionCarousel, type CarouselSlide } from "@/components/shared/exam-content/SectionCarousel";
 import { IntroSlide } from "@/pages/exam-edit/components/IntroSlide";
 import { ManualIntroSlide } from "@/pages/exam-edit/components/ManualIntroSlide";
@@ -101,6 +104,18 @@ const ExamEditInner = () => {
       qc.invalidateQueries({ queryKey: examLearningGoalsKey(id) });
     },
   });
+
+  // No failure snackbar here: a failed exam always renders the full-screen error
+  // splash below (with its own retry), so a toast would just double the signal.
+  // The dashboard toasts instead (useParseFailureToasts), where there's no splash.
+
+  const handleRetryParse = useCallback(() => {
+    if (exam) retryParse(exam, qc);
+  }, [exam, qc]);
+
+  const handleRetryEvaluation = useCallback(() => {
+    if (exam) retryEvaluation(exam, qc);
+  }, [exam, qc]);
 
   // Per-section user-confirmation state. Confirming a section dispatches a
   // background solve-section call so the LLM answers are ready by the time
@@ -516,7 +531,28 @@ const ExamEditInner = () => {
         kind="parsing"
         examId={exam.id}
         parsePhase={exam.parse_phase ?? null}
+        pageCount={exam.page_count}
+        parseStartedAt={exam.parse_started_at}
         onCancel={handleCancelProcessing}
+      />
+    );
+  }
+
+  // Failed: show the splash in its error state (icon + message + retry) instead
+  // of falling through to the misleading empty editor. A parse failure offers a
+  // re-parse; an evaluation failure (solve error / cancel on a parsed or manual
+  // exam) offers a re-solve — never a re-parse, which would overwrite structure.
+  if (exam.status === "failed") {
+    const parseFailed = isParseFailure(exam);
+    return (
+      <EvaluatingView
+        title={exam.title || "Untitled exam"}
+        kind="parsing"
+        variant="error"
+        errorMessage={exam.parse_error}
+        errorHeading={parseFailed ? "Parsing failed" : "Evaluation failed"}
+        retryLabel={parseFailed ? "Retry parsing" : "Retry evaluation"}
+        onRetry={parseFailed ? handleRetryParse : handleRetryEvaluation}
       />
     );
   }

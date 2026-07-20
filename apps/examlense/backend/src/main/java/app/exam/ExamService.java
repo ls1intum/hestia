@@ -61,9 +61,6 @@ public class ExamService {
         copy.setOwnerId(UUID.fromString(userId));
         copy.setTitle((src.getTitle() == null ? "" : src.getTitle()) + " (Copy)");
         copy.setCourse(src.getCourse());
-        copy.setSemester(src.getSemester());
-        copy.setInstructorName(src.getInstructorName());
-        copy.setTotalPoints(src.getTotalPoints());
         copy.setLanguage(src.getLanguage());
         copy.setSource(src.getSource());
         copy.setStatus("draft");

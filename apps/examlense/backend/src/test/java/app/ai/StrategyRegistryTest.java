@@ -14,25 +14,40 @@ class StrategyRegistryTest {
 
     @Test
     void parserCatalogExposesOnlyActiveModelsInDisplayOrder() {
-        assertThat(ParserStrategies.DEFAULT_ID).isEqualTo("gemini-2.5-flash");
+        assertThat(ParserStrategies.DEFAULT_ID).isEqualTo("gemini-3.5-flash");
         assertThat(ParserStrategies.all())
             .extracting(ParserStrategy::id)
             .containsExactly(
-                "gemini-2.5-flash",
+                "gemini-3.5-flash",
                 "claude-opus-4-8",
                 "gpt-5.5",
-                "qwen3.6-35b-a3b",
-                "mistral-large-3-675b-instruct-2512"
+                "qwen3.6-35b-a3b"
             );
     }
 
     @Test
+    void parserFallbackIsGptOnADifferentProviderThanTheDefault() {
+        assertThat(ParserStrategies.FALLBACK_ID).isEqualTo("gpt-5.5");
+        assertThat(ParserStrategies.FALLBACK_ID).isNotEqualTo(ParserStrategies.DEFAULT_ID);
+
+        ParserStrategy fallback = ParserStrategies.resolve(ParserStrategies.FALLBACK_ID);
+        ParserStrategy defaultStrategy = ParserStrategies.resolve(ParserStrategies.DEFAULT_ID);
+        assertThat(fallback.id()).isEqualTo("gpt-5.5");
+        // A Gemini outage takes both Gemini variants down, so the fallback must be a different provider.
+        assertThat(fallback.providerKind()).isNotEqualTo(defaultStrategy.providerKind());
+    }
+
+    @Test
     void parserStrategiesHaveExpectedNormalModesAndProviders() {
+        ParserStrategy geminiFlash35 = ParserStrategies.resolve("gemini-3.5-flash");
         ParserStrategy gemini = ParserStrategies.resolve("gemini-2.5-flash");
         ParserStrategy claude = ParserStrategies.resolve("claude-opus-4-8");
         ParserStrategy gpt = ParserStrategies.resolve("gpt-5.5");
         ParserStrategy qwen = ParserStrategies.resolve("qwen3.6-35b-a3b");
         ParserStrategy mistral = ParserStrategies.resolve("mistral-large-3-675b-instruct-2512");
+
+        assertThat(geminiFlash35.providerKind()).isEqualTo(GEMINI);
+        assertThat(geminiFlash35.pdfMode()).isEqualTo(PDF_DIRECT);
 
         assertThat(gemini.providerKind()).isEqualTo(GEMINI);
         assertThat(gemini.pdfMode()).isEqualTo(PDF_DIRECT);
@@ -65,21 +80,24 @@ class StrategyRegistryTest {
         assertThat(SolverStrategies.all())
             .extracting(SolverStrategy::id)
             .containsExactly(
-                "gemini-2.5-flash",
+                "gemini-3.5-flash",
                 "gpt-5.5",
                 "claude-opus-4-8",
-                "mistral-large-3-675b-instruct-2512",
                 "qwen3.6-35b-a3b"
             );
     }
 
     @Test
     void registersExpectedSolverProviders() {
+        SolverStrategy geminiFlash35 = SolverStrategies.resolve("gemini-3.5-flash");
         SolverStrategy gemini = SolverStrategies.resolve("gemini-2.5-flash");
         SolverStrategy gpt = SolverStrategies.resolve("gpt-5.5");
         SolverStrategy claude = SolverStrategies.resolve("claude-opus-4-8");
         SolverStrategy mistral = SolverStrategies.resolve("mistral-large-3-675b-instruct-2512");
         SolverStrategy qwen = SolverStrategies.resolve("qwen3.6-35b-a3b");
+
+        assertThat(geminiFlash35.providerKind()).isEqualTo(GEMINI);
+        assertThat(geminiFlash35.providerModel()).isEqualTo("gemini-3.5-flash");
 
         assertThat(gemini.providerKind()).isEqualTo(GEMINI);
         assertThat(gemini.providerModel()).isEqualTo("gemini-2.5-flash");

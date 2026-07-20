@@ -16,6 +16,7 @@
     --hestia-warning: 37 92% 43%; /* #D4880A */
     --hestia-danger: 4 71% 44%; /* #C0281F */
     --hestia-success: 152 50% 32%; /* #297a52 — sits next to gold primary without competing */
+    --hestia-grading: 265 55% 52%; /* violet — grading / AI-solving accent */
 
     --hestia-primary-hover: 36 65% 30%; /* primary 85% + black */
     --hestia-primary-muted: 36 36% 85%; /* 20% primary over bg */
@@ -94,6 +95,7 @@
     --hestia-warning: 36 92% 55%; /* #F5A623 */
     --hestia-danger: 349 81% 53%; /* #E8284B */
     --hestia-success: 152 55% 58%; /* slightly brighter for contrast on dark surface */
+    --hestia-grading: 265 80% 76%; /* violet — brighter for contrast on dark surface */
 
     --hestia-primary-hover: 41 56% 55%;
     --hestia-primary-muted: 42 23% 19%; /* 22% primary over bg */
@@ -119,6 +121,7 @@
       --hestia-warning: 36 92% 55%;
       --hestia-danger: 349 81% 53%;
       --hestia-success: 152 55% 58%;
+      --hestia-grading: 265 80% 76%;
 
       --hestia-primary-hover: 41 56% 55%;
       --hestia-primary-muted: 42 23% 19%;

@@ -25,7 +25,7 @@ public final class ParseExamPrompts {
 
         DO NOT extract or include in any field (skip these entirely):
         - General instructions or notices for students: "Bearbeitungshinweise", "Hinweise zur Bearbeitung", "Hilfsmittel", allowed materials, time/duration, grading scheme overview, "please write legibly", signature lines, name / matriculation number / date fields.
-        - Cover-page boilerplate beyond title/course/semester (which go to dedicated top-level fields, not into any section).
+        - Cover-page boilerplate beyond title/course (which go to dedicated top-level fields, not into any section).
         - Blank pages, "extra space for your answer", "Reserveseite", "Notizen", scratch / draft pages, typically at the end of the PDF.
         - Page headers, footers, page numbers, watermarks, university/department branding.
 
@@ -62,7 +62,7 @@ public final class ParseExamPrompts {
         Pure text formatting (bullet lists, equation lines) is NOT a figure. Source code, pseudocode, or LaTeX that is just typeset as text is also NOT a figure — keep it inline (use fenced ``` code blocks for code, `$...$` / `$$...$$` for math).
         Markdown formatting (bold, italic, lists, fenced code blocks, inline code) is allowed inside "description", "context_blocks[].content", and task "prompt" — use it only to faithfully preserve structure that already exists in the PDF.
 
-        Top-level: title, course, semester, detected_language ('de' | 'en' | 'other').
+        Top-level: title, course, detected_language ('de' | 'en' | 'other').
 
         If the input is plain text rather than page images, the layout is already linearized. Treat blank lines as soft section breaks, infer figures from captions/labels mentioned in the text, and ignore line-wrap artifacts.
 
@@ -77,7 +77,6 @@ public final class ParseExamPrompts {
             "detected_language": { "type": "string", "enum": ["de", "en", "other"] },
             "title": { "type": ["string", "null"] },
             "course": { "type": ["string", "null"] },
-            "semester": { "type": ["string", "null"] },
             "sections": {
               "type": "array",
               "items": {

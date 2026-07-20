@@ -348,12 +348,14 @@ class ParsedExamPersister {
             }
             if (parsed.get("title") instanceof String ts && !ts.isEmpty()) exam.setTitle(ts);
             exam.setCourse(asString(parsed.get("course")));
-            exam.setSemester(asString(parsed.get("semester")));
             Object lang = parsed.get("detected_language");
             exam.setLanguage(lang instanceof String ls ? ls : (languageHint != null ? languageHint : "en"));
             exam.setStatus("draft");
             exam.setParseError(null);
             exam.setParsePhase(null);
+            // Completion marker: parsing reached draft. A later solve failure keeps
+            // this set, so the UI won't misread it as a parse failure (see Exam.parsedAt).
+            exam.setParsedAt(java.time.OffsetDateTime.now());
             examRepository.save(exam);
             progress.notifyExam(examId);
         } catch (Exception e) {

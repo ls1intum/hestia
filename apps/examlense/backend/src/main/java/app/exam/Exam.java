@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.hibernate.annotations.Generated;
@@ -21,13 +20,6 @@ public class Exam {
     private String title = "";
 
     private String course;
-    private String semester;
-
-    @Column(name = "instructor_name")
-    private String instructorName;
-
-    @Column(name = "total_points")
-    private BigDecimal totalPoints;
 
     @Column(nullable = false)
     private String language = "en";
@@ -56,11 +48,24 @@ public class Exam {
     @Column(name = "solver_model")
     private String solverModel;
 
-    @Column(name = "parse_raw_text")
-    private String parseRawText;
-
     @Column(name = "lgh_course_id")
     private Long lghCourseId;
+
+    @Column(name = "page_count")
+    private Integer pageCount;
+
+    // Set at the start of every parse attempt (initial + retry) so the client
+    // can anchor its progress countdown to the current attempt, not created_at.
+    @Column(name = "parse_started_at")
+    private OffsetDateTime parseStartedAt;
+
+    // Stamped once when parsing successfully finalizes (parsing→draft). Lets the
+    // UI distinguish a parse failure (never set) from an evaluation failure
+    // (set, then failed while solving) without inferring from task count —
+    // tasks are committed before finalize, so a failure in that window would
+    // otherwise look like a solvable exam. Null until the first successful parse.
+    @Column(name = "parsed_at")
+    private OffsetDateTime parsedAt;
 
     @Generated(event = EventType.INSERT)
     @Column(name = "created_at")
@@ -76,12 +81,6 @@ public class Exam {
     public void setTitle(String title) { this.title = title; }
     public String getCourse() { return course; }
     public void setCourse(String course) { this.course = course; }
-    public String getSemester() { return semester; }
-    public void setSemester(String semester) { this.semester = semester; }
-    public String getInstructorName() { return instructorName; }
-    public void setInstructorName(String instructorName) { this.instructorName = instructorName; }
-    public BigDecimal getTotalPoints() { return totalPoints; }
-    public void setTotalPoints(BigDecimal totalPoints) { this.totalPoints = totalPoints; }
     public String getLanguage() { return language; }
     public void setLanguage(String language) { this.language = language; }
     public String getSource() { return source; }
@@ -100,10 +99,14 @@ public class Exam {
     public void setParserModel(String parserModel) { this.parserModel = parserModel; }
     public String getSolverModel() { return solverModel; }
     public void setSolverModel(String solverModel) { this.solverModel = solverModel; }
-    public String getParseRawText() { return parseRawText; }
-    public void setParseRawText(String parseRawText) { this.parseRawText = parseRawText; }
     public Long getLghCourseId() { return lghCourseId; }
     public void setLghCourseId(Long lghCourseId) { this.lghCourseId = lghCourseId; }
+    public Integer getPageCount() { return pageCount; }
+    public void setPageCount(Integer pageCount) { this.pageCount = pageCount; }
+    public OffsetDateTime getParseStartedAt() { return parseStartedAt; }
+    public void setParseStartedAt(OffsetDateTime parseStartedAt) { this.parseStartedAt = parseStartedAt; }
+    public OffsetDateTime getParsedAt() { return parsedAt; }
+    public void setParsedAt(OffsetDateTime parsedAt) { this.parsedAt = parsedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

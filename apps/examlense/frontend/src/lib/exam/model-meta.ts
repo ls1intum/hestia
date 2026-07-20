@@ -11,6 +11,12 @@ export interface ModelMeta {
 }
 
 export const MODEL_META: Record<string, ModelMeta> = {
+  "gemini-3.5-flash": {
+    provider: "Google",
+    name: "Gemini 3.5 Flash",
+    logoSrc:
+      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg",
+  },
   "gemini-2.5-flash": {
     provider: "Google",
     name: "Gemini Flash",
@@ -44,6 +50,7 @@ export const MODEL_META: Record<string, ModelMeta> = {
 };
 
 export const MODEL_ORDER = [
+  "gemini-3.5-flash",
   "gemini-2.5-flash",
   "gpt-5.5",
   "claude-opus-4-8",

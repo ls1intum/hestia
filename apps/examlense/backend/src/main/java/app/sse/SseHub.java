@@ -106,9 +106,15 @@ public class SseHub {
         publish("exams", "exam", data);
     }
 
-    /** A task answer was written — notify the exam's progress subscribers. */
+    /**
+     * A task answer was written — notify the exam's progress subscribers, and
+     * also refresh the dashboard list so solve progress ("Solving task X of Y…")
+     * advances live there too, not just on the per-exam splash.
+     */
     public void progress(UUID examId) {
-        publish("exam:" + examId, "progress", Map.of("exam_id", examId.toString()));
+        Map<String, Object> data = Map.of("exam_id", examId.toString());
+        publish("exam:" + examId, "progress", data);
+        publish("exams", "exam", data);
     }
 
     /** Task rows changed server-side (e.g. learning goals were generated). */

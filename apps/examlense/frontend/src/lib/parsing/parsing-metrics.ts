@@ -32,12 +32,11 @@ export interface ParsingMetrics {
 
 const MOCK_BY_MODEL: ModelParsingStat[] = [
   { modelId: PARSER_MODELS[0].id, pdfMode: "PDF_DIRECT", total: 142, succeeded: 134, failed: 8, avgMsPerPage: 4_600, avgTokensPerPage: 2_300 },
-  { modelId: PARSER_MODELS[1].id, pdfMode: "PDF_DIRECT", total: 63, succeeded: 61, failed: 2, avgMsPerPage: 6_975, avgTokensPerPage: 3_100 },
-  { modelId: PARSER_MODELS[2].id, pdfMode: "PDF_DIRECT", total: 38, succeeded: 33, failed: 5, avgMsPerPage: 3_800, avgTokensPerPage: 2_025 },
-  { modelId: PARSER_MODELS[2].id, pdfMode: "TEXT_ONLY", total: 24, succeeded: 24, failed: 0, avgMsPerPage: 900, avgTokensPerPage: 1_100 },
-  { modelId: PARSER_MODELS[3].id, pdfMode: "RASTERIZE", total: 21, succeeded: 20, failed: 1, avgMsPerPage: 7_875, avgTokensPerPage: 3_700 },
-  { modelId: PARSER_MODELS[4].id, pdfMode: "RASTERIZE", total: 57, succeeded: 56, failed: 1, avgMsPerPage: 1_700, avgTokensPerPage: 1_350 },
-  { modelId: PARSER_MODELS[4].id, pdfMode: "TEXT_ONLY", total: 31, succeeded: 31, failed: 0, avgMsPerPage: 620, avgTokensPerPage: 780 },
+  { modelId: PARSER_MODELS[1].id, pdfMode: "PDF_DIRECT", total: 38, succeeded: 33, failed: 5, avgMsPerPage: 3_800, avgTokensPerPage: 2_025 },
+  { modelId: PARSER_MODELS[1].id, pdfMode: "TEXT_ONLY", total: 24, succeeded: 24, failed: 0, avgMsPerPage: 900, avgTokensPerPage: 1_100 },
+  { modelId: PARSER_MODELS[2].id, pdfMode: "PDF_DIRECT", total: 63, succeeded: 61, failed: 2, avgMsPerPage: 6_975, avgTokensPerPage: 3_100 },
+  { modelId: PARSER_MODELS[3].id, pdfMode: "RASTERIZE", total: 57, succeeded: 56, failed: 1, avgMsPerPage: 1_700, avgTokensPerPage: 1_350 },
+  { modelId: PARSER_MODELS[3].id, pdfMode: "TEXT_ONLY", total: 31, succeeded: 31, failed: 0, avgMsPerPage: 620, avgTokensPerPage: 780 },
 ];
 
 export const MOCK_PARSING_METRICS: ParsingMetrics = {

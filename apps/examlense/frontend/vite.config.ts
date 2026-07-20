@@ -23,4 +23,9 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
+  // pdfjs-dist is used for the client-side PDF page-count pre-check; pre-bundle it
+  // so the dev server doesn't stall on first import.
+  optimizeDeps: {
+    include: ["pdfjs-dist"],
+  },
 }));

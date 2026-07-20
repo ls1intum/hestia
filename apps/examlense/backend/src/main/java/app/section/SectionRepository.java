@@ -14,6 +14,9 @@ public interface SectionRepository extends JpaRepository<Section, UUID> {
 
     List<Section> findByExamIdOrderByPositionAsc(UUID examId);
 
+    /** Bulk fetch for the dashboard progress counts (avoids N+1 across the list). */
+    List<Section> findByExamIdIn(List<UUID> examIds);
+
     Optional<Section> findByIdAndExamId(UUID id, UUID examId);
 
     /** Used by the parse persister to clear a previous parse's sections (blocks cascade via FK). */

@@ -6,6 +6,8 @@ import app.task.TaskOption;
 import app.task.TaskAnswerRepository;
 import app.grading.TaskGradeRepository;
 import app.task.TaskRepository;
+import app.section.Section;
+import app.section.SectionRepository;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,19 +30,27 @@ import org.springframework.stereotype.Service;
 @Service
 public class ExamProgressService {
 
-    /** Counts backing one exam's progress bar. All are relative to {@code taskCount}. */
-    public record Counts(long taskCount, long scoredCount, long answeredCount, long gradedCount) {
-        static final Counts EMPTY = new Counts(0, 0, 0, 0);
+    /**
+     * Counts backing one exam's progress bar. Task-relative counts (scored/
+     * answered/graded) are relative to {@code taskCount}; the section counts
+     * back the dashboard's "prepare" step (confirmed / total sections).
+     */
+    public record Counts(long taskCount, long scoredCount, long answeredCount, long gradedCount,
+                         long sectionCount, long confirmedSectionCount) {
+        static final Counts EMPTY = new Counts(0, 0, 0, 0, 0, 0);
     }
 
     private final TaskRepository tasks;
     private final TaskGradeRepository grades;
     private final TaskAnswerRepository answers;
+    private final SectionRepository sections;
 
-    public ExamProgressService(TaskRepository tasks, TaskGradeRepository grades, TaskAnswerRepository answers) {
+    public ExamProgressService(TaskRepository tasks, TaskGradeRepository grades,
+                               TaskAnswerRepository answers, SectionRepository sections) {
         this.tasks = tasks;
         this.grades = grades;
         this.answers = answers;
+        this.sections = sections;
     }
 
     /** Per-exam counts for the given exam ids; missing exams map to {@link Counts#EMPTY}. */
@@ -70,9 +80,28 @@ public class ExamProgressService {
             if (isTaskGraded(t, gradeByTask.get(t.getId()), hasAnswer)) c[3]++;
         }
 
+        // Section totals + confirmed count per exam (one bulk query).
+        Map<UUID, long[]> secAcc = new HashMap<>(); // [sections, confirmed]
+        for (Section s : sections.findByExamIdIn(examIds)) {
+            long[] c = secAcc.computeIfAbsent(s.getExamId(), k -> new long[2]);
+            c[0]++;
+            if (s.getConfirmedAt() != null) c[1]++;
+        }
+
         for (UUID id : examIds) {
             long[] c = acc.get(id);
-            out.put(id, c == null ? Counts.EMPTY : new Counts(c[0], c[1], c[2], c[3]));
+            long[] s = secAcc.get(id);
+            if (c == null && s == null) {
+                out.put(id, Counts.EMPTY);
+                continue;
+            }
+            long taskCount = c == null ? 0 : c[0];
+            long scored = c == null ? 0 : c[1];
+            long answered = c == null ? 0 : c[2];
+            long graded = c == null ? 0 : c[3];
+            long secTotal = s == null ? 0 : s[0];
+            long secConfirmed = s == null ? 0 : s[1];
+            out.put(id, new Counts(taskCount, scored, answered, graded, secTotal, secConfirmed));
         }
         return out;
     }

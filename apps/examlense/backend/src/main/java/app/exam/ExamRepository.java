@@ -28,8 +28,8 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
 
     @Modifying
     @Transactional
-    @Query("update Exam e set e.parseRawText = :text where e.id = :id")
-    int updateParseRawText(@Param("id") UUID id, @Param("text") String text);
+    @Query("update Exam e set e.parserModel = :model where e.id = :id")
+    int updateParserModel(@Param("id") UUID id, @Param("model") String model);
 
     @Modifying
     @Transactional
