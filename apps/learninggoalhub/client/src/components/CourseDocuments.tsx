@@ -4,17 +4,14 @@ import { api } from "../api/client.ts";
 import type { DocumentResponse } from "../api/client.ts";
 
 /**
- * Modal listing the course's uploaded documents with inline rename. The filename is immutable
- * provenance (goal sources and the CSV export cite it); renaming only sets a display name, and
- * clearing the display name falls back to the filename again.
+ * Inline list of a course's uploaded documents with inline rename. Rendered under an expanded
+ * course row on the overview. The filename is immutable provenance (goal sources and the CSV
+ * export cite it); renaming only sets a display name, and clearing it falls back to the filename.
+ *
+ * Mount this only when the row is expanded — the documents query fires on mount, so keeping it
+ * unmounted while collapsed keeps the overview from firing one request per course up front.
  */
-export default function DocumentsDialog({
-  courseId,
-  onClose,
-}: {
-  courseId: number;
-  onClose: () => void;
-}) {
+export default function CourseDocuments({ courseId }: { courseId: number }) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -49,96 +46,51 @@ export default function DocumentsDialog({
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const documents = documentsQuery.data ?? [];
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Course documents"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-hestia-border bg-hestia-surface shadow-xl"
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-hestia-border px-6 py-4">
-          <div>
-            <h3 className="text-lg text-hestia-text">Documents</h3>
-            <p className="mt-0.5 text-sm text-hestia-text-muted">
-              The uploaded materials this course's goals were extracted from.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="h-4 w-4"
-            >
-              <path d="M5 5l10 10M15 5L5 15" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {documentsQuery.isLoading && (
-            <p className="text-sm text-hestia-text-muted">Loading…</p>
-          )}
-          {documentsQuery.isError && (
-            <p className="text-sm text-hestia-danger">
-              {(documentsQuery.error as Error).message}
-            </p>
-          )}
-          {!documentsQuery.isLoading && documents.length === 0 && (
-            <p className="rounded-lg border border-dashed border-hestia-border p-6 text-center text-sm text-hestia-text-muted">
-              No documents uploaded for this course.
-            </p>
-          )}
-          <ul className="flex flex-col gap-2">
-            {documents.map((doc) => (
-              <DocumentRow
-                key={doc.id}
-                document={doc}
-                editing={editingId === doc.id}
-                busy={renameMutation.isPending}
-                error={
-                  editingId === doc.id && renameMutation.isError
-                    ? (renameMutation.error as Error).message
-                    : undefined
-                }
-                onEdit={() => {
-                  renameMutation.reset();
-                  setEditingId(doc.id!);
-                }}
-                onCancel={() => {
-                  renameMutation.reset();
-                  setEditingId(null);
-                }}
-                onSave={(displayName) =>
-                  renameMutation.mutate({ documentId: doc.id!, displayName })
-                }
-              />
-            ))}
-          </ul>
-        </div>
-      </div>
+    <div className="border-t border-hestia-border bg-hestia-bg/40 px-5 py-4 pl-14">
+      {documentsQuery.isLoading && (
+        <p className="text-sm text-hestia-text-muted">Loading…</p>
+      )}
+      {documentsQuery.isError && (
+        <p className="text-sm text-hestia-danger">
+          {(documentsQuery.error as Error).message}
+        </p>
+      )}
+      {!documentsQuery.isLoading && !documentsQuery.isError && documents.length === 0 && (
+        <p className="rounded-lg border border-dashed border-hestia-border p-4 text-center text-sm text-hestia-text-muted">
+          No documents uploaded for this course.
+        </p>
+      )}
+      {documents.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {documents.map((doc) => (
+            <DocumentRow
+              key={doc.id}
+              document={doc}
+              editing={editingId === doc.id}
+              busy={renameMutation.isPending}
+              error={
+                editingId === doc.id && renameMutation.isError
+                  ? (renameMutation.error as Error).message
+                  : undefined
+              }
+              onEdit={() => {
+                renameMutation.reset();
+                setEditingId(doc.id!);
+              }}
+              onCancel={() => {
+                renameMutation.reset();
+                setEditingId(null);
+              }}
+              onSave={(displayName) =>
+                renameMutation.mutate({ documentId: doc.id!, displayName })
+              }
+            />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -175,7 +127,7 @@ function DocumentRow({
   const canSave = trimmed !== "" && trimmed !== shown && !busy;
 
   return (
-    <li className="rounded-lg border border-hestia-border p-3">
+    <li className="rounded-lg border border-hestia-border bg-hestia-surface p-3">
       {editing ? (
         <form
           onSubmit={(e) => {
