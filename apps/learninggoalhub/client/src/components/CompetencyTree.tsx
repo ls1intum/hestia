@@ -95,7 +95,8 @@ function displayedGoalLabel(goal: LearningGoal): string {
 
 /** Human label for a raw column value (role names, title-cased enums). */
 function displayValue(key: FilterKey, value: string): string {
-  if (key === "role") return COMPETENCY_ROLE_META[value as CompetencyRole].label;
+  if (key === "role")
+    return COMPETENCY_ROLE_META[value as CompetencyRole].label;
   if (key === "session") return value || "—";
   return value ? titleCase(value) : "—";
 }
@@ -112,7 +113,12 @@ const COLUMNS: {
   { key: "bloom", label: "Bloom", sortKey: "bloom", filterKey: "bloom" },
   { key: "kind", label: "Kind", filterKey: "kind" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
-  { key: "session", label: "Session", sortKey: "session", filterKey: "session" },
+  {
+    key: "session",
+    label: "Session",
+    sortKey: "session",
+    filterKey: "session",
+  },
 ];
 
 export default function CompetencyTree({
@@ -242,7 +248,10 @@ export default function CompetencyTree({
   // (measured last render) glide to their new position, newly revealed rows cascade in with a
   // light overshoot. Collapsing is handled imperatively below so its rows can fade out first. ──
   const containerRef = useRef<HTMLDivElement>(null);
-  const prevRects = useRef<Map<number, DOMRect>>(new Map());
+  // Positions are layout-relative (`offsetTop`), not viewport-relative: the grid sits in its own
+  // scroll container, so a rect measured before a scroll differs by the scrolled distance and
+  // would make every surviving row glide in from nowhere.
+  const prevTops = useRef<Map<number, number>>(new Map());
   const firstLayout = useRef(true);
   // Which newly-revealed rows may cascade in on the next layout: the descendants of a branch just
   // opened, or "all" for expand-all. Empty for every other change (filter / search / sort), so
@@ -254,34 +263,32 @@ export default function CompetencyTree({
     const container = containerRef.current;
     if (!container) return;
     const reduce = prefersReducedMotion();
-    const prev = prevRects.current;
+    const prev = prevTops.current;
     const intent = enterIntent.current;
-    const next = new Map<number, DOMRect>();
+    const next = new Map<number, number>();
     let enterIndex = 0;
-    container
-      .querySelectorAll<HTMLElement>("[data-goal-id]")
-      .forEach((el) => {
-        const id = Number(el.dataset.goalId);
-        const to = el.getBoundingClientRect();
-        next.set(id, to);
-        if (reduce || firstLayout.current) return;
-        // Clear any leftover entrance state from an earlier cascade before deciding afresh.
-        el.classList.remove("tree-row-in");
-        el.style.animationDelay = "";
-        const from = prev.get(id);
-        if (from) {
-          const dy = from.top - to.top;
-          if (Math.abs(dy) > 1)
-            el.animate(
-              [{ transform: `translateY(${dy}px)` }, { transform: "none" }],
-              { duration: 320, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
-            );
-        } else if (intent === "all" || intent.has(id)) {
-          el.style.animationDelay = `${enterIndex++ * 38}ms`;
-          el.classList.add("tree-row-in");
-        }
-      });
-    prevRects.current = next;
+    container.querySelectorAll<HTMLElement>("[data-goal-id]").forEach((el) => {
+      const id = Number(el.dataset.goalId);
+      const to = el.offsetTop;
+      next.set(id, to);
+      if (reduce || firstLayout.current) return;
+      // Clear any leftover entrance state from an earlier cascade before deciding afresh.
+      el.classList.remove("tree-row-in");
+      el.style.animationDelay = "";
+      const from = prev.get(id);
+      if (from != null) {
+        const dy = from - to;
+        if (Math.abs(dy) > 1)
+          el.animate(
+            [{ transform: `translateY(${dy}px)` }, { transform: "none" }],
+            { duration: 320, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
+          );
+      } else if (intent === "all" || intent.has(id)) {
+        el.style.animationDelay = `${enterIndex++ * 38}ms`;
+        el.classList.add("tree-row-in");
+      }
+    });
+    prevTops.current = next;
     enterIntent.current = new Set();
     firstLayout.current = false;
   });
@@ -505,7 +512,11 @@ export default function CompetencyTree({
 
       <div className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         <div className="max-h-[72vh] overflow-auto">
-          <div role="table" aria-label="Competency tree" className="min-w-[780px]">
+          <div
+            role="table"
+            aria-label="Competency tree"
+            className="min-w-[780px]"
+          >
             <div
               role="row"
               className="sticky top-0 z-10 grid border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
@@ -566,9 +577,7 @@ export default function CompetencyTree({
       </div>
       {/* The modal always gets the freshest goal for its id, so in-modal edits survive refetches. */}
       <CompetencyGoalModal
-        goal={
-          detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null
-        }
+        goal={detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null}
         role={detail?.role}
         onClose={() => setDetail(null)}
         onUpdate={onUpdate}
