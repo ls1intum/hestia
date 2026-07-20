@@ -4,9 +4,14 @@ import app.shared.Access;
 import app.error.ApiException;
 import app.exam.Exam;
 import app.exam.ExamRepository;
+import app.parse.DocxToPdfConverter;
+import app.parse.PdfTextExtractor;
 import app.security.CurrentUser;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -28,32 +33,79 @@ public class FileController {
     private final ExamRepository examRepository;
     private final Access access;
     private final SignedUrls signedUrls;
+    private final DocxToPdfConverter docxConverter;
+    private final PdfTextExtractor textExtractor;
 
     public FileController(StorageService storage, ExamRepository examRepository,
-                          Access access, SignedUrls signedUrls) {
+                          Access access, SignedUrls signedUrls,
+                          DocxToPdfConverter docxConverter, PdfTextExtractor textExtractor) {
         this.storage = storage;
         this.examRepository = examRepository;
         this.access = access;
         this.signedUrls = signedUrls;
+        this.docxConverter = docxConverter;
+        this.textExtractor = textExtractor;
     }
 
-    /** Upload the exam PDF; stores at exam-pdfs/{userId}/{examId}.pdf and records source_file_url. */
+    /**
+     * Upload the exam source file; stores a PDF at exam-pdfs/{userId}/{examId}.pdf and records
+     * source_file_url. Accepts a PDF directly, or a Word .docx which is converted to PDF here so
+     * the rest of the (PDF-only) parse pipeline is unchanged. Detected by magic bytes: %PDF for
+     * PDF, PK\x03\x04 (ZIP) for .docx. Legacy .doc and other formats are rejected.
+     */
     @PostMapping("/exams/{examId}/pdf")
     public Map<String, Object> uploadPdf(@PathVariable String examId,
                                          @RequestParam("file") MultipartFile file,
                                          @CurrentUser String userId) throws IOException {
         Exam exam = access.requireExam(Access.id(examId), userId);
         byte[] bytes = file.getBytes();
-        // Magic-bytes check: fail here with a clear message instead of later
-        // in the parse pipeline when PDFBox chokes on a non-PDF.
-        if (bytes.length < 4 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F') {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "File is not a PDF");
+        byte[] pdfBytes;
+        // ZIP is matched first by its exact byte-0 magic (PK\x03\x04); the PDF check
+        // is a looser first-1KB scan, so testing ZIP first avoids misrouting a zip
+        // that merely contains "%PDF-" into the passthrough branch.
+        if (isZip(bytes)) {
+            // Very likely a .docx (Office Open XML is a ZIP). Convert; a non-Word zip
+            // will fail the conversion and surface the message below.
+            try {
+                pdfBytes = docxConverter.toPdf(bytes);
+            } catch (TimeoutException e) {
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "This Word document took too long to convert. Please simplify it or upload a PDF instead.");
+            } catch (RejectedExecutionException e) {
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The server is busy converting documents right now. Please try again in a moment.");
+            } catch (Exception e) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "We couldn't convert this Word document. Please upload a .docx or a PDF and try again.");
+            }
+        } else if (isPdf(bytes)) {
+            pdfBytes = bytes;
+        } else {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                "Unsupported file. Please upload a PDF or a Word .docx file.");
         }
         String path = userId + "/" + examId + ".pdf";
-        storage.store(PDF_BUCKET, path, bytes);
+        storage.store(PDF_BUCKET, path, pdfBytes);
         exam.setSourceFileUrl(path);
+        // Document metadata used by the frontend for a page-count-based parsing
+        // time estimate; cheap PDFBox call, null if the count can't be read.
+        exam.setPageCount(textExtractor.pageCount(pdfBytes));
         examRepository.save(exam);
         return Map.of("storage_path", path);
+    }
+
+    private static boolean isPdf(byte[] b) {
+        // Mirror the frontend precheck (frontend/src/lib/parsing/pdf-precheck.ts):
+        // accept "%PDF-" anywhere in the first 1 KB, not just at byte 0. The spec
+        // tolerates leading bytes (BOM / whitespace) before the header, and real
+        // PDFs have them; a strict byte-0 check rejected files the precheck passed.
+        // ISO-8859-1 maps each byte 1:1 to a char, matching the client's latin1 decode.
+        int n = Math.min(b.length, 1024);
+        return new String(b, 0, n, StandardCharsets.ISO_8859_1).contains("%PDF-");
+    }
+
+    private static boolean isZip(byte[] b) {
+        return b.length >= 4 && b[0] == 'P' && b[1] == 'K' && b[2] == 0x03 && b[3] == 0x04;
     }
 
     /**

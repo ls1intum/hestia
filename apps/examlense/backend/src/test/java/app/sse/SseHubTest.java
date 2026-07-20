@@ -41,7 +41,9 @@ class SseHubTest {
     }
 
     @Test
-    void progressOnlyReachesTheExamTopicNotTheList() {
+    void progressReachesBothTheExamTopicAndTheListTopic() {
+        // Solve progress must also refresh the dashboard list so the "Solving
+        // task X of Y…" bar advances live there, not just on the per-exam splash.
         SseHub hub = new SseHub();
         UUID examId = UUID.randomUUID();
         CountingEmitter examSub = attach(hub, "exam:" + examId);
@@ -50,7 +52,7 @@ class SseHubTest {
         hub.progress(examId);
 
         assertThat(examSub.sends.get()).isEqualTo(1);
-        assertThat(listSub.sends.get()).isZero();
+        assertThat(listSub.sends.get()).isEqualTo(1);
     }
 
     @Test

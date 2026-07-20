@@ -17,10 +17,10 @@ public final class SolverStrategies {
 
     static {
         REGISTRY.register(new SolverStrategy(
-            "gemini-2.5-flash",
-            "Gemini 2.5 Flash (Google)",
+            "gemini-3.5-flash",
+            "Gemini 3.5 Flash (Google)",
             "Google Gemini model for fast exam solving.",
-            "gemini-2.5-flash",
+            "gemini-3.5-flash",
             GEMINI
         ));
         REGISTRY.register(new SolverStrategy(
@@ -38,13 +38,6 @@ public final class SolverStrategies {
             ANTHROPIC
         ));
         REGISTRY.register(new SolverStrategy(
-            "mistral-large-3-675b-instruct-2512",
-            "Mistral Large 3 675B (GWDG)",
-            "GWDG-hosted large reasoning model.",
-            "mistral-large-3-675b-instruct-2512",
-            OPENAI_COMPATIBLE
-        ));
-        REGISTRY.register(new SolverStrategy(
             "qwen3.6-35b-a3b",
             "Qwen 3.6 35B A3B (GWDG)",
             "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
@@ -53,6 +46,20 @@ public final class SolverStrategies {
         ));
         // Retired models: exams created before the catalog change still
         // reference these ids, so they stay resolvable but hidden.
+        REGISTRY.legacy(new SolverStrategy(
+            "gemini-2.5-flash",
+            "Gemini 2.5 Flash (Google)",
+            "Google Gemini model for fast exam solving.",
+            "gemini-2.5-flash",
+            GEMINI
+        ));
+        REGISTRY.legacy(new SolverStrategy(
+            "mistral-large-3-675b-instruct-2512",
+            "Mistral Large 3 675B (GWDG)",
+            "GWDG-hosted large reasoning model.",
+            "mistral-large-3-675b-instruct-2512",
+            OPENAI_COMPATIBLE
+        ));
         REGISTRY.legacy(new SolverStrategy(
             "gemma-4-31b-it",
             "Gemma 4 31B Instruct (GWDG)",

@@ -32,6 +32,12 @@ dependencies {
     // PDFBox: page rasterization (vision strategies) + per-page text stripping (TEXT_ONLY strategy)
     implementation("org.apache.pdfbox:pdfbox:3.0.3")
 
+    // docx4j + Apache FOP: convert uploaded Word .docx to PDF at upload time so the
+    // rest of the (PDF-only) parse pipeline is unchanged. Pure-Java, no system package.
+    // docx4j-JAXB-ReferenceImpl bundles a JAXB impl (not in the JDK on 21).
+    implementation("org.docx4j:docx4j-JAXB-ReferenceImpl:11.4.9")
+    implementation("org.docx4j:docx4j-export-fo:11.4.9")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
 

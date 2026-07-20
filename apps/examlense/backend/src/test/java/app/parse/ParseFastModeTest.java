@@ -35,6 +35,19 @@ class ParseFastModeTest {
     }
 
     @Test
+    void defaultAndFallbackParsersShareTheSameEffectiveModeSoInputIsReused() {
+        var primary = ParserStrategies.resolve(ParserStrategies.DEFAULT_ID);
+        var fallback = ParserStrategies.resolve(ParserStrategies.FALLBACK_ID);
+
+        // Fast mode → both TEXT_ONLY; normal mode → both PDF_DIRECT. Same mode either
+        // way means the fallback reuses the already-built input (no rebuild).
+        assertThat(ParseExamService.effectivePdfMode(fallback, false))
+            .isEqualTo(ParseExamService.effectivePdfMode(primary, false));
+        assertThat(ParseExamService.effectivePdfMode(fallback, true))
+            .isEqualTo(ParseExamService.effectivePdfMode(primary, true));
+    }
+
+    @Test
     void parseRequestFastModeDefaultsToFalseWhenOmitted() throws Exception {
         ParseExamController.ParseExamRequest req = new ObjectMapper().readValue("""
             {

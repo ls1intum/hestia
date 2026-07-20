@@ -1,0 +1,15 @@
+# Local development profile.
+#
+# Forces LearningGoalHub calls through its public (web) ingress instead of the
+# Docker-internal hostname (`http://learninggoalhub-web`) that compose.prod.yaml
+# uses on the shared VM — that hostname only resolves inside the Docker network.
+#
+# Deliberately a hardcoded literal (not `${LGH_BASE_URL:...}`) so activating this
+# profile guarantees web-calling even if LGH_BASE_URL is exported in your shell.
+# Note: the deployed LGH is VPN/TUM-network only, so this reaches it only on VPN;
+# to target a locally-running LGH instead, override with LGH_BASE_URL and don't
+# activate this profile (or edit the value here).
+#
+# Activate with:  SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+learninggoalhub:
+  base-url: https://hestia-test.aet.cit.tum.de/learninggoalhub

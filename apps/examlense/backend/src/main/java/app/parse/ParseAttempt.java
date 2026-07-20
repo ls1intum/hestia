@@ -12,8 +12,10 @@ import java.util.UUID;
 class ParseAttempt {
     final UUID examId;
     final String ownerId;
-    final String parserModel;
-    final String pdfMode;
+    // parserModel / pdfMode are set in the constructor but restamped if the parse
+    // falls back to another model, so the single metrics row reflects what served.
+    String parserModel;
+    String pdfMode;
 
     Integer pageCount;
     Long llmMs;

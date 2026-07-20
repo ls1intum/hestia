@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -93,6 +94,9 @@ public class ParseExamService {
         exam.setStatus("parsing");
         exam.setParseError(null);
         exam.setParserModel(strategy.id());
+        // Anchor the client's progress countdown to *this* attempt (initial or
+        // retry), not the exam's original created_at.
+        exam.setParseStartedAt(OffsetDateTime.now());
         examRepository.save(exam);
         progress.notifyExam(examUuid);
         return strategy;
@@ -117,12 +121,12 @@ public class ParseExamService {
 
         ParseAttempt attempt = new ParseAttempt(examUuid, userId, strategy.id(), pdfMode.name());
         try {
-            run(attempt, pdfMode, storagePath, languageHint);
+            run(attempt, strategy, pdfMode, fastMode, storagePath, languageHint);
             log.info("parse-exam-pdf[{}] timing total took={}ms strategy={}",
                 examId, msSince(pipelineStart), strategy.id());
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] uncaught", examId, e);
-            fail(attempt, e.getMessage() == null ? "Unknown error during parsing." : e.getMessage());
+            fail(attempt, ParseErrorMessages.UNEXPECTED);
         } finally {
             // Pipeline-only: measured from dequeue (pipelineStart), so preflight +
             // queue wait are excluded. This isolates model/pipeline performance from
@@ -133,7 +137,8 @@ public class ParseExamService {
         }
     }
 
-    private void run(ParseAttempt attempt, ParserStrategy.PdfMode pdfMode, String storagePath, String languageHint) {
+    private void run(ParseAttempt attempt, ParserStrategy strategy, ParserStrategy.PdfMode pdfMode,
+                     boolean fastMode, String storagePath, String languageHint) {
         UUID examId = attempt.examId;
 
         // 1. Download + sanity checks
@@ -144,31 +149,30 @@ public class ParseExamService {
             bytes = storage.download("exam-pdfs", storagePath);
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] storage download failed", examId, e);
-            fail(attempt, "Could not load the uploaded PDF.");
+            fail(attempt, ParseErrorMessages.PDF_OPEN_FAILED);
             return;
         }
         if (bytes == null) {
-            fail(attempt, "Could not load the uploaded PDF.");
+            fail(attempt, ParseErrorMessages.PDF_OPEN_FAILED);
             return;
         }
         if (bytes.length > MAX_BYTES) {
-            fail(attempt, "File exceeds 10 MB limit.");
+            fail(attempt, ParseErrorMessages.PDF_TOO_LARGE);
             return;
         }
         attempt.pageCount = textExtractor.pageCount(bytes);
         if (attempt.pageCount == null || attempt.pageCount == 0) {
-            fail(attempt, "This file doesn't look like a readable PDF.");
+            fail(attempt, ParseErrorMessages.PDF_INVALID);
             return;
         }
         if (attempt.pageCount > MAX_PAGES) {
-            fail(attempt, "PDF has " + attempt.pageCount + " pages — the limit is " + MAX_PAGES + ".");
+            fail(attempt, ParseErrorMessages.tooManyPages(attempt.pageCount, MAX_PAGES));
             return;
         }
         log.info("parse-exam-pdf[{}] timing step=download took={}ms bytes={}",
             examId, msSince(tDownload), bytes.length);
 
         // 2. Build user content depending on PDF mode
-        AiProvider provider = providerFactory.forParser(ParserStrategies.resolve(attempt.parserModel));
         AiProvider.UserContent userContent;
         try {
             userContent = inputBuilder.build(pdfMode, examId, bytes, languageHint);
@@ -177,50 +181,44 @@ public class ParseExamService {
             return;
         }
 
-        // 3. LLM call
+        // 3. LLM call. Provider construction is inside the try so a missing API key
+        // (thrown as ProviderException with status 500) maps to a friendly message too.
+        // On a transient failure of the primary parser the pipeline falls back once to
+        // a different model (see extractWithFallback) before surfacing an error.
         Map<String, Object> parsed;
-        long tLlm = System.nanoTime();
         try {
-            progress.setPhase(examId, "extracting");
-            AiProvider.ChatResponse res = provider.chat(new AiProvider.ChatRequest(
-                ParseExamPrompts.SYSTEM_PROMPT,
-                userContent,
-                new AiProvider.Tool(
-                    ParseExamPrompts.TOOL_NAME,
-                    ParseExamPrompts.TOOL_DESCRIPTION,
-                    ParseExamPrompts.schema()
-                )
-            ));
-            parsed = res.toolArgs();
-            attempt.llmMs = msSince(tLlm);
-            attempt.usage = res.usage();
-            log.info("parse-exam-pdf[{}] timing step=llm-call took={}ms model={}",
-                examId, msSince(tLlm), res.model());
+            parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, fastMode, bytes, languageHint);
         } catch (AiExceptions.RateLimitException e) {
-            fail(attempt, "AI rate limit reached. Please retry in a moment.");
+            fail(attempt, ParseErrorMessages.AI_RATE_LIMIT);
             return;
         } catch (AiExceptions.PaymentRequiredException e) {
-            fail(attempt, "AI credits exhausted. Please add credits to your workspace.");
+            fail(attempt, ParseErrorMessages.AI_OUT_OF_CREDITS);
             return;
         } catch (AiExceptions.MalformedModelOutputException e) {
             log.error("parse-exam-pdf[{}] malformed model output", examId, e);
-            fail(attempt, "Could not extract structured data from this PDF.");
+            fail(attempt, ParseErrorMessages.NOT_STRUCTURED);
             return;
         } catch (AiExceptions.ProviderException e) {
-            log.error("parse-exam-pdf[{}] provider error", examId, e);
-            fail(attempt, "AI parsing failed.");
+            log.error("parse-exam-pdf[{}] provider error (status {})", examId, e.status(), e);
+            fail(attempt, ParseErrorMessages.forProviderStatus(e.status()));
             return;
         }
 
         if (parsed == null || parsed.isEmpty()) {
-            fail(attempt, "AI returned malformed data.");
+            fail(attempt, ParseErrorMessages.NOT_STRUCTURED);
             return;
         }
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tasks = (List<Map<String, Object>>) parsed.get("tasks");
         if (tasks == null || tasks.isEmpty()) {
-            fail(attempt, "No tasks could be detected in this PDF.");
+            fail(attempt, ParseErrorMessages.NO_TASKS);
             return;
+        }
+
+        // A fallback served the parse: reflect the model that actually parsed on the
+        // exam so the editor/admin show it (preflight stamped the primary). Best-effort.
+        if (!attempt.parserModel.equals(strategy.id())) {
+            progress.setParserModel(examId, attempt.parserModel);
         }
 
         // 4. Persist
@@ -229,6 +227,60 @@ public class ParseExamService {
         attempt.success = persister.persist(attempt, parsed, tasks, languageHint);
         log.info("parse-exam-pdf[{}] timing step=persist took={}ms tasks={}",
             examId, msSince(tPersist), tasks.size());
+    }
+
+    /**
+     * Runs the parser LLM call for {@code primary}; on a <em>transient</em> failure
+     * (busy/unreachable/5xx — see {@link AiExceptions#isTransient}) retries once with
+     * the {@link ParserStrategies#FALLBACK_ID} model, honoring fast mode. Non-transient
+     * failures (malformed output, out-of-credits) and a failed fallback propagate to the
+     * caller's exception→message mapping. Updates {@code attempt} to record the model that
+     * actually served so the single metrics row and the exam reflect it.
+     */
+    private Map<String, Object> extractWithFallback(
+        ParseAttempt attempt, ParserStrategy primary, AiProvider.UserContent primaryContent,
+        ParserStrategy.PdfMode primaryMode, boolean fastMode, byte[] bytes, String languageHint
+    ) {
+        try {
+            return extract(attempt, primary, primaryContent);
+        } catch (RuntimeException e) {
+            ParserStrategy fallback = ParserStrategies.resolve(ParserStrategies.FALLBACK_ID);
+            if (!AiExceptions.isTransient(e) || fallback.id().equals(primary.id())) {
+                throw e;
+            }
+            log.warn("parse-exam-pdf[{}] primary parser {} failed transiently ({}); falling back to {}",
+                attempt.examId, primary.id(), e.toString(), fallback.id());
+            // Honor fast mode for the fallback; only rebuild input if the mode actually
+            // differs (the default→fallback pair shares PDF_DIRECT, so this reuses content).
+            ParserStrategy.PdfMode fbMode = effectivePdfMode(fallback, fastMode);
+            AiProvider.UserContent fbContent = fbMode == primaryMode
+                ? primaryContent
+                : inputBuilder.build(fbMode, attempt.examId, bytes, languageHint);
+            attempt.parserModel = fallback.id();
+            attempt.pdfMode = fbMode.name();
+            return extract(attempt, fallback, fbContent);
+        }
+    }
+
+    /** One provider call for the given strategy; stamps llm timing + usage onto the attempt. */
+    private Map<String, Object> extract(ParseAttempt attempt, ParserStrategy strategy, AiProvider.UserContent userContent) {
+        AiProvider provider = providerFactory.forParser(strategy);
+        progress.setPhase(attempt.examId, "extracting");
+        long tLlm = System.nanoTime();
+        AiProvider.ChatResponse res = provider.chat(new AiProvider.ChatRequest(
+            ParseExamPrompts.SYSTEM_PROMPT,
+            userContent,
+            new AiProvider.Tool(
+                ParseExamPrompts.TOOL_NAME,
+                ParseExamPrompts.TOOL_DESCRIPTION,
+                ParseExamPrompts.schema()
+            )
+        ));
+        attempt.llmMs = msSince(tLlm);
+        attempt.usage = res.usage();
+        log.info("parse-exam-pdf[{}] timing step=llm-call took={}ms model={}",
+            attempt.examId, attempt.llmMs, res.model());
+        return res.toolArgs();
     }
 
     public static ParserStrategy.PdfMode effectivePdfMode(ParserStrategy strategy, boolean fastMode) {

@@ -2,7 +2,6 @@ package app.parse;
 
 import app.ai.AiProvider;
 import app.ai.ParserStrategy;
-import app.exam.ExamRepository;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -29,18 +28,15 @@ class ParseInputBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ParseInputBuilder.class);
     private static final float RASTERIZE_DPI = 150f;
-    private static final int MAX_RAW_TEXT_CHARS = 500_000;
 
     private final PdfRasterizer rasterizer;
     private final PdfTextExtractor textExtractor;
-    private final ExamRepository examRepository;
     private final ParseProgress progress;
 
     ParseInputBuilder(PdfRasterizer rasterizer, PdfTextExtractor textExtractor,
-                      ExamRepository examRepository, ParseProgress progress) {
+                      ParseProgress progress) {
         this.rasterizer = rasterizer;
         this.textExtractor = textExtractor;
-        this.examRepository = examRepository;
         this.progress = progress;
     }
 
@@ -65,7 +61,7 @@ class ParseInputBuilder {
                 examId, msSince(tRaster), pages.size());
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] rasterize failed", examId, e);
-            throw new InputException("Could not render PDF pages for the selected parser model.", e);
+            throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
         }
         List<AiProvider.ContentPart> parts = new ArrayList<>();
         parts.add(new AiProvider.TextPart(
@@ -87,12 +83,11 @@ class ParseInputBuilder {
                 examId, msSince(tExtract), text.length());
         } catch (PdfTextExtractor.TextExtractionException e) {
             log.error("parse-exam-pdf[{}] text extraction failed", examId, e);
-            throw new InputException(e.getMessage(), e);
+            throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] text extraction failed", examId, e);
-            throw new InputException("Could not extract text from this PDF.", e);
+            throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
         }
-        persistRawText(examId, text);
         return new AiProvider.MultipartContent(List.of(
             new AiProvider.TextPart(
                 "You will receive the exam as PLAIN TEXT extracted from the PDF page-by-page."
@@ -113,21 +108,6 @@ class ParseInputBuilder {
             new AiProvider.TextPart("Extract the exam." + langSuffix),
             new AiProvider.FilePart("exam.pdf", b64, "application/pdf")
         ));
-    }
-
-    /**
-     * Persist the raw extractor output for audit / debugging. Capped so a
-     * massive scan-with-OCR-like-bulk doesn't blow up the row; best-effort.
-     */
-    private void persistRawText(UUID examId, String text) {
-        String stored = text.length() > MAX_RAW_TEXT_CHARS
-            ? text.substring(0, MAX_RAW_TEXT_CHARS) + "\n…truncated"
-            : text;
-        try {
-            examRepository.updateParseRawText(examId, stored);
-        } catch (Exception e) {
-            log.warn("parse-exam-pdf[{}] failed to persist raw text: {}", examId, e.getMessage());
-        }
     }
 
     private static long msSince(long startNanos) {

@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExamController {
 
     public record CreateExamRequest(
-        String title, String course, String semester, String instructor_name,
+        String title, String course,
         String language, String source, String status, String source_file_url,
         String parser_model, String solver_model, Long lgh_course_id
     ) {}
@@ -66,8 +66,6 @@ public class ExamController {
         e.setOwnerId(UUID.fromString(userId));
         if (req.title() != null) e.setTitle(req.title());
         if (req.course() != null) e.setCourse(req.course());
-        if (req.semester() != null) e.setSemester(req.semester());
-        if (req.instructor_name() != null) e.setInstructorName(req.instructor_name());
         if (req.language() != null) e.setLanguage(req.language());
         if (req.source() != null) e.setSource(req.source());
         if (req.status() != null) e.setStatus(req.status());
@@ -88,9 +86,6 @@ public class ExamController {
         Exam e = access.requireExam(Access.id(id), userId);
         if (Patch.has(body, "title")) e.setTitle(Patch.str(body.get("title")));
         if (Patch.has(body, "course")) e.setCourse(Patch.str(body.get("course")));
-        if (Patch.has(body, "semester")) e.setSemester(Patch.str(body.get("semester")));
-        if (Patch.has(body, "instructor_name")) e.setInstructorName(Patch.str(body.get("instructor_name")));
-        if (Patch.has(body, "total_points")) e.setTotalPoints(Patch.bigDecimal(body.get("total_points")));
         if (Patch.has(body, "language")) e.setLanguage(Patch.str(body.get("language")));
         // status/parse_error stay client-writable — the frontend's retry-parse,
         // cancel-recovery, and finish-grading flows patch them — but the status
