@@ -13,6 +13,7 @@ import type { Task } from "@/lib/exam/exam-helpers";
 import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { solveTask } from "@/lib/api/api-solve";
 import { GRADE_SOURCE_LABELS } from "@/lib/exam/labels";
+import "./TaskGradingPanel.css";
 
 /** Grading increment shared by the slider and the number input. */
 const SCORE_STEP = 0.5;

@@ -4,12 +4,12 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  Loader2,
   RotateCcw,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/utils";
+import { ForgeAnimation } from "@/pages/exam-edit/components/ForgeAnimation";
 import { ParsingQualitySurvey } from "@/pages/exam-edit/components/ParsingQualitySurvey";
 import {
   useEvaluationProgress,
@@ -120,22 +120,20 @@ export const EvaluatingView = ({
       </header>
       <main className="flex flex-1 items-center justify-center px-hestia-5 py-hestia-10">
         <div className="flex w-full max-w-md flex-col items-center text-center">
-          <span
-            className={cn(
-              "mb-hestia-5 inline-flex h-14 w-14 items-center justify-center rounded-full",
-              isError
-                ? "bg-hestia-danger/10 text-hestia-danger"
-                : "bg-hestia-success/10 text-hestia-success",
-            )}
-          >
-            {isError ? (
-              <AlertTriangle size={28} />
-            ) : solveDone ? (
-              <CheckCircle2 size={28} />
-            ) : (
-              <Loader2 size={28} className="animate-spin" />
-            )}
-          </span>
+          {isError || solveDone ? (
+            <span
+              className={cn(
+                "mb-hestia-5 inline-flex h-14 w-14 items-center justify-center rounded-full",
+                isError
+                  ? "bg-hestia-danger/10 text-hestia-danger"
+                  : "bg-hestia-success/10 text-hestia-success",
+              )}
+            >
+              {isError ? <AlertTriangle size={28} /> : <CheckCircle2 size={28} />}
+            </span>
+          ) : (
+            <ForgeAnimation className="mb-hestia-4" />
+          )}
           <p className="hestia-eyebrow text-hestia-text-muted">
             {title}
           </p>
