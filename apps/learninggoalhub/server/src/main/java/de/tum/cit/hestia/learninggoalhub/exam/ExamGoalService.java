@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
@@ -41,17 +43,20 @@ public class ExamGoalService {
     private final EmbeddingService embeddingService;
     private final LearningGoalRepository goalRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
+    private final LanguageDetectionService languageDetectionService;
 
     public ExamGoalService(ExamGoalGenerator generator,
                            TaxonomyService taxonomyService,
                            EmbeddingService embeddingService,
                            LearningGoalRepository goalRepository,
-                           HierarchyNodeRepository hierarchyNodeRepository) {
+                           HierarchyNodeRepository hierarchyNodeRepository,
+                           LanguageDetectionService languageDetectionService) {
         this.generator = generator;
         this.taxonomyService = taxonomyService;
         this.embeddingService = embeddingService;
         this.goalRepository = goalRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
+        this.languageDetectionService = languageDetectionService;
     }
 
     /** The persisted goals of one TASK block, keyed by the consumer's {@code blockId}. */
@@ -73,8 +78,14 @@ public class ExamGoalService {
                     context.append(block.description().strip());
                 }
             } else {
+                String languageName = course.getOutputLanguage() != null
+                        ? LanguageUtils.englishName(course.getOutputLanguage())
+                        : LanguageUtils.englishName(languageDetectionService.detect(
+                                (context == null ? "" : context + "\n\n")
+                                        + (block.description() == null ? "" : block.description())));
                 List<String> texts = generator
-                        .generate(context.toString(), block.taskType(), block.description(), modelOverride)
+                        .generate(context.toString(), block.taskType(), block.description(),
+                                languageName, modelOverride)
                         .stream()
                         .map(GeneratedExamGoal::text)
                         .filter(t -> t != null && !t.isBlank())

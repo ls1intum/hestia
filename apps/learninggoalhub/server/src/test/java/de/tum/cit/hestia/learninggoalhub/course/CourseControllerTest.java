@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,6 +106,38 @@ class CourseControllerTest {
     }
 
     @Test
+    void updatesAndExposesOutputLanguage() throws Exception {
+        Course course = courseRepository.save(new Course("Language Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":\"de\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value(Matchers.nullValue()));
+    }
+
+    @Test
+    void rejectsUnknownOutputLanguage() throws Exception {
+        Course course = courseRepository.save(new Course("Language Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":\"fr\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("outputLanguage")));
+    }
+
+    @Test
     void deleteRemovesCourseAndCascadesToDocumentsAndGoals() throws Exception {
         Course course = courseRepository.save(new Course("Disposable Course"));
         Document document =
@@ -135,6 +168,26 @@ class CourseControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void createPersistsOutputLanguage() throws Exception {
+        // The override has to take at create time: the extraction runs immediately after the
+        // materials upload that follows this call, so there is no later moment to set it.
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"German Course\",\"outputLanguage\":\"de\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+    }
+
+    @Test
+    void createRejectsUnknownOutputLanguage() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Course\",\"outputLanguage\":\"fr\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("outputLanguage")));
     }
 
     @Test

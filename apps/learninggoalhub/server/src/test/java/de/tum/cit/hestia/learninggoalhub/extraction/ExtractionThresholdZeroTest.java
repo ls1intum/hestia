@@ -66,8 +66,8 @@ class ExtractionThresholdZeroTest {
 
         ExtractedGoal candidate = new ExtractedGoal("Explain the legacy path.", GoalKind.EXPLICIT,
                 "...legacy path...");
-        when(extractionService.extract(eq(text), eq(null))).thenReturn(List.of(candidate));
-        when(sessionGoalConsolidator.consolidate(anyString(), anyList(), eq(null)))
+        when(extractionService.extract(eq(text), eq("English"), eq(null))).thenReturn(List.of(candidate));
+        when(sessionGoalConsolidator.consolidate(anyString(), anyList(), eq("English"), eq(null)))
                 .thenReturn(List.of(new ConsolidatedGoal(candidate.text(), List.of(0))));
         when(embeddingService.embedAll(anyList())).thenAnswer(inv -> {
             List<String> texts = inv.getArgument(0);
@@ -77,7 +77,7 @@ class ExtractionThresholdZeroTest {
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
                 .andExpect(status().isOk());
 
-        verify(extractionService).extract(eq(text), eq(null));
-        verify(sessionExtractionService, never()).extract(anyString(), anyString(), eq(null));
+        verify(extractionService).extract(eq(text), eq("English"), eq(null));
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
     }
 }

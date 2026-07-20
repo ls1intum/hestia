@@ -112,10 +112,30 @@ class TerminalCompetencySynthesizerTest {
 
         clearInvocations(chatClient.prompt());
         new TerminalCompetencySynthesizer(builder)
-                .synthesize(List.of(new Candidate("a goal", "APPLY")), "openai-gpt-oss-120b");
+                .synthesize(List.of(new Candidate("a goal", "APPLY")), "German", "openai-gpt-oss-120b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
         verify(chatClient.prompt()).options(optionsCaptor.capture());
         assertThat(optionsCaptor.getValue().getModel()).isEqualTo("openai-gpt-oss-120b");
+    }
+
+    @Test
+    void instructsModelToUseRequestedLanguageAndPreserveBloomValues() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+                .thenReturn(List.of());
+
+        clearInvocations(chatClient.prompt());
+        new TerminalCompetencySynthesizer(builder)
+                .synthesize(List.of(new Candidate("a goal", "APPLY")), "German", null);
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatClient.prompt()).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue())
+                .contains("in German")
+                .contains("English enum values")
+                .contains("supporting");
     }
 }

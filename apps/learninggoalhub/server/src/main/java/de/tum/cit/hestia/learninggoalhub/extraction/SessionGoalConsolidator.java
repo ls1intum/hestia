@@ -24,6 +24,10 @@ public class SessionGoalConsolidator {
     static final String PROMPT_TEMPLATE = """
             You consolidate the learning goals of a single session (a lecture, chapter or exercise).
 
+            Write every generated text and shortLabel value in %s. Keep the JSON property names
+            text, shortLabel and supporting exactly as written. The supporting values are positional
+            indices and must remain numbers.
+
             Below is the full list of candidate learning goals that an earlier pass extracted from the
             session "%s", chunk by chunk. Because each chunk was read in isolation, the list is
             fragmented: it over-produces narrow goals and states the same broad outcome several times
@@ -86,6 +90,11 @@ public class SessionGoalConsolidator {
      * @return zero or more consolidated session-level outcomes; empty when there are no candidates.
      */
     public List<ConsolidatedGoal> consolidate(String sessionTitle, List<String> candidates, String modelOverride) {
+        return consolidate(sessionTitle, candidates, "English", modelOverride);
+    }
+
+    public List<ConsolidatedGoal> consolidate(String sessionTitle, List<String> candidates, String languageName,
+                                              String modelOverride) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
@@ -100,7 +109,7 @@ public class SessionGoalConsolidator {
             spec = spec.options(ChatOptions.builder().model(modelOverride).build());
         }
         return spec
-                .user(PROMPT_TEMPLATE.formatted(title, sb.toString()))
+                .user(PROMPT_TEMPLATE.formatted(languageName, title, sb.toString()))
                 .call()
                 .entity(new ParameterizedTypeReference<List<ConsolidatedGoal>>() {});
     }

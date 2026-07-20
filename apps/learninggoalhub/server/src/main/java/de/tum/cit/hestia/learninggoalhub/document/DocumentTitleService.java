@@ -50,6 +50,7 @@ public class DocumentTitleService {
             Learning?", "In a Nutshell", "Linear Regression", "Exercise 3: Gradient Descent"). \
             Use the visual layout (font size, position) to tell the session title apart from the \
             course banner and from body text. Exclude author, university, date and page numbers. \
+            Write the title in the language used on the slides, and do not translate it. \
             Reply with ONLY the title, nothing else.""";
 
     private final ChatClient chatClient;

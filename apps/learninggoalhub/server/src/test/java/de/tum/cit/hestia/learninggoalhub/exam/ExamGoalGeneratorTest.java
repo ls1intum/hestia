@@ -47,14 +47,15 @@ class ExamGoalGeneratorTest {
         setUp(List.of());
 
         clearInvocations(chatClient.prompt());
-        generator.generate("CONTEXT-MARKER-7", "freeText", "TASK-MARKER-42", null);
+        generator.generate("CONTEXT-MARKER-7", "freeText", "TASK-MARKER-42", "German", null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(chatClient.prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
                 .contains("TASK-MARKER-42")
                 .contains("CONTEXT-MARKER-7")
-                .contains("freeText");
+                .contains("freeText")
+                .contains("in German");
     }
 
     @Test

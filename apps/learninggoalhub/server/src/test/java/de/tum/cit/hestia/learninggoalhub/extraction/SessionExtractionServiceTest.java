@@ -62,10 +62,29 @@ class SessionExtractionServiceTest {
                 .thenReturn(List.of());
 
         clearInvocations(chatClient.prompt());
-        new SessionExtractionService(builder).extract("title", "text", "qwen3.6-35b-a3b");
+        new SessionExtractionService(builder).extract("title", "text", "German", "qwen3.6-35b-a3b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
         verify(chatClient.prompt()).options(optionsCaptor.capture());
         assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen3.6-35b-a3b");
+    }
+
+    @Test
+    void instructsModelToUseRequestedLanguageAndPreserveSnippets() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+                .thenReturn(List.of());
+
+        clearInvocations(chatClient.prompt());
+        new SessionExtractionService(builder).extract("title", "text", "German", null);
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatClient.prompt()).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue())
+                .contains("in German")
+                .contains("never translate")
+                .contains("EXPLICIT or IMPLICIT");
     }
 }

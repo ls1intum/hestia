@@ -143,7 +143,7 @@
           "exam-goal-controller"
         ],
         "summary": "Generate learning goals for exam tasks",
-        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous \u2014 expect a few seconds per task block.",
+        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.",
         "operationId": "generate",
         "parameters": [
           {
@@ -520,6 +520,45 @@
           }
         }
       },
+      "patch": {
+        "tags": [
+          "course-controller"
+        ],
+        "operationId": "update_3",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "course-controller"
@@ -785,6 +824,12 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "outputLanguage": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -800,6 +845,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "outputLanguage": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -1160,6 +1211,12 @@
           "goalCount": {
             "type": "integer",
             "format": "int64"
+          },
+          "outputLanguage": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -1278,6 +1335,17 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateCourseRequest": {
+        "type": "object",
+        "properties": {
+          "outputLanguage": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

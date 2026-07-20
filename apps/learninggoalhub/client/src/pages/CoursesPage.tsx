@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
+import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
   const queryClient = useQueryClient();
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -45,12 +47,13 @@ export default function CoursesPage() {
             Each course groups the documents you upload; learning goals are extracted from all of them.
           </p>
         </div>
-        <Link
-          to="/courses/new"
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
           className="shrink-0 rounded-md bg-hestia-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-hestia-primary-hover"
         >
           + Add course
-        </Link>
+        </button>
       </div>
 
       {deleteMutation.isError && (
@@ -71,12 +74,13 @@ export default function CoursesPage() {
         {!coursesQuery.isLoading && !coursesQuery.isError && courses.length === 0 && (
           <div className="px-5 py-12 text-center">
             <p className="text-sm text-hestia-text-muted">No courses yet.</p>
-            <Link
-              to="/courses/new"
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
               className="mt-3 inline-block rounded-md bg-hestia-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-hestia-primary-hover"
             >
               Create your first course
-            </Link>
+            </button>
           </div>
         )}
         {courses.length > 0 && (
@@ -138,6 +142,8 @@ export default function CoursesPage() {
           </ul>
         )}
       </div>
+
+      {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
     </div>
   );
 }

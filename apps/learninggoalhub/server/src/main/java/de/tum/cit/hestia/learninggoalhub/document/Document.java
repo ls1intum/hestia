@@ -39,6 +39,9 @@ public class Document {
     @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
 
+    @Column(name = "language", length = 16)
+    private String language;
+
     @Column(name = "page_offsets")
     private int[] pageOffsets;
 
@@ -82,6 +85,14 @@ public class Document {
 
     public String getRawText() {
         return rawText;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
     }
 
     public int[] getPageOffsets() {

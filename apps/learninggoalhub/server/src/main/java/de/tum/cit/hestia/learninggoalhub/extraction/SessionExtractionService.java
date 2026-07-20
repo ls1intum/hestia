@@ -12,11 +12,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v3";
+    static final String PROMPT_VERSION = "direct-v4";
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
             exercise) to identify its learning outcomes.
+
+            Write every generated text and shortLabel value in %s. Keep the JSON property names
+            text, shortLabel, kind and sourceSnippet exactly as written, and keep kind values exactly
+            EXPLICIT or IMPLICIT. sourceSnippet MUST remain a contiguous verbatim quote from the
+            document in its own language; never translate it.
 
             Extract the session's BROAD instructor-level learning outcomes — the handful of objectives
             an instructor would put on a "learning objectives" slide for this session, not a line-by-line
@@ -83,13 +88,18 @@ public class SessionExtractionService {
      * @return the broad learning outcomes found in the session.
      */
     public List<ExtractedGoal> extract(String sessionTitle, String sessionText, String modelOverride) {
+        return extract(sessionTitle, sessionText, "English", modelOverride);
+    }
+
+    public List<ExtractedGoal> extract(String sessionTitle, String sessionText, String languageName,
+                                       String modelOverride) {
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
         if (modelOverride != null && !modelOverride.isBlank()) {
             spec = spec.options(ChatOptions.builder().model(modelOverride).build());
         }
         List<ExtractedGoal> goals = spec
-                .user(PROMPT_TEMPLATE.formatted(title, sessionText))
+                .user(PROMPT_TEMPLATE.formatted(languageName, title, sessionText))
                 .call()
                 .entity(new ParameterizedTypeReference<List<ExtractedGoal>>() {});
         return goals == null ? List.of() : goals;

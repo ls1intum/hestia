@@ -37,6 +37,7 @@ public class ExamGoalGenerator {
 
             Return the list of goals, each with:
               - text: the learning goal as a single concise sentence, starting with a verb.
+            Write the text value in %s. Keep the JSON property name text exactly as written.
             %s
             The exam task (task type: %s):
             ---
@@ -68,10 +69,16 @@ public class ExamGoalGenerator {
      */
     public List<GeneratedExamGoal> generate(String context, String taskType, String taskDescription,
                                             String modelOverride) {
+        return generate(context, taskType, taskDescription, "English", modelOverride);
+    }
+
+    public List<GeneratedExamGoal> generate(String context, String taskType, String taskDescription,
+                                            String languageName, String modelOverride) {
         String contextSection = context == null || context.isBlank()
                 ? ""
                 : CONTEXT_SECTION.formatted(context);
         String prompt = PROMPT_TEMPLATE.formatted(
+                languageName,
                 contextSection,
                 taskType == null || taskType.isBlank() ? "unspecified" : taskType,
                 taskDescription);
