@@ -4,12 +4,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
+import CourseDocuments from "../components/CourseDocuments.tsx";
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
   const queryClient = useQueryClient();
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const toggleExpanded = (id?: number) => {
+    if (id == null) return;
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -85,60 +97,89 @@ export default function CoursesPage() {
         )}
         {courses.length > 0 && (
           <ul className="divide-y divide-hestia-border">
-            <li className="grid grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-hestia-text-muted">
-              <span>Course</span>
-              <span className="text-right">Docs</span>
-              <span className="text-right">Goals</span>
-              <span>Status</span>
-              <span className="text-right">Created</span>
-              <span className="sr-only">Actions</span>
+            <li className="flex items-center px-5 py-3 text-xs font-semibold uppercase tracking-wide text-hestia-text-muted">
+              <span className="mr-2 w-6 shrink-0" aria-hidden />
+              <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] gap-4">
+                <span>Course</span>
+                <span className="text-right">Docs</span>
+                <span className="text-right">Goals</span>
+                <span>Status</span>
+                <span className="text-right">Created</span>
+                <span className="sr-only">Actions</span>
+              </div>
             </li>
-            {courses.map((course, index) => (
-              <li
-                key={course.id}
-                className={`relative ${openMenuId === course.id ? "z-30" : ""}`}
-              >
-                <Link
-                  to={`/courses/${course.id}`}
-                  className="grid grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 px-5 py-4 transition hover:bg-hestia-primary-muted"
+            {courses.map((course, index) => {
+              const expanded = course.id != null && expandedIds.has(course.id);
+              return (
+                <li
+                  key={course.id}
+                  className={`relative ${openMenuId === course.id ? "z-30" : ""}`}
                 >
-                  <span className="font-medium text-hestia-text">{course.name}</span>
-                  <span className="text-right tabular-nums text-hestia-text-muted">
-                    {course.documentCount ?? 0}
-                  </span>
-                  <span className="text-right tabular-nums text-hestia-text-muted">
-                    {course.goalCount ?? 0}
-                  </span>
-                  <span>
-                    <StatusBadge
-                      documentCount={course.documentCount ?? 0}
-                      goalCount={course.goalCount ?? 0}
-                    />
-                  </span>
-                  <span className="text-right text-sm text-hestia-text-muted">
-                    {formatDate(course.createdAt)}
-                  </span>
-                  <span aria-hidden />
-                </Link>
-                {course.id != null && (
-                  <RowMenu
-                    open={openMenuId === course.id}
-                    onToggle={() =>
-                      setOpenMenuId((id) =>
-                        id === course.id ? null : (course.id as number),
-                      )
-                    }
-                    onClose={() => setOpenMenuId(null)}
-                    onDelete={() => deleteMutation.mutate(course.id as number)}
-                    deleting={
-                      deleteMutation.isPending &&
-                      deleteMutation.variables === course.id
-                    }
-                    openUp={index === courses.length - 1}
-                  />
-                )}
-              </li>
-            ))}
+                  <div className="relative flex items-center px-5">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(course.id)}
+                      aria-expanded={expanded}
+                      aria-controls={`course-docs-${course.id}`}
+                      aria-label={`${expanded ? "Hide" : "Show"} documents for ${course.name}`}
+                      className="mr-2 flex h-8 w-6 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-bg hover:text-hestia-text"
+                    >
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`}
+                      >
+                        <path d="M7 5l6 5-6 5z" />
+                      </svg>
+                    </button>
+                    <Link
+                      to={`/courses/${course.id}`}
+                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 py-4 transition hover:bg-hestia-primary-muted"
+                    >
+                      <span className="font-medium text-hestia-text">{course.name}</span>
+                      <span className="text-right tabular-nums text-hestia-text-muted">
+                        {course.documentCount ?? 0}
+                      </span>
+                      <span className="text-right tabular-nums text-hestia-text-muted">
+                        {course.goalCount ?? 0}
+                      </span>
+                      <span>
+                        <StatusBadge
+                          documentCount={course.documentCount ?? 0}
+                          goalCount={course.goalCount ?? 0}
+                        />
+                      </span>
+                      <span className="text-right text-sm text-hestia-text-muted">
+                        {formatDate(course.createdAt)}
+                      </span>
+                      <span aria-hidden />
+                    </Link>
+                    {course.id != null && (
+                      <RowMenu
+                        open={openMenuId === course.id}
+                        onToggle={() =>
+                          setOpenMenuId((id) =>
+                            id === course.id ? null : (course.id as number),
+                          )
+                        }
+                        onClose={() => setOpenMenuId(null)}
+                        onDelete={() => deleteMutation.mutate(course.id as number)}
+                        deleting={
+                          deleteMutation.isPending &&
+                          deleteMutation.variables === course.id
+                        }
+                        openUp={index === courses.length - 1}
+                      />
+                    )}
+                  </div>
+                  {expanded && course.id != null && (
+                    <div id={`course-docs-${course.id}`}>
+                      <CourseDocuments courseId={course.id} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
