@@ -20,6 +20,9 @@ public class Course {
     @Column(nullable = false)
     private String name;
 
+    @Column(name = "output_language", length = 16)
+    private String outputLanguage;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -41,6 +44,14 @@ public class Course {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getOutputLanguage() {
+        return outputLanguage;
+    }
+
+    public void setOutputLanguage(String outputLanguage) {
+        this.outputLanguage = outputLanguage;
     }
 
     public OffsetDateTime getCreatedAt() {

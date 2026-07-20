@@ -81,9 +81,9 @@ class ExamGoalControllerTest {
     @Test
     void generatesPersistsAndReturnsGoalsPerTaskBlock() throws Exception {
         Course course = courseRepository.save(new Course("Introduction to ML"));
-        when(generator.generate(anyString(), eq("singleChoice"), anyString(), isNull()))
+        when(generator.generate(anyString(), eq("singleChoice"), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall basic integer addition.")));
-        when(generator.generate(anyString(), eq("freeText"), anyString(), isNull()))
+        when(generator.generate(anyString(), eq("freeText"), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(
                         new GeneratedExamGoal("Explain the impact of LLMs on knowledge work."),
                         new GeneratedExamGoal("Evaluate the use of LLMs with a personal example.")));
@@ -130,7 +130,7 @@ class ExamGoalControllerTest {
     @Test
     void accumulatesPrecedingContextBlocksPerTask() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
-        when(generator.generate(anyString(), any(), anyString(), isNull())).thenReturn(List.of());
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenReturn(List.of());
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
         when(embeddingService.embedAll(anyList())).thenReturn(List.of());
 
@@ -151,7 +151,7 @@ class ExamGoalControllerTest {
 
         ArgumentCaptor<String> contextCaptor = ArgumentCaptor.forClass(String.class);
         Mockito.verify(generator, Mockito.times(3))
-                .generate(contextCaptor.capture(), anyString(), anyString(), isNull());
+                .generate(contextCaptor.capture(), anyString(), anyString(), anyString(), isNull());
         assertThat(contextCaptor.getAllValues()).containsExactly(
                 "Context A",
                 "Context A",
@@ -161,7 +161,7 @@ class ExamGoalControllerTest {
     @Test
     void reusesExamRootAcrossRequests() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
-        when(generator.generate(anyString(), any(), anyString(), isNull()))
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull()))
                 .thenReturn(java.util.Collections.singletonList(null));
@@ -185,7 +185,7 @@ class ExamGoalControllerTest {
     @Test
     void persistsGoalsWithoutLevelsWhenTaxonomyFails() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
-        when(generator.generate(anyString(), any(), anyString(), isNull()))
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("SAIA 429"));
         when(embeddingService.embedAll(anyList())).thenThrow(new RuntimeException("SAIA 429"));

@@ -46,6 +46,10 @@ public class TerminalCompetencySynthesizer {
             would list as "by the end of this course you can ...", each built around a concrete DOING
             verb (deploy, build, configure, secure, automate, design ...).
 
+            Write every generated text and shortLabel value in %s. Keep the JSON property names text,
+            shortLabel and supporting exactly as written. The Bloom labels in the input are fixed
+            English enum values and must remain exactly as provided.
+
             Below are ALL of the course's session/exercise learning goals, each prefixed with its index
             in square brackets and its Bloom level in parentheses. They come from many different
             sessions and include higher-level goals as well as lower-level knowledge goals.
@@ -121,10 +125,15 @@ public class TerminalCompetencySynthesizer {
      * @return zero or more terminal competencies; empty when there is nothing to cluster.
      */
     public List<TerminalCompetency> synthesize(List<Candidate> candidates, String modelOverride) {
+        return synthesize(candidates, "English", modelOverride);
+    }
+
+    public List<TerminalCompetency> synthesize(List<Candidate> candidates, String languageName,
+                                               String modelOverride) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        return call(PROMPT.formatted(numbered(candidates)), modelOverride);
+        return call(PROMPT.formatted(languageName, numbered(candidates)), modelOverride);
     }
 
     private List<TerminalCompetency> call(String prompt, String modelOverride) {

@@ -149,7 +149,7 @@ export interface paths {
         delete: operations["delete_1"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_3"];
         trace?: never;
     };
     "/api/courses/{courseId}/learning-goals": {
@@ -238,11 +238,13 @@ export interface components {
     schemas: {
         CreateCourseRequest: {
             name: string;
+            outputLanguage?: string | null;
         };
         CourseResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
+            outputLanguage?: string | null;
         };
         ExtractionSummary: {
             /** Format: int32 */
@@ -365,6 +367,7 @@ export interface components {
             documentCount?: number;
             /** Format: int64 */
             goalCount?: number;
+            outputLanguage?: string | null;
         };
         PageMetadata: {
             /** Format: int64 */
@@ -404,6 +407,9 @@ export interface components {
             model?: string;
             summary?: components["schemas"]["ExtractionSummary"];
             error?: string;
+        };
+        UpdateCourseRequest: {
+            outputLanguage?: string | null;
         };
     };
     responses: never;
@@ -729,6 +735,32 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    update_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CourseResponse"];
+                };
             };
         };
     };

@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,7 +37,13 @@ public class CourseController {
 
     @PostMapping
     public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
-        Course saved = courseRepository.save(new Course(request.name()));
+        // The extraction runs straight after the materials upload that follows this call, so the
+        // instructor's language override has to be settable here — afterwards is too late for the
+        // first run. Null means "detect the language from the uploaded documents".
+        validateOutputLanguage(request.outputLanguage());
+        Course course = new Course(request.name());
+        course.setOutputLanguage(request.outputLanguage());
+        Course saved = courseRepository.save(course);
         return ResponseEntity
                 .created(URI.create("/api/courses/" + saved.getId()))
                 .body(CourseResponse.from(saved));
@@ -59,6 +66,7 @@ public class CourseController {
         return new PagedModel<>(page.map(course -> new CourseSummaryResponse(
                 course.getId(),
                 course.getName(),
+                course.getOutputLanguage(),
                 course.getCreatedAt(),
                 documentCounts.getOrDefault(course.getId(), 0L),
                 goalCounts.getOrDefault(course.getId(), 0L))));
@@ -72,7 +80,20 @@ public class CourseController {
         long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
         long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
         return new CourseSummaryResponse(
-                course.getId(), course.getName(), course.getCreatedAt(), documentCount, goalCount);
+                course.getId(), course.getName(), course.getOutputLanguage(), course.getCreatedAt(),
+                documentCount, goalCount);
+    }
+
+    @PatchMapping("/{id}")
+    public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
+        Course course = courseRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
+        }
+        validateOutputLanguage(request.outputLanguage());
+        course.setOutputLanguage(request.outputLanguage());
+        return CourseResponse.from(courseRepository.save(course));
     }
 
     /**
@@ -89,22 +110,34 @@ public class CourseController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Null means auto-detect; otherwise only the languages the pipeline is validated for. */
+    private static void validateOutputLanguage(String outputLanguage) {
+        if (outputLanguage != null && !outputLanguage.equals("de") && !outputLanguage.equals("en")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "outputLanguage must be null, \"de\", or \"en\"");
+        }
+    }
+
     private static Map<Long, Long> toCountMap(List<CourseRepository.CourseCount> counts) {
         return counts.stream().collect(Collectors.toMap(
                 CourseRepository.CourseCount::getCourseId,
                 CourseRepository.CourseCount::getCount));
     }
 
-    public record CreateCourseRequest(@NotBlank String name) {
+    public record CreateCourseRequest(@NotBlank String name, String outputLanguage) {
     }
 
-    public record CourseResponse(Long id, String name) {
+    public record CourseResponse(Long id, String name, String outputLanguage) {
         static CourseResponse from(Course course) {
-            return new CourseResponse(course.getId(), course.getName());
+            return new CourseResponse(course.getId(), course.getName(), course.getOutputLanguage());
         }
     }
 
     public record CourseSummaryResponse(
-            Long id, String name, OffsetDateTime createdAt, long documentCount, long goalCount) {
+            Long id, String name, String outputLanguage, OffsetDateTime createdAt,
+            long documentCount, long goalCount) {
+    }
+
+    public record UpdateCourseRequest(String outputLanguage) {
     }
 }

@@ -27,6 +27,7 @@ dependencies {
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
     implementation("org.flywaydb:flyway-core")
     implementation("org.apache.tika:tika-core:3.0.0")
+    implementation("org.apache.tika:tika-langdetect-optimaize:3.0.0")
     implementation("org.apache.tika:tika-parsers-standard-package:3.0.0")
     // Used directly for PDF bookmark/outline extraction (session boundaries); also a transitive Tika dep.
     implementation("org.apache.pdfbox:pdfbox:3.0.3")

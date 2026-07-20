@@ -20,6 +20,11 @@ public class ExtractionService {
     static final String PROMPT_TEMPLATE = """
             You analyse a slice of educational material to identify its learning-goal candidates.
 
+            Write every generated text value in %s. Keep the JSON property names text, kind and
+            sourceSnippet exactly as written, and keep kind values exactly EXPLICIT or IMPLICIT.
+            sourceSnippet MUST remain a contiguous verbatim quote from the document in its own
+            language; never translate it.
+
             A learning goal is a learning OUTCOME: a statement of what a student should be able to do
             after working through the material, phrased the way an instructor writes them (e.g.
             "Understand the basic terminology of ML, AI, DL and statistics", "Apply gradient descent
@@ -79,12 +84,16 @@ public class ExtractionService {
      * @return the learning-goal candidates found in the chunk.
      */
     public List<ExtractedGoal> extract(String chunkText, String modelOverride) {
+        return extract(chunkText, "English", modelOverride);
+    }
+
+    public List<ExtractedGoal> extract(String chunkText, String languageName, String modelOverride) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
         if (modelOverride != null && !modelOverride.isBlank()) {
             spec = spec.options(ChatOptions.builder().model(modelOverride).build());
         }
         List<ExtractedGoal> goals = spec
-                .user(PROMPT_TEMPLATE.formatted(chunkText))
+                .user(PROMPT_TEMPLATE.formatted(languageName, chunkText))
                 .call()
                 .entity(new ParameterizedTypeReference<List<ExtractedGoal>>() {});
         return goals == null ? List.of() : goals;

@@ -12,23 +12,27 @@ public class DocumentUploadService {
     private final DocumentContentRepository documentContentRepository;
     private final DocumentSectionRepository documentSectionRepository;
     private final DocumentTitleService titleService;
+    private final LanguageDetectionService languageDetectionService;
 
     public DocumentUploadService(DocumentRepository documentRepository,
                                  DocumentContentRepository documentContentRepository,
                                  DocumentSectionRepository documentSectionRepository,
-                                 DocumentTitleService titleService) {
+                                 DocumentTitleService titleService,
+                                 LanguageDetectionService languageDetectionService) {
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.documentSectionRepository = documentSectionRepository;
         this.titleService = titleService;
+        this.languageDetectionService = languageDetectionService;
     }
 
     @Transactional
     public Document persist(Course course, String filename, String contentType,
                             DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
         String storedContentType = contentType != null ? contentType : "application/octet-stream";
-        Document document = documentRepository.save(
-                new Document(course, filename, storedContentType, parsed.rawText()));
+        Document document = new Document(course, filename, storedContentType, parsed.rawText());
+        document.setLanguage(languageDetectionService.detect(parsed.rawText()));
+        document = documentRepository.save(document);
         document.setPageOffsets(parsed.pageOffsets());
         documentContentRepository.save(new DocumentContent(document, bytes));
         persistSections(document, parsed, bytes, contentType, filename);

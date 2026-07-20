@@ -114,6 +114,7 @@ export default function CoursePage() {
     },
   });
 
+
   const updateGoalMutation = useMutation({
     mutationFn: async (vars: {
       goalId: number;

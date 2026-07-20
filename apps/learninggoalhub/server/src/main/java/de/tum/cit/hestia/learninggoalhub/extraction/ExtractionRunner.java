@@ -6,6 +6,7 @@ import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
@@ -137,16 +138,20 @@ public class ExtractionRunner {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
 
         List<Document> documents = documentRepository.findByCourseId(courseId);
+        String dominantLanguage = dominantLanguage(documents);
+        String courseLanguage = resolveLanguage(course, null, dominantLanguage);
         String promptVersion = promptVersionFor(documents);
         String effectiveModel = modelOverride == null || modelOverride.isBlank()
                 ? configuredDefaultModel : modelOverride;
         if (effectiveModel != null && effectiveModel.isBlank()) {
             effectiveModel = null;
         }
-        Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion, runParams());
+        Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
+                runParams(courseLanguage));
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         try {
-            ExtractionSummary summary = doRun(course, documents, modelOverride, run);
+            ExtractionSummary summary = doRun(course, documents, modelOverride,
+                    LanguageUtils.englishName(courseLanguage), dominantLanguage, run);
             run.succeed(summary);
             extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.SUCCEEDED, null,
                     summary.goalsCreated(), promptVersion);
@@ -160,6 +165,7 @@ public class ExtractionRunner {
     }
 
     private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
+                                    String courseLanguageName, String dominantLanguage,
                                     ExtractionProgressTracker.Run run) {
         // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
         // one module root. Sessions come from the document's persisted structural sections (PDF
@@ -197,7 +203,8 @@ public class ExtractionRunner {
         }
 
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, sessions.size());
-        List<SessionExtraction> extractedSessions = extractSessions(sessions, modelOverride, run);
+        List<SessionExtraction> extractedSessions = extractSessions(
+                course, sessions, dominantLanguage, modelOverride, run);
         SessionAssembly assembly = assembleSessions(course, extractedSessions);
 
         List<ClassifiedGoal> classified = classifyInParallel(assembly.sessionGoals(), modelOverride, run);
@@ -256,28 +263,32 @@ public class ExtractionRunner {
 
         // Top-down competency view: a three-tier tree (terminal competency → sub-skill → knowledge)
         // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
-        CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride);
+        CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride, courseLanguageName);
 
         return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies());
     }
 
     /** Runs one direct call per small session, or the complete legacy pipeline for oversized sessions. */
-    private List<SessionExtraction> extractSessions(List<SessionUnit> sessions, String modelOverride,
+    private List<SessionExtraction> extractSessions(Course course, List<SessionUnit> sessions,
+                                                     String dominantLanguage, String modelOverride,
                                                      ExtractionProgressTracker.Run run) {
         ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
         try {
             List<CompletableFuture<SessionExtraction>> futures = sessions.stream()
                     .map(session -> CompletableFuture.supplyAsync(() -> {
+                        String languageName = LanguageUtils.englishName(resolveLanguage(
+                                course, session.document().getLanguage(), dominantLanguage));
                         if (usesDirectPath(session.text())) {
                             List<ExtractedGoal> goals = sessionExtractionService.extract(
-                                    session.title(), session.text(), modelOverride);
+                                    session.title(), session.text(), languageName, modelOverride);
                             run.increment();
                             return SessionExtraction.direct(session, goals == null ? List.of() : goals);
                         }
 
                         List<ExtractedGoal> candidates = new ArrayList<>();
                         for (String chunk : documentChunker.chunk(session.text())) {
-                            List<ExtractedGoal> extracted = extractionService.extract(chunk, modelOverride);
+                            List<ExtractedGoal> extracted = extractionService.extract(
+                                    chunk, languageName, modelOverride);
                             if (extracted != null) {
                                 candidates.addAll(extracted);
                             }
@@ -285,7 +296,8 @@ public class ExtractionRunner {
                         List<ConsolidatedGoal> consolidated = candidates.isEmpty()
                                 ? List.of()
                                 : safeConsolidate(session.title(),
-                                        candidates.stream().map(ExtractedGoal::text).toList(), modelOverride);
+                                        candidates.stream().map(ExtractedGoal::text).toList(),
+                                        languageName, modelOverride);
                         run.increment();
                         return SessionExtraction.fallback(session, candidates, consolidated);
                     }, executor))
@@ -325,10 +337,48 @@ public class ExtractionRunner {
         return FALLBACK_PROMPT_VERSION;
     }
 
-    private String runParams() {
+    private String runParams(String language) {
         return "{\"chunk-size\":" + documentChunker.getChunkSize()
                 + ",\"direct-max-chars\":" + directMaxChars
-                + ",\"parallelism\":" + parallelism + "}";
+                + ",\"parallelism\":" + parallelism
+                + ",\"output-language\":\"" + language + "\"}";
+    }
+
+    static String resolveLanguage(Course course, String documentLanguage, String dominantLanguage) {
+        if (course != null && course.getOutputLanguage() != null) {
+            return course.getOutputLanguage();
+        }
+        if (documentLanguage != null && !documentLanguage.isBlank()) {
+            return documentLanguage;
+        }
+        if (dominantLanguage != null && !dominantLanguage.isBlank()) {
+            return dominantLanguage;
+        }
+        return "en";
+    }
+
+    static String dominantLanguage(List<Document> documents) {
+        Map<String, Long> weights = new LinkedHashMap<>();
+        for (Document document : documents) {
+            String language = document.getLanguage();
+            if (language == null || language.isBlank()) {
+                continue;
+            }
+            String text = document.getRawText();
+            long weight = text == null ? 0 : text.length();
+            if (weight > 0) {
+                weights.merge(language, weight, Long::sum);
+            }
+        }
+        String dominant = null;
+        long highestWeight = -1;
+        for (Map.Entry<String, Long> entry : weights.entrySet()) {
+            if (entry.getValue() > highestWeight) {
+                dominant = entry.getKey();
+                highestWeight = entry.getValue();
+            }
+        }
+        return dominant;
     }
 
     private static String errorMessage(RuntimeException ex) {
@@ -378,9 +428,11 @@ public class ExtractionRunner {
         return new SessionAssembly(sessionGoals, provenance);
     }
 
-    private List<ConsolidatedGoal> safeConsolidate(String sessionTitle, List<String> candidates, String modelOverride) {
+    private List<ConsolidatedGoal> safeConsolidate(String sessionTitle, List<String> candidates,
+                                                   String languageName, String modelOverride) {
         try {
-            List<ConsolidatedGoal> result = sessionGoalConsolidator.consolidate(sessionTitle, candidates, modelOverride);
+            List<ConsolidatedGoal> result = sessionGoalConsolidator.consolidate(
+                    sessionTitle, candidates, languageName, modelOverride);
             return result == null ? List.of() : result;
         } catch (RuntimeException ex) {
             log.warn("Session goal consolidation failed for '{}', keeping its candidates unconsolidated: {}",
@@ -519,7 +571,9 @@ public class ExtractionRunner {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
         clearCompetencyTree(course);
-        return buildCompetencyTree(course, modelOverride);
+        String dominantLanguage = dominantLanguage(documentRepository.findByCourseId(courseId));
+        return buildCompetencyTree(course, modelOverride,
+                LanguageUtils.englishName(resolveLanguage(course, null, dominantLanguage)));
     }
 
     /**
@@ -560,7 +614,8 @@ public class ExtractionRunner {
      * classification. CONTRIBUTES_TO edges thread the tiers (knowledge → sub-skill → terminal);
      * any synthesis failure is swallowed so it never breaks a run.
      */
-    private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride) {
+    private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride,
+                                                     String languageName) {
         if (hierarchyNodeRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)) {
             return CompetencyTreeResult.NONE;
         }
@@ -584,7 +639,7 @@ public class ExtractionRunner {
                     .map(g -> new TerminalCompetencySynthesizer.Candidate(
                             g.getText(), g.getBloomLevel() == null ? null : g.getBloomLevel().name()))
                     .toList();
-            competencies = terminalCompetencySynthesizer.synthesize(input, modelOverride);
+            competencies = terminalCompetencySynthesizer.synthesize(input, languageName, modelOverride);
         } catch (RuntimeException ex) {
             log.warn("Terminal competency synthesis failed, continuing without a competency tree: {}",
                     ex.getMessage());
