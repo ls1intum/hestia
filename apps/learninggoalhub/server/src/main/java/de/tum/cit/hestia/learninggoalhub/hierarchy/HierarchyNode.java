@@ -77,6 +77,10 @@ public class HierarchyNode {
         return label;
     }
 
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
     public Document getDocument() {
         return document;
     }

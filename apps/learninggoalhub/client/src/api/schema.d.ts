@@ -117,6 +117,22 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        patch: operations["update_2"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch: operations["update_1"];
         trace?: never;
     };
@@ -265,6 +281,7 @@ export interface components {
             /** Format: int64 */
             documentId?: number;
             filename?: string;
+            displayName?: string;
             snippet?: string;
             /** Format: int32 */
             page?: number;
@@ -275,6 +292,17 @@ export interface components {
             module?: string;
             session?: string;
             exercise?: string;
+            /** Format: int64 */
+            sessionId?: number;
+        };
+        HierarchyNodeResponse: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            courseId?: number;
+            /** @enum {string} */
+            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
+            label?: string;
         };
         LearningGoalResponse: {
             /** Format: int64 */
@@ -323,6 +351,9 @@ export interface components {
         };
         UpdateDocumentRequest: {
             displayName?: string;
+        };
+        UpdateHierarchyNodeRequest: {
+            label?: string;
         };
         CourseSummaryResponse: {
             /** Format: int64 */
@@ -605,7 +636,7 @@ export interface operations {
             };
         };
     };
-    update_1: {
+    update_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -628,6 +659,33 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["DocumentResponse"];
+                };
+            };
+        };
+    };
+    update_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                nodeId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHierarchyNodeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HierarchyNodeResponse"];
                 };
             };
         };

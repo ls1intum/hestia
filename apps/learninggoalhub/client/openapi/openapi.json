@@ -143,7 +143,7 @@
           "exam-goal-controller"
         ],
         "summary": "Generate learning goals for exam tasks",
-        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.",
+        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous \u2014 expect a few seconds per task block.",
         "operationId": "generate",
         "parameters": [
           {
@@ -395,7 +395,7 @@
         "tags": [
           "document-controller"
         ],
-        "operationId": "update_1",
+        "operationId": "update_2",
         "parameters": [
           {
             "name": "courseId",
@@ -433,6 +433,56 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
+      "patch": {
+        "tags": [
+          "hierarchy-node-controller"
+        ],
+        "operationId": "update_1",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHierarchyNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/HierarchyNodeResponse"
                 }
               }
             }
@@ -858,6 +908,9 @@
           "filename": {
             "type": "string"
           },
+          "displayName": {
+            "type": "string"
+          },
           "snippet": {
             "type": "string"
           },
@@ -883,6 +936,36 @@
             "type": "string"
           },
           "exercise": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "HierarchyNodeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "MODULE",
+              "SESSION",
+              "EXERCISE",
+              "EXAM",
+              "COMPETENCY"
+            ]
+          },
+          "label": {
             "type": "string"
           }
         }
@@ -1044,6 +1127,14 @@
         "type": "object",
         "properties": {
           "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateHierarchyNodeRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
             "type": "string"
           }
         }
