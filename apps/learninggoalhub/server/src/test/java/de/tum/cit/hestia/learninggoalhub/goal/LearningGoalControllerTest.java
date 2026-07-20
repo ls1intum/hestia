@@ -128,6 +128,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.content[0].text").value("Apply TDD."))
                 .andExpect(jsonPath("$.content[0].hierarchy.module").value("Software Engineering"))
                 .andExpect(jsonPath("$.content[0].hierarchy.session").value("Session 3: Testing"))
+                .andExpect(jsonPath("$.content[0].hierarchy.sessionId").value(session.getId().intValue()))
                 .andExpect(jsonPath("$.content[0].hierarchy.exercise").doesNotExist())
                 .andExpect(jsonPath("$.content[0].bloomLevel").value("APPLY"))
                 .andExpect(jsonPath("$.content[0].soloLevel").value("RELATIONAL"))

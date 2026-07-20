@@ -327,11 +327,11 @@ public class LearningGoalController {
                                             SoloLevel soloLevel) {
     }
 
-    public record GoalSourceResponse(Long documentId, String filename, String snippet,
-                                     Integer page, boolean contentAvailable, boolean grounded) {
+    public record GoalSourceResponse(Long documentId, String filename, String displayName,
+                                     String snippet, Integer page, boolean contentAvailable, boolean grounded) {
         static GoalSourceResponse from(GoalSource s, boolean contentAvailable) {
             return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(),
-                    s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded());
+                    s.getDocument().getDisplayName(), s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded());
         }
     }
 
