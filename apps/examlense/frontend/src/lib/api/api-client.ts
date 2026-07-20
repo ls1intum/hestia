@@ -122,6 +122,9 @@ export interface ExamListItem extends Exam {
   scored_count: number;
   answered_count: number;
   graded_count: number;
+  /** Total sections and how many are confirmed — backs the dashboard "prepare" step. */
+  section_count: number;
+  confirmed_section_count: number;
 }
 
 export const listExams = () => apiRequest<ExamListItem[]>("/api/exams");

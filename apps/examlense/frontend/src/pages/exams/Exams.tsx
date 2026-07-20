@@ -1,7 +1,8 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { parseExamPdf } from "@/lib/api/api-parse";
+import { retryParse } from "@/lib/parsing/retry-parse";
+import { retryEvaluation } from "@/lib/exam/retry-evaluation";
 import { FileUp, Loader2, PenLine, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/lib/api/api-client";
 import { subscribeExamsList } from "@/lib/api/sse";
 import { useToast } from "@/hooks/ui/use-toast";
+import { useParseFailureToasts } from "@/hooks/ui/use-parse-failure-toasts";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import {
   StartExamDialog,
@@ -58,6 +60,9 @@ const Exams = () => {
     queryFn: () => listExams(),
   });
 
+  // Slim "Parsing failed" toast when a background parse fails while on the dashboard.
+  useParseFailureToasts(exams);
+
   // Live updates so rows reflect parsing → draft/failed transitions and progress
   // advances without a manual refresh.
   useEffect(() => {
@@ -65,26 +70,6 @@ const Exams = () => {
       queryClient.invalidateQueries({ queryKey: ["exams-list"] });
     });
   }, [queryClient]);
-
-  const retryParse = async (exam: ExamListItem) => {
-    if (!exam.source_file_url) {
-      toast({ title: "Couldn't start parsing. Please try again.", variant: "destructive" });
-      return;
-    }
-    try {
-      await patchExam(exam.id, { status: "parsing", parse_error: null });
-    } catch {
-      toast({ title: "Couldn't start parsing. Please try again.", variant: "destructive" });
-      return;
-    }
-    queryClient.invalidateQueries({ queryKey: ["exams-list"] });
-    parseExamPdf({
-      examId: exam.id,
-      storagePath: exam.source_file_url,
-      parserModel: exam.parser_model ?? undefined,
-    }).catch((e) => console.error("retry invoke failed", e));
-    toast({ title: "Parsing started — we'll update your dashboard when it's ready." });
-  };
 
   /**
    * Reset an exam that's stuck in parsing/evaluating so the user can recover it.
@@ -148,7 +133,8 @@ const Exams = () => {
   };
 
   const rowHandlers: ExamRowHandlers = {
-    onRetry: retryParse,
+    onRetry: (exam) => retryParse(exam, queryClient),
+    onRetryEvaluation: (exam) => retryEvaluation(exam, queryClient),
     onCancel: setPendingCancel,
     onDuplicate: duplicateExam,
     onDelete: setPendingDelete,
@@ -172,7 +158,7 @@ const Exams = () => {
         <div className="mb-hestia-6 flex items-end justify-between gap-hestia-3">
           <div>
             <h1 className="font-display text-3xl md:text-4xl font-bold text-hestia-text">
-              Your exams
+              Your Exams
             </h1>
           </div>
           <div className="flex items-center gap-hestia-2">
@@ -197,14 +183,14 @@ const Exams = () => {
               onClick={() => setDialogMode("manual")}
               className="inline-flex items-center gap-1 rounded-hestia-md border border-hestia-border bg-hestia-surface px-hestia-4 py-hestia-2 text-sm font-semibold text-hestia-text shadow-hestia-sm transition-colors hover:bg-hestia-primary-muted/30"
             >
-              <PenLine size={14} /> Create from scratch
+              <PenLine size={14} /> Create From Scratch
             </button>
             <button
               type="button"
               onClick={() => setDialogMode("pdf")}
               className="inline-flex items-center gap-1 rounded-hestia-md bg-hestia-primary px-hestia-4 py-hestia-2 text-sm font-semibold text-white shadow-hestia-sm transition-colors hover:bg-hestia-primary-hover"
             >
-              <FileUp size={14} /> Import PDF
+              <FileUp size={14} /> Import Exam
             </button>
           </div>
         </div>
@@ -220,14 +206,14 @@ const Exams = () => {
                 onClick={() => setDialogMode("pdf")}
                 className="inline-flex items-center gap-1 text-hestia-primary hover:underline underline-offset-4"
               >
-                <FileUp size={14} /> Import PDF
+                <FileUp size={14} /> Import Exam
               </button>
               <button
                 type="button"
                 onClick={() => setDialogMode("manual")}
                 className="inline-flex items-center gap-1 text-hestia-primary hover:underline underline-offset-4"
               >
-                <PenLine size={14} /> Create from scratch
+                <PenLine size={14} /> Create From Scratch
               </button>
             </div>
           </div>

@@ -9,7 +9,6 @@ import { apiRequest } from "@/lib/api/api-client";
 export interface ParseExamArgs {
   examId: string;
   storagePath: string;
-  parserModel?: string | null;
   fastMode?: boolean;
   languageHint?: string | null;
 }
@@ -18,6 +17,10 @@ export interface ParseExamArgs {
  * Kick off PDF parsing for an exam. Resolves once the server has accepted
  * the request — actual extraction continues in the background and progress
  * is observed via the exam SSE stream.
+ *
+ * The parser model is chosen entirely by the backend (default Gemini 3.5 Flash,
+ * with a transparent fallback to GPT-5.5 on transient failure), so the client
+ * never sends a model — it just triggers the parse.
  */
 export async function parseExamPdf(args: ParseExamArgs): Promise<void> {
   await apiRequest<{ ok: boolean }>("/api/parse-exam-pdf", {
@@ -25,7 +28,6 @@ export async function parseExamPdf(args: ParseExamArgs): Promise<void> {
     json: {
       exam_id: args.examId,
       storage_path: args.storagePath,
-      parser_model: args.parserModel ?? undefined,
       fast_mode: args.fastMode ?? undefined,
       language_hint: args.languageHint ?? undefined,
     },

@@ -14,7 +14,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-3 p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
       className,
     )}
     {...props}
@@ -28,7 +28,10 @@ const toastVariants = cva(
     variants: {
       variant: {
         default: "border bg-background text-foreground",
-        destructive: "destructive group border-destructive bg-destructive text-destructive-foreground",
+        // Solid card: an opaque surface background with a flat danger tint layered
+        // on top (as a background-image), so it reads tonal-red but isn't see-through.
+        destructive:
+          "destructive group border-hestia-danger/20 bg-hestia-surface [background-image:linear-gradient(hsl(var(--hestia-danger)/0.1),hsl(var(--hestia-danger)/0.1))] text-hestia-danger",
       },
     },
     defaultVariants: {
@@ -67,7 +70,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-[.destructive]:text-red-300 hover:text-foreground group-[.destructive]:hover:text-red-50 focus:opacity-100 focus:outline-none focus:ring-2 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-[.destructive]:text-hestia-danger/70 hover:text-foreground group-[.destructive]:hover:text-hestia-danger focus:opacity-100 focus:outline-none focus:ring-2 group-[.destructive]:focus:ring-hestia-danger",
       className,
     )}
     toast-close=""

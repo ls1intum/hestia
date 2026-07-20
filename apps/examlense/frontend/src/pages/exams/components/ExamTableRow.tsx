@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AlertTriangle } from "lucide-react";
 import type { ExamListItem } from "@/lib/api/api-client";
-import { examModePath } from "@/lib/exam/exam-helpers";
+import { examModePath, isParseFailure } from "@/lib/exam/exam-helpers";
+import { cn } from "@/lib/utils/utils";
 import { ExamStatusBadge } from "@/pages/exams/components/ExamStatusBadge";
 import { ModelLogo } from "@/components/shared/ModelLogo";
 import { solverModelLabel } from "@/lib/exam/llm-models";
@@ -16,7 +16,10 @@ import { ExamActionsMenu } from "./ExamActionsMenu";
 export const examHref = (e: ExamListItem): string => examModePath(e.id, e.status);
 
 export interface ExamRowHandlers {
+  /** Re-parse a PDF that failed during parsing. */
   onRetry: (exam: ExamListItem) => void;
+  /** Re-run evaluation for an exam that failed while solving / was cancelled. */
+  onRetryEvaluation: (exam: ExamListItem) => void;
   onCancel: (exam: ExamListItem) => void;
   onDuplicate: (exam: ExamListItem) => void;
   onDelete: (exam: ExamListItem) => void;
@@ -34,30 +37,39 @@ export const ExamTableRow = ({
   const isParsing = exam.status === "parsing";
   const isEvaluating = exam.status === "evaluating";
   const isFailed = exam.status === "failed";
+  // A parse failure has no exam to open (re-parse via the row action); an
+  // evaluation failure keeps its content, so the row opens the exam.
+  const parseFailed = isParseFailure(exam);
+  const evalFailed = isFailed && !parseFailed;
 
   return (
     <TableRow
-      className="cursor-pointer"
-      onClick={() => navigate(examHref(exam))}
-      aria-label={`Open exam ${title}`}
+      // Constant row height so slimmer rows (e.g. the single-line "Failed"
+      // progress cell) match the tallest (the two-line parsing/journey cells).
+      // On a <tr>, `height` behaves as a minimum and `align-middle` centres.
+      className={cn("h-20", parseFailed ? "cursor-default" : "cursor-pointer")}
+      onClick={parseFailed ? undefined : () => navigate(examHref(exam))}
+      aria-label={
+        parseFailed
+          ? `Exam ${title} (parsing failed)`
+          : evalFailed
+            ? `Open exam ${title} (evaluation failed)`
+            : `Open exam ${title}`
+      }
     >
-      {/* Title */}
+      {/* Title (truncated, full text on hover). max-w-0 lets the cell shrink
+          below its content so the span can ellipsize instead of widening the table. */}
       <TableCell className="max-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-hestia-text">{title}</span>
-          {isFailed && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <AlertTriangle size={14} className="shrink-0 text-destructive" />
-              </TooltipTrigger>
-              <TooltipContent>{exam.parse_error || "We couldn't read this PDF."}</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="block truncate font-medium text-hestia-text">{title}</span>
+          </TooltipTrigger>
+          <TooltipContent>{title}</TooltipContent>
+        </Tooltip>
       </TableCell>
 
       {/* Status */}
-      <TableCell>
+      <TableCell className="text-center">
         <ExamStatusBadge status={exam.status} />
       </TableCell>
 
@@ -67,12 +79,12 @@ export const ExamTableRow = ({
       </TableCell>
 
       {/* Solver model (icon only, full label on hover) */}
-      <TableCell>
+      <TableCell className="text-center">
         {exam.solver_model ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className="inline-flex h-7 w-7 items-center justify-center rounded-hestia-md border border-hestia-border bg-hestia-bg/70 p-1"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-hestia-md border border-hestia-border bg-hestia-bg/70 p-1.5"
                 aria-label={solverModelLabel(exam.solver_model)}
               >
                 <ModelLogo modelId={exam.solver_model} />
@@ -93,7 +105,13 @@ export const ExamTableRow = ({
       {/* Actions */}
       <TableCell className="text-right">
         <ExamActionsMenu
-          onRetry={isFailed ? () => handlers.onRetry(exam) : undefined}
+          onRetry={
+            parseFailed
+              ? () => handlers.onRetry(exam)
+              : evalFailed
+                ? () => handlers.onRetryEvaluation(exam)
+                : undefined
+          }
           onCancel={isParsing || isEvaluating ? () => handlers.onCancel(exam) : undefined}
           onDuplicate={
             isParsing || isFailed ? undefined : () => handlers.onDuplicate(exam)
@@ -101,7 +119,7 @@ export const ExamTableRow = ({
           onDelete={() => handlers.onDelete(exam)}
           labels={{
             more: "More actions",
-            retry: "Retry",
+            retry: parseFailed ? "Retry parsing" : "Retry evaluation",
             cancel: "Cancel processing",
             duplicate: "Duplicate",
             delete: "Delete",

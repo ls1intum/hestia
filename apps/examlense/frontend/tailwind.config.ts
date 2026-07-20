@@ -63,6 +63,7 @@ export default {
           warning: "hsl(var(--hestia-warning))",
           danger: "hsl(var(--hestia-danger))",
           success: "hsl(var(--hestia-success))",
+          grading: "hsl(var(--hestia-grading))",
           border: "hsl(var(--hestia-border))",
           "border-strong": "hsl(var(--hestia-border-strong))",
         },
@@ -130,6 +131,8 @@ export default {
         "accordion-up": "accordion-up 0.2s ease-out",
         "ping-sm": "ping-sm 1.5s cubic-bezier(0, 0, 0.2, 1) infinite",
         "progress-shimmer": "progress-shimmer 0.8s ease-out",
+        // Looping variant for in-progress loaders (e.g. the parsing bar).
+        "progress-shimmer-loop": "progress-shimmer 1.6s ease-in-out infinite",
         "pulse-danger": "pulse-danger 1.8s ease-out infinite",
       },
     },

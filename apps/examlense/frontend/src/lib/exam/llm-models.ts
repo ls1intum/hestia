@@ -20,8 +20,8 @@ export interface LlmModel {
 
 export const PARSER_MODELS: LlmModel[] = [
   {
-    id: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Google)",
+    id: "gemini-3.5-flash",
+    label: "Gemini 3.5 Flash (Google)",
     description:
       "Google Gemini reads the PDF directly (native document parsing, no rasterization).",
   },
@@ -42,16 +42,21 @@ export const PARSER_MODELS: LlmModel[] = [
     label: "Qwen 3.6 35B A3B (GWDG)",
     description: "GWDG-hosted vision model; PDF pages rasterized to images.",
   },
+];
+
+export const DEFAULT_PARSER_MODEL_ID = "gemini-3.5-flash";
+
+export const LEGACY_PARSER_MODELS: LlmModel[] = [
+  {
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Google)",
+    description: "Legacy Gemini parser model.",
+  },
   {
     id: "mistral-large-3-675b-instruct-2512",
     label: "Mistral Large 3 675B (GWDG)",
-    description: "GWDG-hosted vision model; PDF pages rasterized to images.",
+    description: "Legacy GWDG parser model.",
   },
-];
-
-export const DEFAULT_PARSER_MODEL_ID = "gemini-2.5-flash";
-
-export const LEGACY_PARSER_MODELS: LlmModel[] = [
   {
     id: "gemma-4-31b-it",
     label: "Gemma 4 31B Instruct (GWDG)",
@@ -81,8 +86,8 @@ export const parserModelLabel = (id: string): string =>
 
 export const SOLVER_MODELS: LlmModel[] = [
   {
-    id: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Google)",
+    id: "gemini-3.5-flash",
+    label: "Gemini 3.5 Flash (Google)",
     description: "Google Gemini model for fast exam solving.",
   },
   {
@@ -97,11 +102,6 @@ export const SOLVER_MODELS: LlmModel[] = [
       "Anthropic flagship model for complex reasoning and long-context work.",
   },
   {
-    id: "mistral-large-3-675b-instruct-2512",
-    label: "Mistral Large 3 675B (GWDG)",
-    description: "GWDG-hosted large reasoning model.",
-  },
-  {
     id: "qwen3.6-35b-a3b",
     label: "Qwen 3.6 35B A3B (GWDG)",
     description: "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
@@ -109,6 +109,16 @@ export const SOLVER_MODELS: LlmModel[] = [
 ];
 
 export const LEGACY_SOLVER_MODELS: LlmModel[] = [
+  {
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash (Google)",
+    description: "Legacy Google Gemini solver model.",
+  },
+  {
+    id: "mistral-large-3-675b-instruct-2512",
+    label: "Mistral Large 3 675B (GWDG)",
+    description: "Legacy GWDG solver model.",
+  },
   {
     id: "gemma-4-31b-it",
     label: "Gemma 4 31B Instruct (GWDG)",

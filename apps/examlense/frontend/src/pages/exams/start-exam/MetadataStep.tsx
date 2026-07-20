@@ -38,7 +38,7 @@ export const MetadataStep = ({
       }}
       className="space-y-hestia-3"
     >
-      <Field label="Exam title">
+      <Field label="Exam Title">
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}

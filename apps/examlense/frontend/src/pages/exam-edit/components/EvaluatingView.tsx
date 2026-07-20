@@ -1,22 +1,24 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  RotateCcw,
+} from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils/utils";
 import { ParsingQualitySurvey } from "@/pages/exam-edit/components/ParsingQualitySurvey";
 import {
   useEvaluationProgress,
+  useParseCountdown,
   parsePhasePercent,
+  parsePhaseLabel,
 } from "@/hooks/data/use-exam-progress";
 
 type ProcessingKind = "parsing" | "evaluating";
-
-const PARSE_PHASE_LABELS: Record<string, string> = {
-  queued: "Queued…",
-  downloading: "Downloading PDF…",
-  rasterizing: "Rendering PDF pages…",
-  extracting: "Identifying tasks with AI…",
-  persisting: "Saving parsed tasks…",
-};
 
 /**
  * Full-page loading state shown in the editor while an exam is being
@@ -29,27 +31,47 @@ export const EvaluatingView = ({
   kind = "evaluating",
   examId,
   parsePhase,
+  pageCount,
+  parseStartedAt,
   solveDone = false,
+  variant = "loading",
+  errorMessage,
+  errorHeading = "Parsing failed",
+  retryLabel = "Retry parsing",
   onContinue,
   onCancel,
+  onRetry,
 }: {
   title: string;
   kind?: ProcessingKind;
   examId?: string;
   parsePhase?: string | null;
+  pageCount?: number | null;
+  parseStartedAt?: string | null;
   solveDone?: boolean;
+  variant?: "loading" | "error";
+  errorMessage?: string | null;
+  /** Error-state heading (defaults to the parse-failure copy). */
+  errorHeading?: string;
+  /** Error-state retry button label (defaults to the parse-failure copy). */
+  retryLabel?: string;
   onContinue?: () => void;
   onCancel?: () => void;
+  onRetry?: () => void;
 }) => {
+  const isError = variant === "error";
   const isEvaluating = kind === "evaluating";
-  const heading =
-    kind === "parsing"
+  const heading = isError
+    ? errorHeading
+    : kind === "parsing"
       ? "Parsing your exam…"
       : solveDone
         ? "Your exam is ready"
         : "Evaluating your exam…";
-  const bodyText =
-    kind === "parsing"
+  const bodyText = isError
+    ? errorMessage ||
+      "We couldn't read this PDF. Please retry or upload a different file."
+    : kind === "parsing"
       ? "We're extracting sections and tasks from your PDF. You can leave this page and come back at any time — we'll keep working in the background."
       : solveDone
         ? "We've finished solving every task. Continue to grading mode to review the results."
@@ -60,16 +82,30 @@ export const EvaluatingView = ({
   );
 
   const isParsing = kind === "parsing";
+  // Live page-count-based parsing estimate (null → fall back to phase percent).
+  const countdown = useParseCountdown({
+    active: isParsing && !isError,
+    pageCount,
+    parseStartedAt,
+    parsePhase,
+  });
+
   const percent = isParsing
-    ? parsePhasePercent(parsePhase)
+    ? countdown
+      ? countdown.percent
+      : parsePhasePercent(parsePhase)
     : solveDone
       ? 100
       : evalPercent;
   const phaseLabel = isParsing
-    ? PARSE_PHASE_LABELS[parsePhase ?? "queued"] ?? PARSE_PHASE_LABELS.queued
+    ? parsePhaseLabel(parsePhase)
     : total > 0
       ? `Solving task ${done} of ${total}…`
       : "Preparing tasks…";
+  // For parsing, show remaining time when we have an estimate; otherwise the raw
+  // percent. Evaluating always shows its work-derived percent.
+  const rightLabel =
+    isParsing && countdown ? countdown.remainingLabel : `${percent}%`;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -84,8 +120,17 @@ export const EvaluatingView = ({
       </header>
       <main className="flex flex-1 items-center justify-center px-hestia-5 py-hestia-10">
         <div className="flex w-full max-w-md flex-col items-center text-center">
-          <span className="mb-hestia-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-hestia-success/10 text-hestia-success">
-            {solveDone ? (
+          <span
+            className={cn(
+              "mb-hestia-5 inline-flex h-14 w-14 items-center justify-center rounded-full",
+              isError
+                ? "bg-hestia-danger/10 text-hestia-danger"
+                : "bg-hestia-success/10 text-hestia-success",
+            )}
+          >
+            {isError ? (
+              <AlertTriangle size={28} />
+            ) : solveDone ? (
               <CheckCircle2 size={28} />
             ) : (
               <Loader2 size={28} className="animate-spin" />
@@ -100,23 +145,31 @@ export const EvaluatingView = ({
           <p className="mt-hestia-3 text-sm text-hestia-text-muted">
             {bodyText}
           </p>
-          <div className="mt-hestia-5 w-full">
-            <Progress
-              value={percent}
-              className="h-2 bg-hestia-success/10"
-            />
-            <div className="mt-hestia-2 flex items-center justify-between text-xs text-hestia-text-muted">
-              <span>{phaseLabel}</span>
-              <span className="tabular-nums">{percent}%</span>
+          {!isError && (
+            <div className="mt-hestia-5 w-full">
+              <Progress
+                value={percent}
+                className="h-2 bg-hestia-success/10"
+              />
+              <div className="mt-hestia-2 flex items-center justify-between text-xs text-hestia-text-muted">
+                <span>{phaseLabel}</span>
+                <span className="tabular-nums">{rightLabel}</span>
+              </div>
             </div>
-          </div>
-          {solveDone && onContinue && (
+          )}
+          {isError && onRetry && (
+            <Button className="mt-hestia-5 gap-1" onClick={onRetry}>
+              <RotateCcw size={16} />
+              {retryLabel}
+            </Button>
+          )}
+          {!isError && solveDone && onContinue && (
             <Button className="mt-hestia-5 gap-1" onClick={onContinue}>
               Continue to grading mode
               <ArrowRight size={16} />
             </Button>
           )}
-          {!solveDone && onCancel && (
+          {!isError && !solveDone && onCancel && (
             <Button
               variant="ghost"
               size="sm"
@@ -126,7 +179,7 @@ export const EvaluatingView = ({
               Cancel
             </Button>
           )}
-          {isEvaluating && examId && (
+          {!isError && isEvaluating && examId && (
             <ParsingQualitySurvey examId={examId} />
           )}
         </div>

@@ -24,7 +24,7 @@ export interface ExamStatusMeta {
 
 const DRAFT_META: ExamStatusMeta = {
   label: "Draft",
-  className: "border border-hestia-border text-hestia-text-muted",
+  className: "bg-hestia-warning/10 text-hestia-warning",
   Icon: FileText,
   spin: false,
   rank: 2,
@@ -59,7 +59,7 @@ export const EXAM_STATUS_META: Record<ExamStatus, ExamStatusMeta> = {
   ready: DRAFT_META,
   grading: {
     label: "Grading",
-    className: "bg-hestia-accent/10 text-hestia-accent",
+    className: "bg-hestia-grading/10 text-hestia-grading",
     Icon: Gavel,
     spin: false,
     rank: 3,

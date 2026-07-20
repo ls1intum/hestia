@@ -32,6 +32,8 @@ interface Props {
   nextVariant?: "primary" | "muted";
   /** Optional muted helper shown just above the footer (e.g. a skip caveat). */
   nextNote?: string;
+  /** Optional small info rendered just left of the primary button (e.g. a time estimate). */
+  nextInfo?: ReactNode;
   /** Disables the primary button (step invalid). */
   nextDisabled?: boolean;
   /** Shows a spinner + disables navigation while a transition runs. */
@@ -57,6 +59,7 @@ export const WizardShell = ({
   nextLabel,
   nextVariant = "primary",
   nextNote,
+  nextInfo,
   nextDisabled,
   busy,
   children,
@@ -112,20 +115,27 @@ export const WizardShell = ({
             ) : (
               <span />
             )}
-            <button
-              type="button"
-              onClick={onNext}
-              disabled={nextDisabled || busy}
-              className={cn(
-                "inline-flex items-center justify-center gap-hestia-2 rounded-hestia-md px-hestia-4 py-hestia-2 text-sm font-semibold shadow-hestia-sm transition-colors disabled:opacity-50",
-                nextVariant === "muted"
-                  ? "bg-hestia-border/60 text-hestia-text-muted hover:bg-hestia-border hover:text-hestia-text"
-                  : "bg-hestia-primary text-white hover:bg-hestia-primary-hover",
+            <div className="flex items-center gap-hestia-3">
+              {nextInfo && (
+                <span className="text-xs text-hestia-text-muted">
+                  {nextInfo}
+                </span>
               )}
-            >
-              {busy && <Loader2 size={14} className="animate-spin" />}
-              {nextLabel}
-            </button>
+              <button
+                type="button"
+                onClick={onNext}
+                disabled={nextDisabled || busy}
+                className={cn(
+                  "inline-flex items-center justify-center gap-hestia-2 rounded-hestia-md px-hestia-4 py-hestia-2 text-sm font-semibold shadow-hestia-sm transition-colors disabled:opacity-50",
+                  nextVariant === "muted"
+                    ? "bg-hestia-border/60 text-hestia-text-muted hover:bg-hestia-border hover:text-hestia-text"
+                    : "bg-hestia-primary text-white hover:bg-hestia-primary-hover",
+                )}
+              >
+                {busy && <Loader2 size={14} className="animate-spin" />}
+                {nextLabel}
+              </button>
+            </div>
           </div>
         </div>
       </DialogContent>
