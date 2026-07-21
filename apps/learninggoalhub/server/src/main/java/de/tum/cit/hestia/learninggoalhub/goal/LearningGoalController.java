@@ -1,14 +1,18 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
+import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
+import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyPath;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -36,6 +40,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,6 +57,8 @@ public class LearningGoalController {
     private final GoalSourceRepository goalSourceRepository;
     private final DocumentContentRepository documentContentRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
+    private final HierarchyNodeRepository hierarchyNodeRepository;
+    private final TaxonomyService taxonomyService;
     private final LearningGoalCsvWriter csvWriter;
 
     public LearningGoalController(CourseRepository courseRepository,
@@ -59,14 +66,21 @@ public class LearningGoalController {
                                   GoalSourceRepository goalSourceRepository,
                                   DocumentContentRepository documentContentRepository,
                                   GoalRelationshipRepository goalRelationshipRepository,
+                                  HierarchyNodeRepository hierarchyNodeRepository,
+                                  TaxonomyService taxonomyService,
                                   LearningGoalCsvWriter csvWriter) {
         this.courseRepository = courseRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.documentContentRepository = documentContentRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
+        this.hierarchyNodeRepository = hierarchyNodeRepository;
+        this.taxonomyService = taxonomyService;
         this.csvWriter = csvWriter;
     }
+
+    /** Label of the COMPETENCY hierarchy root; mirrors the one the extraction pipeline creates. */
+    static final String COMPETENCY_ROOT_LABEL = "Terminal Competencies";
 
     @GetMapping
     @Transactional(readOnly = true)
@@ -190,6 +204,58 @@ public class LearningGoalController {
                                         list -> list.stream().sorted(GoalRelationshipResponse.ORDER).toList())));
     }
 
+    /**
+     * Adds a terminal skill (competency root) an instructor typed in the post-extraction review. It is
+     * NOT part of the ordinary pipeline: created directly as an {@code origin=TERMINAL},
+     * {@code status=PENDING} goal with no CONTRIBUTES_TO edges and no source snippet, tagged
+     * {@code USER_CREATED} so it stays distinguishable from clustered terminals. Bloom/SOLO are
+     * classified best-effort — a classification failure still creates the skill, just without levels;
+     * no embedding is computed, matching the pipeline's terminal competencies. The goal is attached to
+     * the course's COMPETENCY root, reusing it or creating it on first use.
+     */
+    @PostMapping("/terminal")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public LearningGoalResponse createTerminalSkill(@PathVariable Long courseId,
+                                                    @RequestBody CreateTerminalSkillRequest request) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        String text = request.text() == null ? "" : request.text().strip();
+        if (text.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
+        }
+        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
+                .anyMatch(g -> g.getText() != null && g.getText().strip().equalsIgnoreCase(text));
+        if (duplicate) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
+        }
+
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+        goal.setOrigin(GoalOrigin.TERMINAL);
+        goal.setStatus(GoalStatus.PENDING);
+        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
+        goal.setHierarchyNode(competencyRoot(course));
+        try {
+            TaxonomyClassification classification = taxonomyService.classify(text);
+            if (classification != null) {
+                goal.setBloomLevel(classification.bloom());
+                goal.setSoloLevel(classification.solo());
+            }
+        } catch (RuntimeException ignored) {
+            // Best-effort, mirroring the pipeline: a classification failure still creates the skill.
+        }
+        goalRepository.save(goal);
+        return LearningGoalResponse.from(goal, List.of(), List.of());
+    }
+
+    /** All terminal skills of a course share one COMPETENCY root node, created on first use. */
+    private HierarchyNode competencyRoot(Course course) {
+        return hierarchyNodeRepository
+                .findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
+                .orElseGet(() -> hierarchyNodeRepository.save(
+                        new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, COMPETENCY_ROOT_LABEL)));
+    }
+
     @PatchMapping("/{goalId}")
     @Transactional
     public LearningGoalResponse update(@PathVariable Long courseId,
@@ -285,6 +351,7 @@ public class LearningGoalController {
                                        GoalKind kind,
                                        GoalStatus status,
                                        GoalOrigin origin,
+                                       GoalCreationProvenance creationProvenance,
                                        HierarchyPath hierarchy,
                                        BloomLevel bloomLevel,
                                        SoloLevel soloLevel,
@@ -304,6 +371,7 @@ public class LearningGoalController {
                     g.getKind(),
                     g.getStatus(),
                     g.getOrigin(),
+                    g.getCreationProvenance(),
                     hierarchy,
                     g.getBloomLevel(),
                     g.getSoloLevel(),
@@ -311,6 +379,10 @@ public class LearningGoalController {
                     sources,
                     relationships);
         }
+    }
+
+    /** Body of the "add a terminal skill" review action: just the instructor-typed skill text. */
+    public record CreateTerminalSkillRequest(String text) {
     }
 
     /** One hierarchy node (module/session/exercise) and its goals; all-null node fields = ungrouped. */

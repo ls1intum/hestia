@@ -48,6 +48,10 @@ public class LearningGoal {
     @Column(nullable = false, length = 16)
     private GoalStatus status = GoalStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "creation_provenance", length = 32)
+    private GoalCreationProvenance creationProvenance;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hierarchy_node_id")
     private HierarchyNode hierarchyNode;
@@ -119,6 +123,14 @@ public class LearningGoal {
 
     public void setStatus(GoalStatus status) {
         this.status = status;
+    }
+
+    public GoalCreationProvenance getCreationProvenance() {
+        return creationProvenance;
+    }
+
+    public void setCreationProvenance(GoalCreationProvenance creationProvenance) {
+        this.creationProvenance = creationProvenance;
     }
 
     public HierarchyNode getHierarchyNode() {

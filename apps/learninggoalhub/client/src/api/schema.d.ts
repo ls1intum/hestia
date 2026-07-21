@@ -72,7 +72,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/competency-tree": {
+    "/api/courses/{courseId}/learning-goals/terminal": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,7 +81,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["rebuildCompetencyTree"];
+        post: operations["createTerminalSkill"];
         delete?: never;
         options?: never;
         head?: never;
@@ -317,6 +317,8 @@ export interface components {
             status?: "PENDING" | "APPROVED";
             /** @enum {string} */
             origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
+            /** @enum {string} */
+            creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
             hierarchy?: components["schemas"]["HierarchyPath"];
             /** @enum {string} */
             bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
@@ -338,9 +340,8 @@ export interface components {
             /** Format: date-time */
             uploadedAt?: string;
         };
-        CompetencyTreeResult: {
-            /** Format: int32 */
-            competencies?: number;
+        CreateTerminalSkillRequest: {
+            text?: string;
         };
         UpdateLearningGoalRequest: {
             text?: string;
@@ -570,26 +571,28 @@ export interface operations {
             };
         };
     };
-    rebuildCompetencyTree: {
+    createTerminalSkill: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTerminalSkillRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["CompetencyTreeResult"];
+                    "*/*": components["schemas"]["LearningGoalResponse"];
                 };
             };
         };

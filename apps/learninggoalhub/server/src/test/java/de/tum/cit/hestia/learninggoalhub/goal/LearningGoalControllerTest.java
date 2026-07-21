@@ -1,9 +1,12 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,6 +26,8 @@ import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +35,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @Import(TestcontainersConfiguration.class)
@@ -60,6 +66,9 @@ class LearningGoalControllerTest {
 
     @Autowired
     private GoalRelationshipRepository goalRelationshipRepository;
+
+    @MockitoBean
+    private TaxonomyService taxonomyService;
 
     @Test
     void returnsPaginatedGoalsWithKindAndSources() throws Exception {
@@ -452,5 +461,81 @@ class LearningGoalControllerTest {
                 .andExpect(status().isNotFound());
 
         assertThat(goalRepository.findById(goal.getId())).isPresent();
+    }
+
+    @Test
+    void createTerminalSkillPersistsUserCreatedTerminalUnderCompetencyRoot() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        when(taxonomyService.classify(any()))
+                .thenReturn(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL));
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"  Design a REST API.  \"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.text").value("Design a REST API."))
+                .andExpect(jsonPath("$.kind").value("IMPLICIT"))
+                .andExpect(jsonPath("$.origin").value("TERMINAL"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"))
+                .andExpect(jsonPath("$.bloomLevel").value("APPLY"))
+                .andExpect(jsonPath("$.soloLevel").value("RELATIONAL"))
+                .andExpect(jsonPath("$.hierarchy").exists());
+
+        // a second skill reuses the same lazily created COMPETENCY root instead of creating another
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Secure a web application.\"}"))
+                .andExpect(status().isCreated());
+
+        assertThat(hierarchyRepository.findByCourseId(course.getId()).stream()
+                .filter(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
+                .count()).isEqualTo(1);
+    }
+
+    @Test
+    void createTerminalSkillWithoutClassificationStillCreatesSkill() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        // taxonomyService is a mock and returns null by default — the skill is created without levels
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Design a REST API.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.origin").value("TERMINAL"))
+                .andExpect(jsonPath("$.bloomLevel").doesNotExist())
+                .andExpect(jsonPath("$.soloLevel").doesNotExist());
+    }
+
+    @Test
+    void createTerminalSkillBlankTextReturns400() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Design a REST API.\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"  design a rest api.  \"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void createTerminalSkillUnknownCourseReturns404() throws Exception {
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", 999999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Design a REST API.\"}"))
+                .andExpect(status().isNotFound());
     }
 }

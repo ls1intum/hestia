@@ -48,6 +48,8 @@ export default function ExtractionProgressModal({
   const flame = resolved === "dark" ? iconDark : iconLight;
   const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
+  const [adding, setAdding] = useState(false);
+  const [newSkill, setNewSkill] = useState("");
 
   const done = result != null;
   const goalsQuery = useQuery({
@@ -93,6 +95,27 @@ export default function ExtractionProgressModal({
         { params: { path: { courseId: courseId as number, goalId } } },
       );
       if (deleteError) throw new Error("Could not delete the skill.");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+
+  const addSkillMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/terminal",
+        { params: { path: { courseId: courseId as number } }, body: { text } },
+      );
+      if (!result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "A skill with that wording already exists."
+            : "Could not add the skill.",
+        );
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
@@ -251,6 +274,61 @@ export default function ExtractionProgressModal({
                 </ul>
               )}
             </div>
+            {adding ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const trimmed = newSkill.trim();
+                  if (trimmed === "" || addSkillMutation.isPending) return;
+                  addSkillMutation.mutate(trimmed, {
+                    onSuccess: () => setNewSkill(""),
+                  });
+                }}
+                className="mt-3 flex items-center gap-2"
+              >
+                <input
+                  value={newSkill}
+                  onChange={(event) => setNewSkill(event.target.value)}
+                  autoFocus
+                  placeholder="Describe a skill students should master…"
+                  className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdding(false);
+                    setNewSkill("");
+                    addSkillMutation.reset();
+                  }}
+                  className="rounded-md border border-hestia-border px-2.5 py-1 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={newSkill.trim() === "" || addSkillMutation.isPending}
+                  className="rounded-md bg-hestia-primary px-2.5 py-1 text-sm font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="mt-3 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-hestia-primary transition hover:text-hestia-primary-hover"
+              >
+                <span aria-hidden="true" className="text-base leading-none">
+                  +
+                </span>
+                Add a skill
+              </button>
+            )}
+            {addSkillMutation.isError && (
+              <p className="mt-3 text-sm text-hestia-danger">
+                {(addSkillMutation.error as Error).message}
+              </p>
+            )}
             {renameMutation.isError && (
               <p className="mt-3 text-sm text-hestia-danger">
                 {(renameMutation.error as Error).message}
