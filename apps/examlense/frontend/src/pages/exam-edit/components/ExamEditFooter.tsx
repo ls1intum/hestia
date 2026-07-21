@@ -24,6 +24,14 @@ interface Props {
   taskLetterById: Map<string, string>;
   /** True when every real section in the exam is ready. */
   allSectionsReady: boolean;
+  /** True when the first-open visual guide is showing (not a real section). */
+  isIntro: boolean;
+  /** Dismiss the visual guide and open the first section. */
+  onStartReview: () => void;
+  /** True when a block in the current section is missing content. */
+  hasMissingContent: boolean;
+  /** Jump to the first content-missing block in the current section. */
+  onJumpToMissingContent: () => void;
   onJumpToTask: (taskId: string) => void;
   onAdvanceSection: () => void;
   /** Controlled open state of the "Send for evaluation" dialog. */
@@ -38,6 +46,10 @@ export const ExamEditFooter = ({
   currentSectionTasks,
   taskLetterById,
   allSectionsReady,
+  isIntro,
+  onStartReview,
+  hasMissingContent,
+  onJumpToMissingContent,
   onJumpToTask,
   onAdvanceSection,
   startSolvingOpen,
@@ -64,6 +76,10 @@ export const ExamEditFooter = ({
             currentSectionTasks={currentSectionTasks}
             taskLetterById={taskLetterById}
             allSectionsReady={allSectionsReady}
+            isIntro={isIntro}
+            onStartReview={onStartReview}
+            hasMissingContent={hasMissingContent}
+            onJumpToMissingContent={onJumpToMissingContent}
             onJumpToTask={onJumpToTask}
             onAdvanceSection={onAdvanceSection}
             onStartSolving={() => onStartSolvingOpenChange(true)}

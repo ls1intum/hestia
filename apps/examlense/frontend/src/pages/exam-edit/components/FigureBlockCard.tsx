@@ -11,6 +11,7 @@ import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
 import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
+import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -144,6 +145,8 @@ export const FigureBlockCard = ({
           onReplace={() => inputRef.current?.click()}
         />
       ) : (
+        <>
+        <WarningBanner text="Missing figure; upload it or simply take a screenshot of the original and drop it here" />
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -156,6 +159,7 @@ export const FigureBlockCard = ({
             PNG, JPEG, WEBP or GIF · max 5 MB
           </span>
         </button>
+        </>
       )}
       <input
         ref={inputRef}

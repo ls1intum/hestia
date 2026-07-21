@@ -14,6 +14,8 @@ interface Props {
   header: ReactNode;
   /** Body region under the header. Collapsed: subtitle preview. Expanded: full editor body. */
   body?: ReactNode;
+  /** Draw the thin divider between header and body on primary cards (default true). */
+  bodyDivider?: boolean;
 }
 
 /**
@@ -37,6 +39,7 @@ export const BlockCard = ({
   className,
   header,
   body,
+  bodyDivider = true,
 }: Props) => {
   const flow = variant === "muted";
   return (
@@ -66,7 +69,10 @@ export const BlockCard = ({
           className={cn(
             flow
               ? "px-hestia-3 pb-hestia-3 pt-1"
-              : "border-t border-hestia-border/15 px-hestia-3 pb-hestia-3 pt-hestia-2",
+              : cn(
+                  "px-hestia-3 pb-hestia-3 pt-hestia-2",
+                  bodyDivider && "border-t border-hestia-border/15",
+                ),
           )}
         >
           {body}

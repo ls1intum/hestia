@@ -183,8 +183,12 @@ export const totalPoints = (tasks: Task[]): number =>
  * positive points value. Single source of truth shared by the sidebar and
  * the carousel-based editor.
  */
+/** A task still needs a score (no positive point value assigned yet). */
+export const taskMissingScore = (task: Task): boolean =>
+  task.points == null || task.points <= 0;
+
 export const isSectionReady = (tasks: Task[]): boolean =>
-  tasks.length > 0 && tasks.every((t) => t.points != null && t.points > 0);
+  tasks.length > 0 && tasks.every((t) => !taskMissingScore(t));
 
 export interface MCWarning {
   kind: "noCorrect" | "allCorrect";
@@ -251,6 +255,36 @@ export const itemId = (item: BlockItem): string =>
     : item.kind === "figure"
       ? `fig:${item.block.id}`
       : `ctx:${item.block.id}`;
+
+/**
+ * DOM id for a block item's scroll target (set on the wrapper in BlockItem,
+ * read by the editor's scroll-to helpers). Single source of truth so the two
+ * sides can't drift.
+ */
+export const blockDomId = (item: BlockItem): string =>
+  item.kind === "task"
+    ? `task-${item.task.id}`
+    : item.kind === "figure"
+      ? `fig-${item.block.id}`
+      : `ctx-${item.block.id}`;
+
+/** True when a string field is blank (empty or whitespace-only). */
+export const isTextEmpty = (text: string | null | undefined): boolean =>
+  (text ?? "").trim() === "";
+
+/**
+ * True when a block item has no authored content: a task with no prompt, a
+ * blank context block, or a figure block with no uploaded image (its id present
+ * in `emptyFigureBlockIds`). Shared by the confirm-gating hook.
+ */
+export const isBlockItemEmpty = (
+  item: BlockItem,
+  emptyFigureBlockIds: ReadonlySet<string>,
+): boolean => {
+  if (item.kind === "task") return isTextEmpty(item.task.prompt);
+  if (item.kind === "context") return isTextEmpty(item.block.content);
+  return emptyFigureBlockIds.has(item.block.id);
+};
 
 /**
  * Convert a 0-based index into a lowercase letter label: a, b, ..., z, aa, ab, ...

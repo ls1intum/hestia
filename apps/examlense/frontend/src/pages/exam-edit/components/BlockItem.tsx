@@ -1,11 +1,4 @@
 import { type ReactNode } from "react";
-import {
-  FileText,
-  Image as ImageIcon,
-  ListChecks,
-  ListTodo,
-  NotebookPen,
-} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BlockRow } from "@/pages/exam-edit/components/BlockRow";
 import { SortableItem } from "@/pages/exam-edit/components/SortableItem";
@@ -14,38 +7,25 @@ import { ContextBlockCard } from "@/pages/exam-edit/components/ContextBlockCard"
 import { FigureBlockCard } from "@/pages/exam-edit/components/FigureBlockCard";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 import {
+  blockDomId,
   convertTaskType,
   itemId,
+  taskMissingScore,
   type BlockItem as BlockItemType,
   type SectionBlock,
   type Task,
-  type TaskType,
 } from "@/lib/exam/exam-helpers";
-
-const taskTypeIcon = (type: TaskType) => {
-  switch (type) {
-    case "single_choice":
-      return ListTodo;
-    case "multiple_choice":
-      return ListChecks;
-    case "text":
-    default:
-      return NotebookPen;
-  }
-};
 
 interface RowDescriptor {
   label: ReactNode;
   subtitle: ReactNode;
-  points: number | null | undefined;
   missingScore: boolean;
   badgeText: string;
-  leadingIcon: ReactNode;
 }
 
 /**
- * Pure description of a block's collapsed TOC row (label / subtitle / points /
- * badge / leading icon), keyed off the block kind.
+ * Pure description of a block's collapsed TOC row (label / subtitle / badge),
+ * keyed off the block kind.
  */
 function blockRowDescriptor(
   item: BlockItemType,
@@ -55,11 +35,10 @@ function blockRowDescriptor(
   }: { figureLabels: Map<string, string>; taskLetterById: Map<string, string> },
 ): RowDescriptor {
   if (item.kind === "task") {
-    const TaskTypeIcon = taskTypeIcon(item.task.type);
     const letter = taskLetterById.get(item.task.id) ?? "";
     const prompt = item.task.prompt?.trim() ?? "";
     return {
-      label: letter ? `${letter})` : "Untitled task",
+      label: letter ? `Question ${letter})` : "Untitled task",
       subtitle: prompt ? (
         <p className="text-sm leading-relaxed text-hestia-text-muted line-clamp-2">
           {prompt}
@@ -69,35 +48,23 @@ function blockRowDescriptor(
           Enter the task question…
         </p>
       ),
-      points: item.task.points ?? null,
-      missingScore: item.task.points == null || item.task.points <= 0,
+      missingScore: taskMissingScore(item.task),
       badgeText: TASK_TYPE_LABELS[item.task.type],
-      leadingIcon: (
-        <TaskTypeIcon size={14} className="text-hestia-text-muted" aria-hidden />
-      ),
     };
   }
   if (item.kind === "figure") {
     return {
       label: figureLabels.get(item.block.id) ?? "Figure",
       subtitle: null,
-      points: undefined,
       missingScore: false,
       badgeText: "Figure",
-      leadingIcon: (
-        <ImageIcon size={14} className="text-hestia-text-muted" aria-hidden />
-      ),
     };
   }
   return {
     label: "Context",
     subtitle: null,
-    points: undefined,
     missingScore: false,
     badgeText: "Context",
-    leadingIcon: (
-      <FileText size={14} className="text-hestia-text-muted" aria-hidden />
-    ),
   };
 }
 
@@ -136,8 +103,7 @@ export const BlockItem = ({
   const id = itemId(item);
   const expanded = !collapseApi.isCollapsed(id);
   const onToggle = () => collapseApi.toggle(id);
-  const scrollTargetId =
-    item.kind === "task" ? `task-${item.task.id}` : undefined;
+  const scrollTargetId = blockDomId(item);
 
   return (
     <div id={scrollTargetId}>
@@ -150,9 +116,7 @@ export const BlockItem = ({
                 kind={item.kind}
                 label={row.label}
                 subtitle={row.subtitle}
-                points={row.points}
                 missingScore={row.missingScore}
-                leadingIcon={row.leadingIcon}
                 badge={
                   <Badge
                     variant="secondary"

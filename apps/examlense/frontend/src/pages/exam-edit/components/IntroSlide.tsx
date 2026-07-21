@@ -9,9 +9,9 @@ export const IntroSlide = () => {
           <div className="mb-hestia-2 inline-flex h-10 w-10 items-center justify-center rounded-hestia-md bg-hestia-primary-muted text-hestia-primary">
             <FileText size={19} />
           </div>
-          <p className="hestia-eyebrow text-hestia-text-muted">First review</p>
+          <p className="hestia-eyebrow text-hestia-text-muted">Your exam was parsed</p>
           <h2 className="mt-1 font-display text-2xl font-semibold text-hestia-text">
-            Your exam was parsed
+            Review the parsed content
           </h2>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import {
   GripVertical,
   Trash2,
-  AlertTriangle,
+  ArrowRight,
   ChevronDown,
   ChevronRight,
   Check,
@@ -23,14 +23,18 @@ import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
+import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
+import { WayfindingPill } from "@/components/shared/WayfindingPill";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
 import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 import {
   TASK_TYPES,
+  isTextEmpty,
   mcWarning,
   newOption,
+  taskMissingScore,
   type Task,
   type TaskOption,
   type TaskType,
@@ -78,7 +82,8 @@ export const TaskCard = ({
     onCommit: (prompt) => onPatch({ prompt }),
   });
 
-  const hasEmptyPrompt = (task.prompt ?? "").trim() === "";
+  const hasEmptyPrompt = isTextEmpty(task.prompt);
+  const noScore = taskMissingScore(task);
 
   const updateOption = (id: string, patch: Partial<TaskOption>) => {
     const next = (task.options ?? []).map((o) => (o.id === id ? { ...o, ...patch } : o));
@@ -96,94 +101,72 @@ export const TaskCard = ({
     });
   };
 
+  const typeSelector = (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Change task type"
+          title="Change task type"
+          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
+        >
+          <Badge
+            variant="secondary"
+            className="cursor-pointer gap-1 bg-hestia-primary-muted/40 text-hestia-text hover:bg-hestia-primary-muted/60"
+          >
+            {TASK_TYPE_LABELS[task.type]}
+            <ChevronDown size={12} className="opacity-70" />
+          </Badge>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-1">
+        <div className="px-hestia-2 py-1 hestia-eyebrow text-hestia-text-muted">
+          Change task type
+        </div>
+        {TASK_TYPES.map((tp) => {
+          const isCurrent = tp === task.type;
+          return (
+            <button
+              key={tp}
+              type="button"
+              onClick={() => {
+                if (isCurrent) return;
+                const isTextSwitch =
+                  (task.type === "text" && tp !== "text") ||
+                  (tp === "text" && task.type !== "text");
+                if (isTextSwitch) {
+                  setPendingConvert(tp);
+                } else {
+                  onConvert(tp);
+                }
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded-hestia-sm px-hestia-2 py-1.5 text-sm text-hestia-text hover:bg-hestia-primary-muted/40",
+                isCurrent && "bg-hestia-primary-muted/30",
+              )}
+            >
+              <span>{TASK_TYPE_LABELS[tp]}</span>
+              {isCurrent && <Check size={14} className="text-hestia-primary" />}
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+
   const header = (
     <BlockHeader
         expanded={!collapsed}
         onToggle={onToggleCollapsed}
+        labelVariant="eyebrow"
+        quietControls
+        dragAlwaysVisible
         label={
-          <span>
-            {label ? (
-              <span className="tabular-nums">{label})</span>
-            ) : (
-              <span className="italic text-hestia-text-muted">
-                Untitled task
-              </span>
-            )}
-          </span>
-        }
-        rightMeta={
-          <label className="flex items-center gap-hestia-2 hestia-eyebrow text-hestia-text-muted">
-            Points
-            <Input
-              id={`score-input-${task.id}`}
-              type="number"
-              min={0}
-              step={0.5}
-              value={task.points ?? ""}
-              onWheel={preventNumberWheelChange}
-              onChange={(e) => {
-                const v = e.target.value;
-                onPatch({ points: v === "" ? null : Number(v) });
-              }}
-              className={cn(
-                "h-7 w-20 bg-hestia-surface text-sm",
-                task.points == null || task.points <= 0
-                  ? "border-hestia-danger animate-pulse-danger"
-                  : "border-hestia-border",
-              )}
-            />
-          </label>
-        }
-        badge={
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Change task type"
-                title="Change task type"
-                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
-              >
-                <Badge
-                  variant="secondary"
-                  className="cursor-pointer bg-hestia-primary-muted/40 text-hestia-text hover:bg-hestia-primary-muted/60"
-                >
-                  {TASK_TYPE_LABELS[task.type]}
-                </Badge>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 p-1">
-              <div className="px-hestia-2 py-1 hestia-eyebrow text-hestia-text-muted">
-                Change task type
-              </div>
-              {TASK_TYPES.map((tp) => {
-                const isCurrent = tp === task.type;
-                return (
-                  <button
-                    key={tp}
-                    type="button"
-                    onClick={() => {
-                      if (isCurrent) return;
-                      const isTextSwitch =
-                        (task.type === "text" && tp !== "text") ||
-                        (tp === "text" && task.type !== "text");
-                      if (isTextSwitch) {
-                        setPendingConvert(tp);
-                      } else {
-                        onConvert(tp);
-                      }
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-hestia-sm px-hestia-2 py-1.5 text-sm text-hestia-text hover:bg-hestia-primary-muted/40",
-                      isCurrent && "bg-hestia-primary-muted/30",
-                    )}
-                  >
-                    <span>{TASK_TYPE_LABELS[tp]}</span>
-                    {isCurrent && <Check size={14} className="text-hestia-primary" />}
-                  </button>
-                );
-              })}
-            </PopoverContent>
-          </Popover>
+          label ? (
+            <span className="tabular-nums">Question {label})</span>
+          ) : (
+            <span className="italic">Untitled task</span>
+          )
         }
         actionsMenu={
           <BlockActionsMenu
@@ -224,7 +207,50 @@ export const TaskCard = ({
         ariaLabel="Enter the task question…"
         rows={2}
         textareaClassName="max-h-[550px] overflow-y-auto"
+        readViewClassName="-mx-hestia-2 cursor-text rounded-hestia-sm px-hestia-2 py-1 transition-colors hover:bg-hestia-primary-muted/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
+        markdownClassName="text-hestia-text/90"
       />
+
+      <div className="my-hestia-3 -mx-hestia-3 border-t border-hestia-border/60" />
+
+      <div className="flex items-center justify-between gap-hestia-2">
+        <div className="flex items-center gap-hestia-2">
+          <span className="hestia-eyebrow text-hestia-text-muted">Task Type:</span>
+          {typeSelector}
+        </div>
+        <div className="relative flex items-center gap-hestia-2">
+          {noScore && (
+            <WayfindingPill
+              tone="warning"
+              label="Score needs to be set"
+              icon={<ArrowRight size={12} className="shrink-0" />}
+              iconSide="end"
+              className="pointer-events-none absolute right-full top-1/2 mr-hestia-2 -translate-y-1/2 motion-safe:animate-pulse"
+            />
+          )}
+          <label className="flex items-center gap-hestia-2 hestia-eyebrow text-hestia-text-muted">
+            Max score
+            <Input
+              id={`score-input-${task.id}`}
+              type="number"
+              min={0}
+              step={0.5}
+              value={task.points ?? ""}
+              onWheel={preventNumberWheelChange}
+              onChange={(e) => {
+                const v = e.target.value;
+                onPatch({ points: v === "" ? null : Number(v) });
+              }}
+              className={cn(
+                "h-7 w-20 bg-hestia-surface text-sm",
+                noScore
+                  ? "border-hestia-danger animate-pulse-danger"
+                  : "border-hestia-border",
+              )}
+            />
+          </label>
+        </div>
+      </div>
 
       {task.type === "text" ? null : task.type === "single_choice" ? (
         <div className="mt-hestia-3">
@@ -275,6 +301,7 @@ export const TaskCard = ({
     <>
       <BlockCard
         variant="primary"
+        bodyDivider={false}
         setNodeRef={setNodeRef}
         style={style}
         isDragging={isDragging}
@@ -310,13 +337,6 @@ export const TaskCard = ({
     </>
   );
 };
-
-const WarningBanner = ({ text }: { text: string }) => (
-  <div className="mt-hestia-3 flex items-start gap-2 rounded-hestia-sm border-l-4 border-hestia-warning bg-hestia-warning/10 px-hestia-3 py-2 text-xs text-hestia-text">
-    <AlertTriangle size={14} className="mt-0.5 text-hestia-warning shrink-0" />
-    <span>{text}</span>
-  </div>
-);
 
 const OptionRow = ({ children }: { children: React.ReactNode }) => (
   <div className="group flex items-center gap-2">{children}</div>
