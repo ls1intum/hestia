@@ -120,9 +120,28 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, progressOpen, onClose]);
 
+  // Once extraction starts, the creation form gives way entirely to the progress/review modal.
+  if (progressOpen) {
+    return (
+      <ExtractionProgressModal
+        open
+        status={statusQuery.data ?? undefined}
+        result={extract.isSuccess ? extract.data : null}
+        error={extract.isError ? extract.error.message : null}
+        courseId={courseId}
+        onClose={() => {
+          setProgressOpen(false);
+          if (courseId != null) {
+            navigate(`/courses/${courseId}`, { state: { showSkills: true } });
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div
-      onClick={busy || progressOpen ? undefined : onClose}
+      onClick={busy ? undefined : onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
@@ -306,17 +325,6 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           </div>
         </form>
       </div>
-
-      <ExtractionProgressModal
-        open={progressOpen}
-        status={statusQuery.data ?? undefined}
-        result={extract.isSuccess ? extract.data : null}
-        error={extract.isError ? extract.error.message : null}
-        onClose={() => {
-          setProgressOpen(false);
-          if (courseId != null) navigate(`/courses/${courseId}`);
-        }}
-      />
     </div>
   );
 }
