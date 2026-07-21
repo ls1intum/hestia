@@ -270,12 +270,12 @@
         }
       }
     },
-    "/api/courses/{courseId}/competency-tree": {
+    "/api/courses/{courseId}/learning-goals/terminal": {
       "post": {
         "tags": [
-          "extraction-controller"
+          "learning-goal-controller"
         ],
-        "operationId": "rebuildCompetencyTree",
+        "operationId": "createTerminalSkill",
         "parameters": [
           {
             "name": "courseId",
@@ -285,23 +285,25 @@
               "type": "integer",
               "format": "int64"
             }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
-            "description": "OK",
+          "201": {
+            "description": "Created",
             "content": {
               "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/CompetencyTreeResult"
+                  "$ref": "#/components/schemas/LearningGoalResponse"
                 }
               }
             }
@@ -1061,6 +1063,13 @@
               "GAP"
             ]
           },
+          "creationProvenance": {
+            "type": "string",
+            "enum": [
+              "USER_CREATED",
+              "WIZARD_AI_SUBTREE"
+            ]
+          },
           "hierarchy": {
             "$ref": "#/components/schemas/HierarchyPath"
           },
@@ -1129,12 +1138,11 @@
           }
         }
       },
-      "CompetencyTreeResult": {
+      "CreateTerminalSkillRequest": {
         "type": "object",
         "properties": {
-          "competencies": {
-            "type": "integer",
-            "format": "int32"
+          "text": {
+            "type": "string"
           }
         }
       },

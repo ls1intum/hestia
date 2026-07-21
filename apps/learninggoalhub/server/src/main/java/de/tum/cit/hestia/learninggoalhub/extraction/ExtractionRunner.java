@@ -556,56 +556,6 @@ public class ExtractionRunner {
     }
 
     /**
-     * Rebuilds ONLY the competency tree for a course from its already-extracted goals — no document
-     * re-parsing, extraction or embedding. It runs the same two course-wide synthesis calls and
-     * batched terminal classification as {@link #buildCompetencyTree} does at the end of a full
-     * extraction. Tears the existing tree down first so the rebuild starts clean and lets the tree be
-     * re-tuned cheaply without re-running the costly pipeline.
-     *
-     * <p>Runs in one transaction so the teardown and rebuild are atomic and the goals loaded here stay
-     * managed (their lazy {@code hierarchyNode} is read during synthesis); the transaction spans the
-     * synthesis LLM calls, which is acceptable for this occasional admin/tuning operation.
-     */
-    @Transactional
-    public CompetencyTreeResult rebuildCompetencyTree(Long courseId, String modelOverride) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
-        clearCompetencyTree(course);
-        String dominantLanguage = dominantLanguage(documentRepository.findByCourseId(courseId));
-        return buildCompetencyTree(course, modelOverride,
-                LanguageUtils.englishName(resolveLanguage(course, null, dominantLanguage)));
-    }
-
-    /**
-     * Removes a course's competency tree so it can be rebuilt: its {@code TERMINAL} goals (plus
-     * {@code GAP} goals left behind by earlier pipeline versions that still generated them),
-     * their {@code COMPETENCY} root node and the tree's {@code CONTRIBUTES_TO} edges — leaving the
-     * extracted/synthesized goals and the module-goal edges untouched. A tree edge is a
-     * {@code CONTRIBUTES_TO}/{@code HIERARCHY} link whose target is NOT a synthesized module goal:
-     * module synthesis (target always {@code SYNTHESIZED}) is the only other producer of such links,
-     * so this partitions them cleanly. Order matters — edges first, then the now-unreferenced tree
-     * goals, then their empty root node.
-     */
-    private void clearCompetencyTree(Course course) {
-        List<LearningGoal> treeGoals = goalRepository.findByCourseIdAndOriginIn(
-                course.getId(), List.of(GoalOrigin.TERMINAL, GoalOrigin.GAP));
-
-        List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getId).toList();
-        List<GoalRelationship> treeEdges = goalRelationshipRepository.findBySourceIdInWithTarget(courseGoalIds).stream()
-                .filter(r -> r.getType() == RelationshipType.CONTRIBUTES_TO
-                        && r.getOrigin() == RelationshipOrigin.HIERARCHY
-                        && r.getTarget().getOrigin() != GoalOrigin.SYNTHESIZED)
-                .toList();
-        goalRelationshipRepository.deleteAll(treeEdges);
-
-        goalRepository.deleteAll(treeGoals);
-        hierarchyNodeRepository.findByCourseId(course.getId()).stream()
-                .filter(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
-                .forEach(hierarchyNodeRepository::delete);
-    }
-
-    /**
      * Builds the competency-tree view ALONGSIDE the module goals (not a replacement) in a fixed three
      * tiers — terminal competency → sub-skill → knowledge — under its own {@code COMPETENCY} root.
      * It uses exactly two course-wide synthesis calls: terminal clustering/assignment, seeded by

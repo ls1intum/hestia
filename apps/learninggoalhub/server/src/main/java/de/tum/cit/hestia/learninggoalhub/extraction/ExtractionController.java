@@ -27,18 +27,6 @@ public class ExtractionController {
     }
 
     /**
-     * Rebuilds ONLY the competency tree from the course's already-extracted goals, without re-running
-     * the costly extraction/classification/embedding pipeline. Tears down the existing tree first, so
-     * the tree can be re-tuned independently and repeatedly.
-     */
-    @PostMapping("/competency-tree")
-    public ExtractionRunner.CompetencyTreeResult rebuildCompetencyTree(
-            @PathVariable Long courseId,
-            @RequestParam(name = "model", required = false) String model) {
-        return runner.rebuildCompetencyTree(courseId, model);
-    }
-
-    /**
      * Progress of the in-flight (or most recent) extraction for this course, for the client to poll
      * while {@code POST /extract} is still running. Returns 204 when no run has been started yet.
      */
