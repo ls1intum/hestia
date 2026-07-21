@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
@@ -56,6 +56,7 @@ const SOLO_ORDER = [
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
   const courseId = Number(courseIdParam);
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -68,6 +69,16 @@ export default function CoursePage() {
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
   // Which session/unit the table-of-contents has selected — the list shows only this group.
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+
+  // Creation hands off a one-shot state so the newly extracted course opens in Skills. Replace it
+  // immediately: refreshing the course should not reopen or remember the extraction flow.
+  useEffect(() => {
+    const state = location.state as { showSkills?: boolean } | null;
+    if (!state?.showSkills) return;
+    setLastSkillsView("table");
+    setGoalsView("table");
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   const [search, setSearch] = useState("");
   const [filters, setFilters] =

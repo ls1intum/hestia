@@ -72,8 +72,8 @@ export default function ConceptInfoDialog({
         </div>
 
         <p className="border-t border-hestia-border pt-3 text-sm text-hestia-text-muted">
-          Skills are rebuilt from the current learning goals, so edits and
-          approvals flow into the next rebuild.
+          Skills are created once during extraction and reviewed in the Skills
+          view.
         </p>
 
         <button

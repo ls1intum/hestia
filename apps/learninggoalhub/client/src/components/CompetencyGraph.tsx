@@ -233,8 +233,7 @@ export default function CompetencyGraph({
   if (forest.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
-        No competency tree for this course yet. Re-run the extraction to
-        synthesise terminal competencies, sub-skills and knowledge.
+        No competency tree was created during extraction for this course.
       </p>
     );
   }
