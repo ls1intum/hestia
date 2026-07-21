@@ -1,5 +1,4 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
-import { cn } from "@/lib/utils/utils";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 
@@ -7,16 +6,12 @@ export type BlockRowKind = "task" | "context" | "figure";
 
 interface Props {
   kind: BlockRowKind;
-  /** Header label — for tasks: "a)", for context/figure: their title. */
+  /** Header label — for tasks: "Question a)", for context/figure: their title. */
   label: ReactNode;
-  /** Task-only. */
-  points?: number | null;
-  /** Task-only. */
+  /** Task-only warning shown when the task has no score yet. */
   missingScore?: boolean;
   /** Pre-built type badge (rendered on the right). */
   badge: ReactNode;
-  /** Optional decorative icon shown next to the collapse button. */
-  leadingIcon?: ReactNode;
   /** Optional body region under the header (e.g. truncated prompt preview). */
   subtitle?: ReactNode;
   /** Click anywhere on the row → expand. */
@@ -30,16 +25,15 @@ interface Props {
 
 /**
  * Collapsed-state representation of a single block (task / context / figure).
- * Renders as a card with a prominent header row (task index / block title)
- * and an optional subtitle area below (truncated prompt preview for tasks).
+ * Kept deliberately plain — an eyebrow (mono) label like the collapsed context
+ * block, with the type badge / prompt preview but no leading icon, status dot,
+ * or points meta.
  */
 export const BlockRow = ({
   kind,
   label,
-  points,
   missingScore,
   badge,
-  leadingIcon,
   subtitle,
   onToggle,
   dragHandleProps,
@@ -47,35 +41,11 @@ export const BlockRow = ({
   style,
   isDragging,
 }: Props) => {
-  const rightMeta =
-    kind === "task" && points != null && points > 0 ? (
-      <span className="tabular-nums text-xs text-hestia-text-muted">
-        {`${points} pts`}
-      </span>
-    ) : null;
-
-  const labelNode =
-    kind === "task" ? (
-      <span className="inline-flex min-w-0 items-center gap-hestia-2">
-        <span
-          aria-hidden
-          className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            missingScore ? "bg-hestia-border" : "bg-hestia-success",
-          )}
-        />
-        <span className="min-w-0 truncate">{label}</span>
-      </span>
-    ) : (
-      label
-    );
-
-  // Card-less context/figure rows: the eyebrow label already names the kind,
-  // so the type badge and leading icon would be redundant chrome.
   const isTask = kind === "task";
   return (
     <BlockCard
       variant={isTask ? "primary" : "muted"}
+      bodyDivider={false}
       setNodeRef={setNodeRef}
       style={style}
       isDragging={isDragging}
@@ -83,11 +53,10 @@ export const BlockRow = ({
         <BlockHeader
           expanded={false}
           onToggle={onToggle}
-          label={labelNode}
-          labelVariant={isTask ? "title" : "eyebrow"}
-          quietControls={!isTask}
-          leadingIcon={isTask ? leadingIcon : undefined}
-          rightMeta={rightMeta}
+          label={label}
+          labelVariant="eyebrow"
+          quietControls
+          dragAlwaysVisible
           missingScore={isTask && missingScore}
           badge={isTask ? badge : undefined}
           dragHandleProps={dragHandleProps}

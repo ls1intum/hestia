@@ -42,6 +42,7 @@ import { DEFAULT_SOLVER_MODEL_ID } from "@/lib/exam/llm-models";
 import { solveExam } from "@/lib/api/api-solve";
 import { EvaluatingView } from "@/pages/exam-edit/components/EvaluatingView";
 import { EditorLoadingView } from "@/components/shared/exam-content/EditorLoadingView";
+import { WayfindingPill } from "@/components/shared/WayfindingPill";
 import { retryParse } from "@/lib/parsing/retry-parse";
 import { retryEvaluation } from "@/lib/exam/retry-evaluation";
 import { isParseFailure } from "@/lib/exam/exam-helpers";
@@ -49,11 +50,14 @@ import { SectionCarousel, type CarouselSlide } from "@/components/shared/exam-co
 import { IntroSlide } from "@/pages/exam-edit/components/IntroSlide";
 import { ManualIntroSlide } from "@/pages/exam-edit/components/ManualIntroSlide";
 import { useSectionConfirmations } from "@/hooks/data/use-section-confirmations";
+import { useSectionMissingContent } from "@/hooks/data/use-section-missing-content";
 import {
+  blockDomId,
   examModePath,
   examModeSlug,
   isSectionReady,
   itemId,
+  taskMissingScore,
   totalPoints,
   type BlockItem,
   type Exam,
@@ -300,6 +304,12 @@ const ExamEditInner = () => {
     [introComplete, markIntroComplete, showInlineIntro, setCurrentSectionId],
   );
 
+  // Dismiss the first-open visual guide and jump to the first real section.
+  const handleStartReview = useCallback(() => {
+    const first = grouped[0]?.slug;
+    if (first) handleSelectSection(first);
+  }, [grouped, handleSelectSection]);
+
   // Auto-expand newly created blocks. We only treat ids as "new" right
   // after the user invokes an Add action (addTask / addContextBlock /
   // addFigureBlock). Without a pending counter, async query waves and
@@ -435,30 +445,62 @@ const ExamEditInner = () => {
   // Expand the target task and scroll it into view. `focusScore` also focuses
   // the score input after the scroll settles — used by the "Score needs to be
   // set" wayfinding indicator; the plain jump drives the footer progress button.
-  const jumpToTask = useCallback(
-    (taskId: string, { focusScore = false }: { focusScore?: boolean } = {}) => {
-      const id = `task:${taskId}`;
-      if (collapseApi.isCollapsed(id)) {
-        collapseApi.setManyCollapsed([id], false);
+  // Expand the collapsed item (if needed) and scroll its DOM node into view,
+  // then run an optional follow-up once the node is in the DOM. Shared core of
+  // both the task-score jump and the content-missing jump.
+  const scrollToBlock = useCallback(
+    (collapseId: string, domId: string, after?: () => void) => {
+      if (collapseApi.isCollapsed(collapseId)) {
+        collapseApi.setManyCollapsed([collapseId], false);
       }
       // Defer to next frame so the expanded card is in the DOM.
       requestAnimationFrame(() => {
         document
-          .getElementById(`task-${taskId}`)
+          .getElementById(domId)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
-        if (!focusScore) return;
-        // Focus after the smooth scroll settles so the caret lands cleanly.
-        window.setTimeout(() => {
-          const input = document.getElementById(
-            `score-input-${taskId}`,
-          ) as HTMLInputElement | null;
-          input?.focus();
-          input?.select();
-        }, 300);
+        after?.();
       });
     },
     [collapseApi],
   );
+
+  const jumpToTask = useCallback(
+    (taskId: string, { focusScore = false }: { focusScore?: boolean } = {}) => {
+      scrollToBlock(
+        `task:${taskId}`,
+        `task-${taskId}`,
+        focusScore
+          ? () => {
+              // Focus after the smooth scroll settles so the caret lands cleanly.
+              window.setTimeout(() => {
+                const input = document.getElementById(
+                  `score-input-${taskId}`,
+                ) as HTMLInputElement | null;
+                input?.focus();
+                input?.select();
+              }, 300);
+            }
+          : undefined,
+      );
+    },
+    [scrollToBlock],
+  );
+
+  // Blocks in the visible section missing content (empty prompt/context/figure).
+  // Gates confirmation and drives the footer "Content missing" state.
+  const { missingItems, hasMissing: hasMissingContent } =
+    useSectionMissingContent(currentGroup?.items);
+
+  // Expand + scroll to any block (task, context, or figure) — generalises
+  // jumpToTask for the "Content missing" wayfinding.
+  const jumpToItem = useCallback(
+    (item: BlockItem) => scrollToBlock(itemId(item), blockDomId(item)),
+    [scrollToBlock],
+  );
+
+  const jumpToMissingContent = useCallback(() => {
+    if (missingItems[0]) jumpToItem(missingItems[0]);
+  }, [missingItems, jumpToItem]);
 
   // First task in the visible section still missing a score (drives the
   // wayfinding indicator). Null once the section is ready to confirm.
@@ -466,14 +508,16 @@ const ExamEditInner = () => {
     const sorted = currentSectionTasks
       .slice()
       .sort((a, b) => a.position - b.position);
-    return (
-      sorted.find((t) => t.points == null || t.points <= 0)?.id ?? null
-    );
+    return sorted.find((t) => taskMissingScore(t))?.id ?? null;
   }, [currentSectionTasks]);
 
   // Confirm current section and jump to the next unconfirmed one.
   const handleAdvanceSection = useCallback(() => {
     if (!currentGroup) return;
+    // Never confirm a section that still has blocks missing content — the
+    // footer button surfaces the "Content missing" state instead, but guard
+    // here too for any other caller.
+    if (hasMissingContent) return;
     const sid = currentSectionRealId;
     void confirmApi.confirm(sid);
 
@@ -507,7 +551,7 @@ const ExamEditInner = () => {
       findNextUnconfirmed(idx + 1, grouped.length) ??
       findNextUnconfirmed(0, idx);
     if (nextSlug) setCurrentSectionId(nextSlug);
-  }, [confirmApi, currentGroup, currentSectionRealId, grouped, setCurrentSectionId]);
+  }, [confirmApi, currentGroup, currentSectionRealId, grouped, hasMissingContent, setCurrentSectionId]);
 
   if (isLoading) {
     return <EditorLoadingView />;
@@ -588,6 +632,8 @@ const ExamEditInner = () => {
   }
 
   const isEmpty = (!sections || sections.length === 0) && (!tasks || tasks.length === 0);
+  const introPending =
+    showInlineIntro && !introComplete && currentSectionId === "";
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden">
@@ -607,14 +653,14 @@ const ExamEditInner = () => {
           titleTrailing={<SaveIndicator />}
         />
         <main className="relative flex min-w-0 flex-1 flex-col">
-          {showInlineIntro && !introComplete && currentSectionId === "" && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute left-hestia-3 top-[6.25rem] z-20 inline-flex items-center gap-1.5 rounded-hestia-full border border-hestia-primary/30 bg-hestia-surface px-3 py-1.5 text-xs font-semibold text-hestia-primary shadow-hestia-md motion-safe:animate-pulse"
-            >
-              <ArrowLeft size={14} />
-              Start here
-            </div>
+          {introPending && (
+            <WayfindingPill
+              tone="primary"
+              label="Start here"
+              icon={<ArrowLeft size={14} />}
+              onClick={handleStartReview}
+              className="absolute left-hestia-3 top-[6.25rem] z-20 cursor-pointer motion-safe:animate-pulse"
+            />
           )}
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[900px] px-hestia-6 pb-hestia-8 pt-hestia-5">
@@ -653,7 +699,7 @@ const ExamEditInner = () => {
                   confirmApi={confirmApi}
                   currentId={currentSectionId}
                   onCurrentIdChange={setCurrentSectionId}
-                  introPending={showInlineIntro && !introComplete && currentSectionId === ""}
+                  introPending={introPending}
                 />
               )}
             </div>
@@ -675,6 +721,10 @@ const ExamEditInner = () => {
         currentSectionTasks={currentSectionTasks}
         taskLetterById={taskLetterById}
         allSectionsReady={allSectionsReady}
+        isIntro={!isEmpty && introPending}
+        onStartReview={handleStartReview}
+        hasMissingContent={hasMissingContent}
+        onJumpToMissingContent={jumpToMissingContent}
         onJumpToTask={jumpToTask}
         onAdvanceSection={handleAdvanceSection}
         startSolvingOpen={startSolvingOpen}

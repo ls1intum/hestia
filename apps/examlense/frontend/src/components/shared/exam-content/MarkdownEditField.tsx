@@ -1,3 +1,4 @@
+import { PenLine } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/utils";
 import {
@@ -66,9 +67,19 @@ export const MarkdownEditField = ({
         }
       }}
       aria-label={ariaLabel}
-      className={readViewClassName}
+      className={cn("group flex items-start gap-2", readViewClassName)}
     >
-      <MarkdownView content={value} className={markdownClassName} />
+      {/* Box is exactly one line of body text tall; centering the icon in it
+          keeps the pencil aligned to the first row as the field grows. */}
+      <span className="flex h-[1.42rem] shrink-0 items-center" aria-hidden>
+        <PenLine
+          size={13}
+          className="text-hestia-text-muted/50 transition-colors group-hover:text-hestia-text-muted"
+        />
+      </span>
+      <div className="min-w-0 flex-1">
+        <MarkdownView content={value} className={markdownClassName} />
+      </div>
     </div>
   );
 };

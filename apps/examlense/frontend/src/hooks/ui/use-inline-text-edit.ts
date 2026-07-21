@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAutosizeTextarea } from "@/hooks/ui/use-autosize-textarea";
 import { useDebouncedCallback } from "@/hooks/ui/use-debounced-callback";
+import { isTextEmpty } from "@/lib/exam/exam-helpers";
 
 interface InlineTextEditOptions {
   /** Source-of-truth value (e.g. task.prompt / block.content). */
@@ -41,7 +42,7 @@ export function useInlineTextEdit({
   useEffect(() => setValue(source), [source]);
 
   const textareaRef = useAutosizeTextarea<HTMLTextAreaElement>(value);
-  const [editing, setEditing] = useState(() => (source ?? "").trim() === "");
+  const [editing, setEditing] = useState(() => isTextEmpty(source));
   const justEnteredEdit = useRef(false);
 
   useEffect(() => {
@@ -74,7 +75,7 @@ export function useInlineTextEdit({
     value,
     editing,
     enterEdit,
-    isEmpty: value.trim() === "",
+    isEmpty: isTextEmpty(value),
     textareaRef,
     textareaProps: {
       value,
@@ -85,7 +86,7 @@ export function useInlineTextEdit({
       onBlur: () => {
         debounced.flush();
         if (value !== source) onCommit(value);
-        if (value.trim() !== "") setEditing(false);
+        if (!isTextEmpty(value)) setEditing(false);
       },
     },
   };

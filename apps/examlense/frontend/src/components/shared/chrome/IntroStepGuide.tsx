@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils/utils";
 
 export interface GuideStep {
   title: string;
-  body: string;
+  body?: string;
   icon: ReactNode;
   tone: "primary" | "accent" | "warning" | "success";
   diagram: ReactNode;
@@ -73,9 +73,11 @@ export const StepGuide = ({
             <h3 className="mt-1 font-body text-sm font-semibold leading-snug text-hestia-text">
               {step.title}
             </h3>
-            <p className="mt-1 text-xs leading-relaxed text-hestia-text-muted">
-              {step.body}
-            </p>
+            {step.body && (
+              <p className="mt-1 text-xs leading-relaxed text-hestia-text-muted">
+                {step.body}
+              </p>
+            )}
           </div>
         </div>
         <div
@@ -138,30 +140,47 @@ const TrackDiagram = ({
   </div>
 );
 
-const StackDiagram = ({
-  rows,
-  highlight = 0,
-}: {
-  rows: string[];
-  highlight?: number;
-}) => (
+/**
+ * Blurred mini-replica of a section's block order in the real editor: a figure
+ * upload block, a shared context block, and a task block, stacked top-to-bottom.
+ * Illustrates "add tasks, figures, and context in the correct order".
+ */
+const BlockOrderDiagram = () => (
   <div className="space-y-1.5">
-    {rows.map((row, index) => (
-      <div
-        key={row}
-        className={cn(
-          "flex items-center justify-between gap-hestia-2 rounded-hestia-sm border px-2 py-1.5",
-          index === highlight
-            ? "border-hestia-primary/50 bg-hestia-primary-muted/25"
-            : "border-hestia-border bg-hestia-surface",
-        )}
-      >
-        <span className="h-1.5 w-20 rounded-full bg-hestia-text/15" />
-        <span className="hestia-eyebrow text-[9px] text-hestia-text-muted">
-          {row}
+    {/* Figure block */}
+    <div className="flex items-center gap-hestia-2 rounded-hestia-sm border border-dashed border-hestia-border bg-hestia-surface px-2 py-1.5">
+      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-hestia-sm text-hestia-primary">
+        <ImagePlus size={14} />
+      </span>
+      <span className="hestia-eyebrow ml-auto text-[9px] text-hestia-text-muted">
+        Figure
+      </span>
+    </div>
+    {/* Context block */}
+    <div className="rounded-hestia-sm border border-hestia-border bg-hestia-surface px-2 py-1.5">
+      <div className="space-y-1">
+        <span className="block h-1.5 w-full rounded-full bg-hestia-text/15" />
+        <span className="block h-1.5 w-3/4 rounded-full bg-hestia-text/15" />
+      </div>
+      <span className="hestia-eyebrow mt-1 block text-right text-[9px] text-hestia-text-muted">
+        Context
+      </span>
+    </div>
+    {/* Task block */}
+    <div className="rounded-hestia-sm border border-hestia-primary/40 bg-hestia-primary-muted/20 px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold tabular-nums text-hestia-text">
+          a)
+        </span>
+        <span className="ml-auto rounded-full bg-hestia-surface px-1.5 py-0.5 text-[8px] font-medium text-hestia-text-muted">
+          Points
         </span>
       </div>
-    ))}
+      <span className="mt-1 block h-1.5 w-2/3 rounded-full bg-hestia-text/15" />
+      <span className="hestia-eyebrow mt-1 block text-right text-[9px] text-hestia-text-muted">
+        Task
+      </span>
+    </div>
   </div>
 );
 
@@ -194,15 +213,8 @@ const SidebarDiagram = () => (
 );
 
 const MediaDiagram = () => (
-  <div className="grid grid-cols-3 gap-hestia-2">
-    <div className="col-span-2 flex h-16 items-center justify-center rounded-hestia-md border border-hestia-border bg-hestia-surface text-hestia-primary">
-      <ImagePlus size={22} />
-    </div>
-    <div className="space-y-1.5">
-      <span className="block h-4 rounded-hestia-sm bg-hestia-primary-muted" />
-      <span className="block h-4 rounded-hestia-sm bg-hestia-accent/15" />
-      <span className="block h-4 rounded-hestia-sm bg-hestia-warning/15" />
-    </div>
+  <div className="flex h-16 items-center justify-center rounded-hestia-md border border-dashed border-hestia-border bg-hestia-surface text-hestia-primary">
+    <ImagePlus size={22} />
   </div>
 );
 
@@ -302,18 +314,17 @@ const FinishDiagram = () => (
 
 export const EDIT_STEPS: GuideStep[] = [
   {
-    title: "Structure the exam",
+    title: "Structure the exam sections",
     body: "Create sections that match the way the exam should be reviewed.",
     icon: <Layers3 size={18} />,
     tone: "primary",
-    diagram: <TrackDiagram labels={["Sections", "Context", "Tasks", "Ready"]} />,
+    diagram: <SidebarDiagram />,
   },
   {
-    title: "Add tasks and context",
-    body: "Add questions, shared instructions, reference text, and figures.",
+    title: "Add tasks, figures, and context in the correct order",
     icon: <NotebookPen size={18} />,
     tone: "accent",
-    diagram: <StackDiagram rows={["Context", "Task", "Figure"]} highlight={1} />,
+    diagram: <BlockOrderDiagram />,
   },
   {
     title: "Set scoring",
@@ -341,13 +352,13 @@ export const PARSED_STEPS: GuideStep[] = [
   },
   {
     title: "Restore missing material",
-    body: "Add omitted graphics, context blocks, or clarifications before solving.",
+    body: "Add missing graphics, task context blocks before sending it to solving.",
     icon: <ImagePlus size={18} />,
     tone: "accent",
     diagram: <MediaDiagram />,
   },
   {
-    title: "Normalize grading",
+    title: "Define point schema",
     body: "Set or correct point values so the evaluation has a clean rubric.",
     icon: <Gauge size={18} />,
     tone: "warning",
@@ -355,7 +366,7 @@ export const PARSED_STEPS: GuideStep[] = [
   },
   {
     title: "Confirm sections",
-    body: "Mark each reviewed section as ready before starting evaluation.",
+    body: "Mark each reviewed section as ready before starting solving.",
     icon: <CheckCircle2 size={18} />,
     tone: "success",
     diagram: <NextSectionDiagram />,

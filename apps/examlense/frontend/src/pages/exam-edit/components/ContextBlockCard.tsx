@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
 import type { SectionBlock } from "@/lib/exam/exam-helpers";
 import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
+import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
@@ -55,6 +56,7 @@ export const ContextBlockCard = ({
 
   const body = (
     <div>
+      {field.isEmpty && <WarningBanner text="No context added." />}
       <MarkdownEditField
         field={field}
         placeholder="Context for the tasks below: instructions, definitions, references…"
