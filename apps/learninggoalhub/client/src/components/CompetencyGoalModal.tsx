@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, API_PREFIX } from "../api/client.ts";
+import { api, API_PREFIX, type GoalSource } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
+import ErrorBoundary from "./ErrorBoundary.tsx";
+// Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
+const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
 import {
   BLOOM_DESC,
   COMPETENCY_ROLE_META,
@@ -67,6 +70,7 @@ export default function CompetencyGoalModal({
     null,
   );
   const [sourceDraft, setSourceDraft] = useState("");
+  const [openSource, setOpenSource] = useState<GoalSource | null>(null);
   const [editingSession, setEditingSession] = useState(false);
   const [sessionDraft, setSessionDraft] = useState("");
   const renameMutation = useMutation({
@@ -124,16 +128,24 @@ export default function CompetencyGoalModal({
     setDraft(null);
     setEditingSourceIndex(null);
     setEditingSession(false);
+    setOpenSource(null);
   }, [freshGoal?.id]);
 
   useEffect(() => {
     if (!freshGoal) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (openSource) {
+          e.preventDefault();
+          setOpenSource(null);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [freshGoal, onClose]);
+  }, [freshGoal, onClose, openSource]);
 
   if (!freshGoal) return null;
   const goal: LearningGoal = { ...freshGoal, ...pending };
@@ -188,8 +200,11 @@ export default function CompetencyGoalModal({
             the backdrop-filter keeps the browser from caching the blurred layer. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="comp-unfold flex w-full max-w-lg flex-col gap-3.5 sm:mt-[6vh]"
+          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${openSource ? "max-w-6xl lg:flex-row lg:items-start" : "max-w-lg"}`}
         >
+          <div
+            className={`flex min-w-0 flex-col gap-3.5 ${openSource ? "w-full lg:max-w-lg lg:shrink-0" : "w-full"}`}
+          >
           <div className="flex items-center justify-between">
             <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text">
               Goal details
@@ -512,14 +527,14 @@ export default function CompetencyGoalModal({
                         <div className="group/source flex min-w-0 items-start gap-2">
                           <div className="min-w-0 flex-1">
                             {shown && source.contentAvailable ? (
-                              // Opens the stored document in the browser's PDF viewer; #page=N jumps to the
-                              // page the snippet was located on (or the session's first page as fallback).
-                              <a
-                                href={`${API_PREFIX}/api/courses/${courseId}/documents/${source.documentId}/content${source.page ? `#page=${source.page}` : ""}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenSource(source);
+                                }}
                                 className="flex min-w-0 items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
+                                title="View source in the PDF preview"
                               >
                                 <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
                                   {shown}
@@ -529,7 +544,7 @@ export default function CompetencyGoalModal({
                                     p. {source.page}
                                   </span>
                                 )}
-                              </a>
+                              </button>
                             ) : (
                               <p className="truncate font-medium">{shown}</p>
                             )}
@@ -603,7 +618,7 @@ export default function CompetencyGoalModal({
                   }
                 />
               )}
-              {goal.soloLevel && (
+          {goal.soloLevel && (
                 <TaxonomyTile
                   label="SOLO"
                   term={titleCase(goal.soloLevel)}
@@ -652,6 +667,41 @@ export default function CompetencyGoalModal({
                 ))}
               </ul>
             </div>
+          )}
+          </div>
+          {openSource && (
+            <ErrorBoundary
+              resetKey={openSource.documentId}
+              fallback={
+                <div className="flex min-h-[32rem] w-full flex-col items-center justify-center gap-2 rounded-lg border border-hestia-border bg-hestia-surface text-center text-xs text-hestia-text-muted lg:w-[min(44vw,42rem)]">
+                  <p>Could not load the PDF preview.</p>
+                  {openSource.contentAvailable && (
+                    <a
+                      href={`${API_PREFIX}/api/courses/${numericCourseId}/documents/${openSource.documentId}/content${openSource.page ? `#page=${openSource.page}` : ""}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-hestia-primary underline underline-offset-2"
+                    >
+                      Open PDF in a new tab
+                    </a>
+                  )}
+                </div>
+              }
+            >
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[32rem] w-full items-center justify-center rounded-lg border border-hestia-border bg-hestia-surface text-xs text-hestia-text-muted lg:w-[min(44vw,42rem)]">
+                    Loading preview…
+                  </div>
+                }
+              >
+                <SourcePdfPane
+                  courseId={numericCourseId}
+                  source={openSource}
+                  onClose={() => setOpenSource(null)}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
         </div>
       </div>
