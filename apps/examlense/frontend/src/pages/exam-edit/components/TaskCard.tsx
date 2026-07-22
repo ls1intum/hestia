@@ -242,7 +242,7 @@ export const TaskCard = ({
                 onPatch({ points: v === "" ? null : Number(v) });
               }}
               className={cn(
-                "h-7 w-20 bg-hestia-surface text-sm",
+                "no-spinner h-7 w-20 bg-hestia-surface text-sm",
                 noScore
                   ? "border-hestia-danger animate-pulse-danger"
                   : "border-hestia-border",

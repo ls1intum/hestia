@@ -35,13 +35,19 @@ export const ReadOnlyQuestionBlock = ({ task, label, goals }: Props) => {
       <BlockHeader
         expanded={!collapsed}
         onToggle={() => setCollapsed((v) => !v)}
-        label={label ? `${label})` : "Untitled task"}
+        label={
+          label ? (
+            <span className="tabular-nums">Question {label})</span>
+          ) : (
+            <span className="italic">Untitled task</span>
+          )
+        }
         labelVariant="eyebrow"
       />
       {!collapsed && (
         <div className="mt-hestia-2 space-y-hestia-3 pl-hestia-5">
           {promptPreview ? (
-            <MarkdownView content={promptPreview} />
+            <MarkdownView content={promptPreview} className="text-hestia-text/90" />
           ) : (
             <p className="text-sm italic text-hestia-text-muted/70">Untitled task</p>
           )}

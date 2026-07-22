@@ -34,6 +34,7 @@ import { AddTaskInline } from "@/pages/exam-edit/components/AddTaskInline";
 import { SectionLayout } from "@/components/shared/exam-content/SectionLayout";
 import { SectionTitleInput } from "@/pages/exam-edit/components/SectionTitleInput";
 import { useItemCollapseState } from "@/hooks/ui/use-item-collapse-state";
+import { useSectionScrollMemory } from "@/hooks/ui/use-section-scroll-memory";
 import { BlockItem as BlockItemComponent } from "@/pages/exam-edit/components/BlockItem";
 import { ExamEditFooter } from "@/pages/exam-edit/components/ExamEditFooter";
 import { ScoreNeededIndicator } from "@/pages/exam-edit/components/ScoreNeededIndicator";
@@ -153,9 +154,6 @@ const ExamEditInner = () => {
   // while a directly-opened already-graded exam still auto-redirects.
   const evaluationStartedRef = useRef(false);
 
-  // The scrolling content viewport — used by the "Score needs to be set"
-  // indicator to place itself relative to the visible area.
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const sendToEvaluation = async () => {
     if (!id || !exam) return;
@@ -290,6 +288,11 @@ const ExamEditInner = () => {
   const [currentSectionId, setCurrentSectionId] = useCurrentSectionId(grouped, {
     introGate: showInlineIntro && !introComplete,
   });
+
+  // The scrolling content viewport — also used by the "Score needs to be set"
+  // indicator to place itself relative to the visible area. Remembers each
+  // section's scroll offset and restores it on return.
+  const scrollRef = useSectionScrollMemory<HTMLDivElement>(currentSectionId);
 
   const markIntroComplete = useCallback(() => {
     if (introKey) localStorage.setItem(introKey, "1");

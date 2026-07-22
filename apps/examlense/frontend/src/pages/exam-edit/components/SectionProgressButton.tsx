@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowDown, ArrowRight, Check } from "lucide-react";
 import { taskMissingScore, type Task } from "@/lib/exam/exam-helpers";
-import { cn } from "@/lib/utils/utils";
+import { ProgressCtaButton } from "@/components/shared/chrome/ProgressCtaButton";
 
 interface Props {
   /** Tasks of the currently visible section. */
@@ -116,48 +116,14 @@ export const SectionProgressButton = ({
   const fillPct = tone === "success" || tone === "warning" ? 100 : pct;
 
   return (
-    <span className="relative inline-block w-full max-w-[24rem] sm:w-[20rem]">
-      {tone === "success" && !isIntro && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-hestia-md ring-2 ring-hestia-success/60 animate-ping-sm"
-        />
-      )}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={handleClick}
-        aria-label={label}
-        className={cn(
-          "group relative h-8 w-full cursor-pointer overflow-hidden rounded-hestia-md border text-xs font-semibold shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary active:scale-[0.98]",
-          disabled
-            ? "cursor-not-allowed border-hestia-border bg-hestia-bg/40 text-hestia-text-muted"
-            : tone === "success"
-              ? "border-hestia-success/60 bg-hestia-success/15 text-hestia-success hover:bg-hestia-success/25"
-              : tone === "warning"
-                ? "border-hestia-warning/60 bg-hestia-warning/10 text-hestia-warning hover:bg-hestia-warning/20"
-                : "border-hestia-primary/40 bg-hestia-bg/60 text-hestia-text hover:border-hestia-primary hover:bg-hestia-primary-muted/40 hover:shadow-md",
-        )}
-      >
-        {/* Fill bar */}
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-0 left-0 transition-[width] duration-500 ease-out",
-            tone === "success"
-              ? "bg-hestia-success/30"
-              : tone === "warning"
-                ? "bg-hestia-warning/30"
-                : "bg-hestia-primary/25",
-          )}
-          style={{ width: `${fillPct}%` }}
-        />
-        {/* Overlay label */}
-        <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap px-hestia-3">
-          {icon}
-          <span className="truncate">{label}</span>
-        </span>
-      </button>
-    </span>
+    <ProgressCtaButton
+      label={label}
+      icon={icon}
+      tone={tone}
+      fillPct={fillPct}
+      disabled={disabled}
+      showPing={tone === "success" && !isIntro}
+      onClick={handleClick}
+    />
   );
 };
