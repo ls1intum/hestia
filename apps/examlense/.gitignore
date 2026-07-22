@@ -29,3 +29,6 @@ backend/.env
 # Tooling caches / local configs
 .vite/
 .conductor/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
