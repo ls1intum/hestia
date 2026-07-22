@@ -240,8 +240,10 @@ under your control.
 
 ## Endpoints not meant for consumers
 
-`PATCH`/`DELETE /api/courses/{courseId}/learning-goals/{goalId}` and
-`POST /api/courses/{courseId}/learning-goals/terminal` (instructor review),
+`PATCH`/`DELETE /api/courses/{courseId}/learning-goals/{goalId}`,
+`POST /api/courses/{courseId}/learning-goals/terminal`,
+`POST /api/courses/{courseId}/learning-goals/skill-suggestions` and
+`POST /api/courses/{courseId}/learning-goals/terminal/generated` (instructor review),
 `POST /api/courses/{courseId}/documents` (upload) and `POST /api/courses/{courseId}/extract`
 (pipeline trigger) back the LearningGoalHub UI. They are not access-restricted yet, but
 consumer projects should treat them as off-limits.

@@ -815,6 +815,21 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
   );
 }
 
+/** Red pill flagging a goal the instructor accepted as an AI suggestion (WIZARD_AI_SUBTREE). */
+export function AiInferredBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      style={{
+        color: "var(--hestia-danger)",
+        backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
+      }}
+    >
+      AI-inferred
+    </span>
+  );
+}
+
 function GapIcon() {
   return (
     <svg

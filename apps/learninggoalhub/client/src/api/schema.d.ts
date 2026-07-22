@@ -88,6 +88,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["suggestTerminalSkills"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/terminal/generated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createGeneratedTerminalSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{courseId}/learning-goals/{goalId}": {
         parameters: {
             query?: never;
@@ -343,6 +375,10 @@ export interface components {
         CreateTerminalSkillRequest: {
             text?: string;
         };
+        CreateGeneratedTerminalSkillRequest: {
+            text?: string;
+            shortLabel?: string;
+        };
         UpdateLearningGoalRequest: {
             text?: string;
             /** @enum {string} */
@@ -395,6 +431,10 @@ export interface components {
             level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
             label?: string;
             goals?: components["schemas"]["LearningGoalResponse"][];
+        };
+        SkillSuggestionResponse: {
+            text?: string;
+            shortLabel?: string;
         };
         Snapshot: {
             /** @enum {string} */
@@ -583,6 +623,58 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateTerminalSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    suggestTerminalSkills: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SkillSuggestionResponse"][];
+                };
+            };
+        };
+    };
+    createGeneratedTerminalSkill: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGeneratedTerminalSkillRequest"];
             };
         };
         responses: {

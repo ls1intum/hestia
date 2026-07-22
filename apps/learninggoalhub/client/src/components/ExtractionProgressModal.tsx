@@ -21,6 +21,11 @@ type Props = {
 
 type Phase = NonNullable<ExtractionStatus["phase"]>;
 
+type SkillSuggestion = {
+  text: string;
+  shortLabel?: string | null;
+};
+
 /** Ordered list of phases the backend walks through, with their display labels. */
 const PHASES: { key: Phase; label: string }[] = [
   { key: "OUTLINING", label: "Outlining documents" },
@@ -50,6 +55,8 @@ export default function ExtractionProgressModal({
   const [step, setStep] = useState<1 | 2>(1);
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
+  const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
+  const [suggestionErrors, setSuggestionErrors] = useState<Record<string, string>>({});
 
   const done = result != null;
   const goalsQuery = useQuery({
@@ -73,6 +80,13 @@ export default function ExtractionProgressModal({
     () => buildCompetencyForest(goals),
     [goals],
   );
+
+  useEffect(() => {
+    if (!open) {
+      setSuggestions([]);
+      setSuggestionErrors({});
+    }
+  }, [open]);
 
   const renameMutation = useMutation({
     mutationFn: async (vars: { goalId: number; text: string }) => {
@@ -124,6 +138,59 @@ export default function ExtractionProgressModal({
     },
   });
 
+  const suggestSkillsMutation = useMutation({
+    mutationFn: async (): Promise<SkillSuggestion[]> => {
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/skill-suggestions",
+        { params: { path: { courseId: courseId as number } } },
+      );
+      if (!result.data) throw new Error("Could not fetch AI skill suggestions.");
+      return result.data
+        .filter((item) => typeof item.text === "string" && item.text.trim() !== "")
+        .map((item) => ({ text: item.text as string, shortLabel: item.shortLabel }));
+    },
+    onSuccess: (newSuggestions) => {
+      setSuggestions(newSuggestions);
+      setSuggestionErrors({});
+    },
+  });
+
+  const generateSkillMutation = useMutation({
+    mutationFn: async (candidate: SkillSuggestion) => {
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/terminal/generated",
+        {
+          params: { path: { courseId: courseId as number } },
+          body: { text: candidate.text, shortLabel: candidate.shortLabel ?? undefined },
+        },
+      );
+      if (!result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "This skill already exists."
+            : "Could not add the AI skill.",
+        );
+      }
+    },
+    onSuccess: async (_createdGoal, candidate) => {
+      setSuggestions((current) => current.filter((item) => item.text !== candidate.text));
+      setSuggestionErrors((current) => {
+        const next = { ...current };
+        delete next[candidate.text];
+        return next;
+      });
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+    onError: (mutationError, candidate) => {
+      setSuggestionErrors((current) => ({
+        ...current,
+        [candidate.text]: mutationError.message,
+      }));
+    },
+  });
+
   if (!open) return null;
 
   const failed = error != null;
@@ -142,7 +209,7 @@ export default function ExtractionProgressModal({
       aria-modal="true"
       aria-labelledby="extraction-progress-title"
     >
-      <div className="w-full max-w-lg rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-xl sm:p-8">
+      <div className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-xl sm:p-8">
         {done && <WizardHeader step={step} />}
         <div className="flex items-center gap-3">
           <img
@@ -274,6 +341,96 @@ export default function ExtractionProgressModal({
                 </ul>
               )}
             </div>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                disabled={suggestSkillsMutation.isPending}
+                onClick={() => suggestSkillsMutation.mutate()}
+                className="rounded-md border border-hestia-primary px-3 py-1.5 text-sm font-medium text-hestia-primary transition hover:bg-hestia-primary-muted disabled:opacity-50"
+              >
+                {suggestSkillsMutation.isPending ? "Finding suggestions…" : "Suggest skills with AI"}
+              </button>
+              {suggestions.length > 0 && (
+                <span className="text-xs text-hestia-text-muted">
+                  Review each suggestion before adding it.
+                </span>
+              )}
+            </div>
+            {suggestSkillsMutation.isError && (
+              <p className="mt-3 text-sm text-hestia-danger">
+                {(suggestSkillsMutation.error as Error).message}
+              </p>
+            )}
+            {suggestions.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {suggestions.map((suggestion) => {
+                  const accepting =
+                    generateSkillMutation.isPending
+                    && generateSkillMutation.variables?.text === suggestion.text;
+                  return (
+                    <div
+                      key={suggestion.text}
+                      className="rounded-lg border border-hestia-primary/40 bg-hestia-primary-muted/30 px-3 py-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-relaxed text-hestia-text">
+                            {suggestion.text}
+                          </p>
+                          {suggestion.shortLabel && (
+                            <p className="mt-1 text-xs text-hestia-text-muted">
+                              {suggestion.shortLabel}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={generateSkillMutation.isPending}
+                            onClick={() => generateSkillMutation.mutate(suggestion)}
+                            className="rounded-md bg-hestia-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
+                          >
+                            {accepting ? (
+                              <span className="flex items-center gap-1.5">
+                                <span
+                                  aria-hidden="true"
+                                  className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                                />
+                                Adding…
+                              </span>
+                            ) : (
+                              "Accept"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={accepting}
+                            onClick={() => {
+                              setSuggestions((current) =>
+                                current.filter((item) => item.text !== suggestion.text),
+                              );
+                              setSuggestionErrors((current) => {
+                                const next = { ...current };
+                                delete next[suggestion.text];
+                                return next;
+                              });
+                            }}
+                            className="rounded-md border border-hestia-border px-2.5 py-1.5 text-xs font-medium text-hestia-text transition hover:bg-hestia-surface disabled:opacity-50"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                      {suggestionErrors[suggestion.text] && (
+                        <p className="mt-2 text-xs text-hestia-danger">
+                          {suggestionErrors[suggestion.text]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {adding ? (
               <form
                 onSubmit={(event) => {

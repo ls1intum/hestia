@@ -3,6 +3,14 @@ package de.tum.cit.hestia.learninggoalhub.goal;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
+import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubSkill;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubtree;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
@@ -24,6 +32,8 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -56,26 +66,35 @@ public class LearningGoalController {
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
     private final DocumentContentRepository documentContentRepository;
+    private final DocumentRepository documentRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
+    private final SkillSuggestionSynthesizer skillSuggestionSynthesizer;
+    private final SubtreeSynthesizer subtreeSynthesizer;
     private final LearningGoalCsvWriter csvWriter;
 
     public LearningGoalController(CourseRepository courseRepository,
                                   LearningGoalRepository goalRepository,
                                   GoalSourceRepository goalSourceRepository,
                                   DocumentContentRepository documentContentRepository,
+                                  DocumentRepository documentRepository,
                                   GoalRelationshipRepository goalRelationshipRepository,
                                   HierarchyNodeRepository hierarchyNodeRepository,
                                   TaxonomyService taxonomyService,
+                                  SkillSuggestionSynthesizer skillSuggestionSynthesizer,
+                                  SubtreeSynthesizer subtreeSynthesizer,
                                   LearningGoalCsvWriter csvWriter) {
         this.courseRepository = courseRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.documentContentRepository = documentContentRepository;
+        this.documentRepository = documentRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
+        this.skillSuggestionSynthesizer = skillSuggestionSynthesizer;
+        this.subtreeSynthesizer = subtreeSynthesizer;
         this.csvWriter = csvWriter;
     }
 
@@ -248,6 +267,185 @@ public class LearningGoalController {
         return LearningGoalResponse.from(goal, List.of(), List.of());
     }
 
+    /** Returns transient AI suggestions grounded in the already extracted course goals. */
+    @PostMapping("/skill-suggestions")
+    @Transactional(readOnly = true)
+    public List<SkillSuggestionResponse> suggestTerminalSkills(@PathVariable Long courseId,
+                                                               @RequestParam(required = false) String model) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        List<LearningGoal> extractedGoals = goalRepository
+                .findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED)).stream()
+                .filter(goal -> goal.getHierarchyNode() != null
+                        && (goal.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
+                        || goal.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE))
+                .toList();
+        if (extractedGoals.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> goalIds = extractedGoals.stream().map(LearningGoal::getId).toList();
+        Map<Long, List<GoalSource>> sourcesByGoal = goalSourceRepository.findByGoalIdIn(goalIds).stream()
+                .collect(Collectors.groupingBy(source -> source.getGoal().getId()));
+        List<String> existingTerminals = goalRepository
+                .findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
+                .map(LearningGoal::getText)
+                .toList();
+        List<SkillSuggestionSynthesizer.Evidence> evidence = extractedGoals.stream()
+                .map(goal -> new SkillSuggestionSynthesizer.Evidence(
+                        goal.getText(),
+                        goal.getBloomLevel() == null ? null : goal.getBloomLevel().name(),
+                        sourceSnippet(sourcesByGoal.getOrDefault(goal.getId(), List.of()))))
+                .toList();
+
+        List<SkillSuggestionSynthesizer.Suggestion> suggestions = skillSuggestionSynthesizer.suggest(
+                existingTerminals, evidence, courseLanguageName(course), model);
+        return suggestions == null ? List.of() : suggestions.stream()
+                .filter(suggestion -> suggestion != null && suggestion.text() != null && !suggestion.text().isBlank())
+                .map(suggestion -> new SkillSuggestionResponse(suggestion.text(), suggestion.shortLabel()))
+                .toList();
+    }
+
+    /** Generates and atomically persists a complete terminal → sub-skill → knowledge subtree. */
+    @PostMapping("/terminal/generated")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
+                                                             @RequestParam(required = false) String model,
+                                                             @RequestBody CreateGeneratedTerminalSkillRequest request) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        String text = request.text() == null ? "" : request.text().strip();
+        if (text.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
+        }
+        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
+                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
+        if (duplicate) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
+        }
+
+        GeneratedSubtree generated = SubtreeSynthesizer.validate(
+                subtreeSynthesizer.generateSubtree(text, courseLanguageName(course), model));
+        LearningGoal terminal = newGeneratedGoal(course, text, GoalOrigin.TERMINAL);
+        terminal.setShortLabel(trimToNull(request.shortLabel()));
+        terminal.setHierarchyNode(competencyRoot(course));
+
+        List<LearningGoal> subSkills = new ArrayList<>();
+        List<List<LearningGoal>> knowledgeBySubSkill = new ArrayList<>();
+        List<LearningGoal> nodes = new ArrayList<>();
+        nodes.add(terminal);
+        for (GeneratedSubSkill generatedSubSkill : generated.subSkills()) {
+            LearningGoal subSkill = newGeneratedGoal(course, generatedSubSkill.text(), GoalOrigin.SYNTHESIZED);
+            subSkill.setShortLabel(trimToNull(generatedSubSkill.shortLabel()));
+            subSkills.add(subSkill);
+            nodes.add(subSkill);
+            List<LearningGoal> subSkillKnowledge = new ArrayList<>();
+            for (GeneratedKnowledge generatedKnowledge : generatedSubSkill.knowledge()) {
+                LearningGoal knowledgeGoal = newGeneratedGoal(course, generatedKnowledge.text(), GoalOrigin.SYNTHESIZED);
+                knowledgeGoal.setShortLabel(trimToNull(generatedKnowledge.shortLabel()));
+                subSkillKnowledge.add(knowledgeGoal);
+                nodes.add(knowledgeGoal);
+            }
+            knowledgeBySubSkill.add(subSkillKnowledge);
+        }
+
+        applyClassifications(nodes, model);
+        goalRepository.saveAll(nodes);
+        goalRepository.flush();
+        for (int i = 0; i < subSkills.size(); i++) {
+            for (LearningGoal knowledgeGoal : knowledgeBySubSkill.get(i)) {
+                linkContributors(List.of(knowledgeGoal), subSkills.get(i));
+            }
+        }
+        for (LearningGoal subSkill : subSkills) {
+            linkContributors(List.of(subSkill), terminal);
+        }
+        return LearningGoalResponse.from(terminal, List.of(), List.of());
+    }
+
+    private LearningGoal newGeneratedGoal(Course course, String text, GoalOrigin origin) {
+        LearningGoal goal = new LearningGoal(course, text.strip(), GoalKind.IMPLICIT);
+        goal.setOrigin(origin);
+        goal.setStatus(GoalStatus.PENDING);
+        goal.setCreationProvenance(GoalCreationProvenance.WIZARD_AI_SUBTREE);
+        return goal;
+    }
+
+    private void applyClassifications(List<LearningGoal> nodes, String model) {
+        List<String> texts = nodes.stream().map(LearningGoal::getText).toList();
+        try {
+            List<TaxonomyClassification> classifications = taxonomyService.classifyBatch(texts, model);
+            if (classifications == null || classifications.size() != nodes.size()) {
+                return;
+            }
+            for (int i = 0; i < nodes.size(); i++) {
+                TaxonomyClassification classification = classifications.get(i);
+                if (classification != null) {
+                    nodes.get(i).setBloomLevel(classification.bloom());
+                    nodes.get(i).setSoloLevel(classification.solo());
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Classification is best-effort; the generated subtree must still be persisted.
+        }
+    }
+
+    private int linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
+        int created = 0;
+        for (LearningGoal source : supporters) {
+            if (source.getId().equals(targetGoal.getId())) {
+                continue;
+            }
+            if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
+                    source.getId(), targetGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
+                continue;
+            }
+            goalRelationshipRepository.save(new GoalRelationship(
+                    source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+            created++;
+        }
+        return created;
+    }
+
+    private String sourceSnippet(List<GoalSource> sources) {
+        return sources.stream()
+                .map(GoalSource::getSnippet)
+                .filter(snippet -> snippet != null && !snippet.isBlank())
+                .map(String::strip)
+                .collect(Collectors.joining(" | "));
+    }
+
+    private String courseLanguageName(Course course) {
+        List<Document> documents = documentRepository.findByCourseId(course.getId());
+        Map<String, Long> weights = new LinkedHashMap<>();
+        for (Document document : documents) {
+            String language = document.getLanguage();
+            if (language == null || language.isBlank()) {
+                continue;
+            }
+            long weight = document.getRawText() == null ? 0 : document.getRawText().length();
+            if (weight > 0) {
+                weights.merge(language, weight, Long::sum);
+            }
+        }
+        String dominantLanguage = weights.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+        String language = course.getOutputLanguage() != null
+                ? course.getOutputLanguage()
+                : dominantLanguage;
+        return LanguageUtils.englishName(language == null ? "en" : language);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.strip();
+    }
+
     /** All terminal skills of a course share one COMPETENCY root node, created on first use. */
     private HierarchyNode competencyRoot(Course course) {
         return hierarchyNodeRepository
@@ -312,7 +510,44 @@ public class LearningGoalController {
     @Transactional
     public void delete(@PathVariable Long courseId, @PathVariable Long goalId) {
         // The DB cascades the delete to goal_source rows and to relationships in both directions.
-        goalRepository.delete(findGoal(courseId, goalId));
+        LearningGoal goal = findGoal(courseId, goalId);
+        if (goal.getOrigin() == GoalOrigin.TERMINAL
+                && goal.getCreationProvenance() == GoalCreationProvenance.WIZARD_AI_SUBTREE) {
+            deleteGeneratedDescendants(goal);
+        }
+        goalRepository.delete(goal);
+    }
+
+    private void deleteGeneratedDescendants(LearningGoal root) {
+        List<LearningGoal> descendants = new ArrayList<>();
+        List<GoalRelationship> ownedEdges = new ArrayList<>();
+        Set<Long> visited = new HashSet<>();
+        Deque<LearningGoal> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            LearningGoal target = pending.removeFirst();
+            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
+                if (relationship.getType() != RelationshipType.CONTRIBUTES_TO
+                        || relationship.getSource().getCreationProvenance() != GoalCreationProvenance.WIZARD_AI_SUBTREE) {
+                    continue;
+                }
+                ownedEdges.add(relationship);
+                LearningGoal source = relationship.getSource();
+                if (visited.add(source.getId())) {
+                    descendants.add(source);
+                    pending.addLast(source);
+                }
+            }
+        }
+        // Delete the loaded edge entities first: they are managed in the persistence context, so
+        // deleting the goals they reference while they linger would fail the flush with a
+        // TransientObjectException. The plain delete() path never loads relationships, hence relies on
+        // the DB cascade alone.
+        goalRelationshipRepository.deleteAll(ownedEdges);
+        goalRelationshipRepository.flush();
+        for (int i = descendants.size() - 1; i >= 0; i--) {
+            goalRepository.delete(descendants.get(i));
+        }
     }
 
     private LearningGoal findGoal(Long courseId, Long goalId) {
@@ -383,6 +618,12 @@ public class LearningGoalController {
 
     /** Body of the "add a terminal skill" review action: just the instructor-typed skill text. */
     public record CreateTerminalSkillRequest(String text) {
+    }
+
+    public record SkillSuggestionResponse(String text, String shortLabel) {
+    }
+
+    public record CreateGeneratedTerminalSkillRequest(String text, String shortLabel) {
     }
 
     /** One hierarchy node (module/session/exercise) and its goals; all-null node fields = ungrouped. */

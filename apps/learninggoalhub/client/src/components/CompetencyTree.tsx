@@ -59,7 +59,10 @@ const BLOOM_ORDER = [
   "EVALUATE",
   "CREATE",
 ];
-const KIND_ORDER = ["EXPLICIT", "IMPLICIT"];
+// "AI_INFERRED" is a synthetic kind value derived from a goal's WIZARD_AI_SUBTREE provenance, so the
+// Kind column and its filter surface AI-generated goals without a separate GoalKind enum on the server.
+const AI_INFERRED_KIND = "AI_INFERRED";
+const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND];
 const ROLE_ORDER: CompetencyRole[] = [
   "competency",
   "sub-skill",
@@ -78,7 +81,9 @@ function valueOf(row: Row, key: FilterKey): string {
     case "bloom":
       return row.goal.bloomLevel ?? "";
     case "kind":
-      return row.goal.kind ?? "";
+      return row.goal.creationProvenance === "WIZARD_AI_SUBTREE"
+        ? AI_INFERRED_KIND
+        : (row.goal.kind ?? "");
     case "session":
       return sessionTitleOf(row.goal);
   }
@@ -98,6 +103,7 @@ function displayValue(key: FilterKey, value: string): string {
   if (key === "role")
     return COMPETENCY_ROLE_META[value as CompetencyRole].label;
   if (key === "session") return value || "—";
+  if (value === AI_INFERRED_KIND) return "AI-inferred";
   return value ? titleCase(value) : "—";
 }
 
@@ -786,11 +792,15 @@ function GridRow({
         )}
       </div>
       <div role="gridcell" className="px-2.5 py-1.5">
-        {row.goal.kind && (
-          <Pill
-            label={titleCase(row.goal.kind)}
-            color="var(--hestia-text-muted)"
-          />
+        {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
+          <Pill label="AI-inferred" color="var(--hestia-danger)" />
+        ) : (
+          row.goal.kind && (
+            <Pill
+              label={titleCase(row.goal.kind)}
+              color="var(--hestia-text-muted)"
+            />
+          )
         )}
       </div>
       <div

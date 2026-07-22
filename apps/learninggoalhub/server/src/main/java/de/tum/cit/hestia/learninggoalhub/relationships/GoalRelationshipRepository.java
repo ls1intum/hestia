@@ -12,6 +12,8 @@ public interface GoalRelationshipRepository extends JpaRepository<GoalRelationsh
 
     List<GoalRelationship> findBySourceIdIn(Collection<Long> sourceGoalIds);
 
+    List<GoalRelationship> findByTargetId(Long targetGoalId);
+
     /**
      * Loads relationships for the given source goals with their target goal fetched eagerly,
      * so callers can read {@code target.id}/{@code target.text} without triggering N+1 queries.
