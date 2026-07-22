@@ -27,6 +27,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer small, reusable components/modules and smaller focused files over large monolithic implementations.
 - Before introducing new helpers, constants, or UI elements, search for existing equivalents and reuse them when possible. Avoid copy-paste duplication.
 
+## Code Comments Rule
+
+- Include only necessary code comments. Follow the "comment the *why*, not the *what*" principle.
+- Do not write comments that duplicate what the code already says; the code is the source of truth for *what* it does.
+- Add a comment only when it earns its place — to explain unidiomatic or surprising code (why this approach, a non-obvious constraint, a workaround) or to document public APIs / exported functions.
+- Prefer clear names and small functions over explanatory comments; if code needs a comment to be understood, first consider whether it can be made clearer.
+- Keep comments current: update or remove them when the code they describe changes, so they never drift out of sync.
+
 
 ## Commands
 
