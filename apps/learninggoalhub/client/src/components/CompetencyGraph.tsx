@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LearningGoal } from "../api/client.ts";
-import CompetencyGoalModal, { RoleBadge } from "./CompetencyGoalModal.tsx";
+import CompetencyGoalModal, { RoleBadge, AiInferredBadge } from "./CompetencyGoalModal.tsx";
 import {
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
@@ -776,7 +776,10 @@ function Box({
     >
       {/* Header: the role badge on the left, edit / delete pinned right. */}
       <div className="flex items-center justify-between gap-2">
-        <RoleBadge role={node.role} />
+        <div className="flex min-w-0 items-center gap-1.5">
+          <RoleBadge role={node.role} />
+          {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && <AiInferredBadge />}
+        </div>
         <div className="flex items-center gap-0.5">
           <BoxAction
             label="Edit goal"

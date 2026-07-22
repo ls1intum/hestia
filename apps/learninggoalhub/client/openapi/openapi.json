@@ -311,6 +311,97 @@
         }
       }
     },
+    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "suggestTerminalSkills",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillSuggestionResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/terminal/generated": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "createGeneratedTerminalSkill",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGeneratedTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/courses/{courseId}/learning-goals/{goalId}": {
       "delete": {
         "tags": [
@@ -1146,6 +1237,17 @@
           }
         }
       },
+      "CreateGeneratedTerminalSkillRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateLearningGoalRequest": {
         "type": "object",
         "properties": {
@@ -1302,6 +1404,17 @@
             "items": {
               "$ref": "#/components/schemas/LearningGoalResponse"
             }
+          }
+        }
+      },
+      "SkillSuggestionResponse": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
           }
         }
       },
