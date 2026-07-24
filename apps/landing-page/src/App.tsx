@@ -7,13 +7,15 @@ import { VisionSection } from "@/components/VisionSection";
 import { PipelineSection } from "@/components/PipelineSection";
 import { MaterialSection } from "@/components/MaterialSection";
 import { ImpressumPage } from "@/components/ImpressumPage";
+import { DatenschutzPage } from "@/components/DatenschutzPage";
 import { SiteFooter } from "@/components/SiteFooter";
 import { TestSystemBanner } from "@/components/TestSystemBanner";
 
 /**
- * Minimal hash routing — no router dependency. The only real page besides the landing
- * content is the Impressum, reached via `#/impressum`. A slashed hash avoids colliding
- * with the in-page scroll anchors (`#top`, `#newsletter`, `#material`).
+ * Minimal hash routing — no router dependency. The real pages besides the landing
+ * content are the Impressum (`#/impressum`) and the privacy policy (`#/datenschutz`).
+ * A slashed hash avoids colliding with the in-page scroll anchors (`#top`,
+ * `#newsletter`, `#material`).
  */
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
@@ -28,10 +30,11 @@ function useHashRoute() {
 const App = () => {
   const hash = useHashRoute();
   const isImprint = hash === "#/impressum";
+  const isPrivacy = hash === "#/datenschutz";
 
   useEffect(() => {
-    if (isImprint) window.scrollTo(0, 0);
-  }, [isImprint]);
+    if (isImprint || isPrivacy) window.scrollTo(0, 0);
+  }, [isImprint, isPrivacy]);
 
   return (
     <LanguageProvider>
@@ -42,6 +45,8 @@ const App = () => {
           <main>
             {isImprint ? (
               <ImpressumPage />
+            ) : isPrivacy ? (
+              <DatenschutzPage />
             ) : (
               <>
                 <Hero />

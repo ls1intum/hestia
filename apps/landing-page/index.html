@@ -8,12 +8,10 @@
     <meta name="description" content="Hestia hilft dir, deine Lehre mit und an KI auszurichten — über Constructive Alignment: Lernziele, Lehraktivitäten und Prüfungen bewusst aufeinander abgestimmt." />
     <meta name="author" content="HESTIA" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Self-hosted fonts (see src/index.css @font-face). Preload the two
+         above-the-fold families so text paints without a flash. -->
+    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/playfair.woff2" as="font" type="font/woff2" crossorigin />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Hestia — Gute Lehre im KI-Zeitalter" />

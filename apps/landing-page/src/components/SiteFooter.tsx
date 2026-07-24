@@ -1,6 +1,5 @@
 import { HestiaWordmark } from "@/components/HestiaWordmark";
 import { NewsletterForm } from "@/components/NewsletterForm";
-import { PlaceholderBadge } from "@/components/PlaceholderBadge";
 import { useI18n } from "@/hooks/use-language";
 
 export function SiteFooter() {
@@ -29,12 +28,9 @@ export function SiteFooter() {
             <a href="#/impressum" className="text-sm text-hestia-text-muted hover:text-hestia-text">
               {t.footer.imprint}
             </a>
-            <span className="inline-flex items-center gap-1.5 text-sm">
-              <a href="#" className="text-hestia-text-muted hover:text-hestia-text">
-                {t.footer.privacy}
-              </a>
-              <PlaceholderBadge />
-            </span>
+            <a href="#/datenschutz" className="text-sm text-hestia-text-muted hover:text-hestia-text">
+              {t.footer.privacy}
+            </a>
           </nav>
         </div>
       </div>
