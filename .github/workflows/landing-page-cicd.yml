@@ -50,7 +50,7 @@ jobs:
   build:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/landing-page
+      image-name: ${{ github.repository }}/landing-site
       docker-file: apps/landing-page/Dockerfile
       docker-context: apps/landing-page
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
@@ -66,7 +66,7 @@ jobs:
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/landing-page/compose.prod.yaml
-      main-image-name: ${{ github.repository }}/landing-page
+      main-image-name: ${{ github.repository }}/landing-site
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/landing-page
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
