@@ -1,3 +1,9 @@
 # Deliberate, reviewed exceptions to the binary file guard (.githooks/file-guard.sh).
 # One exact repo-relative path per line. Add the entry in the same commit/PR that
 # adds the file, so the exception is visible in review.
+
+# Self-hosted landing-page fonts (latin subset, SIL Open Font License / Apache-2.0).
+# Self-hosting avoids sending visitor IPs to Google Fonts; see apps/landing-page/CLAUDE.md.
+apps/landing-page/public/fonts/inter.woff2
+apps/landing-page/public/fonts/jetbrains-mono.woff2
+apps/landing-page/public/fonts/playfair.woff2

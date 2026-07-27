@@ -9,8 +9,9 @@ The **HESTIA root landing page** — a standalone, backend-less React SPA that s
 host root (`https://<vm-host>/`) of the HESTIA VMs. It markets the HESTIA tool family
 (ExamLense, learning-goal extraction, active-teaching design) and collects newsletter
 signups and teaching-material donations. **Bilingual (DE/EN)** with a header toggle; no API.
-The only "page" beyond the landing content is the **Impressum**, served client-side via the
-hash route `#/impressum` — there is still no router library.
+The pages beyond the landing content are the **Impressum** (`#/impressum`) and the
+**Datenschutzerklärung** (`#/datenschutz`), served client-side via hash routes — there is
+still no router library.
 
 Unlike the other apps it owns **no path prefix**: its Traefik router matches
 ``Host(`${APP_HOST}`)`` at priority 1, so `/examlense`, `/learninggoalhub` etc. always win
@@ -36,13 +37,14 @@ React 18 + TypeScript, Vite (SWC), Tailwind CSS 3. Only runtime deps are `react`
 `react-dom` — no router, no React Query, no component library. Keep it that way unless a
 real need appears.
 
-- `src/App.tsx` — composes the page: `SiteHeader → Hero → VisionSection → PipelineSection → MaterialSection → SiteFooter`. A tiny `useHashRoute` hook swaps the landing sections for `ImpressumPage` when the hash is `#/impressum` (header/footer stay mounted); also renders `TestSystemBanner`.
+- `src/App.tsx` — composes the page: `SiteHeader → Hero → VisionSection → PipelineSection → MaterialSection → SiteFooter`. A tiny `useHashRoute` hook swaps the landing sections for `ImpressumPage` / `DatenschutzPage` when the hash is `#/impressum` / `#/datenschutz` (header/footer stay mounted); also renders `TestSystemBanner`.
 - `src/components/` — one file per page section, plus:
   - `ui/` — minimal local `Button` / `Input` / `Alert` primitives (this app does NOT use shadcn)
   - `NewsletterForm.tsx` — shared by hero and footer (`variant="hero" | "footer"`); submits to the Listmonk public subscription form via a no-cors `fetch` (empty honeypot `nonce`), then shows an optimistic success `Alert`
   - `ImpressumPage.tsx` — the bilingual Impressum, rendered from `t.imprint.sections`
+  - `DatenschutzPage.tsx` — the bilingual privacy policy, rendered from `t.privacy.sections`
   - `TestSystemBanner.tsx` — fixed top-left "Testsystem/Test system" marker; hidden when `IS_PRODUCTION`
-  - `PlaceholderBadge.tsx` — visible dashed "Platzhalter · …" pill marking still-unwired integrations (Datenschutz, Datenkonzept)
+  - `PlaceholderBadge.tsx` — visible dashed "Platzhalter · …" pill marking still-unwired integrations (Datenkonzept)
   - `HestiaWordmark.tsx` — theme-dependent logo (`src/assets/hestia-wordmark-{light,dark}.svg`)
 - `src/i18n/` — `de.ts` is the source of truth; `Dictionary = typeof de` forces `en.ts` to
   match. `src/hooks/use-language.tsx` provides `LanguageProvider`/`useI18n()`: stored choice
@@ -65,7 +67,9 @@ utilities (`bg-hestia-bg`, `text-hestia-primary`, `rounded-hestia-lg`, `shadow-h
 `font-display`…).
 
 Fonts: Playfair Display (h1–h3 only), Inter (everything else), JetBrains Mono (code/labels)
-— loaded from Google Fonts in `index.html`.
+— **self-hosted** (no request to Google). The latin-subset `woff2` files live in
+`public/fonts/`, declared via `@font-face` in `src/index.css`; Inter and JetBrains Mono are
+variable fonts (one file each). `index.html` preloads Inter and Playfair.
 
 Note: these token values are newer than examlense's `index.css` tokens; do not copy values
 from other apps into here (or vice versa) without checking.
