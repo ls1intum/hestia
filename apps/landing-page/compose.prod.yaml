@@ -4,7 +4,7 @@
 # Host && PathPrefix rule, so /examlense, /learninggoalhub etc. keep working.
 services:
   web:
-    image: ghcr.io/ls1intum/hestia/landing-page:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/landing-site:${IMAGE_TAG:-latest}
     restart: unless-stopped
     expose:
       - "80"
