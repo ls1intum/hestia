@@ -15,7 +15,7 @@ public final class Prompts {
 
     private Prompts() {}
 
-    public record ExamPromptInfo(String id, String title, String course, String language) {}
+    public record ExamPromptInfo(String id, String title, String course) {}
     public record SectionPromptInfo(String id, int position, String name) {}
     public record BlockPromptInfo(String id, String sectionId, int position, String kind, String content) {}
     public record TaskOptionPromptInfo(String id, String text) {}
@@ -83,26 +83,20 @@ public final class Prompts {
         return schema;
     }
 
-    private static String languageName(String code) {
-        if ("de".equals(code)) return "German";
-        if ("en".equals(code)) return "English";
-        return "the same language as the questions";
-    }
-
     public static String buildSystemPrompt(ExamPromptInfo exam) {
-        String lang = languageName(exam.language());
         String title = exam.title() == null ? "Untitled" : exam.title();
         String courseSuffix = exam.course() != null ? " · Course: " + exam.course() : "";
         return String.join("\n",
             "You are an expert taking a university exam.",
             "Exam: \"" + title + "\"" + courseSuffix + ".",
-            "Respond in " + lang + ".",
+            "Respond in the same language as the questions.",
             "You will be given one section of the exam with optional context paragraphs and a list of tasks.",
             "Answer every task. Use the submit_answers tool — never reply in plain text.",
             "",
             "For single_choice: pick exactly one option id.",
             "For multiple_choice: pick every option id you believe is correct (zero or more).",
-            "For text: write the most concise answer that would earn full credit. No restating the question, no apologies, no meta-commentary. Equations, code, or short prose only."
+            "For text: write the most concise answer that would earn full credit. No restating the question, no apologies, no meta-commentary. Equations, code, or short prose only.",
+            "Formatting: write math as LaTeX delimited with $...$ (inline) or $$...$$ (display, e.g. matrices and aligned blocks) — do NOT use \\(...\\) or \\[...\\], and never leave LaTeX undelimited. Put code in fenced ``` blocks."
         );
     }
 

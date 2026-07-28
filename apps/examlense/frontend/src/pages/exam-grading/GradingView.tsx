@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ClipboardCheck, BotMessageSquare } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { patchExam } from "@/lib/api/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { tasksKey } from "@/hooks/data/use-exam";
@@ -10,8 +10,11 @@ import { useTaskGrades } from "@/hooks/data/use-task-grades";
 import { useExamLearningGoals, examLearningGoalsKey } from "@/hooks/data/use-learning-goals";
 import { useExamRealtime } from "@/hooks/data/use-exam-realtime";
 import type { LearningGoalResponse } from "@/lib/learning-goals/learning-goals";
-import { type TaskGoalDisplay } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
-import { ReadOnlyQuestionBlock } from "@/pages/exam-grading/components/ReadOnlyQuestionBlock";
+import {
+  ReadOnlyQuestionBlock,
+  type TaskGoalDisplay,
+} from "@/components/shared/exam-content/read-only/ReadOnlyQuestionBlock";
+import { QuestionAnswerConnector } from "@/components/shared/exam-content/read-only/QuestionAnswerConnector";
 import { ReadOnlyContextBlock } from "@/components/shared/exam-content/read-only/ReadOnlyContextBlock";
 import { ReadOnlyFigureBlock } from "@/components/shared/exam-content/read-only/ReadOnlyFigureBlock";
 import { TaskGradingPanel } from "@/pages/exam-grading/components/TaskGradingPanel";
@@ -56,6 +59,25 @@ interface Props {
   examId: string;
 }
 
+// Subtle chat-history lean: question/context/figure hug left, the AI answer
+// card hugs right, so the LLM reads as "answering" on the right. `sm:` guards
+// keep the offset from cramping narrow screens.
+const LEAN_LEFT = "sm:mr-16 lg:mr-28";
+const LEAN_RIGHT = "sm:ml-16 lg:ml-28";
+
+/** Mirrors the editor's jump-to-task. */
+const jumpToGradingTask = (taskId: string) => {
+  const el = document.getElementById(`grading-task-${taskId}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  // Focus after the smooth scroll settles so the caret lands cleanly.
+  window.setTimeout(() => {
+    const input = el.querySelector<HTMLInputElement>("[data-score-input]");
+    input?.focus();
+    input?.select();
+  }, 300);
+};
+
 export const GradingView = ({ examId }: Props) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -79,7 +101,7 @@ export const GradingView = ({ examId }: Props) => {
     return m;
   }, [learningGoals]);
 
-  /** Resolve a task's goal ids; falls back to id-only placeholders when LGH is down. */
+  /** Falls back to id-only placeholders when LGH is down. */
   const goalsForTask = (task: Task): TaskGoalDisplay[] =>
     (task.learning_goal_ids ?? []).map(
       (gid) => goalsById.get(gid) ?? { id: gid },
@@ -128,6 +150,7 @@ export const GradingView = ({ examId }: Props) => {
   useEffect(() => {
     if (gradedTasks > prevGradedRef.current) {
       setProgressFlash(true);
+      // 800 must match `animate-progress-shimmer`'s duration in tailwind.config.ts.
       const id = window.setTimeout(() => setProgressFlash(false), 800);
       prevGradedRef.current = gradedTasks;
       return () => window.clearTimeout(id);
@@ -149,7 +172,7 @@ export const GradingView = ({ examId }: Props) => {
     }
   };
 
-  // Group tasks + blocks by section (grading drops sections with no items).
+  // Unlike the editor, grading drops sections with no items.
   const { grouped, taskLetterById, figureLabels } = useSectionGroups(
     sections,
     tasks,
@@ -159,8 +182,7 @@ export const GradingView = ({ examId }: Props) => {
 
   const [currentId, setCurrentId] = useCurrentSectionId(grouped);
 
-  // The scrolling content viewport. Remembers each section's scroll offset and
-  // restores it on return, so switching sections doesn't share one offset.
+  // The scrolling content viewport.
   const scrollRef = useSectionScrollMemory<HTMLDivElement>(currentId);
 
   const sectionEntries = useGradingSectionEntries(
@@ -171,21 +193,9 @@ export const GradingView = ({ examId }: Props) => {
     answersById,
   );
 
-  // Tasks of the currently visible section — drives the footer navigator.
+  // Drives the footer navigator.
   const currentGroup = grouped.find((g) => g.slug === currentId);
   const currentSectionTasks = currentGroup?.tasks ?? [];
-
-  /** Scroll a task into view and focus its score input (mirrors the editor). */
-  const jumpToGradingTask = (taskId: string) => {
-    const el = document.getElementById(`grading-task-${taskId}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => {
-      const input = el.querySelector<HTMLInputElement>("[data-score-input]");
-      input?.focus();
-      input?.select();
-    }, 300);
-  };
 
   /** Advance to the next section (in order, wrapping) that still has ungraded tasks. */
   const handleAdvanceGradingSection = () => {
@@ -222,47 +232,44 @@ export const GradingView = ({ examId }: Props) => {
     const sectionItems = g.items.map((item) => {
       if (item.kind === "context") {
         return (
-          <ReadOnlyContextBlock
-            key={`c-${item.block.id}`}
-            block={item.block}
-          />
+          <div key={`c-${item.block.id}`} className={LEAN_LEFT}>
+            <ReadOnlyContextBlock block={item.block} />
+          </div>
         );
       }
       if (item.kind === "figure") {
         return (
-          <ReadOnlyFigureBlock
-            key={`f-${item.block.id}`}
-            block={item.block}
-            displayLabel={
-              figureLabels.get(item.block.id) ??
-              "Figure"
-            }
-          />
+          <div key={`f-${item.block.id}`} className={LEAN_LEFT}>
+            <ReadOnlyFigureBlock
+              block={item.block}
+              displayLabel={
+                figureLabels.get(item.block.id) ??
+                "Figure"
+              }
+            />
+          </div>
         );
       }
       const task: Task = item.task;
       const label = taskLetterById.get(task.id) ?? "";
       return (
         <div key={`t-${task.id}`} id={`grading-task-${task.id}`}>
-          <ReadOnlyQuestionBlock
-            task={task}
-            label={label}
-            goals={goalsForTask(task)}
-          />
-          {/* Connector tying the question to its AI answer below it. */}
-          <div className="flex flex-col items-center" aria-hidden>
-            <span className="h-hestia-2 w-px bg-hestia-border" />
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-hestia-border bg-hestia-surface text-hestia-text-muted shadow-hestia-sm">
-              <BotMessageSquare size={14} />
-            </span>
-            <span className="h-hestia-2 w-px bg-hestia-border" />
+          <div className={LEAN_LEFT}>
+            <ReadOnlyQuestionBlock
+              task={task}
+              label={label}
+              goals={goalsForTask(task)}
+            />
           </div>
-          <TaskGradingPanel
-            task={task}
-            examId={examId}
-            answer={answersById.get(task.id)}
-            grade={gradesById.get(task.id)}
-          />
+          <QuestionAnswerConnector />
+          <div className={LEAN_RIGHT}>
+            <TaskGradingPanel
+              task={task}
+              examId={examId}
+              answer={answersById.get(task.id)}
+              grade={gradesById.get(task.id)}
+            />
+          </div>
         </div>
       );
     });
@@ -289,7 +296,7 @@ export const GradingView = ({ examId }: Props) => {
   if (!exam) return null;
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden">
+    <div className="flex h-dvh w-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <SectionSidebar
           entries={sectionEntries}
@@ -307,7 +314,7 @@ export const GradingView = ({ examId }: Props) => {
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[900px] px-hestia-6 pb-hestia-8 pt-hestia-5">
+            <div className="mx-auto w-full max-w-[1050px] px-hestia-6 pb-hestia-8 pt-hestia-5">
               {goalsError && anyTaskHasGoals && (
                 <p className="mb-hestia-3 rounded-hestia-md border border-hestia-border bg-hestia-primary-muted/10 px-hestia-3 py-hestia-2 text-sm text-hestia-text-muted">
                   Learning goals could not be loaded from LearningGoalHub — showing
@@ -336,7 +343,7 @@ export const GradingView = ({ examId }: Props) => {
             <span className="text-xs font-medium tabular-nums text-hestia-text-muted">
               {`${gradedTasks}/${totalTasks} graded`}
               {totalTasks > 0 && (
-                <span className="ml-2 text-hestia-text/60">· {progressPct}%</span>
+                <span className="ml-2 text-hestia-text-muted">· {progressPct}%</span>
               )}
             </span>
             <div className="relative hidden h-2.5 w-48 overflow-hidden rounded-full bg-hestia-text/10 ring-1 ring-hestia-border/60 sm:block">
@@ -380,7 +387,7 @@ export const GradingView = ({ examId }: Props) => {
             <AlertDialogAction
               onClick={finishGrading}
               disabled={finishing}
-              className="bg-[hsl(152_50%_30%)] text-white hover:bg-[hsl(152_50%_26%)]"
+              className="bg-hestia-success text-hestia-success-foreground hover:bg-hestia-success/90"
             >
               Finish grading
             </AlertDialogAction>

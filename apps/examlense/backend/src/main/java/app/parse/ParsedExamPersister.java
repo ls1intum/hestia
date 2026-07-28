@@ -79,8 +79,7 @@ class ParsedExamPersister {
     boolean persist(
         ParseAttempt attempt,
         Map<String, Object> parsed,
-        List<Map<String, Object>> tasks,
-        String languageHint
+        List<Map<String, Object>> tasks
     ) {
         UUID examId = attempt.examId;
 
@@ -97,7 +96,7 @@ class ParsedExamPersister {
 
         // -- Defensive fill: every task must end up in a section. The prompt
         // tells the LLM to always emit one, but model output is non-deterministic.
-        fillMissingSections(parsed, tasks, languageHint);
+        fillMissingSections(parsed, tasks);
 
         // -- Sections (drop ones with no tasks)
         Set<String> taskSectionNames = new HashSet<>();
@@ -155,7 +154,7 @@ class ParsedExamPersister {
         persistDecorativeBlocks(examId, parsed, taskRows, sectionIdByName, sectionDescByName);
 
         // -- Finalize exam
-        return finalizeExam(attempt, parsed, languageHint);
+        return finalizeExam(attempt, parsed);
     }
 
     private List<Map<String, String>> collectSections(
@@ -331,7 +330,7 @@ class ParsedExamPersister {
         return b;
     }
 
-    private boolean finalizeExam(ParseAttempt attempt, Map<String, Object> parsed, String languageHint) {
+    private boolean finalizeExam(ParseAttempt attempt, Map<String, Object> parsed) {
         UUID examId = attempt.examId;
         try {
             Exam exam = examRepository.findById(examId).orElse(null);
@@ -348,8 +347,6 @@ class ParsedExamPersister {
             }
             if (parsed.get("title") instanceof String ts && !ts.isEmpty()) exam.setTitle(ts);
             exam.setCourse(asString(parsed.get("course")));
-            Object lang = parsed.get("detected_language");
-            exam.setLanguage(lang instanceof String ls ? ls : (languageHint != null ? languageHint : "en"));
             exam.setStatus("draft");
             exam.setParseError(null);
             exam.setParsePhase(null);
@@ -385,8 +382,7 @@ class ParsedExamPersister {
      */
     static void fillMissingSections(
         Map<String, Object> parsed,
-        List<Map<String, Object>> tasks,
-        String languageHint
+        List<Map<String, Object>> tasks
     ) {
         String lastSeen = null;
         boolean anyMissing = false;
@@ -405,7 +401,7 @@ class ParsedExamPersister {
         if (!anyMissing) return;
 
         // Need a synthesized name for the still-blank early tasks.
-        String synth = pickSyntheticSection(parsed, languageHint);
+        String synth = pickSyntheticSection(parsed);
         for (Map<String, Object> t : tasks) {
             Object raw = t.get("section");
             String s = (raw instanceof String ss) ? ss.trim() : "";
@@ -413,10 +409,10 @@ class ParsedExamPersister {
         }
     }
 
-    static String pickSyntheticSection(Map<String, Object> parsed, String languageHint) {
+    static String pickSyntheticSection(Map<String, Object> parsed) {
         if (parsed.get("title") instanceof String t && !t.trim().isEmpty()) return t.trim();
         if (parsed.get("course") instanceof String c && !c.trim().isEmpty()) return c.trim();
-        String lang = parsed.get("detected_language") instanceof String d ? d : languageHint;
+        String lang = parsed.get("detected_language") instanceof String d ? d : null;
         return "de".equalsIgnoreCase(lang) ? "Aufgaben" : "Tasks";
     }
 

@@ -10,6 +10,26 @@ interface Props {
   className?: string;
 }
 
+/**
+ * `remark-math` only recognizes `$…$` / `$$…$$`. LLM output (and some sources)
+ * often uses LaTeX-native `\(…\)` / `\[…\]` delimiters instead, which would
+ * otherwise render as raw text. Convert them to the `$` form — but never inside
+ * code spans/fences, where the sequences may be literal. Content already using
+ * `$` delimiters is unaffected.
+ */
+const normalizeMathDelimiters = (md: string): string =>
+  md
+    // Split out fenced blocks and inline code; transform only the gaps.
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((seg, i) =>
+      i % 2 === 1
+        ? seg
+        : seg
+            .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m}$$`)
+            .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => `$${m}$`),
+    )
+    .join("");
+
 // NOTE: --hestia-border embeds an alpha channel, so Tailwind slash-opacity
 // modifiers (border-hestia-border/60) compile to invalid CSS — use the plain
 // token. It is already lighter (0.15) than the input default (--input, 0.28).
@@ -111,7 +131,7 @@ export const MarkdownView = ({ content, className }: Props) => {
           ),
         }}
       >
-        {content}
+        {normalizeMathDelimiters(content)}
       </ReactMarkdown>
     </div>
   );

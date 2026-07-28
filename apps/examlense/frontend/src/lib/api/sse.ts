@@ -13,6 +13,13 @@ export interface ExamEventHandlers {
   onProgress?: () => void;
   /** task rows changed server-side (e.g. learning goals generated) — refetch tasks. */
   onTasks?: () => void;
+  /**
+   * Stream (re)connected — fires on the initial connect and on every
+   * auto-reconnect. Consumers re-sync here because an event that landed while
+   * the stream was down (e.g. the single `exam` event for evaluating→grading) is
+   * gone for good, leaving the UI stuck on the last-seen state.
+   */
+  onOpen?: () => void;
 }
 
 function open(path: string): EventSource {
@@ -23,6 +30,7 @@ function open(path: string): EventSource {
 /** Subscribe to one exam's status + progress stream. Returns an unsubscribe fn. */
 export function subscribeExam(examId: string, handlers: ExamEventHandlers): () => void {
   const es = open(`/api/exams/${examId}/events`);
+  if (handlers.onOpen) es.onopen = () => handlers.onOpen?.();
   if (handlers.onExam) es.addEventListener("exam", () => handlers.onExam?.());
   if (handlers.onProgress) es.addEventListener("progress", () => handlers.onProgress?.());
   if (handlers.onTasks) es.addEventListener("tasks", () => handlers.onTasks?.());
@@ -32,6 +40,7 @@ export function subscribeExam(examId: string, handlers: ExamEventHandlers): () =
 /** Subscribe to the list-level stream (any owned exam changed). Returns an unsubscribe fn. */
 export function subscribeExamsList(onChange: () => void): () => void {
   const es = open("/api/exams/events");
+  es.onopen = () => onChange();
   es.addEventListener("exam", () => onChange());
   return () => es.close();
 }

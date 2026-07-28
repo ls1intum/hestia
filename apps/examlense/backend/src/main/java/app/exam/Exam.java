@@ -22,9 +22,6 @@ public class Exam {
     private String course;
 
     @Column(nullable = false)
-    private String language = "en";
-
-    @Column(nullable = false)
     private String source;
 
     @Column(name = "source_file_url")
@@ -81,8 +78,6 @@ public class Exam {
     public void setTitle(String title) { this.title = title; }
     public String getCourse() { return course; }
     public void setCourse(String course) { this.course = course; }
-    public String getLanguage() { return language; }
-    public void setLanguage(String language) { this.language = language; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public String getSourceFileUrl() { return sourceFileUrl; }

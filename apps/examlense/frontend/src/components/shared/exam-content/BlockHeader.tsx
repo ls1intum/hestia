@@ -107,10 +107,10 @@ export const BlockHeader = ({
       </button>
       {missingScore && (
         <span
-          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-hestia-warning"
+          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-hestia-text"
           title="Missing score"
         >
-          <AlertCircle size={12} />
+          <AlertCircle size={12} className="text-hestia-warning" />
           Missing score
         </span>
       )}

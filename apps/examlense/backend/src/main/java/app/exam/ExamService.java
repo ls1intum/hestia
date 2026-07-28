@@ -56,15 +56,17 @@ public class ExamService {
      * object is missing is skipped rather than left as a dangling row.
      */
     @Transactional
-    public Exam duplicateExam(Exam src, String userId) {
+    public Exam duplicateExam(Exam src, String userId, String titleOverride, String solverOverride) {
         Exam copy = new Exam();
         copy.setOwnerId(UUID.fromString(userId));
-        copy.setTitle((src.getTitle() == null ? "" : src.getTitle()) + " (Copy)");
+        copy.setTitle((titleOverride != null && !titleOverride.isBlank())
+            ? titleOverride.trim()
+            : (src.getTitle() == null ? "" : src.getTitle()) + " (Copy)");
         copy.setCourse(src.getCourse());
-        copy.setLanguage(src.getLanguage());
         copy.setSource(src.getSource());
         copy.setStatus("draft");
-        copy.setSolverModel(src.getSolverModel());
+        copy.setSolverModel((solverOverride != null && !solverOverride.isBlank())
+            ? solverOverride : src.getSolverModel());
         copy.setLghCourseId(src.getLghCourseId());
         exams.save(copy);
         copy.setSourceFileUrl(copyPdf(src.getSourceFileUrl(), userId, copy.getId()));

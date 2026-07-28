@@ -155,7 +155,7 @@ export const FigureBlockCard = ({
         >
           {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
           <span>Upload an image</span>
-          <span className="text-[10px] text-hestia-text-muted/70">
+          <span className="text-[10px] text-hestia-text-muted">
             PNG, JPEG, WEBP or GIF · max 5 MB
           </span>
         </button>
@@ -164,6 +164,7 @@ export const FigureBlockCard = ({
       <input
         ref={inputRef}
         type="file"
+        aria-label="Upload figure image"
         accept={MIME.join(",")}
         className="sr-only"
         onChange={(e) => handleFile(e.target.files?.[0])}

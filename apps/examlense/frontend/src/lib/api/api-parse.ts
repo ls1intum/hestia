@@ -10,7 +10,6 @@ export interface ParseExamArgs {
   examId: string;
   storagePath: string;
   fastMode?: boolean;
-  languageHint?: string | null;
 }
 
 /**
@@ -29,7 +28,6 @@ export async function parseExamPdf(args: ParseExamArgs): Promise<void> {
       exam_id: args.examId,
       storage_path: args.storagePath,
       fast_mode: args.fastMode ?? undefined,
-      language_hint: args.languageHint ?? undefined,
     },
   });
 }

@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ReadOnlyContextBlock } from "@/components/shared/exam-content/read-only/ReadOnlyContextBlock";
 import { ReadOnlyFigureBlock } from "@/components/shared/exam-content/read-only/ReadOnlyFigureBlock";
-import { ReadOnlyTaskCard } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
-import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
+import { ReadOnlyQuestionBlock } from "@/components/shared/exam-content/read-only/ReadOnlyQuestionBlock";
+import { QuestionAnswerConnector } from "@/components/shared/exam-content/read-only/QuestionAnswerConnector";
+import { AnswerCard } from "@/components/shared/exam-content/read-only/AnswerCard";
+import { AiAnswerBlock } from "@/components/shared/exam-content/read-only/AiAnswerBlock";
 import { SectionLayout } from "@/components/shared/exam-content/SectionLayout";
 import {
   SectionCarousel,
@@ -34,6 +36,9 @@ interface Props {
   blocks: SectionBlock[];
   answersById: Map<string, TaskAnswer>;
   gradesById: Map<string, TaskGrade>;
+  /** When set (e.g. deep-linked from the breakdown table), open this task's
+   *  section and scroll to it on mount. */
+  scrollToTaskId?: string;
 }
 
 export const AllTasksList = ({
@@ -42,38 +47,31 @@ export const AllTasksList = ({
   blocks,
   answersById,
   gradesById,
+  scrollToTaskId,
 }: Props) => {
   const grouped = useMemo(() => {
     const sortedSections = sections.slice().sort((a, b) => a.position - b.position);
     const all: (Section | null)[] = [...sortedSections, null];
     const sectionIndexById = new Map<string, number>();
     sortedSections.forEach((s, i) => sectionIndexById.set(s.id, i));
-    return all
-      .map((sec) => {
-        const sId = sec?.id ?? null;
-        const secTasks = tasks
-          .filter((tk) => (tk.section_id ?? null) === sId)
-          .sort((a, b) => a.position - b.position);
-        const secBlocks: SectionBlock[] = sec
-          ? blocks.filter((b) => b.section_id === sec.id)
-          : [];
-        const slug = sec
-          ? `section-${(sectionIndexById.get(sec.id) ?? 0) + 1}`
-          : "section-unassigned";
-        const title =
-          sec?.name?.trim() ||
-          (sec ? "Untitled section" : "Unassigned tasks");
-        const { earned, max } = scoreRollup(secTasks, gradesById, answersById);
-        return {
-          slug,
-          title,
-          tasks: secTasks,
-          items: mergeSectionItems(secTasks, secBlocks),
-          earned,
-          max,
-        };
-      })
-      .filter((g) => g.items.length > 0);
+    return all.flatMap((sec) => {
+      const sId = sec?.id ?? null;
+      const secTasks = tasks
+        .filter((tk) => (tk.section_id ?? null) === sId)
+        .sort((a, b) => a.position - b.position);
+      const secBlocks: SectionBlock[] = sec
+        ? blocks.filter((b) => b.section_id === sec.id)
+        : [];
+      const items = mergeSectionItems(secTasks, secBlocks);
+      if (items.length === 0) return [];
+      const slug = sec
+        ? `section-${(sectionIndexById.get(sec.id) ?? 0) + 1}`
+        : "section-unassigned";
+      const title =
+        sec?.name?.trim() || (sec ? "Untitled section" : "Unassigned tasks");
+      const { earned, max } = scoreRollup(secTasks, gradesById, answersById);
+      return [{ slug, title, tasks: secTasks, items, earned, max }];
+    });
   }, [tasks, sections, blocks, gradesById, answersById]);
 
   const figureLabels = useMemo(
@@ -105,9 +103,28 @@ export const AllTasksList = ({
   );
 
   const [currentSlug, setCurrentSlug] = useState<string>(() => {
+    // Deep-linked task wins: open its section directly.
+    if (scrollToTaskId) {
+      const g = grouped.find((gr) => gr.tasks.some((t) => t.id === scrollToTaskId));
+      if (g) return g.slug;
+    }
     if (typeof window === "undefined") return "";
     return window.location.hash.replace(/^#/, "");
   });
+
+  // After the target section's slide is in the DOM, scroll to the task. Double
+  // rAF lets the carousel commit the slide before we measure it.
+  useEffect(() => {
+    if (!scrollToTaskId) return;
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`task-${scrollToTaskId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [scrollToTaskId]);
   // Resolve the effective section during render rather than syncing state via an
   // effect: fall back to the first section whenever the stored slug is empty or
   // points at a section that no longer exists.
@@ -170,62 +187,39 @@ export const AllTasksList = ({
               const maxPoints = task.points ?? 0;
               const pct =
                 maxPoints > 0 && eff.score != null ? eff.score / maxPoints : 0;
-              const hasTextAnswer =
-                task.type === "text" && !!answer?.answer_text;
-              const hasReasoning = !!answer?.reasoning;
-              const panel = (
-                <div className="space-y-hestia-2">
-                  {(hasTextAnswer || hasReasoning) && (
-                    <details className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-bg/40 px-hestia-2 py-1.5">
-                      <summary className="cursor-pointer select-none hestia-eyebrow text-hestia-text-muted">
-                        AI answer
-                      </summary>
-                      <div className="mt-hestia-2 space-y-hestia-2">
-                        {hasTextAnswer && (
-                          <div className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-surface px-hestia-2 py-hestia-2">
-                            <MarkdownView content={answer!.answer_text ?? ""} />
-                          </div>
-                        )}
-                        {hasReasoning && (
-                          <details className="text-xs text-hestia-text-muted">
-                            <summary className="cursor-pointer select-none">
-                              Show reasoning
-                            </summary>
-                            <div className="mt-1">
-                              <MarkdownView
-                                content={answer!.reasoning ?? ""}
-                                className="text-hestia-text-muted"
-                              />
-                            </div>
-                          </details>
-                        )}
-                      </div>
-                    </details>
-                  )}
-                  <div className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-bg/40 px-hestia-2 py-1.5">
-                    <div className="flex items-center justify-between gap-hestia-2 text-xs text-hestia-text-muted">
-                      <span className="hestia-eyebrow">Score</span>
-                      <span className="tabular-nums">
-                        <span className="font-semibold text-hestia-text">
-                          {eff.score != null ? Number(eff.score.toFixed(2)) : "—"}
-                        </span>
-                        {" / "}
-                        {maxPoints}
-                      </span>
-                    </div>
-                    <ScoreBar pct={pct * 100} tone="tier" className="mt-1" />
-                  </div>
-                </div>
-              );
               return (
-                <ReadOnlyTaskCard
+                <div
                   key={`t-${task.id}`}
-                  task={task}
-                  label={letterById.get(task.id) ?? ""}
-                  graded={eff.score != null}
-                  answer={answer}
-                  gradingPanel={panel}
-                />
+                  id={`task-${task.id}`}
+                  className="scroll-mt-12"
+                >
+                  <ReadOnlyQuestionBlock
+                    task={task}
+                    label={letterById.get(task.id) ?? ""}
+                  />
+                  <QuestionAnswerConnector />
+                  <AnswerCard>
+                    {answer ? (
+                      <AiAnswerBlock task={task} answer={answer} />
+                    ) : (
+                      <p className="text-sm text-hestia-text-muted">
+                        No answer was generated for this task.
+                      </p>
+                    )}
+                    <div className="mt-hestia-3 border-t border-hestia-border pt-hestia-3">
+                      <div className="flex items-center justify-between gap-hestia-2">
+                        <span className="hestia-eyebrow text-hestia-text-muted">Score</span>
+                        <span className="text-sm tabular-nums">
+                          <span className="font-semibold text-hestia-text">
+                            {eff.score != null ? Number(eff.score.toFixed(2)) : "—"}
+                          </span>
+                          <span className="text-hestia-text-muted"> / {maxPoints}</span>
+                        </span>
+                      </div>
+                      <ScoreBar pct={pct * 100} tone="tier" className="mt-hestia-2" />
+                    </div>
+                  </AnswerCard>
+                </div>
               );
             })}
           </SectionLayout>

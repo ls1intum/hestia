@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -8,9 +9,18 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils/utils";
 import { ForgeAnimation } from "@/pages/exam-edit/components/ForgeAnimation";
-import { ParsingQualitySurvey } from "@/pages/exam-edit/components/ParsingQualitySurvey";
 import {
   useEvaluationProgress,
   useParseCountdown,
@@ -75,13 +85,14 @@ export const EvaluatingView = ({
       ? "We're extracting sections and tasks from your PDF. You can leave this page and come back at any time — we'll keep working in the background."
       : solveDone
         ? "We've finished solving every task. Continue to grading mode to review the results."
-        : "This may take a few minutes. You can leave this page and come back at any time — we'll keep working in the background.";
+        : "This may take up to a few minutes. You can leave this page and come back at any time — we'll keep working in the background.";
 
   const { done, total, percent: evalPercent } = useEvaluationProgress(
     isEvaluating ? examId : undefined,
   );
 
   const isParsing = kind === "parsing";
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   // Live page-count-based parsing estimate (null → fall back to phase percent).
   const countdown = useParseCountdown({
     active: isParsing && !isError,
@@ -108,7 +119,7 @@ export const EvaluatingView = ({
     isParsing && countdown ? countdown.remainingLabel : `${percent}%`;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       <header className="border-b border-hestia-border bg-hestia-surface/60 px-hestia-5 py-hestia-3">
         <Link
           to="/exams"
@@ -171,17 +182,40 @@ export const EvaluatingView = ({
             <Button
               variant="ghost"
               size="sm"
-              className="mt-hestia-5 text-hestia-text-muted hover:text-hestia-danger"
-              onClick={onCancel}
+              className="mt-hestia-5 text-hestia-text-muted hover:bg-hestia-danger/10 hover:text-hestia-danger"
+              onClick={() => setConfirmCancelOpen(true)}
             >
               Cancel
             </Button>
           )}
-          {!isError && isEvaluating && examId && (
-            <ParsingQualitySurvey examId={examId} />
-          )}
         </div>
       </main>
+
+      <AlertDialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isParsing ? "Cancel parsing?" : "Cancel evaluation?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isParsing
+                ? "This stops reading your PDF and discards any progress so far. You can retry or delete the exam afterward."
+                : "This stops solving your exam and discards any answers generated so far. You can restart evaluation or edit the exam afterward."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="hover:bg-hestia-primary-muted hover:text-hestia-text">
+              Keep running
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isParsing ? "Cancel parsing" : "Cancel evaluation"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

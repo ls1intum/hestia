@@ -11,9 +11,10 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExamProgressCell } from "./ExamProgressCell";
 import { ExamActionsMenu } from "./ExamActionsMenu";
+import { ExamTitleCell } from "./ExamTitleCell";
 
 /** Where a row navigates on click — the exam's canonical mode for its status. */
-export const examHref = (e: ExamListItem): string => examModePath(e.id, e.status);
+const examHref = (e: ExamListItem): string => examModePath(e.id, e.status);
 
 export interface ExamRowHandlers {
   /** Re-parse a PDF that failed during parsing. */
@@ -23,6 +24,7 @@ export interface ExamRowHandlers {
   onCancel: (exam: ExamListItem) => void;
   onDuplicate: (exam: ExamListItem) => void;
   onDelete: (exam: ExamListItem) => void;
+  onRename: (exam: ExamListItem, title: string) => void;
 }
 
 export const ExamTableRow = ({
@@ -57,15 +59,14 @@ export const ExamTableRow = ({
             : `Open exam ${title}`
       }
     >
-      {/* Title (truncated, full text on hover). max-w-0 lets the cell shrink
-          below its content so the span can ellipsize instead of widening the table. */}
+      {/* Title (truncated, full text on hover) with an inline rename affordance.
+          max-w-0 lets the cell shrink below its content so the title can ellipsize
+          instead of widening the table. */}
       <TableCell className="max-w-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="block truncate font-medium text-hestia-text">{title}</span>
-          </TooltipTrigger>
-          <TooltipContent>{title}</TooltipContent>
-        </Tooltip>
+        <ExamTitleCell
+          title={exam.title}
+          onRename={(next) => handlers.onRename(exam, next)}
+        />
       </TableCell>
 
       {/* Status */}

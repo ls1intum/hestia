@@ -3,7 +3,6 @@ import { taskMissingScore, type Task } from "@/lib/exam/exam-helpers";
 import { ProgressCtaButton } from "@/components/shared/chrome/ProgressCtaButton";
 
 interface Props {
-  /** Tasks of the currently visible section. */
   currentSectionTasks: Task[];
   /** Lowercase letter labels (a, b, c…) keyed by task id, for "missing" hints. */
   taskLetterById: Map<string, string>;
@@ -58,9 +57,11 @@ export const SectionProgressButton = ({
   const missingLabels = currentSectionTasks
     .slice()
     .sort((a, b) => a.position - b.position)
-    .filter((tk) => taskMissingScore(tk))
-    .map((tk) => taskLetterById.get(tk.id) ?? "")
-    .filter(Boolean);
+    .flatMap((tk) => {
+      if (!taskMissingScore(tk)) return [];
+      const label = taskLetterById.get(tk.id) ?? "";
+      return label ? [label] : [];
+    });
 
   const isEmpty = total === 0;
   const sectionReady = !isEmpty && scored === total;

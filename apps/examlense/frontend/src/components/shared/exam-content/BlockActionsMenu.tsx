@@ -42,7 +42,7 @@ export const BlockActionsMenu = ({
       {children && <DropdownMenuSeparator />}
       <DropdownMenuItem
         onClick={onDelete}
-        className="text-hestia-danger focus:text-hestia-danger"
+        className="text-destructive focus:bg-destructive/10 focus:text-destructive"
       >
         {deleteLabel}
       </DropdownMenuItem>

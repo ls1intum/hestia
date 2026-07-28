@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useReducer, type ReactNode } from "react";
 import { Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,7 @@ import {
 import { WizardShell } from "./WizardShell";
 import { UploadStep } from "./UploadStep";
 import { SolverModelStep } from "./SolverModelStep";
-import { MetadataStep, type ExamLanguage } from "./MetadataStep";
+import { MetadataStep } from "./MetadataStep";
 import { CoursePickerStep, CREATE_COURSE, NO_COURSE } from "./CoursePickerStep";
 import { useCreateLghCourse } from "@/hooks/data/use-learning-goals";
 
@@ -50,6 +50,36 @@ const SCAFFOLD_TASK =
  *             and drops the author into the editor.
  * Open when `mode` is non-null; `onClose` clears it in the parent.
  */
+interface WizardState {
+  stepIndex: number;
+  busy: boolean;
+  file: File | null;
+  parserFastMode: boolean;
+  /** Page count of the uploaded PDF (for the pre-parse estimate); null = unknown. */
+  pageCount: number | null;
+  solverId: string;
+  courseValue: string;
+  newCourseName: string;
+  title: string;
+}
+
+const wizardReducer = (state: WizardState, patch: Partial<WizardState>): WizardState => ({
+  ...state,
+  ...patch,
+});
+
+const initialWizardState = (solverId: string): WizardState => ({
+  stepIndex: 0,
+  busy: false,
+  file: null,
+  parserFastMode: false,
+  pageCount: null,
+  solverId,
+  courseValue: NO_COURSE,
+  newCourseName: "",
+  title: "",
+});
+
 export const StartExamDialog = ({
   mode,
   onClose,
@@ -70,44 +100,27 @@ export const StartExamDialog = ({
     solverCatalog?.defaultId,
   );
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const [busy, setBusy] = useState(false);
-
-  // Collected across steps.
-  const [file, setFile] = useState<File | null>(null);
-  const [parserFastMode, setParserFastMode] = useState(false);
-  // Page count of the uploaded PDF, captured on the upload step's Continue and
-  // used for the pre-parse time estimate. null = unknown (docx or pdfjs failed).
-  const [pageCount, setPageCount] = useState<number | null>(null);
-  const [solverId, setSolverId] = useState("");
-  const [courseValue, setCourseValue] = useState(NO_COURSE);
-  const [newCourseName, setNewCourseName] = useState("");
-  const [title, setTitle] = useState("");
-  const [language, setLanguage] = useState<ExamLanguage>("en");
-
-  // Fresh state each time the dialog opens.
-  useEffect(() => {
-    if (!mode) return;
-    setStepIndex(0);
-    setBusy(false);
-    setFile(null);
-    setParserFastMode(false);
-    setPageCount(null);
-    setSolverId(defaultSolverId);
-    setCourseValue(NO_COURSE);
-    setNewCourseName("");
-    setTitle("");
-    setLanguage("en");
-    // Only reset on open/mode change — not when the model catalog refreshes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  // Fresh state per open comes from the parent remounting this dialog (keyed by
+  // an open counter), which re-runs the initializer — so there is deliberately
+  // no reset-on-open effect here.
+  const [form, dispatch] = useReducer(wizardReducer, defaultSolverId, initialWizardState);
+  const { stepIndex, busy, file, parserFastMode, pageCount, solverId, courseValue, newCourseName, title } = form;
+  const setStepIndex = (stepIndex: number) => dispatch({ stepIndex });
+  const setBusy = (busy: boolean) => dispatch({ busy });
+  const setFile = (file: File | null) => dispatch({ file });
+  const setParserFastMode = (parserFastMode: boolean) => dispatch({ parserFastMode });
+  const setPageCount = (pageCount: number | null) => dispatch({ pageCount });
+  const setSolverId = (solverId: string) => dispatch({ solverId });
+  const setCourseValue = (courseValue: string) => dispatch({ courseValue });
+  const setNewCourseName = (newCourseName: string) => dispatch({ newCourseName });
+  const setTitle = (title: string) => dispatch({ title });
 
   const activeMode: StartExamMode = mode ?? "pdf";
   const steps = activeMode === "manual" ? MANUAL_STEPS : PDF_STEPS;
   const step = steps[stepIndex];
   const open = mode !== null;
 
-  const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
+  const goBack = () => setStepIndex(Math.max(0, stepIndex - 1));
 
   // Resolve the LGH course id to link. When the author chose "create new", the
   // empty course is created in LGH now (once) and its id reused. Throws on
@@ -147,7 +160,6 @@ export const StartExamDialog = ({
         title: baseTitle,
         source: "pdf",
         status: "parsing",
-        language: "en",
         solver_model: solverId,
         lgh_course_id: courseId,
       });
@@ -216,7 +228,6 @@ export const StartExamDialog = ({
     try {
       exam = await createExam({
         title: title.trim(),
-        language,
         source: "manual",
         status: "draft",
         solver_model: solverId,
@@ -333,9 +344,7 @@ export const StartExamDialog = ({
           body: (
             <MetadataStep
               title={title}
-              language={language}
               onTitleChange={setTitle}
-              onLanguageChange={setLanguage}
               onSubmit={handleNext}
             />
           ),

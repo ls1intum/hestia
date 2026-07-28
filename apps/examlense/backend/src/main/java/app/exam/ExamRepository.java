@@ -52,24 +52,45 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
     int updateStatusIfCurrent(@Param("id") UUID id, @Param("from") String from, @Param("to") String to);
 
     /**
-     * User cancellation: revert a still-processing exam to failed. Guarded on the
-     * current status so it only affects exams actually mid-parse/mid-evaluate, and
-     * so the running background job (which reads this status before finalizing)
-     * observes the cancel. Returns 0 when the exam is not in a cancellable state.
+     * User cancellation of a mid-parse exam: revert to {@code failed} with the
+     * cancel message so the editor offers a re-parse — there is no completed
+     * structure worth preserving.
      */
     @Modifying
     @Transactional
     @Query("update Exam e set e.status = 'failed', e.parseError = :error, e.parsePhase = null "
-        + "where e.id = :id and e.status in ('parsing', 'evaluating')")
-    int cancelProcessing(@Param("id") UUID id, @Param("error") String error);
+        + "where e.id = :id and e.status = 'parsing'")
+    int cancelParsing(@Param("id") UUID id, @Param("error") String error);
 
+    /**
+     * User cancellation of a mid-solve exam: revert to {@code ready}, not
+     * {@code failed} — the parsed/edited structure is intact, so a deliberate
+     * cancel belongs back in the editor rather than in an error state. Leaving
+     * {@code evaluating} is also what locks out the running solve job, whose
+     * finalize is CAS'd on {@code evaluating}.
+     */
     @Modifying
     @Transactional
-    @Query("update Exam e set e.status = 'evaluating', e.parseError = null, e.solverModel = :solverModel where e.id = :id")
+    @Query("update Exam e set e.status = 'ready', e.parseError = null, e.parsePhase = null "
+        + "where e.id = :id and e.status = 'evaluating'")
+    int cancelEvaluating(@Param("id") UUID id);
+
+    /**
+     * Start (or retry) evaluation. Compare-and-set on the eligible statuses: a
+     * fresh send is already {@code evaluating} (the client flips it up front) and
+     * a retry starts from {@code failed}. Crucially this is NOT unconditional — a
+     * cancel reverts to {@code ready}, so a stale fire-and-forget dispatch landing
+     * here after the cancel matches no row and the caller bails, instead of
+     * resurrecting the exam and wiping its answers.
+     */
+    @Modifying
+    @Transactional
+    @Query("update Exam e set e.status = 'evaluating', e.parseError = null, e.solverModel = :solverModel "
+        + "where e.id = :id and e.status in ('evaluating', 'failed')")
     int startEvaluating(@Param("id") UUID id, @Param("solverModel") String solverModel);
 
-    // Only mark failed while still evaluating, so a user cancel (which already
-    // set status=failed with its own message) isn't clobbered by a late sweep.
+    // Only mark failed while still evaluating, so a user cancel (which reverts the
+    // exam to `ready`) isn't clobbered back to failed by a late sweep.
     @Modifying
     @Transactional
     @Query("update Exam e set e.status = 'failed', e.parseError = :error "

@@ -40,18 +40,15 @@ class ParseInputBuilder {
         this.progress = progress;
     }
 
-    AiProvider.UserContent build(ParserStrategy.PdfMode mode, UUID examId, byte[] bytes, String languageHint) {
-        String langSuffix = (languageHint != null && !languageHint.isBlank())
-            ? " Language hint: " + languageHint + "."
-            : "";
+    AiProvider.UserContent build(ParserStrategy.PdfMode mode, UUID examId, byte[] bytes) {
         return switch (mode) {
-            case RASTERIZE -> rasterized(examId, bytes, langSuffix);
-            case TEXT_ONLY -> extractedText(examId, bytes, langSuffix);
-            case PDF_DIRECT -> pdfDirect(bytes, langSuffix);
+            case RASTERIZE -> rasterized(examId, bytes);
+            case TEXT_ONLY -> extractedText(examId, bytes);
+            case PDF_DIRECT -> pdfDirect(bytes);
         };
     }
 
-    private AiProvider.UserContent rasterized(UUID examId, byte[] bytes, String langSuffix) {
+    private AiProvider.UserContent rasterized(UUID examId, byte[] bytes) {
         List<byte[]> pages;
         long tRaster = System.nanoTime();
         try {
@@ -65,7 +62,7 @@ class ParseInputBuilder {
         }
         List<AiProvider.ContentPart> parts = new ArrayList<>();
         parts.add(new AiProvider.TextPart(
-            "Extract the exam from the following page images, in reading order." + langSuffix));
+            "Extract the exam from the following page images, in reading order."));
         for (byte[] png : pages) {
             String b64 = Base64.getEncoder().encodeToString(png);
             parts.add(new AiProvider.ImageUrlPart("data:image/png;base64," + b64));
@@ -73,7 +70,7 @@ class ParseInputBuilder {
         return new AiProvider.MultipartContent(parts);
     }
 
-    private AiProvider.UserContent extractedText(UUID examId, byte[] bytes, String langSuffix) {
+    private AiProvider.UserContent extractedText(UUID examId, byte[] bytes) {
         String text;
         long tExtract = System.nanoTime();
         try {
@@ -97,15 +94,14 @@ class ParseInputBuilder {
                     + " words may be hyphenated across line breaks; reconstruct sensibly."
                     + " Math, code, and tables may have lost typographic formatting; restore them"
                     + " with markdown ($..$ / $$..$$ for math, ```...``` for code) where appropriate."
-                    + langSuffix
                     + "\n\n----- PDF TEXT -----\n" + text)
         ));
     }
 
-    private AiProvider.UserContent pdfDirect(byte[] bytes, String langSuffix) {
+    private AiProvider.UserContent pdfDirect(byte[] bytes) {
         String b64 = Base64.getEncoder().encodeToString(bytes);
         return new AiProvider.MultipartContent(List.of(
-            new AiProvider.TextPart("Extract the exam." + langSuffix),
+            new AiProvider.TextPart("Extract the exam."),
             new AiProvider.FilePart("exam.pdf", b64, "application/pdf")
         ));
     }

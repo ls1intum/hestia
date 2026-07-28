@@ -10,7 +10,7 @@ interface Props {
   style?: CSSProperties;
   /** Extra classes on the card shell (e.g. a state-driven border/animation). */
   className?: string;
-  /** Header row — typically a `<BlockHeader />` invocation. Omit for a headerless card. */
+  /** Header row — typically a `<BlockHeader />` invocation. */
   header?: ReactNode;
   /** Body region under the header. Collapsed: subtitle preview. Expanded: full editor body. */
   body?: ReactNode;

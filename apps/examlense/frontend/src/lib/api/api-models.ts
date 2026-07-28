@@ -17,9 +17,7 @@ import {
   isApiClientConfigured,
 } from "@/lib/api/api-client";
 import {
-  DEFAULT_PARSER_MODEL_ID,
   DEFAULT_SOLVER_MODEL_ID,
-  PARSER_MODELS,
   SOLVER_MODELS,
   type LlmModel,
 } from "@/lib/exam/llm-models";
@@ -85,22 +83,6 @@ function mergeWithFallbackModels(
     }
   }
   return merged;
-}
-
-export function useParserModels() {
-  return useQuery({
-    queryKey: ["api", "parser-models"],
-    queryFn: () =>
-      fetchCatalog("/api/parser-models", PARSER_MODELS, DEFAULT_PARSER_MODEL_ID),
-    staleTime: 5 * 60 * 1000,
-    // The catalog rarely changes; keep the bundled list as initial data so
-    // dropdowns render instantly even on a cold cache.
-    initialData: {
-      models: PARSER_MODELS,
-      defaultId: DEFAULT_PARSER_MODEL_ID,
-      source: "fallback" as const,
-    },
-  });
 }
 
 export function useSolverModels() {

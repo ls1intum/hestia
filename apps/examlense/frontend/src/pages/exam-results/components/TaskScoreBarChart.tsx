@@ -17,7 +17,43 @@ interface Props {
   grades: Map<string, TaskGrade>;
   answers: Map<string, TaskAnswer>;
   labelById: Map<string, string>;
+  /** Open a task in the "All tasks" view (jumps to its section + scrolls). */
+  onOpenTask: (taskId: string) => void;
 }
+
+/**
+ * Clickable X-axis tick: the task label doubles as a link into "All tasks".
+ * Recharts injects `x`/`y`/`payload`; the rest is supplied at the call site.
+ */
+const TaskAxisTick = ({
+  x,
+  y,
+  payload,
+  idByLabel,
+  onOpenTask,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+  idByLabel: Map<string, string>;
+  onOpenTask: (taskId: string) => void;
+}) => {
+  if (x == null || y == null || !payload) return null;
+  const id = idByLabel.get(payload.value);
+  return (
+    <text
+      x={x}
+      y={y}
+      dy={12}
+      textAnchor="middle"
+      onClick={() => id && onOpenTask(id)}
+      className="cursor-pointer fill-[hsl(var(--muted-foreground))] text-[11px] transition-colors hover:fill-hestia-primary hover:underline"
+    >
+      <title>Open in All tasks</title>
+      {payload.value}
+    </text>
+  );
+};
 
 interface Row {
   id: string;
@@ -62,7 +98,7 @@ const ChartTooltip = ({
   );
 };
 
-export const TaskScoreBarChart = ({ tasks, grades, answers, labelById }: Props) => {
+export const TaskScoreBarChart = ({ tasks, grades, answers, labelById, onOpenTask }: Props) => {
   const rows = useMemo<Row[]>(() => {
     const sorted = tasks
       .slice()
@@ -89,6 +125,7 @@ export const TaskScoreBarChart = ({ tasks, grades, answers, labelById }: Props) 
 
   const minWidth = Math.max(rows.length * 56, 320);
   const maxPoints = rows.reduce((acc, r) => Math.max(acc, r.max), 0);
+  const idByLabel = new Map(rows.map((r) => [r.label, r.id]));
 
   return (
     <div className="hestia-card">
@@ -112,7 +149,7 @@ export const TaskScoreBarChart = ({ tasks, grades, answers, labelById }: Props) 
             >
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tick={<TaskAxisTick idByLabel={idByLabel} onOpenTask={onOpenTask} />}
                 tickLine={false}
                 axisLine={{ stroke: "hsl(var(--border))" }}
                 interval={0}

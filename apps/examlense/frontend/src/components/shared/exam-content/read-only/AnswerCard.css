@@ -1,8 +1,7 @@
-/* Pulsating border for a task that still needs grading (TaskGradingPanel.tsx):
-   a solid grading-violet ring that fades in and out to draw attention. Built as
-   a ::before masked to a thin ring, so it rides over the card's normal border
-   without touching the card's own shadow — there is no persistent border color
-   shift. Reduced-motion users get a plain static violet border instead (no pulse). */
+/* Pulsating border for a task that still needs grading (AnswerCard, pending).
+   Built as a ::before masked to a thin ring, so it rides over the card's normal
+   border without touching the card's own shadow — there is no persistent border
+   color shift. Reduced-motion users get a plain static violet border instead. */
 @keyframes hestia-pulse-grading {
   0%,
   100% {

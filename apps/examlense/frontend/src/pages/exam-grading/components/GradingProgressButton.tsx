@@ -6,7 +6,6 @@ import {
 import { type Task } from "@/lib/exam/exam-helpers";
 
 interface Props {
-  /** Tasks of the currently visible section. */
   currentSectionTasks: Task[];
   /** True for tasks still missing a score (from `effectiveScore`). */
   pendingByTaskId: Map<string, boolean>;
@@ -14,11 +13,10 @@ interface Props {
   taskLetterById: Map<string, string>;
   /** True when every task across the whole exam has been graded. */
   allGraded: boolean;
-  /** Jump (scroll + focus) to the first ungraded task in the current section. */
+  /** Jump (scroll + focus) to a task. */
   onJumpToTask: (taskId: string) => void;
-  /** Advance to the next section that still has ungraded tasks. */
   onAdvanceSection: () => void;
-  /** Open the "Finish grading" confirm dialog. */
+  /** Opens the confirm dialog — does not finish grading itself. */
   onFinish: () => void;
 }
 
@@ -57,9 +55,11 @@ export const GradingProgressButton = ({
   const missingLabels = currentSectionTasks
     .slice()
     .sort((a, b) => a.position - b.position)
-    .filter((tk) => pendingByTaskId.get(tk.id))
-    .map((tk) => taskLetterById.get(tk.id) ?? "")
-    .filter(Boolean);
+    .flatMap((tk) => {
+      if (!pendingByTaskId.get(tk.id)) return [];
+      const label = taskLetterById.get(tk.id) ?? "";
+      return label ? [label] : [];
+    });
 
   const isEmpty = total === 0;
   const sectionDone = !isEmpty && graded === total;
@@ -85,6 +85,8 @@ export const GradingProgressButton = ({
     icon = <ArrowRight size={14} />;
     handleClick = onAdvanceSection;
   } else {
+    // Cap the hint at three letters: ProgressCtaButton is width-capped and
+    // truncates, so a longer list would silently lose its tail.
     const shown = missingLabels.slice(0, 3).join(", ");
     const labels = missingLabels.length > 3 ? `${shown}, …` : shown;
     label = `${graded}/${total} graded${labels ? ` · missing ${labels}` : ""}`;

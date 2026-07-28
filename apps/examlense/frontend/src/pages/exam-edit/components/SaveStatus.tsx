@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useRef, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from "react";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
@@ -36,8 +36,13 @@ export const SaveStatusProvider = ({ children }: { children: ReactNode }) => {
     setStatus("error");
   }, []);
 
+  const value = useMemo(
+    () => ({ status, setSaving, setSaved, setError }),
+    [status, setSaving, setSaved, setError],
+  );
+
   return (
-    <SaveStatusContext.Provider value={{ status, setSaving, setSaved, setError }}>
+    <SaveStatusContext.Provider value={value}>
       {children}
     </SaveStatusContext.Provider>
   );

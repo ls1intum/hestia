@@ -1,3 +1,9 @@
+import claudeLogo from "@/assets/model-logos/claude.svg";
+import geminiLogo from "@/assets/model-logos/gemini.svg";
+import mistralLogo from "@/assets/model-logos/mistral.svg";
+import openaiLogo from "@/assets/model-logos/openai.svg";
+import qwenLogo from "@/assets/model-logos/qwen.svg";
+
 /**
  * Presentation metadata (provider label + logo) for LLM models, shared by the
  * create-exam parser/solver pickers and the results overview. The behavioral
@@ -14,38 +20,32 @@ export const MODEL_META: Record<string, ModelMeta> = {
   "gemini-3.5-flash": {
     provider: "Google",
     name: "Gemini 3.5 Flash",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg",
+    logoSrc: geminiLogo,
   },
   "gemini-2.5-flash": {
     provider: "Google",
     name: "Gemini Flash",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg",
+    logoSrc: geminiLogo,
   },
   "gpt-5.5": {
     provider: "OpenAI",
-    name: "GPT",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/OpenAI_logo_2025_%28symbol%29.svg",
+    name: "GPT 5.5",
+    logoSrc: openaiLogo,
   },
   "claude-opus-4-8": {
     provider: "Anthropic",
-    name: "Claude",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Claude_AI_symbol.svg",
+    name: "Claude Opus 4.8",
+    logoSrc: claudeLogo,
   },
   "mistral-large-3-675b-instruct-2512": {
     provider: "GWDG",
     name: "Mistral Large",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Mistral_AI_logo_%282025%E2%80%93%29.svg",
+    logoSrc: mistralLogo,
   },
   "qwen3.6-35b-a3b": {
     provider: "GWDG",
     name: "Qwen 3.6",
-    logoSrc:
-      "https://commons.wikimedia.org/wiki/Special:Redirect/file/Qwen_logo.svg",
+    logoSrc: qwenLogo,
   },
 };
 

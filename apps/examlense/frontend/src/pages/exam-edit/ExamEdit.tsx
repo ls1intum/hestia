@@ -77,6 +77,16 @@ import {
 } from "@/components/shared/exam-content/SectionSidebar";
 import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
+const lastPositionIn = (group: { tasks: Task[]; items: BlockItem[] }) => {
+  let max = 0;
+  for (const it of group.items) if (it.position > max) max = it.position;
+  return max;
+};
+
+// Tasks with no section still need a stable carousel/slide key across renders.
+const groupSectionId = (g: { section: Section | null }) =>
+  g.section?.id ?? "_unassigned";
+
 const ExamEditInner = () => {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -128,25 +138,35 @@ const ExamEditInner = () => {
   // confirm state without being recreated.
   const confirmApi = useSectionConfirmations(id, sections, tasks);
   const confirmApiRef = useRef(confirmApi);
-  confirmApiRef.current = confirmApi;
+  useEffect(() => {
+    confirmApiRef.current = confirmApi;
+  });
 
   const navigate = useNavigate();
 
-  // Cancel an in-progress parse/evaluate: the backend reverts the exam to
-  // `failed` and, crucially, stops the fire-and-forget job from resurrecting it
-  // when its LLM call eventually returns. Then leave for the exam list.
+  // Bumped by every cancel so an in-flight sendToEvaluation dispatch can tell it
+  // was cancelled during its async preflight and bail. A counter, not a boolean:
+  // nothing has to remember to reset it, so a path that starts processing without
+  // clearing a latch can't silently disable Cancel.
+  const cancelGenerationRef = useRef(0);
+
+  // Semantics of the revert live on `cancelExam`. We stay on the page and let
+  // routing re-render the reverted exam: a solve-cancel lands back in the editor,
+  // a parse-cancel shows the re-parse splash.
   const handleCancelProcessing = async () => {
     if (!id) return;
+    cancelGenerationRef.current += 1;
     try {
-      await cancelExam(id);
+      const updated = await cancelExam(id);
+      qc.setQueryData(examKey(id), updated);
     } catch (err) {
-      // 409 = it already finished between render and click; nothing to cancel.
+      // Practically always a 409: it finished between opening the dialog and
+      // confirming, so there is nothing to cancel and realtime shows the result.
       console.error("cancel processing failed", err);
-      toast({ title: "Could not cancel — it may have already finished.", variant: "destructive" });
+      toast({ title: "Already finished — nothing to cancel." });
     }
     qc.invalidateQueries({ queryKey: examKey(id) });
     qc.invalidateQueries({ queryKey: ["exams-list"] });
-    navigate("/exams");
   };
 
   // True once the user sends this exam to solving in this session. Lets us
@@ -154,10 +174,10 @@ const ExamEditInner = () => {
   // while a directly-opened already-graded exam still auto-redirects.
   const evaluationStartedRef = useRef(false);
 
-
   const sendToEvaluation = async () => {
     if (!id || !exam) return;
     evaluationStartedRef.current = true;
+    const dispatchGeneration = cancelGenerationRef.current;
     setSaving();
 
     // Step 1: flip status to "evaluating" up front so EvaluatingView
@@ -197,6 +217,11 @@ const ExamEditInner = () => {
     const everyTaskAnswered =
       allTasks.length > 0 && allTasks.every((t) => answered.has(t.id));
 
+    // Cancelled during the preflight above: don't dispatch, or we'd flip the
+    // just-cancelled exam back to grading/evaluating (startEvaluation is
+    // unconditional server-side).
+    if (cancelGenerationRef.current !== dispatchGeneration) return;
+
     // Step 4a: every task has a pre-solved answer. Skip the evaluation
     // phase entirely and hand the user straight to grading.
     if (everyTaskAnswered) {
@@ -232,13 +257,6 @@ const ExamEditInner = () => {
     blocks,
     { includeEmpty: true },
   );
-
-  // Last position used inside a given section (across tasks + blocks).
-  const lastPositionIn = (group: { tasks: Task[]; items: BlockItem[] }) => {
-    let max = 0;
-    for (const it of group.items) if (it.position > max) max = it.position;
-    return max;
-  };
 
   // Per-item collapse state (covers tasks + context blocks)
   const collapseApi = useItemCollapseState(id);
@@ -290,8 +308,7 @@ const ExamEditInner = () => {
   });
 
   // The scrolling content viewport — also used by the "Score needs to be set"
-  // indicator to place itself relative to the visible area. Remembers each
-  // section's scroll offset and restores it on return.
+  // indicator to place itself relative to the visible area.
   const scrollRef = useSectionScrollMemory<HTMLDivElement>(currentSectionId);
 
   const markIntroComplete = useCallback(() => {
@@ -404,6 +421,7 @@ const ExamEditInner = () => {
       onPatchTask={patchTask}
       onDeleteTask={deleteTask}
       onDuplicateTask={duplicateTask}
+      isNextUnscoredTask={item.kind === "task" && item.task.id === nextUnscoredTaskId}
     />
   );
 
@@ -639,7 +657,7 @@ const ExamEditInner = () => {
     showInlineIntro && !introComplete && currentSectionId === "";
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden">
+    <div className="flex h-dvh w-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <SectionSidebar
           entries={sectionEntries}
@@ -801,10 +819,6 @@ const CarouselView = ({
   onCurrentIdChange,
   introPending,
 }: CarouselViewProps) => {
-  // Sticky id used in the carousel when there is no real section.
-  const groupSectionId = (g: { section: Section | null }) =>
-    g.section?.id ?? "_unassigned";
-
   // Scroll to top on mount so a stale URL hash doesn't leave the page mid-scroll.
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -920,7 +934,7 @@ const CarouselView = ({
 };
 
 const ExamEdit = () => (
-  <div className="h-screen overflow-hidden bg-hestia-bg text-hestia-text">
+  <div className="h-dvh overflow-hidden bg-hestia-bg text-hestia-text">
     <SaveStatusProvider>
       <ExamEditInner />
     </SaveStatusProvider>

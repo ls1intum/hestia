@@ -134,15 +134,18 @@ const toggleFilter = (prev: Set<string>, id: string, allIds: string[]): Set<stri
 };
 
 /** Build a compact page-number list with ellipses for many pages. */
-const pageItems = (current: number, total: number): (number | "…")[] => {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const items: (number | "…")[] = [1];
+type PageItem = { key: string; value: number | "…" };
+
+const pageItems = (current: number, total: number): PageItem[] => {
+  const num = (p: number): PageItem => ({ key: `page-${p}`, value: p });
+  if (total <= 7) return Array.from({ length: total }, (_, i) => num(i + 1));
+  const items: PageItem[] = [num(1)];
   const start = Math.max(2, current - 1);
   const end = Math.min(total - 1, current + 1);
-  if (start > 2) items.push("…");
-  for (let p = start; p <= end; p++) items.push(p);
-  if (end < total - 1) items.push("…");
-  items.push(total);
+  if (start > 2) items.push({ key: "ellipsis-start", value: "…" });
+  for (let p = start; p <= end; p++) items.push(num(p));
+  if (end < total - 1) items.push({ key: "ellipsis-end", value: "…" });
+  items.push(num(total));
   return items;
 };
 
@@ -164,11 +167,13 @@ const SortableHead = ({
   const active = sortKey === columnKey;
   const Icon = !active ? ChevronsUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <TableHead className={className}>
+    <TableHead
+      className={className}
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+    >
       <button
         type="button"
         onClick={() => onSort(columnKey)}
-        aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
         className={cn(
           "inline-flex items-center gap-1 rounded-hestia-sm transition-colors hover:text-hestia-text",
           active && "text-hestia-text",
@@ -217,7 +222,7 @@ const FilterHead = ({
             {label}
             <ListFilter size={13} className={cn(showAll && "opacity-50")} />
             {!showAll && (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-hestia-primary px-1 text-[10px] font-semibold leading-none text-white">
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-hestia-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
                 {selected.size}
               </span>
             )}
@@ -384,20 +389,20 @@ export const ExamsTable = ({
                 className={cn(safePage === 1 && "pointer-events-none opacity-50")}
               />
             </PaginationItem>
-            {pageItems(safePage, totalPages).map((item, i) => (
-              <PaginationItem key={`${item}-${i}`}>
-                {item === "…" ? (
+            {pageItems(safePage, totalPages).map(({ key, value }) => (
+              <PaginationItem key={key}>
+                {value === "…" ? (
                   <span className="flex h-9 w-9 items-center justify-center text-hestia-text-muted">…</span>
                 ) : (
                   <PaginationLink
                     href="#"
-                    isActive={item === safePage}
+                    isActive={value === safePage}
                     onClick={(e) => {
                       e.preventDefault();
-                      setPage(item);
+                      setPage(value);
                     }}
                   >
-                    {item}
+                    {value}
                   </PaginationLink>
                 )}
               </PaginationItem>

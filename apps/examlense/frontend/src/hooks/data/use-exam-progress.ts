@@ -33,7 +33,8 @@ export const useEvaluationProgress = (examId: string | undefined) => {
     };
 
     refresh();
-    const unsubscribe = subscribeExam(examId, { onProgress: refresh });
+    // onOpen: see `ExamEventHandlers.onOpen` — re-counts answers after a drop.
+    const unsubscribe = subscribeExam(examId, { onProgress: refresh, onOpen: refresh });
     return () => {
       cancelled = true;
       unsubscribe();

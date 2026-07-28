@@ -82,7 +82,7 @@ export const ExamResilienceBanner = ({ earned, max }: Props) => {
             strokeWidth="2.5"
             strokeDasharray={`${resilience} ${100 - resilience}`}
             strokeLinecap="round"
-            className="transition-all duration-700"
+            className="transition-[stroke-dasharray] duration-700"
           />
         </svg>
         <div className="absolute flex flex-col items-center">

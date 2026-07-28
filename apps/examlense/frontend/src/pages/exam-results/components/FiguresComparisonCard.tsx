@@ -13,7 +13,7 @@ interface Props {
 export const FiguresComparisonCard = ({ tasks, blocks, grades, answers }: Props) => {
   // Find section IDs that contain at least one figure block
   const sectionsWithFigures = new Set(
-    blocks.filter((b) => b.kind === "figure").map((b) => b.section_id),
+    blocks.flatMap((b) => (b.kind === "figure" ? [b.section_id] : [])),
   );
 
   const withFigures = tasks.filter((tk) => tk.section_id && sectionsWithFigures.has(tk.section_id));

@@ -25,7 +25,7 @@ export interface TaskGrade {
 }
 
 export const correctOptionIds = (task: Task): string[] =>
-  (task.options ?? []).filter((o: TaskOption) => o.is_correct).map((o) => o.id);
+  (task.options ?? []).flatMap((o: TaskOption) => (o.is_correct ? [o.id] : []));
 
 export interface AutoGradeResult {
   isCorrect: boolean;
@@ -133,22 +133,19 @@ export const goalRollup = (
   grades: Map<string, TaskGrade>,
   answers: Map<string, TaskAnswer>,
 ): GoalRollup[] => {
-  const ids: number[] = [];
-  const seen = new Set<number>();
+  const tasksByGoal = new Map<number, Task[]>();
   for (const tk of tasks) {
+    const seen = new Set<number>();
     for (const id of tk.learning_goal_ids ?? []) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        ids.push(id);
-      }
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const list = tasksByGoal.get(id);
+      if (list) list.push(tk);
+      else tasksByGoal.set(id, [tk]);
     }
   }
-  return ids.map((goalId) => ({
+  return [...tasksByGoal].map(([goalId, goalTasks]) => ({
     goalId,
-    ...scoreRollup(
-      tasks.filter((tk) => (tk.learning_goal_ids ?? []).includes(goalId)),
-      grades,
-      answers,
-    ),
+    ...scoreRollup(goalTasks, grades, answers),
   }));
 };

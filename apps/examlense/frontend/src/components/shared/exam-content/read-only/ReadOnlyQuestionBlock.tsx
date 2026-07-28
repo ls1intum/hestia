@@ -8,23 +8,30 @@ import {
 } from "@/components/ui/collapsible";
 import { BLOOM_LABELS, SOLO_LABELS } from "@/lib/exam/labels";
 import type { Task } from "@/lib/exam/exam-helpers";
+import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals";
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
-import type { TaskGoalDisplay } from "@/components/shared/exam-content/read-only/ReadOnlyTaskCard";
+
+/** A resolved (or placeholder, when LGH is unreachable) learning goal to display. */
+export interface TaskGoalDisplay {
+  id: number;
+  text?: string | null;
+  bloomLevel?: BloomLevel | null;
+  soloLevel?: SoloLevel | null;
+}
 
 interface Props {
   task: Task;
   label: string;
-  /** LGH-derived learning goals of this task, rendered read-only. */
   goals?: TaskGoalDisplay[];
 }
 
 /**
- * The static question shown in grading mode: prompt + learning goals (+ optional
- * reference answer for text tasks). It is non-editable reference material, so it
- * renders card-less — the warm-tinted flat look of ReadOnlyContextBlock — leaving
- * the gradable AI answer + score (TaskGradingPanel) as the only real "card" and
- * therefore the grader's single work object on the page.
+ * The static question shown in grading and results: prompt + learning goals
+ * (+ optional reference answer for text tasks). It is non-editable reference
+ * material, so it renders card-less — the warm-tinted flat look of
+ * ReadOnlyContextBlock — leaving the AI answer + score (AnswerCard) as the only
+ * real "card" and therefore the single work object on the page.
  */
 export const ReadOnlyQuestionBlock = ({ task, label, goals }: Props) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -49,7 +56,7 @@ export const ReadOnlyQuestionBlock = ({ task, label, goals }: Props) => {
           {promptPreview ? (
             <MarkdownView content={promptPreview} className="text-hestia-text/90" />
           ) : (
-            <p className="text-sm italic text-hestia-text-muted/70">Untitled task</p>
+            <p className="text-sm italic text-hestia-text-muted">Untitled task</p>
           )}
 
           {(goals?.length ?? 0) > 0 && (

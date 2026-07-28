@@ -83,6 +83,14 @@ public class SolveExamService {
         UUID examUuid = Access.id(examId);
         Exam exam = access.requireExam(examUuid, userId);
 
+        // The compare-and-set has to happen BEFORE the destructive resets below, so
+        // a stale dispatch bails without wiping answers — see startEvaluating.
+        String solverModel = exam.getSolverModel() != null ? exam.getSolverModel() : SolverStrategies.DEFAULT_ID;
+        if (examRepository.startEvaluating(examUuid, solverModel) == 0) {
+            return new DispatchPlan(0, 0);
+        }
+        sse.examUpdated(examUuid);
+
         // Reset previous answers + auto grades so progress starts at 0/N.
         taskAnswerRepository.deleteByExamId(examUuid);
         taskGradeRepository.deleteByExamIdAndAutoGradedTrue(examUuid);
@@ -106,10 +114,6 @@ public class SolveExamService {
         }
         List<String> bucketSectionIds = new ArrayList<>(sectionIds);
         if (hasUnassigned) bucketSectionIds.add(null);
-
-        String solverModel = exam.getSolverModel() != null ? exam.getSolverModel() : SolverStrategies.DEFAULT_ID;
-        examRepository.startEvaluating(examUuid, solverModel);
-        sse.examUpdated(examUuid);
 
         // Hand off to the orchestrator and return immediately. Submitted to the
         // executor explicitly — a self-invoked @Async method bypasses Spring's
@@ -153,7 +157,8 @@ public class SolveExamService {
         // answer arrays.
         long answered = taskAnswerRepository.countByExamId(examUuid);
         if (answered >= totalTasks) {
-            // Compare-and-set: don't flip a since-cancelled exam back out of `failed`.
+            // Compare-and-set: a since-cancelled exam sits in `ready`, so this
+            // matches no row instead of dragging it into `grading`.
             examRepository.updateStatusIfCurrent(examUuid, "evaluating", "grading");
             sse.examUpdated(examUuid);
             return;
@@ -181,11 +186,11 @@ public class SolveExamService {
 
         long finalCount = taskAnswerRepository.countByExamId(examUuid);
         if (finalCount >= totalTasks) {
-            // Compare-and-set: don't flip a since-cancelled exam back out of `failed`.
+            // Same compare-and-set guard as above.
             examRepository.updateStatusIfCurrent(examUuid, "evaluating", "grading");
         } else {
             // markSolveFailed is itself guarded on status='evaluating', so a user
-            // cancel keeps its own message instead of "Evaluation incomplete".
+            // cancel (now `ready`, error cleared) isn't clobbered back to `failed`.
             examRepository.markSolveFailed(examUuid,
                 "Evaluation incomplete: " + finalCount + "/" + totalTasks + " tasks answered");
         }

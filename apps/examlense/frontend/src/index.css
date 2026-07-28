@@ -13,18 +13,20 @@
     --hestia-primary: 36 64% 35%; /* #946520 gold */
     --hestia-text: 20 14% 17%; /* #322b26 — slightly softer than pure near-black */
     --hestia-accent: 191 33% 40%; /* #447a86 teal */
-    --hestia-warning: 37 92% 43%; /* #D4880A */
+    --hestia-warning: 37 92% 40%; /* #c47c08 — darkened from 43% so mid-tier bars/dots clear WCAG 1.4.11 (3:1) on white */
     --hestia-danger: 4 71% 44%; /* #C0281F */
-    --hestia-success: 152 50% 32%; /* #297a52 — sits next to gold primary without competing */
+    --hestia-success: 152 50% 30%; /* #26734f — darkened from 32% so success-as-text clears WCAG AA (4.5:1) on the /10 tinted banner over paper */
+    --hestia-success-foreground: 0 0% 100%;
     --hestia-grading: 265 55% 52%; /* violet — grading / AI-solving accent */
 
     --hestia-primary-hover: 36 65% 30%; /* primary 85% + black */
     --hestia-primary-muted: 36 36% 85%; /* 20% primary over bg */
     /* Softer than before: with a deeper canvas + shadows, borders no longer
        carry the separation, so they can be hairlines rather than hard lines. */
+    --hestia-border-subtle: 20 14% 17% / 0.06;
     --hestia-border: 20 14% 17% / 0.10;
     --hestia-border-strong: 20 14% 17% / 0.20;
-    --hestia-text-muted: 20 14% 17% / 0.62;
+    --hestia-text-muted: 20 14% 17% / 0.68; /* 0.62 → 0.68 so muted text clears WCAG AA (4.5:1) on white */
 
     /* Spacing */
     --hestia-space-1: 0.25rem;
@@ -93,24 +95,29 @@
     --hestia-text: 39 27% 92%; /* #f0ece4 */
     --hestia-accent: 162 94% 43%; /* #06D6A0 */
     --hestia-warning: 36 92% 55%; /* #F5A623 */
-    --hestia-danger: 349 81% 53%; /* #E8284B */
+    --hestia-danger: 349 81% 62%; /* #ed506c — lightened from 53% so danger-as-text clears WCAG AA (4.5:1) on the dark surface */
     --hestia-success: 152 55% 58%; /* slightly brighter for contrast on dark surface */
+    --hestia-success-foreground: 36 63% 6%; /* dark text on the brightened dark success clears AA */
     --hestia-grading: 265 80% 76%; /* violet — brighter for contrast on dark surface */
 
     --hestia-primary-hover: 41 56% 55%;
     --hestia-primary-muted: 42 23% 19%; /* 22% primary over bg */
+    --hestia-border-subtle: 39 27% 92% / 0.11;
     --hestia-border: 39 27% 92% / 0.18;
     --hestia-border-strong: 39 27% 92% / 0.3;
     --hestia-text-muted: 39 27% 92% / 0.65;
 
-    /* Light gold / bright teal need dark text on top, not white. */
+    /* Light gold / bright teal / lightened red need dark text on top, not white. */
     --primary-foreground: 36 63% 6%; /* #1a1206 */
     --accent-foreground: 36 63% 6%;
+    --destructive-foreground: 36 63% 6%; /* dark text on the lightened dark danger clears AA (~5.3:1) */
     --muted-foreground: 39 27% 92%;
     --border: 39 27% 92% / 0.18;
     --input: 39 27% 92% / 0.3;
   }
 
+  /* Mirrors [data-theme="dark"] above for users who never picked a theme. Keep
+     the two in sync; each value's rationale lives on the copy above. */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --hestia-bg: 0 0% 7%;
@@ -119,18 +126,21 @@
       --hestia-text: 39 27% 92%;
       --hestia-accent: 162 94% 43%;
       --hestia-warning: 36 92% 55%;
-      --hestia-danger: 349 81% 53%;
+      --hestia-danger: 349 81% 62%;
       --hestia-success: 152 55% 58%;
+      --hestia-success-foreground: 36 63% 6%;
       --hestia-grading: 265 80% 76%;
 
       --hestia-primary-hover: 41 56% 55%;
       --hestia-primary-muted: 42 23% 19%;
+      --hestia-border-subtle: 39 27% 92% / 0.11;
       --hestia-border: 39 27% 92% / 0.18;
       --hestia-border-strong: 39 27% 92% / 0.3;
       --hestia-text-muted: 39 27% 92% / 0.65;
 
       --primary-foreground: 36 63% 6%;
       --accent-foreground: 36 63% 6%;
+      --destructive-foreground: 36 63% 6%;
       --muted-foreground: 39 27% 92%;
       --border: 39 27% 92% / 0.18;
       --input: 39 27% 92% / 0.3;
@@ -170,10 +180,10 @@
     border-radius: 2px;
   }
 
-  /* Placeholder text: lighter than muted body text so empty fields
-     clearly read as a hint rather than entered content. */
+  /* Placeholder text uses the muted-text token so empty fields clear WCAG AA
+     (4.5:1) while staying visibly lighter than entered body text. */
   ::placeholder {
-    color: hsl(var(--hestia-text) / 0.35) !important;
+    color: hsl(var(--hestia-text-muted)) !important;
     opacity: 1;
   }
 }
@@ -197,8 +207,8 @@
     letter-spacing: 0.08em;
   }
 
-  /* Hide the native up/down spinners on <input type="number"> while keeping
-     the numeric input logic. Apply to fields where the stepper is unwanted. */
+  /* Hide the native up/down spinners on <input type="number">, keeping the
+     numeric input behaviour. */
   .no-spinner {
     -moz-appearance: textfield;
     appearance: textfield;
@@ -211,7 +221,7 @@
 }
 
 /* Global reduced-motion reset. Component-specific animations live next to their
-   components (e.g. ForgeAnimation.css, TaskGradingPanel.css) and re-check this
+   components (e.g. ForgeAnimation.css, AnswerCard.css) and re-check this
    preference themselves. */
 @media (prefers-reduced-motion: reduce) {
   *,

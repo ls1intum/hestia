@@ -91,8 +91,7 @@ class SolveCore {
         return Prompts.buildSystemPrompt(new Prompts.ExamPromptInfo(
             exam.getId().toString(),
             exam.getTitle(),
-            exam.getCourse(),
-            exam.getLanguage()
+            exam.getCourse()
         ));
     }
 

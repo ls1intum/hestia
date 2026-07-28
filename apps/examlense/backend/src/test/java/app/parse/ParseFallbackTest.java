@@ -66,9 +66,9 @@ class ParseFallbackTest {
 
         when(storage.download(eq("exam-pdfs"), anyString())).thenReturn(new byte[]{1, 2, 3});
         when(textExtractor.pageCount(any())).thenReturn(1);
-        when(inputBuilder.build(any(), any(), any(), any()))
+        when(inputBuilder.build(any(), any(), any()))
             .thenReturn(new AiProvider.TextContent("pdf-stub"));
-        when(persister.persist(any(), any(), any(), any())).thenReturn(true);
+        when(persister.persist(any(), any(), any())).thenReturn(true);
 
         // Route each ParserStrategy to its provider mock.
         when(providerFactory.forParser(any())).thenAnswer(inv -> {
@@ -79,7 +79,7 @@ class ParseFallbackTest {
 
     private void runParse() {
         service.runAsync(
-            EXAM_ID.toString(), UUID.randomUUID().toString(), "exam-pdfs/file.pdf", null,
+            EXAM_ID.toString(), UUID.randomUUID().toString(), "exam-pdfs/file.pdf",
             ParserStrategies.resolve(ParserStrategies.DEFAULT_ID), false, System.nanoTime()
         );
     }
@@ -98,7 +98,7 @@ class ParseFallbackTest {
         // The fallback model actually served: it was called and no failure was recorded.
         verify(gptProvider).chat(any());
         verify(progress, never()).fail(any(), anyString());
-        verify(persister).persist(any(), any(), any(), any());
+        verify(persister).persist(any(), any(), any());
         // The exam is restamped with the serving model and metrics reflect it.
         verify(progress).setParserModel(EXAM_ID, "gpt-5.5");
 
@@ -121,7 +121,7 @@ class ParseFallbackTest {
         verify(providerFactory, never()).forParser(argThatIsGpt());
         verify(progress).fail(eq(EXAM_ID), eq(ParseErrorMessages.NOT_STRUCTURED));
         verify(progress, never()).setParserModel(any(), anyString());
-        verify(persister, never()).persist(any(), any(), any(), any());
+        verify(persister, never()).persist(any(), any(), any());
 
         ArgumentCaptor<ParseAttempt> captor = ArgumentCaptor.forClass(ParseAttempt.class);
         verify(metricsRecorder).record(captor.capture());

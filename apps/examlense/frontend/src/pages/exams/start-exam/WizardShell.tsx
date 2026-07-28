@@ -129,7 +129,7 @@ export const WizardShell = ({
                   "inline-flex items-center justify-center gap-hestia-2 rounded-hestia-md px-hestia-4 py-hestia-2 text-sm font-semibold shadow-hestia-sm transition-colors disabled:opacity-50",
                   nextVariant === "muted"
                     ? "bg-hestia-border/60 text-hestia-text-muted hover:bg-hestia-border hover:text-hestia-text"
-                    : "bg-hestia-primary text-white hover:bg-hestia-primary-hover",
+                    : "bg-hestia-primary text-primary-foreground hover:bg-hestia-primary-hover",
                 )}
               >
                 {busy && <Loader2 size={14} className="animate-spin" />}

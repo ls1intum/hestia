@@ -24,7 +24,7 @@ export interface ExamStatusMeta {
 
 const DRAFT_META: ExamStatusMeta = {
   label: "Draft",
-  className: "bg-hestia-warning/10 text-hestia-warning",
+  className: "bg-hestia-border text-hestia-text-muted",
   Icon: FileText,
   spin: false,
   rank: 2,
