@@ -73,6 +73,9 @@ class SolveExamServiceAsyncTest {
         });
         when(answerRepository.countByExamId(examId)).thenReturn(1L);
         when(answerRepository.findByExamId(examId)).thenReturn(List.of());
+        // startEvaluating is a compare-and-set: 1 row means we won it. Must be stubbed —
+        // an unstubbed int mock returns 0, which the service reads as "cancelled, bail".
+        when(examRepository.startEvaluating(any(), any())).thenReturn(1);
 
         SolveExamService service = new SolveExamService(
             examRepository, taskRepository, answerRepository, gradeRepository,
@@ -116,6 +119,8 @@ class SolveExamServiceAsyncTest {
         exam.setOwnerId(ownerId);
         when(examRepository.findById(examId)).thenReturn(Optional.of(exam));
         when(taskRepository.findByExamIdOrderByPositionAsc(examId)).thenReturn(List.of());
+        // See the CAS note above: without this the service bails before finalizing.
+        when(examRepository.startEvaluating(any(), any())).thenReturn(1);
 
         SolveExamService service = new SolveExamService(
             examRepository, taskRepository, answerRepository, gradeRepository,
