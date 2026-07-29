@@ -29,13 +29,6 @@ export const SOLO_LABELS: Record<SoloLevel, string> = {
   EXTENDED_ABSTRACT: "Extended abstract",
 };
 
-/** Grade source badge labels (auto / manual / pending). */
-export const GRADE_SOURCE_LABELS: Record<string, string> = {
-  auto: "Auto-graded",
-  manual: "Manually graded",
-  pending: "Needs grading",
-};
-
 /** Readable labels for the parser's effective PDF input mode (from `pdf_mode`). */
 export const PDF_MODE_LABELS: Record<string, string> = {
   TEXT_ONLY: "Fast Mode",

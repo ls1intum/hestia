@@ -1,4 +1,4 @@
-import type { Task } from "@/lib/exam/exam-helpers";
+import { TASK_TYPES, type Task } from "@/lib/exam/exam-helpers";
 import type { TaskGrade, TaskAnswer } from "@/lib/grading/grading";
 import { formatScoreSummary, scoreRollup } from "@/lib/grading/grading";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
@@ -11,17 +11,17 @@ interface Props {
 }
 
 export const ByQuestionTypeCard = ({ tasks, grades, answers }: Props) => {
-  const types = ["single_choice", "multiple_choice", "text"] as const;
-  const rows = types
-    .map((type) => ({
+  const rows = TASK_TYPES.flatMap((type) => {
+    const r = {
       type,
       ...scoreRollup(
         tasks.filter((tk) => tk.type === type),
         grades,
         answers,
       ),
-    }))
-    .filter((r) => r.count > 0);
+    };
+    return r.count > 0 ? [r] : [];
+  });
 
   return (
     <div className="hestia-card">

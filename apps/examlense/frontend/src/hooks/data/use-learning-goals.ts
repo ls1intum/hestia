@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createLghCourse, getExamLearningGoals, listLghCourses } from "@/lib/api/api-client";
-import type { LearningGoalResponse } from "@/lib/learning-goals/learning-goals";
 
 export const examLearningGoalsKey = (examId: string) =>
   ["exam-learning-goals", examId] as const;
@@ -23,14 +22,21 @@ export function useExamLearningGoals(examId: string | undefined) {
 
 export const lghCoursesKey = ["lgh-courses"] as const;
 
-/** LearningGoalHub course list for the exam-creation course picker. */
-export function useLghCourses(enabled = true) {
+/**
+ * LearningGoalHub course list for the exam-creation course picker, also used as
+ * the dashboard's LGH-availability probe: a successful fetch means LGH is
+ * reachable, an error means it is down. Pass `refetchInterval` to poll.
+ */
+export function useLghCourses(
+  options: { enabled?: boolean; refetchInterval?: number } = {},
+) {
   return useQuery({
     queryKey: lghCoursesKey,
     queryFn: listLghCourses,
-    enabled,
+    enabled: options.enabled ?? true,
     staleTime: 10 * 60 * 1000,
     retry: 1,
+    refetchInterval: options.refetchInterval,
   });
 }
 
@@ -46,14 +52,4 @@ export function useCreateLghCourse() {
       queryClient.invalidateQueries({ queryKey: lghCoursesKey });
     },
   });
-}
-
-/** Resolve a stored id array into goal objects, preserving the id order. */
-export function goalsByIds(
-  all: LearningGoalResponse[] | undefined,
-  ids: number[] | null | undefined,
-): LearningGoalResponse[] {
-  if (!all || !ids?.length) return [];
-  const byId = new Map(all.map((g) => [g.id, g]));
-  return ids.map((id) => byId.get(id)).filter((g): g is LearningGoalResponse => !!g);
 }

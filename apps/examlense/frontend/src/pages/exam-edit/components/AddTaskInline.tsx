@@ -40,6 +40,7 @@ export const AddTaskInline = ({
         <div className="flex flex-col">
           {TASK_TYPES.map((tp) => (
             <button
+              type="button"
               key={tp}
               onClick={() => {
                 onAdd(tp);
@@ -106,6 +107,7 @@ export const AddTaskInline = ({
         <div className="flex flex-col">
           {TASK_TYPES.map((tp) => (
             <button
+              type="button"
               key={tp}
               onClick={() => {
                 onAdd(tp);

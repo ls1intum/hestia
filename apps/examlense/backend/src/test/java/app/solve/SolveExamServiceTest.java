@@ -87,6 +87,9 @@ class SolveExamServiceTest {
         UUID examId = UUID.randomUUID();
         when(access.requireExam(eq(examId), eq(owner.toString()))).thenReturn(examOwnedBy(owner));
         when(tasks.findByExamIdOrderByPositionAsc(examId)).thenReturn(List.<Task>of());
+        // startEvaluating is a compare-and-set: 1 row means we won it. Must be stubbed —
+        // an unstubbed int mock returns 0, which the service reads as "cancelled, bail".
+        when(exams.startEvaluating(eq(examId), any())).thenReturn(1);
 
         SolveExamService.DispatchPlan plan = service.startEvaluation(examId.toString(), owner.toString());
 

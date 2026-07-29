@@ -50,6 +50,13 @@ const ExamResults = () => {
   const { data: grades } = useTaskGrades(id!);
 
   const [view, setView] = useState<ResultView>("overview");
+  // Set only by a breakdown deep-link; consumed on the next "All tasks" mount.
+  const [pendingTaskId, setPendingTaskId] = useState<string>();
+
+  const openTaskInAllTasks = (taskId: string) => {
+    setPendingTaskId(taskId);
+    setView("allTasks");
+  };
 
   const answersById = useMemo(() => {
     const m = new Map<string, TaskAnswer>();
@@ -105,12 +112,16 @@ const ExamResults = () => {
   };
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden">
+    <div className="flex h-dvh w-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <ResultsSidebar
           views={VIEWS}
           currentView={view}
-          onSelectView={(k) => setView(k as ResultView)}
+          onSelectView={(k) => {
+            // Manual nav clears any pending deep-link so it doesn't re-scroll.
+            setPendingTaskId(undefined);
+            setView(k as ResultView);
+          }}
           title={<StaticTitle value={exam.title} />}
           footer={
             <Button
@@ -143,6 +154,7 @@ const ExamResults = () => {
                 blocks={blocks ?? []}
                 answersById={answersById}
                 gradesById={gradesById}
+                scrollToTaskId={pendingTaskId}
               />
             ) : (
               <main className="relative flex min-w-0 flex-1 flex-col">
@@ -182,6 +194,7 @@ const ExamResults = () => {
                           grades={gradesById}
                           answers={answersById}
                           labelById={labelById}
+                          onOpenTask={openTaskInAllTasks}
                         />
 
                         <FiguresComparisonCard
@@ -196,6 +209,7 @@ const ExamResults = () => {
                           grades={gradesById}
                           answers={answersById}
                           labelById={labelById}
+                          onOpenTask={openTaskInAllTasks}
                         />
                       </>
                     )}

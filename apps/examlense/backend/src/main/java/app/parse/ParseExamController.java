@@ -19,7 +19,6 @@ public class ParseExamController {
     public record ParseExamRequest(
         @NotBlank String exam_id,
         @NotBlank String storage_path,
-        String language_hint,
         String parser_model,
         Boolean fast_mode
     ) {}
@@ -50,7 +49,6 @@ public class ParseExamController {
             req.exam_id(),
             userId,
             req.storage_path(),
-            req.language_hint(),
             strategy,
             Boolean.TRUE.equals(req.fast_mode()),
             requestNanos

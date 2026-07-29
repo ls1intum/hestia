@@ -13,6 +13,7 @@ import { goalRollup } from "@/lib/grading/grading";
 import { solverModelLabel } from "@/lib/exam/llm-models";
 import { useExamLearningGoals } from "@/hooks/data/use-learning-goals";
 import { ModelLogo } from "@/components/shared/ModelLogo";
+import { ExamScorePanel } from "./ExamScorePanel";
 import { ExamResilienceBanner } from "./ExamResilienceBanner";
 
 export type ResultsNavTarget = "learningGoals" | "details" | "allTasks";
@@ -83,6 +84,7 @@ export const ResilienceOverview = ({
 
   return (
     <div className="space-y-hestia-5">
+      <ExamScorePanel earned={earned} max={max} />
       <ExamResilienceBanner earned={earned} max={max} />
 
       {/* At-a-glance highlights */}
@@ -127,7 +129,7 @@ export const ResilienceOverview = ({
                 {modelLabel}
               </p>
               <p className="text-xs text-hestia-text-muted">
-                The AI model that sat this exam
+                The AI model that solved this exam
               </p>
             </div>
           </div>

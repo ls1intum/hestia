@@ -7,7 +7,6 @@ const exam = (over: Partial<ExamListItem>): ExamListItem => ({
   id: "e1",
   title: "Exam",
   course: null,
-  language: "en",
   source: "manual",
   source_file_url: null,
   status: "draft",

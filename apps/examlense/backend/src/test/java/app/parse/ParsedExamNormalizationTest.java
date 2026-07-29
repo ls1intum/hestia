@@ -27,7 +27,7 @@ class ParsedExamNormalizationTest {
         List<Map<String, Object>> tasks = new ArrayList<>(List.of(
             task("Part A"), task(null), task("  "), task("Part B"), task(null)
         ));
-        ParsedExamPersister.fillMissingSections(Map.of(), tasks, null);
+        ParsedExamPersister.fillMissingSections(Map.of(), tasks);
 
         assertThat(tasks).extracting(t -> t.get("section"))
             .containsExactly("Part A", "Part A", "Part A", "Part B", "Part B");
@@ -38,7 +38,7 @@ class ParsedExamNormalizationTest {
         List<Map<String, Object>> tasks = new ArrayList<>(List.of(
             task(null), task("Part A")
         ));
-        ParsedExamPersister.fillMissingSections(Map.of("title", "Algebra Final"), tasks, null);
+        ParsedExamPersister.fillMissingSections(Map.of("title", "Algebra Final"), tasks);
 
         assertThat(tasks.get(0)).containsEntry("section", "Algebra Final");
         assertThat(tasks.get(1)).containsEntry("section", "Part A");
@@ -46,11 +46,11 @@ class ParsedExamNormalizationTest {
 
     @Test
     void syntheticSectionPrefersTitleThenCourseThenLanguageDefault() {
-        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("title", "T", "course", "C"), null)).isEqualTo("T");
-        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("course", "C"), null)).isEqualTo("C");
-        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of(), "de")).isEqualTo("Aufgaben");
-        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("detected_language", "de"), "en")).isEqualTo("Aufgaben");
-        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of(), "en")).isEqualTo("Tasks");
+        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("title", "T", "course", "C"))).isEqualTo("T");
+        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("course", "C"))).isEqualTo("C");
+        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("detected_language", "de"))).isEqualTo("Aufgaben");
+        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of("detected_language", "en"))).isEqualTo("Tasks");
+        assertThat(ParsedExamPersister.pickSyntheticSection(Map.of())).isEqualTo("Tasks");
     }
 
     @Test

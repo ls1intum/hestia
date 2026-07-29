@@ -27,6 +27,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer small, reusable components/modules and smaller focused files over large monolithic implementations.
 - Before introducing new helpers, constants, or UI elements, search for existing equivalents and reuse them when possible. Avoid copy-paste duplication.
 
+## Code Comments Rule
+
+- Include only necessary code comments. Follow the "comment the *why*, not the *what*" principle.
+- Do not write comments that duplicate what the code already says; the code is the source of truth for *what* it does.
+- Add a comment only when it earns its place — to explain unidiomatic or surprising code (why this approach, a non-obvious constraint, a workaround) or to document public APIs / exported functions.
+- Prefer clear names and small functions over explanatory comments; if code needs a comment to be understood, first consider whether it can be made clearer.
+- Keep comments current: update or remove them when the code they describe changes, so they never drift out of sync.
+
 
 ## Commands
 
@@ -59,7 +67,7 @@ Hooks and lib are grouped by concern: `src/hooks/{data,ui}/` (server-state/realt
 - `use-task-answers.ts` — AI-generated answers per task
 - `use-task-grades.ts` — grades with `useUpsertTaskGrade` mutation
 - `use-exam-progress.ts` — evaluation progress via the exam SSE `progress` event
-- `use-learning-goals.ts` — `useExamLearningGoals(examId)` resolved goals via the backend LGH proxy, `useLghCourses()` course picker data, `goalsByIds(all, ids)` resolver
+- `use-learning-goals.ts` — `useExamLearningGoals(examId)` resolved goals via the backend LGH proxy, `useLghCourses()` course picker data
 
 **Realtime** is SSE: `src/lib/api/sse.ts` (`subscribeExam`, `subscribeExamsList`) opens an `EventSource` (token via `?token=` query param) and invalidates React Query caches on each event. Domain types are hand-defined in `src/lib/exam/exam-helpers.ts` / `src/lib/grading/grading.ts` (the old auto-generated Supabase DB types are gone).
 
@@ -103,7 +111,7 @@ HESTIA design system built on Tailwind with custom HSL color tokens, defined in 
 
 ### Copy / strings
 
-The app is **English-only** — there is no i18n layer. UI strings are hardcoded directly in components. Shared enum labels live in `src/lib/exam/labels.ts` (task types, Bloom/SOLO levels, grade sources); reuse these instead of re-inlining. Note: the per-exam **content** `language` field (`en`/`de`/`other`, set in `StartExamDialog`) is unrelated to UI copy — it only tells the backend solver which language to answer that exam's PDF in.
+The app is **English-only** — there is no i18n layer. UI strings are hardcoded directly in components. Shared enum labels live in `src/lib/exam/labels.ts` (task types, Bloom/SOLO levels); reuse these instead of re-inlining.
 
 ## Common Prompt Phrases & File Pointers
 
@@ -118,7 +126,7 @@ When the user uses any of these phrases, treat them as references to the listed 
 - **"Edit View"**, **"Edit Mode"**, **"Editor"**, **"Exam Editor"**, **"Authoring View"** → `src/pages/exam-edit/ExamEdit.tsx` + `src/pages/exam-edit/components/` (shared section/block renderers live in `src/components/shared/exam-content/` and shell chrome in `src/components/shared/chrome/`)
 - **"Grading View"**, **"Grading Mode"**, **"Grade Mode"**, **"Grade Page"** → `src/pages/exam-grading/GradingView.tsx` (routed via `src/pages/exam-grading/GradeRoute.tsx`) + `src/pages/exam-grading/components/` and the shared read-only renderers in `src/components/shared/exam-content/read-only/`
 - **"Final Overview"**, **"Final Screen"**, **"Scoring Overview"**, **"Results"**, **"Results Dashboard"**, **"Insights"** → `src/pages/exam-results/ExamResults.tsx` + `src/pages/exam-results/components/`
-- **"Admin"**, **"Admin Dashboard"**, **"Feedback Page"** → `src/pages/admin/AdminDashboard.tsx` (route `/admin`). A tabbed dashboard that aggregates internal review data: parsing-quality survey responses and parser performance metrics. Panels live in `src/pages/admin/components/`.
+- **"Admin"**, **"Admin Dashboard"**, **"Feedback Page"** → `src/pages/admin/AdminDashboard.tsx` (route `/admin`). An internal review dashboard for parser performance metrics. Panels live in `src/pages/admin/components/`.
 - **"Evaluating View"**, **"Evaluating Screen"** (the "solving in progress" splash) → `src/pages/exam-edit/components/EvaluatingView.tsx`
 - **"Parsing View"**, **"Parsing Screen"** (the "reading your exam" splash) → `src/components/shared/exam-content/EditorLoadingView.tsx`
 - **"Intro"**, **"Intro Slide"** (first-time editor intro) → `src/pages/exam-edit/components/IntroSlide.tsx`
@@ -132,7 +140,6 @@ When the user uses any of these phrases, treat them as references to the listed 
 - **"Confirm Button"**, **"Confirm Section"**, **"Section Status Chip"** → `src/pages/exam-edit/components/ConfirmSectionButton.tsx`
 - **"Block Row"**, **"Task Row"**, **"Collapsed Row"** → `src/pages/exam-edit/components/BlockRow.tsx` (uses `BlockHeader` from `src/components/shared/exam-content/` for the row layout)
 - **"Add Task"**, **"+ Add"**, **"Add Block"** (inline popover) → `src/pages/exam-edit/components/AddTaskInline.tsx`
-- **"Chrome Header"**, **"Top Bar"**, **"Sticky Header"** → `src/components/shared/chrome/ChromeHeader.tsx`
 - **"Chrome Footer"**, **"Bottom Bar"**, **"Status Bar"** → `src/components/shared/chrome/ChromeFooter.tsx`
 - **"Utility Cluster"**, **"Header Actions"** (right-side controls) → `src/components/shared/chrome/ChromeUtilityCluster.tsx`
 - **"Save Status"**, **"Saving Indicator"** → `src/pages/exam-edit/components/SaveStatus.tsx`

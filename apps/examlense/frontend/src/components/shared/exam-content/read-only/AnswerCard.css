@@ -1,0 +1,42 @@
+/* Pulsating border for a task that still needs grading (AnswerCard, pending).
+   Built as a ::before masked to a thin ring, so it rides over the card's normal
+   border without touching the card's own shadow — there is no persistent border
+   color shift. Reduced-motion users get a plain static violet border instead. */
+@keyframes hestia-pulse-grading {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-grading-border {
+    position: relative;
+  }
+  .pulse-grading-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: 2px; /* ring thickness — sits over the 1px border */
+    background: hsl(var(--hestia-grading));
+    /* Keep only the padding ring: fill minus content-box = border band. */
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    animation: hestia-pulse-grading 1.8s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-grading-border {
+    border-color: hsl(var(--hestia-grading));
+  }
+}

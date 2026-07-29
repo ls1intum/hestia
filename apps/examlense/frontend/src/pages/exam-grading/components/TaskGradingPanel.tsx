@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, AlertTriangle, Bot, Check } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpsertTaskGrade } from "@/hooks/data/use-task-grades";
+import { usePatchTask } from "@/hooks/data/use-exam";
+import { useClickToEdit } from "@/hooks/ui/use-click-to-edit";
 import { taskAnswersKey } from "@/hooks/data/use-task-answers";
 import { autoGradeChoiceTask, type TaskAnswer, type TaskGrade } from "@/lib/grading/grading";
-import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
-import { BlockCard } from "@/components/shared/exam-content/BlockCard";
+import { AiAnswerBlock } from "@/components/shared/exam-content/read-only/AiAnswerBlock";
+import { AnswerCard } from "@/components/shared/exam-content/read-only/AnswerCard";
 import type { Task } from "@/lib/exam/exam-helpers";
 import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { solveTask } from "@/lib/api/api-solve";
-import { GRADE_SOURCE_LABELS } from "@/lib/exam/labels";
-import "./TaskGradingPanel.css";
 
 /** Grading increment shared by the slider and the number input. */
 const SCORE_STEP = 0.5;
@@ -25,10 +24,6 @@ interface Props {
   examId: string;
   answer: TaskAnswer | undefined;
   grade: TaskGrade | undefined;
-  /** Task letter, e.g. "a" — shown in the card header next to the status dot. */
-  label: string;
-  /** True when this task has a grade (auto or manual). Drives the leading dot. */
-  graded?: boolean;
 }
 
 /**
@@ -37,9 +32,10 @@ interface Props {
  * `primary` card. The static question lives card-less in `ReadOnlyQuestionBlock`
  * above it — so this card, not the question, is the thing the grader acts on.
  */
-export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }: Props) => {
+export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
   const qc = useQueryClient();
   const upsert = useUpsertTaskGrade(examId);
+  const patchPoints = usePatchTask(examId);
 
   const auto = autoGradeChoiceTask(task, answer);
   const initialScore =
@@ -53,7 +49,7 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
     setScoreStr(
       grade?.score != null
         ? String(grade.score)
-        : auto != null
+        : auto?.score != null
           ? String(auto.score)
           : "",
     );
@@ -68,6 +64,24 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
       feedback: null,
     });
   };
+
+  // Skips empty / invalid / unchanged input so the max never lands in a dead
+  // null state. Lowering the max below an already-set grade clamps that grade
+  // down too (e.g. 5/5 → editing max to 2 → 2/2).
+  const maxEdit = useClickToEdit(
+    task.points != null ? String(task.points) : "",
+    (next) => {
+      const t = next.trim();
+      if (t === "") return;
+      const n = Number(t);
+      if (!Number.isFinite(n) || n < 0 || n === task.points) return;
+      patchPoints.mutate({ taskId: task.id, patch: { points: n } });
+      if (grade?.score != null && grade.score > n) {
+        setScoreStr(String(n));
+        persist(n, grade.auto_graded);
+      }
+    },
+  );
 
   const onScoreBlur = () => {
     if (scoreStr === "") {
@@ -95,11 +109,9 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
     return Math.min(Math.max(n, 0), sliderMax);
   })();
 
-  // Tick marks under the slider at each grading step — only when readable.
   const tickCount = sliderMax > 0 ? Math.round(sliderMax / SCORE_STEP) + 1 : 0;
   const showTicks = tickCount > 1 && tickCount <= MAX_TICKS + 1;
 
-  // Per-card generation state (no answer yet)
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
@@ -125,41 +137,7 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
         ? "auto"
         : "pending";
 
-  // Card content depends on whether the LLM produced an answer.
   const noAnswer = !answer;
-
-  const correctIds = new Set(
-    (task.options ?? []).filter((o) => o.is_correct).map((o) => o.id),
-  );
-  const pickedIds = new Set(answer?.selected_option_ids ?? []);
-
-  const header = (
-    <div className="flex items-center justify-between gap-hestia-2">
-      <span className="inline-flex min-w-0 items-center gap-hestia-2 font-body text-base font-semibold text-hestia-text">
-        <span
-          aria-hidden
-          className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            graded ? "bg-hestia-success" : "bg-hestia-border",
-          )}
-        />
-        <span className="min-w-0 truncate tabular-nums">
-          {label ? `${label})` : "Answer"}
-        </span>
-      </span>
-      <Badge
-        variant="secondary"
-        className={cn(
-          "shrink-0",
-          source === "manual" && "bg-hestia-primary/15 text-hestia-primary",
-          source === "auto" && "bg-hestia-success/15 text-hestia-success",
-          source === "pending" && "bg-hestia-danger/10 text-hestia-danger",
-        )}
-      >
-        {GRADE_SOURCE_LABELS[source]}
-      </Badge>
-    </div>
-  );
 
   const body = (
     <div className={cn("relative", generating && "pointer-events-none")} aria-busy={generating}>
@@ -169,7 +147,7 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
         </div>
       )}
 
-      {noAnswer ? (
+      {!answer ? (
         <div className="space-y-hestia-2">
           <p className="text-sm text-hestia-text-muted">No answer was generated for this task.</p>
           {genError && (
@@ -189,71 +167,7 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
           </button>
         </div>
       ) : (
-        <div className="space-y-hestia-2">
-          <div className="flex items-center gap-hestia-2">
-            <Bot size={12} className="text-hestia-primary" />
-            <span className="hestia-eyebrow text-hestia-text-muted">AI answer</span>
-          </div>
-
-          {task.type !== "text" ? (
-            <ul className="space-y-1.5">
-              {(task.options ?? []).map((o) => {
-                const isCorrect = correctIds.has(o.id);
-                const isPicked = pickedIds.has(o.id);
-                return (
-                  <li
-                    key={o.id}
-                    className={cn(
-                      "flex items-start gap-hestia-2 rounded-hestia-sm border border-hestia-border/60 px-hestia-2 py-1.5 text-sm",
-                      isPicked && "border-hestia-primary/60 bg-hestia-primary-muted/20",
-                      isCorrect && "ring-1 ring-hestia-success/40",
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                        isPicked
-                          ? "border-hestia-primary bg-hestia-primary text-white"
-                          : "border-hestia-border text-transparent",
-                      )}
-                    >
-                      {isPicked && <Check size={12} />}
-                    </span>
-                    <span className="min-w-0 flex-1 break-words text-hestia-text">
-                      {o.text || <span className="italic text-hestia-text-muted">—</span>}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <>
-              {/*
-                Rendering is already math-capable: MarkdownView runs remark-math +
-                rehype-katex (KaTeX CSS loaded). If formulas show as raw text, the
-                solver emitted plain-text notation instead of $…$ LaTeX — that is a
-                backend solver-prompt fix, tracked separately, not a rendering bug.
-              */}
-              <div className="rounded-hestia-sm border border-hestia-border/60 bg-hestia-surface px-hestia-2 py-hestia-2">
-                <MarkdownView content={answer!.answer_text ?? ""} />
-              </div>
-              {answer?.reasoning && (
-                <details className="text-xs text-hestia-text-muted">
-                  <summary className="cursor-pointer select-none">
-                    Show reasoning
-                  </summary>
-                  <div className="mt-1">
-                    <MarkdownView
-                      content={answer.reasoning}
-                      className="text-hestia-text-muted"
-                    />
-                  </div>
-                </details>
-              )}
-            </>
-          )}
-        </div>
+        <AiAnswerBlock task={task} answer={answer} />
       )}
 
       <div className="mt-hestia-3 border-t border-hestia-border pt-hestia-3">
@@ -303,6 +217,7 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
           <div className="flex shrink-0 items-center gap-1.5">
             <Input
               type="number"
+              data-score-input
               min={0}
               max={task.points ?? undefined}
               step={SCORE_STEP}
@@ -317,10 +232,35 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
                   : "border-hestia-border",
               )}
             />
-            {task.points != null && (
-              <span className="tabular-nums text-sm text-hestia-text-muted">
-                / {task.points}
+            {maxEdit.editing ? (
+              <span className="flex items-center gap-0.5 text-sm text-hestia-text-muted">
+                /
+                <Input
+                  type="number"
+                  min={0}
+                  step={SCORE_STEP}
+                  onWheel={preventNumberWheelChange}
+                  {...maxEdit.inputProps}
+                  className="no-spinner h-7 w-14 bg-hestia-surface text-sm tabular-nums"
+                />
               </span>
+            ) : (
+              <button
+                type="button"
+                onClick={maxEdit.startEditing}
+                aria-label="Edit max score"
+                title="Edit max score"
+                className="group flex items-center gap-1 text-sm text-hestia-text-muted transition-colors hover:text-hestia-grading"
+              >
+                <span className="tabular-nums">
+                  {task.points != null ? `/ ${task.points}` : "Set max"}
+                </span>
+                <Pencil
+                  size={12}
+                  className="shrink-0 text-hestia-text-muted transition-colors group-hover:text-hestia-grading"
+                  aria-hidden
+                />
+              </button>
             )}
           </div>
         </div>
@@ -328,16 +268,5 @@ export const TaskGradingPanel = ({ task, examId, answer, grade, label, graded }:
     </div>
   );
 
-  return (
-    <BlockCard
-      variant="primary"
-      header={header}
-      body={body}
-      className={cn(
-        // Needs grading → two red "snakes" travel around the card border
-        // (no persistent red border; the card keeps its normal hairline).
-        source === "pending" && "snake-danger-border",
-      )}
-    />
-  );
+  return <AnswerCard pending={source === "pending"}>{body}</AnswerCard>;
 };

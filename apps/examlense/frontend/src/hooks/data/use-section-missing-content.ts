@@ -19,9 +19,7 @@ import {
 export function useSectionMissingContent(items: BlockItem[] | undefined) {
   const figureBlockIds = useMemo(
     () =>
-      (items ?? [])
-        .filter((it) => it.kind === "figure")
-        .map((it) => it.block.id),
+      (items ?? []).flatMap((it) => (it.kind === "figure" ? [it.block.id] : [])),
     [items],
   );
 

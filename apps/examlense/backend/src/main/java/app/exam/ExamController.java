@@ -26,9 +26,12 @@ public class ExamController {
 
     public record CreateExamRequest(
         String title, String course,
-        String language, String source, String status, String source_file_url,
+        String source, String status, String source_file_url,
         String parser_model, String solver_model, Long lgh_course_id
     ) {}
+
+    /** Optional overrides for a duplicate; null/blank fields fall back to the copy defaults. */
+    public record DuplicateExamRequest(String title, String solver_model) {}
 
     private final ExamRepository examRepository;
     private final Access access;
@@ -66,7 +69,6 @@ public class ExamController {
         e.setOwnerId(UUID.fromString(userId));
         if (req.title() != null) e.setTitle(req.title());
         if (req.course() != null) e.setCourse(req.course());
-        if (req.language() != null) e.setLanguage(req.language());
         if (req.source() != null) e.setSource(req.source());
         if (req.status() != null) e.setStatus(req.status());
         if (req.source_file_url() != null) e.setSourceFileUrl(req.source_file_url());
@@ -86,7 +88,6 @@ public class ExamController {
         Exam e = access.requireExam(Access.id(id), userId);
         if (Patch.has(body, "title")) e.setTitle(Patch.str(body.get("title")));
         if (Patch.has(body, "course")) e.setCourse(Patch.str(body.get("course")));
-        if (Patch.has(body, "language")) e.setLanguage(Patch.str(body.get("language")));
         // status/parse_error stay client-writable — the frontend's retry-parse,
         // cancel-recovery, and finish-grading flows patch them — but the status
         // value is validated so a bad one is a 400, not an opaque constraint 500.
@@ -131,16 +132,18 @@ public class ExamController {
     }
 
     /**
-     * Cancel an in-progress parse/evaluate and revert the exam to {@code failed}.
-     * The background job is fire-and-forget and cannot be interrupted, but it
-     * re-checks the exam status before writing results, so flipping to failed here
-     * stops a late-returning LLM response from resurrecting the exam. Returns 409
-     * if the exam is not currently processing.
+     * Cancel an in-progress parse/evaluate; 409 if the exam is not processing.
+     * The background job is fire-and-forget and cannot be interrupted — the
+     * status revert below is what stops it from finalizing. See
+     * {@link ExamRepository#cancelParsing} / {@link ExamRepository#cancelEvaluating}
+     * for why the two paths land in different statuses.
      */
     @PostMapping("/{id}/cancel")
     public ExamDtos.ExamDto cancel(@PathVariable String id, @CurrentUser String userId) {
         Exam e = access.requireExam(Access.id(id), userId); // 404 if missing, 403 if not owner
-        int updated = examRepository.cancelProcessing(e.getId(), "Cancelled.");
+        int updated = "evaluating".equals(e.getStatus())
+            ? examRepository.cancelEvaluating(e.getId())
+            : examRepository.cancelParsing(e.getId(), "Parsing cancelled.");
         if (updated == 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Exam is not currently processing");
         }
@@ -148,8 +151,13 @@ public class ExamController {
     }
 
     @PostMapping("/{id}/duplicate")
-    public ExamDtos.ExamDto duplicate(@PathVariable String id, @CurrentUser String userId) {
+    public ExamDtos.ExamDto duplicate(@PathVariable String id,
+                                      @RequestBody(required = false) DuplicateExamRequest req,
+                                      @CurrentUser String userId) {
         Exam src = access.requireExam(Access.id(id), userId);
-        return ExamDtos.ExamDto.from(examService.duplicateExam(src, userId));
+        return ExamDtos.ExamDto.from(examService.duplicateExam(
+            src, userId,
+            req == null ? null : req.title(),
+            req == null ? null : req.solver_model()));
     }
 }

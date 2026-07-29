@@ -16,7 +16,7 @@ public final class ExamDtos {
 
     public record ExamDto(
         UUID id, UUID owner_id, String title, String course,
-        String language, String source,
+        String source,
         String source_file_url, String status, String parse_error, String parse_phase,
         String parser_model, String solver_model,
         Long lgh_course_id, Integer page_count, OffsetDateTime parse_started_at,
@@ -25,7 +25,7 @@ public final class ExamDtos {
     ) {
         public static ExamDto from(Exam e) {
             return new ExamDto(e.getId(), e.getOwnerId(), e.getTitle(), e.getCourse(),
-                e.getLanguage(), e.getSource(),
+                e.getSource(),
                 e.getSourceFileUrl(), e.getStatus(), e.getParseError(), e.getParsePhase(),
                 e.getParserModel(), e.getSolverModel(),
                 e.getLghCourseId(), e.getPageCount(), e.getParseStartedAt(),

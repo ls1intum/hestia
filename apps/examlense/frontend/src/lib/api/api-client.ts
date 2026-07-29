@@ -101,13 +101,6 @@ export async function apiRequest<T = unknown>(
 }
 
 // ---------------------------------------------------------------------------
-// Health / smoke
-// ---------------------------------------------------------------------------
-export interface HealthzResponse { status: string; time: string; }
-export function getHealthz(): Promise<HealthzResponse> {
-  return apiRequest<HealthzResponse>("/api/healthz", { skipAuth: true });
-}
-
 // ---------------------------------------------------------------------------
 // Exams
 // ---------------------------------------------------------------------------
@@ -135,9 +128,21 @@ export const patchExam = (id: string, patch: Record<string, unknown>) =>
   apiRequest<Exam>(`/api/exams/${id}`, { method: "PATCH", json: patch });
 export const deleteExam = (id: string) =>
   apiRequest<void>(`/api/exams/${id}`, { method: "DELETE" });
-export const duplicateExam = (id: string) =>
-  apiRequest<Exam>(`/api/exams/${id}/duplicate`, { method: "POST" });
-/** Cancel an in-progress parse/evaluate; backend reverts the exam to `failed`. */
+export const duplicateExam = (
+  id: string,
+  body?: { title?: string; solver_model?: string },
+) =>
+  apiRequest<Exam>(`/api/exams/${id}/duplicate`, {
+    method: "POST",
+    ...(body ? { json: body } : {}),
+  });
+
+/**
+ * Cancel an in-progress parse/evaluate. The backend reverts a mid-solve exam to
+ * `ready` (back to editable) and a mid-parse exam to `failed` (offers a
+ * re-parse); that revert is also what stops the still-running fire-and-forget
+ * job from finalizing. See `ExamRepository.cancelEvaluating` for the reasoning.
+ */
 export const cancelExam = (id: string) =>
   apiRequest<Exam>(`/api/exams/${id}/cancel`, { method: "POST" });
 
@@ -224,12 +229,6 @@ export async function getExamLearningGoals(examId: string): Promise<LearningGoal
 }
 
 // ---------------------------------------------------------------------------
-// Parse survey
-// ---------------------------------------------------------------------------
-export const submitParseSurvey = (body: Record<string, unknown>) =>
-  apiRequest<{ ok: boolean; id: string }>("/api/parse-survey", { method: "POST", json: body });
-
-// ---------------------------------------------------------------------------
 // Figures + files
 // ---------------------------------------------------------------------------
 export const listFigures = (blockId: string) =>
@@ -251,9 +250,3 @@ export function uploadExamPdf(examId: string, file: File) {
   form.append("file", file);
   return apiRequest<{ storage_path: string }>(`/api/exams/${examId}/pdf`, { method: "POST", body: form });
 }
-
-// ---------------------------------------------------------------------------
-// Admin
-// ---------------------------------------------------------------------------
-export const adminSurvey = () => apiRequest<unknown[]>("/api/admin/survey");
-export const adminSurveyByModel = () => apiRequest<unknown[]>("/api/admin/survey-by-model");

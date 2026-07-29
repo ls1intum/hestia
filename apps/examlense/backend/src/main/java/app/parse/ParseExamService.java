@@ -107,7 +107,6 @@ public class ParseExamService {
         String examId,
         String userId,
         String storagePath,
-        String languageHint,
         ParserStrategy strategy,
         boolean fastMode,
         long requestNanos
@@ -121,7 +120,7 @@ public class ParseExamService {
 
         ParseAttempt attempt = new ParseAttempt(examUuid, userId, strategy.id(), pdfMode.name());
         try {
-            run(attempt, strategy, pdfMode, fastMode, storagePath, languageHint);
+            run(attempt, strategy, pdfMode, fastMode, storagePath);
             log.info("parse-exam-pdf[{}] timing total took={}ms strategy={}",
                 examId, msSince(pipelineStart), strategy.id());
         } catch (Exception e) {
@@ -138,7 +137,7 @@ public class ParseExamService {
     }
 
     private void run(ParseAttempt attempt, ParserStrategy strategy, ParserStrategy.PdfMode pdfMode,
-                     boolean fastMode, String storagePath, String languageHint) {
+                     boolean fastMode, String storagePath) {
         UUID examId = attempt.examId;
 
         // 1. Download + sanity checks
@@ -175,7 +174,7 @@ public class ParseExamService {
         // 2. Build user content depending on PDF mode
         AiProvider.UserContent userContent;
         try {
-            userContent = inputBuilder.build(pdfMode, examId, bytes, languageHint);
+            userContent = inputBuilder.build(pdfMode, examId, bytes);
         } catch (ParseInputBuilder.InputException e) {
             fail(attempt, e.getMessage());
             return;
@@ -187,7 +186,7 @@ public class ParseExamService {
         // a different model (see extractWithFallback) before surfacing an error.
         Map<String, Object> parsed;
         try {
-            parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, fastMode, bytes, languageHint);
+            parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, fastMode, bytes);
         } catch (AiExceptions.RateLimitException e) {
             fail(attempt, ParseErrorMessages.AI_RATE_LIMIT);
             return;
@@ -224,7 +223,7 @@ public class ParseExamService {
         // 4. Persist
         progress.setPhase(examId, "persisting");
         long tPersist = System.nanoTime();
-        attempt.success = persister.persist(attempt, parsed, tasks, languageHint);
+        attempt.success = persister.persist(attempt, parsed, tasks);
         log.info("parse-exam-pdf[{}] timing step=persist took={}ms tasks={}",
             examId, msSince(tPersist), tasks.size());
     }
@@ -239,7 +238,7 @@ public class ParseExamService {
      */
     private Map<String, Object> extractWithFallback(
         ParseAttempt attempt, ParserStrategy primary, AiProvider.UserContent primaryContent,
-        ParserStrategy.PdfMode primaryMode, boolean fastMode, byte[] bytes, String languageHint
+        ParserStrategy.PdfMode primaryMode, boolean fastMode, byte[] bytes
     ) {
         try {
             return extract(attempt, primary, primaryContent);
@@ -255,7 +254,7 @@ public class ParseExamService {
             ParserStrategy.PdfMode fbMode = effectivePdfMode(fallback, fastMode);
             AiProvider.UserContent fbContent = fbMode == primaryMode
                 ? primaryContent
-                : inputBuilder.build(fbMode, attempt.examId, bytes, languageHint);
+                : inputBuilder.build(fbMode, attempt.examId, bytes);
             attempt.parserModel = fallback.id();
             attempt.pdfMode = fbMode.name();
             return extract(attempt, fallback, fbContent);

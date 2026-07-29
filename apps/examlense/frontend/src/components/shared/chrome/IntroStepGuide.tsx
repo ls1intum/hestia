@@ -300,13 +300,13 @@ const FinishDiagram = () => (
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-hestia-surface bg-hestia-success text-white"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-hestia-surface bg-hestia-success text-hestia-success-foreground"
         >
           <CheckCircle2 size={13} />
         </span>
       ))}
     </div>
-    <span className="rounded-hestia-md bg-hestia-success px-2 py-1 text-[10px] font-semibold text-white">
+    <span className="rounded-hestia-md bg-hestia-success px-2 py-1 text-[10px] font-semibold text-hestia-success-foreground">
       Finish
     </span>
   </div>

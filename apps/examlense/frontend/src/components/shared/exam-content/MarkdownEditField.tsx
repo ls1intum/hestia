@@ -74,7 +74,7 @@ export const MarkdownEditField = ({
       <span className="flex h-[1.42rem] shrink-0 items-center" aria-hidden>
         <PenLine
           size={13}
-          className="text-hestia-text-muted/50 transition-colors group-hover:text-hestia-text-muted"
+          className="text-hestia-text-muted transition-colors group-hover:text-hestia-text"
         />
       </span>
       <div className="min-w-0 flex-1">

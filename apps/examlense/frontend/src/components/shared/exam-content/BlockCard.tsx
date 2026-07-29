@@ -11,7 +11,7 @@ interface Props {
   /** Extra classes on the card shell (e.g. a state-driven border/animation). */
   className?: string;
   /** Header row — typically a `<BlockHeader />` invocation. */
-  header: ReactNode;
+  header?: ReactNode;
   /** Body region under the header. Collapsed: subtitle preview. Expanded: full editor body. */
   body?: ReactNode;
   /** Draw the thin divider between header and body on primary cards (default true). */
@@ -61,17 +61,20 @@ export const BlockCard = ({
         className,
       )}
     >
-      <div className={cn(flow ? "px-hestia-3 pt-hestia-2 pb-1" : "px-hestia-3 pt-hestia-3 pb-hestia-2")}>
-        {header}
-      </div>
+      {header && (
+        <div className={cn(flow ? "px-hestia-3 pt-hestia-2 pb-1" : "px-hestia-3 pt-hestia-3 pb-hestia-2")}>
+          {header}
+        </div>
+      )}
       {body && (
         <div
           className={cn(
             flow
-              ? "px-hestia-3 pb-hestia-3 pt-1"
+              ? cn("px-hestia-3 pb-hestia-3", header ? "pt-1" : "pt-hestia-2")
               : cn(
-                  "px-hestia-3 pb-hestia-3 pt-hestia-2",
-                  bodyDivider && "border-t border-hestia-border/15",
+                  "px-hestia-3 pb-hestia-3",
+                  header ? "pt-hestia-2" : "pt-hestia-3",
+                  header && bodyDivider && "border-t border-hestia-border/15",
                 ),
           )}
         >

@@ -25,7 +25,7 @@ export const SectionTitleInput = ({ section, onPatch }: Props) => {
       <input
         {...inputProps}
         placeholder="Section name (e.g. Part A)"
-        className="w-full bg-transparent font-body text-base font-semibold text-hestia-text placeholder:font-normal placeholder:text-hestia-text-muted/35 focus:outline-none"
+        className="w-full bg-transparent font-body text-base font-semibold text-hestia-text placeholder:font-normal placeholder:text-hestia-text-muted focus:outline-none"
       />
     );
   }
@@ -38,7 +38,7 @@ export const SectionTitleInput = ({ section, onPatch }: Props) => {
     >
       <span className="truncate">
         {section.name || (
-          <span className="font-normal text-hestia-text-muted/60">
+          <span className="font-normal text-hestia-text-muted">
             Section name (e.g. Part A)
           </span>
         )}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ExamListItem } from "@/lib/api/api-client";
 import { notifyExamFailure } from "@/components/shared/parse-failure-toast";
-import { isParseFailure } from "@/lib/exam/exam-helpers";
+import { CANCELLED_PARSE_ERROR, isParseFailure } from "@/lib/exam/exam-helpers";
 
 /**
  * Fire a slim parse-failure toast whenever a dashboard exam transitions into the
@@ -16,7 +16,7 @@ export function useParseFailureToasts(exams?: ExamListItem[]) {
   useEffect(() => {
     if (!exams) return;
     const current = new Set(
-      exams.filter((e) => e.status === "failed").map((e) => e.id),
+      exams.flatMap((e) => (e.status === "failed" ? [e.id] : [])),
     );
 
     // First run: seed without toasting.
@@ -27,6 +27,8 @@ export function useParseFailureToasts(exams?: ExamListItem[]) {
 
     for (const exam of exams) {
       if (exam.status === "failed" && !failedRef.current.has(exam.id)) {
+        // A user-initiated cancel also lands in `failed`; don't toast it.
+        if (exam.parse_error === CANCELLED_PARSE_ERROR) continue;
         notifyExamFailure(
           exam.title,
           exam.parse_error,

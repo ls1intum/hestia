@@ -104,7 +104,6 @@ export interface Exam {
   id: string;
   title: string;
   course: string | null;
-  language: "de" | "en" | "other";
   source: "pdf" | "manual";
   source_file_url: string | null;
   status:
@@ -138,9 +137,9 @@ export interface Exam {
  * A `failed` exam is a *parsing* failure when it's a PDF import that never
  * finished parsing — i.e. `parsed_at` was never stamped (the backend sets it
  * only when parsing finalizes to draft). Every other `failed` exam (a manual
- * exam, or a PDF that parsed and later failed to solve / was cancelled mid-solve)
- * is an evaluation failure. Used to gate parse-retry (which re-parses and would
- * overwrite edited structure) vs. re-evaluation.
+ * exam, or a PDF that parsed and later failed to solve) is an evaluation failure.
+ * Used to gate parse-retry (which re-parses and would overwrite edited structure)
+ * vs. re-evaluation.
  *
  * We key off `parsed_at` rather than task count because tasks are committed
  * before the parse finalizes, so a failure/cancel in that window leaves tasks
@@ -151,6 +150,13 @@ export const isParseFailure = (
   exam: Pick<Exam, "status" | "source" | "parsed_at">,
 ): boolean =>
   exam.status === "failed" && exam.source === "pdf" && !exam.parsed_at;
+
+/**
+ * Marker the backend stamps when a user cancels a mid-parse exam (see
+ * `ExamRepository.cancelParsing`), letting the dashboard tell a deliberate
+ * cancel apart from a real failure. Keep in sync with the backend string.
+ */
+export const CANCELLED_PARSE_ERROR = "Parsing cancelled.";
 
 /**
  * The single canonical mode an exam belongs in, keyed off its status. Routing
@@ -333,18 +339,3 @@ export const UNASSIGNED_SLUG = "section-unassigned";
  * deep-link hashes stay in lockstep.
  */
 export const sectionIndexSlug = (index: number) => `section-${index + 1}`;
-
-/**
- * Build a URL-hash-safe slug for a section. Used by the editor + grading
- * + results sidebars to deep-link to a specific section.
- */
-export const sectionSlug = (key: string | null | undefined) => {
-  const base =
-    (key ?? "untitled")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64) || "untitled";
-  return `section-${base}`;
-};

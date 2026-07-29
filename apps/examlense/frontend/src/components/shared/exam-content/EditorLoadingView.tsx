@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
  */
 export const EditorLoadingView = () => {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       <header className="border-b border-hestia-border bg-hestia-surface/60 px-hestia-5 py-hestia-3">
         <Link
           to="/exams"

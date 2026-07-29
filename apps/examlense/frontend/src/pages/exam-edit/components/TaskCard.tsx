@@ -50,6 +50,11 @@ interface Props {
   onDelete: () => void;
   onDuplicate: () => void;
   onConvert: (toType: TaskType) => void;
+  /**
+   * Show the "Score needs to be set" wayfinding pill. Only the first unscored
+   * task in the section sets this, so the nudge points to one task at a time.
+   */
+  showScoreHint?: boolean;
   /** Drag-and-drop wiring (optional). */
   dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
   setNodeRef?: (el: HTMLElement | null) => void;
@@ -66,6 +71,7 @@ export const TaskCard = ({
   onDelete,
   onDuplicate,
   onConvert,
+  showScoreHint,
   dragHandleProps,
   setNodeRef,
   style,
@@ -219,7 +225,7 @@ export const TaskCard = ({
           {typeSelector}
         </div>
         <div className="relative flex items-center gap-hestia-2">
-          {noScore && (
+          {noScore && showScoreHint && (
             <WayfindingPill
               tone="warning"
               label="Score needs to be set"
@@ -242,7 +248,7 @@ export const TaskCard = ({
                 onPatch({ points: v === "" ? null : Number(v) });
               }}
               className={cn(
-                "h-7 w-20 bg-hestia-surface text-sm",
+                "no-spinner h-7 w-20 bg-hestia-surface text-sm",
                 noScore
                   ? "border-hestia-danger animate-pulse-danger"
                   : "border-hestia-border",

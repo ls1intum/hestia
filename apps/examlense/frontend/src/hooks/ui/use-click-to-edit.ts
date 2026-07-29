@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 
 /**
- * Click-to-edit title state machine shared by InlineTitle and SectionTitleInput:
- * a resting affordance flips to an input that commits the trimmed draft on blur
- * / Enter and reverts on Escape. The commit guard (e.g. skip if unchanged) is
- * left to the caller's `onSave`.
+ * Click-to-edit state machine: a resting affordance flips to an input that
+ * commits the trimmed draft on blur / Enter and reverts on Escape. The commit
+ * guard (e.g. skip if unchanged) is left to the caller's `onSave`.
  */
 export function useClickToEdit(value: string, onSave: (next: string) => void) {
   const [editing, setEditing] = useState(false);

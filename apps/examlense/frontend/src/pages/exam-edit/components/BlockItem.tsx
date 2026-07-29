@@ -82,6 +82,7 @@ interface Props {
   onPatchTask: (taskId: string, patch: Partial<Task>) => void;
   onDeleteTask: (taskId: string) => void;
   onDuplicateTask: (task: Task) => void;
+  isNextUnscoredTask?: boolean;
 }
 
 /**
@@ -99,6 +100,7 @@ export const BlockItem = ({
   onPatchTask,
   onDeleteTask,
   onDuplicateTask,
+  isNextUnscoredTask,
 }: Props) => {
   const id = itemId(item);
   const expanded = !collapseApi.isCollapsed(id);
@@ -170,6 +172,7 @@ export const BlockItem = ({
               task={item.task}
               label={taskLetterById.get(item.task.id) ?? ""}
               collapsed={false}
+              showScoreHint={isNextUnscoredTask}
               onToggleCollapsed={onToggle}
               onPatch={(patch) => onPatchTask(item.task.id, patch)}
               onDelete={() => onDeleteTask(item.task.id)}

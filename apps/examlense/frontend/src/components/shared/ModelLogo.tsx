@@ -21,7 +21,6 @@ export const ModelLogo = ({ modelId, className }: Props) => {
         alt=""
         aria-hidden="true"
         loading="lazy"
-        referrerPolicy="no-referrer"
         className={cn(
           "max-h-full max-w-full object-contain",
           // The OpenAI mark is black; invert it in dark mode so it stays legible.

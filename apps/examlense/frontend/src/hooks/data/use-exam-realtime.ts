@@ -13,7 +13,9 @@ export function useExamRealtime(
   handlers: ExamEventHandlers,
 ) {
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  useEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   // Re-subscribe only when the exam or the set of active channels changes —
   // handler identity is read through the ref, so inline closures are fine.
@@ -27,6 +29,8 @@ export function useExamRealtime(
       onExam: hasExam ? () => handlersRef.current.onExam?.() : undefined,
       onProgress: hasProgress ? () => handlersRef.current.onProgress?.() : undefined,
       onTasks: hasTasks ? () => handlersRef.current.onTasks?.() : undefined,
+      // onOpen: see `ExamEventHandlers.onOpen` — recovers a missed status change.
+      onOpen: hasExam ? () => handlersRef.current.onExam?.() : undefined,
     });
   }, [id, hasExam, hasProgress, hasTasks]);
 }

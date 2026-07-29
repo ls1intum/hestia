@@ -40,10 +40,12 @@ export const ConfirmDeleteDialog = ({
         <AlertDialogDescription>{description}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogCancel className="hover:bg-hestia-primary-muted hover:text-hestia-text">
+          Cancel
+        </AlertDialogCancel>
         <AlertDialogAction
           onClick={onConfirm}
-          className="bg-hestia-danger text-white hover:bg-hestia-danger/90"
+          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
         >
           {confirmLabel}
         </AlertDialogAction>

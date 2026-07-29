@@ -105,7 +105,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         byte[] imageBytes = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
         SectionFigure srcFig = addFigure(src, srcSection, imageBytes);
 
-        Exam copy = examService.duplicateExam(src, DefaultUser.ID.toString());
+        Exam copy = examService.duplicateExam(src, DefaultUser.ID.toString(), null, null);
 
         assertThat(copy.getId()).isNotEqualTo(src.getId());
         assertThat(copy.getTitle()).isEqualTo("Original (Copy)");
@@ -140,13 +140,24 @@ class CrudOperationsIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void duplicateExamAppliesTitleAndSolverOverrides() {
+        Exam src = seedExamWithContent();
+
+        Exam copy = examService.duplicateExam(
+            src, DefaultUser.ID.toString(), "  Retry on Claude  ", "anthropic:claude-sonnet-5");
+
+        assertThat(copy.getTitle()).isEqualTo("Retry on Claude"); // trimmed, no " (Copy)" suffix
+        assertThat(copy.getSolverModel()).isEqualTo("anthropic:claude-sonnet-5");
+    }
+
+    @Test
     void duplicateExamSkipsFiguresWhoseSourceBytesAreMissing() {
         Exam src = seedExamWithContent();
         Section srcSection = sections.findByExamIdOrderByPositionAsc(src.getId()).get(0);
         // Figure row exists but its image object was never stored.
         addFigure(src, srcSection, null);
 
-        Exam copy = examService.duplicateExam(src, DefaultUser.ID.toString());
+        Exam copy = examService.duplicateExam(src, DefaultUser.ID.toString(), null, null);
 
         // The figure block is still copied...
         SectionBlock copiedFigBlock = blocks.findByExamIdOrderByPositionAsc(copy.getId()).stream()

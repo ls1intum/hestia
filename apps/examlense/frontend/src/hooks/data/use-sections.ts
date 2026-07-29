@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { listSections, listBlocks, listFigures } from "@/lib/api/api-client";
 import type { Section, SectionBlock, SectionFigure } from "@/lib/exam/exam-helpers";
 
@@ -28,9 +28,4 @@ export function useSectionFigures(blockId: string | undefined) {
     enabled: !!blockId,
     queryFn: async () => (await listFigures(blockId!)) as unknown as SectionFigure[],
   });
-}
-
-export function useInvalidateSections() {
-  const qc = useQueryClient();
-  return (examId: string) => qc.invalidateQueries({ queryKey: sectionsKey(examId) });
 }

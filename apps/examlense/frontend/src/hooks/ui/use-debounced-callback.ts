@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 
-export function useDebouncedCallback<T extends (...args: any[]) => void>(
+export function useDebouncedCallback<T extends (...args: never[]) => void>(
   fn: T,
   delay = 400
 ) {
   const fnRef = useRef(fn);
+  // No dep array on purpose: callers pass a fresh function each render, so a
+  // `[fn]` dependency would re-run the effect every commit anyway.
   useEffect(() => {
     fnRef.current = fn;
-  }, [fn]);
+  });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

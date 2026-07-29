@@ -108,7 +108,7 @@ export const ExamEditFooter = ({
                 onStartSolvingOpenChange(false);
                 onSendToEvaluation();
               }}
-              className="bg-hestia-success text-white hover:bg-hestia-success/90"
+              className="bg-hestia-success text-hestia-success-foreground hover:bg-hestia-success/90"
             >
               Send for evaluation
             </AlertDialogAction>
