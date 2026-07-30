@@ -158,6 +158,21 @@ export default function CompetencyGoalModal({
     onUpdate!(goal.id!, changes);
   };
   const sources = goal.sources ?? [];
+  // `kind` describes how a goal relates to the source material, which says nothing true about a node
+  // the wizard generated or the instructor typed: both are stored as IMPLICIT with no source at all,
+  // so the plain kind tile would claim they were "inferred from the content". Provenance is the more
+  // specific fact and wins here, the way the tree's Kind column already replaces the kind pill.
+  const kindTile =
+    goal.creationProvenance === "USER_CREATED"
+      ? { label: "Manual", desc: "Added by hand, not derived from source material." }
+      : goal.creationProvenance === "WIZARD_AI_SUBTREE"
+        ? {
+            label: "AI-inferred",
+            desc: "Generated from the skill's wording, without a source reference.",
+          }
+        : goal.kind
+          ? { label: titleCase(goal.kind), desc: KIND_DESC[titleCase(goal.kind)] }
+          : null;
   const rels = relationships ?? [];
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
@@ -320,9 +335,9 @@ export default function CompetencyGoalModal({
             )}
           </div>
           {/* Session and kind are both one-liners, so they share a row. */}
-          {(session || goal.kind) && (
+          {(session || kindTile) && (
             <div
-              className={`grid gap-3 ${session && goal.kind ? "sm:grid-cols-2" : ""}`}
+              className={`grid gap-3 ${session && kindTile ? "sm:grid-cols-2" : ""}`}
             >
               {session && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
@@ -414,17 +429,17 @@ export default function CompetencyGoalModal({
                   )}
                 </div>
               )}
-              {goal.kind && (
+              {kindTile && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
                   <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
                     Kind
                   </span>
                   <p className="mt-2 text-sm font-semibold text-hestia-text">
-                    {titleCase(goal.kind)}
+                    {kindTile.label}
                   </p>
-                  {KIND_DESC[titleCase(goal.kind)] && (
+                  {kindTile.desc && (
                     <p className="mt-0.5 text-xs leading-snug text-hestia-text-muted">
-                      {KIND_DESC[titleCase(goal.kind)]}
+                      {kindTile.desc}
                     </p>
                   )}
                 </div>
@@ -816,7 +831,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
 }
 
 /** Red pill flagging a goal the instructor accepted as an AI suggestion (WIZARD_AI_SUBTREE). */
-export function AiInferredBadge() {
+export function AiInferredBadge({ compact = false }: { compact?: boolean } = {}) {
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
@@ -825,7 +840,22 @@ export function AiInferredBadge() {
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
       }}
     >
-      AI-inferred
+      {compact ? "AI" : "AI-inferred"}
+    </span>
+  );
+}
+
+/** Amber pill flagging a goal the instructor added manually (USER_CREATED). */
+export function ManualBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      style={{
+        color: "var(--hestia-warning)",
+        backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
+      }}
+    >
+      Manual
     </span>
   );
 }
