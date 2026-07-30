@@ -193,6 +193,169 @@
   pointer-events: none;
 }
 
+/* Zero-height table append affordances: the hit band straddles the divider while the label floats
+   outside the grid, so adding one never creates a phantom table row. */
+.competency-append-container {
+  position: relative;
+  height: 0;
+  overflow: visible;
+}
+
+.competency-append-button {
+  position: absolute;
+  top: -0.6rem;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  height: 1.2rem;
+  width: 2.4rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.competency-append-dot {
+  display: grid;
+  place-items: center;
+  height: 0.4rem;
+  width: 0.4rem;
+  border-radius: 999px;
+  opacity: 0.5;
+  transition: height 150ms ease, width 150ms ease, opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.competency-append-dot::after {
+  content: "+";
+  color: var(--hestia-surface);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.competency-append-button:hover .competency-append-dot,
+.competency-append-button:focus-visible .competency-append-dot {
+  height: 1.4rem;
+  width: 1.4rem;
+  opacity: 1;
+  box-shadow: 0 2px 8px color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.competency-append-button:hover .competency-append-dot::after,
+.competency-append-button:focus-visible .competency-append-dot::after {
+  opacity: 1;
+}
+
+.competency-append-label {
+  position: absolute;
+  top: 1.5rem;
+  /* Grows rightward from the knob rather than centring on it: the knob sits near the table's left
+     edge, and a centred label would extend past it and be clipped by the scroll container. */
+  left: 0.5rem;
+  z-index: 6;
+  width: max-content;
+  max-width: 12rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--hestia-text) 92%, transparent);
+  color: var(--hestia-surface);
+  padding: 0.25rem 0.5rem;
+  pointer-events: none;
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.competency-append-label-above {
+  top: auto;
+  bottom: 1.5rem;
+}
+
+.competency-append-button:hover .competency-append-label,
+.competency-append-button:focus-visible .competency-append-label {
+  opacity: 1;
+}
+
+.competency-append-container-active {
+  height: auto;
+}
+
+.competency-append-form {
+  /* In normal flow: an absolutely positioned form would be clipped by the grid's scroll container
+     when opened on the last row. The container grows for as long as the field is open. */
+  margin-block: 0.4rem;
+  margin-right: 0.625rem;
+  max-width: min(32rem, 100%);
+  border: 1px solid var(--hestia-border);
+  border-radius: 0.5rem;
+  background: var(--hestia-surface);
+  padding: 0.35rem;
+  box-shadow: var(--shadow-md);
+}
+
+/* Map creation ghosts share the dimensions of the shelf boxes but remain quiet until invited. */
+.competency-ghost {
+  display: flex;
+  min-height: 7rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1.5px dashed
+    color-mix(in srgb, var(--competency-ghost-color) 45%, transparent);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--hestia-text-muted);
+  padding: 0.75rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: border-color 150ms ease, border-style 150ms ease,
+    background-color 150ms ease, color 150ms ease;
+}
+
+button.competency-ghost {
+  cursor: pointer;
+}
+
+.competency-ghost:hover,
+.competency-ghost:focus-visible,
+.competency-ghost-active {
+  border-style: solid;
+  border-color: var(--competency-ghost-color);
+  background: color-mix(
+    in srgb,
+    var(--competency-ghost-color) 10%,
+    var(--hestia-surface)
+  );
+  color: var(--competency-ghost-color);
+}
+
+.competency-ghost-plus {
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  width: 2rem;
+  border: 1px solid
+    color-mix(in srgb, var(--competency-ghost-color) 45%, transparent);
+  border-radius: 999px;
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1;
+  transition: height 150ms ease, width 150ms ease, background-color 150ms ease;
+}
+
+.competency-ghost:hover .competency-ghost-plus,
+.competency-ghost:focus-visible .competency-ghost-plus {
+  height: 2.5rem;
+  width: 2.5rem;
+  background: color-mix(in srgb, var(--competency-ghost-color) 15%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -702,6 +702,7 @@ export default function CoursePage() {
       {goals.length > 0 && goalsView === "table" && (
         <div className="mx-auto w-full max-w-5xl">
           <CompetencyTree
+            courseId={courseId}
             goals={goals}
             onUpdate={updateGoal}
             onDelete={setGoalToDelete}
@@ -713,6 +714,7 @@ export default function CoursePage() {
           itself only while a skill is focused, so no width cap here. */}
       {goals.length > 0 && goalsView === "map" && (
         <CompetencyGraph
+          courseId={courseId}
           goals={goals}
           onEdit={setEditGoal}
           onDelete={setGoalToDelete}

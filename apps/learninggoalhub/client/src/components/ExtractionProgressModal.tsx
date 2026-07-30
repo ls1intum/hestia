@@ -447,6 +447,7 @@ export default function ExtractionProgressModal({
                   value={newSkill}
                   onChange={(event) => setNewSkill(event.target.value)}
                   autoFocus
+                  disabled={addSkillMutation.isPending}
                   placeholder="Describe a skill students should master…"
                   className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
                 />
@@ -457,6 +458,7 @@ export default function ExtractionProgressModal({
                     setNewSkill("");
                     addSkillMutation.reset();
                   }}
+                  disabled={addSkillMutation.isPending}
                   className="rounded-md border border-hestia-border px-2.5 py-1 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted"
                 >
                   Cancel
@@ -466,7 +468,17 @@ export default function ExtractionProgressModal({
                   disabled={newSkill.trim() === "" || addSkillMutation.isPending}
                   className="rounded-md bg-hestia-primary px-2.5 py-1 text-sm font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
                 >
-                  Add
+                  {addSkillMutation.isPending ? (
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                      />
+                      Adding…
+                    </span>
+                  ) : (
+                    "Add"
+                  )}
                 </button>
               </form>
             ) : (
@@ -484,6 +496,11 @@ export default function ExtractionProgressModal({
             {addSkillMutation.isError && (
               <p className="mt-3 text-sm text-hestia-danger">
                 {(addSkillMutation.error as Error).message}
+              </p>
+            )}
+            {addSkillMutation.isPending && (
+              <p className="mt-3 text-sm text-hestia-text-muted" aria-live="polite">
+                Generating the skill’s sub-skills and knowledge…
               </p>
             )}
             {renameMutation.isError && (

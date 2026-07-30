@@ -158,6 +158,21 @@ export default function CompetencyGoalModal({
     onUpdate!(goal.id!, changes);
   };
   const sources = goal.sources ?? [];
+  // `kind` describes how a goal relates to the source material, which says nothing true about a node
+  // the wizard generated or the instructor typed: both are stored as IMPLICIT with no source at all,
+  // so the plain kind tile would claim they were "inferred from the content". Provenance is the more
+  // specific fact and wins here, the way the tree's Kind column already replaces the kind pill.
+  const kindTile =
+    goal.creationProvenance === "USER_CREATED"
+      ? { label: "Manual", desc: "Added by hand, not derived from source material." }
+      : goal.creationProvenance === "WIZARD_AI_SUBTREE"
+        ? {
+            label: "AI-inferred",
+            desc: "Generated from the skill's wording, without a source reference.",
+          }
+        : goal.kind
+          ? { label: titleCase(goal.kind), desc: KIND_DESC[titleCase(goal.kind)] }
+          : null;
   const rels = relationships ?? [];
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
@@ -320,9 +335,9 @@ export default function CompetencyGoalModal({
             )}
           </div>
           {/* Session and kind are both one-liners, so they share a row. */}
-          {(session || goal.kind) && (
+          {(session || kindTile) && (
             <div
-              className={`grid gap-3 ${session && goal.kind ? "sm:grid-cols-2" : ""}`}
+              className={`grid gap-3 ${session && kindTile ? "sm:grid-cols-2" : ""}`}
             >
               {session && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
@@ -414,17 +429,17 @@ export default function CompetencyGoalModal({
                   )}
                 </div>
               )}
-              {goal.kind && (
+              {kindTile && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
                   <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
                     Kind
                   </span>
                   <p className="mt-2 text-sm font-semibold text-hestia-text">
-                    {titleCase(goal.kind)}
+                    {kindTile.label}
                   </p>
-                  {KIND_DESC[titleCase(goal.kind)] && (
+                  {kindTile.desc && (
                     <p className="mt-0.5 text-xs leading-snug text-hestia-text-muted">
-                      {KIND_DESC[titleCase(goal.kind)]}
+                      {kindTile.desc}
                     </p>
                   )}
                 </div>
@@ -598,12 +613,15 @@ export default function CompetencyGoalModal({
               </ul>
             </div>
           )}
-          {(goal.bloomLevel || goal.soloLevel) && (
+          {/* An editable modal always shows both scales: a manually added goal starts unclassified,
+              and the empty scale is the only place its levels can be set. Read-only views keep
+              hiding a level that was never assigned. */}
+          {(goal.bloomLevel || goal.soloLevel || onUpdate) && (
             <div className="grid gap-3 sm:grid-cols-2">
-              {goal.bloomLevel && (
+              {(goal.bloomLevel || onUpdate) && (
                 <TaxonomyTile
                   label="Bloom"
-                  term={titleCase(goal.bloomLevel)}
+                  term={goal.bloomLevel ? titleCase(goal.bloomLevel) : null}
                   desc={BLOOM_DESC}
                   dotClass="bg-hestia-accent"
                   onSelect={
@@ -618,10 +636,10 @@ export default function CompetencyGoalModal({
                   }
                 />
               )}
-          {goal.soloLevel && (
+              {(goal.soloLevel || onUpdate) && (
                 <TaxonomyTile
                   label="SOLO"
-                  term={titleCase(goal.soloLevel)}
+                  term={goal.soloLevel ? titleCase(goal.soloLevel) : null}
                   desc={SOLO_DESC}
                   dotClass="bg-hestia-primary"
                   onSelect={
@@ -715,6 +733,8 @@ export default function CompetencyGoalModal({
  * With `onSelect` the dots become buttons — star-rating style: hovering (or focusing) a dot
  * previews that level, filling the scale up to it and swapping the name/description below to
  * the would-be level; clicking commits it. A quiet header hint keeps this discoverable.
+ * A `null` term is the empty state of a goal nobody classified — an untouched scale whose dots
+ * still set the level.
  */
 function TaxonomyTile({
   label,
@@ -724,14 +744,15 @@ function TaxonomyTile({
   onSelect,
 }: {
   label: string;
-  term: string;
+  /** The goal's level, or `null` when it has none yet. */
+  term: string | null;
   /** The taxonomy's level → description map, in ladder order. */
   desc: Record<string, string>;
   dotClass: string;
   onSelect?: (term: string) => void;
 }) {
   const ladder = Object.keys(desc);
-  const index = ladder.indexOf(term);
+  const index = term == null ? -1 : ladder.indexOf(term);
   const [hover, setHover] = useState<number | null>(null);
   const previewing = onSelect != null && hover != null && hover !== index;
   const shownTerm = previewing ? ladder[hover] : term;
@@ -739,7 +760,8 @@ function TaxonomyTile({
   const dotStyle = (i: number): string => {
     if (previewing) {
       if (i <= Math.min(index, hover)) return dotClass;
-      if (i <= hover) return `${dotClass} opacity-50`;
+      // With nothing set the preview is the whole answer, so it fills solid instead of half.
+      if (i <= hover) return index < 0 ? dotClass : `${dotClass} opacity-50`;
       if (i <= index) return `${dotClass} opacity-20`;
       return "bg-hestia-text/15";
     }
@@ -786,10 +808,22 @@ function TaxonomyTile({
           );
         })}
       </div>
-      <p className="mt-1 text-sm font-semibold text-hestia-text">{shownTerm}</p>
-      {desc[shownTerm] && (
+      <p
+        className={`mt-1 text-sm font-semibold ${shownTerm ? "text-hestia-text" : "text-hestia-text-muted"}`}
+      >
+        {shownTerm ?? "Not set"}
+      </p>
+      {shownTerm ? (
+        desc[shownTerm] && (
+          <p className="mt-0.5 text-xs leading-snug text-hestia-text-muted">
+            {desc[shownTerm]}
+          </p>
+        )
+      ) : (
         <p className="mt-0.5 text-xs leading-snug text-hestia-text-muted">
-          {desc[shownTerm]}
+          {onSelect
+            ? "Pick a dot to set the level."
+            : "This goal has not been classified."}
         </p>
       )}
     </div>
@@ -816,7 +850,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
 }
 
 /** Red pill flagging a goal the instructor accepted as an AI suggestion (WIZARD_AI_SUBTREE). */
-export function AiInferredBadge() {
+export function AiInferredBadge({ compact = false }: { compact?: boolean } = {}) {
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
@@ -825,7 +859,22 @@ export function AiInferredBadge() {
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
       }}
     >
-      AI-inferred
+      {compact ? "AI" : "AI-inferred"}
+    </span>
+  );
+}
+
+/** Amber pill flagging a goal the instructor added manually (USER_CREATED). */
+export function ManualBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      style={{
+        color: "var(--hestia-warning)",
+        backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
+      }}
+    >
+      Manual
     </span>
   );
 }

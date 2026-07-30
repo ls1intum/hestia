@@ -226,11 +226,13 @@ public class LearningGoalController {
     /**
      * Adds a terminal skill (competency root) an instructor typed in the post-extraction review. It is
      * NOT part of the ordinary pipeline: created directly as an {@code origin=TERMINAL},
-     * {@code status=PENDING} goal with no CONTRIBUTES_TO edges and no source snippet, tagged
-     * {@code USER_CREATED} so it stays distinguishable from clustered terminals. Bloom/SOLO are
-     * classified best-effort — a classification failure still creates the skill, just without levels;
-     * no embedding is computed, matching the pipeline's terminal competencies. The goal is attached to
-     * the course's COMPETENCY root, reusing it or creating it on first use.
+     * {@code status=PENDING} goal with no source snippet, tagged {@code USER_CREATED} so it stays
+     * distinguishable from clustered terminals. Bloom/SOLO stay empty — a typed skill is the
+     * instructor's own wording, so the levels are theirs to set in the review rather than a model's
+     * guess; only generated nodes are classified. The AI subtree is best-effort: a failure still
+     * creates the skill and can be retried later.
+     * No embedding is computed, matching the pipeline's terminal competencies.
+     * The goal is attached to the course's COMPETENCY root, reusing it or creating it on first use.
      */
     @PostMapping("/terminal")
     @ResponseStatus(HttpStatus.CREATED)
@@ -254,16 +256,21 @@ public class LearningGoalController {
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal.setHierarchyNode(competencyRoot(course));
-        try {
-            TaxonomyClassification classification = taxonomyService.classify(text);
-            if (classification != null) {
-                goal.setBloomLevel(classification.bloom());
-                goal.setSoloLevel(classification.solo());
-            }
-        } catch (RuntimeException ignored) {
-            // Best-effort, mirroring the pipeline: a classification failure still creates the skill.
-        }
         goalRepository.save(goal);
+        String languageName = courseLanguageName(course);
+        GeneratedSubtree generated = null;
+        try {
+            generated = SubtreeSynthesizer.validate(
+                    subtreeSynthesizer.generateSubtree(text, languageName, null));
+        } catch (RuntimeException ignored) {
+            // The instructor's skill is still useful without an AI subtree; the review can retry it later.
+        }
+        if (generated != null) {
+            GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
+            // Only the generated nodes: the skill itself was already classified above.
+            applyClassifications(generatedNodes.nodes(), null);
+            persistGeneratedNodes(goal, generatedNodes);
+        }
         return LearningGoalResponse.from(goal, List.of(), List.of());
     }
 
@@ -331,10 +338,90 @@ public class LearningGoalController {
         terminal.setShortLabel(trimToNull(request.shortLabel()));
         terminal.setHierarchyNode(competencyRoot(course));
 
+        GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
+        applyClassifications(allNodes(terminal, generatedNodes), model);
+        persistGeneratedNodes(terminal, generatedNodes);
+        return LearningGoalResponse.from(terminal, List.of(), List.of());
+    }
+
+    /** Generates a new subtree for an existing terminal, replacing only its owned AI descendants. */
+    @PostMapping("/{goalId}/subtree")
+    @Transactional
+    public LearningGoalResponse generateSubtree(@PathVariable Long courseId,
+                                                @PathVariable Long goalId,
+                                                @RequestParam(required = false) String model) {
+        LearningGoal terminal = findGoal(courseId, goalId);
+        if (terminal.getOrigin() != GoalOrigin.TERMINAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only terminal skills can generate a subtree");
+        }
+
+        Course course = terminal.getCourse();
+        GeneratedSubtree generated = SubtreeSynthesizer.validate(
+                subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), model));
+        GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
+        applyClassifications(generatedNodes.nodes(), model);
+
+        deleteWizardGeneratedDescendants(terminal);
+        goalRepository.flush();
+        persistGeneratedNodes(terminal, generatedNodes);
+        // The terminal was still created by hand; its provenance describes the node, not its children.
+        return LearningGoalResponse.from(terminal, List.of(), List.of());
+    }
+
+    /**
+     * Adds one sub-skill or knowledge item an instructor typed, as a {@code USER_CREATED} child that
+     * CONTRIBUTES_TO {@code goalId}. Additive by design: it is allowed under extracted goals too,
+     * because it destroys nothing. Only the tier is constrained — see {@link #rejectIfKnowledgeTier}.
+     * Like a typed skill, it stays unclassified: Bloom/SOLO are the instructor's to set, and skipping
+     * the model keeps the add instant.
+     */
+    @PostMapping("/{goalId}/children")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public LearningGoalResponse addChild(@PathVariable Long courseId,
+                                         @PathVariable Long goalId,
+                                         @RequestBody AddChildRequest request) {
+        LearningGoal parent = findGoal(courseId, goalId);
+        String text = request.text() == null ? "" : request.text().strip();
+        if (text.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
+        }
+        rejectIfKnowledgeTier(parent);
+
+        Course course = parent.getCourse();
+        LearningGoal child = newUserCreatedChild(course, text);
+        child.setShortLabel(trimToNull(request.shortLabel()));
+        goalRepository.save(child);
+        goalRepository.flush();
+        linkContributors(List.of(child), parent);
+        return LearningGoalResponse.from(child, List.of(), List.of());
+    }
+
+    /**
+     * Rejects a parent that already sits on the knowledge tier. The competency forest is capped at
+     * three tiers (skill → sub-skill → knowledge), so a child below knowledge would be persisted but
+     * never rendered in any view. A parent is eligible when it is a terminal skill (tier 1) or
+     * contributes to one (tier 2); anything else — including a goal outside the competency tree
+     * altogether — cannot take children.
+     */
+    private void rejectIfKnowledgeTier(LearningGoal parent) {
+        if (parent.getOrigin() == GoalOrigin.TERMINAL) {
+            return;
+        }
+        boolean contributesToTerminal = goalRelationshipRepository.findBySourceId(parent.getId()).stream()
+                .anyMatch(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO
+                        && relationship.getTarget().getOrigin() == GoalOrigin.TERMINAL);
+        if (!contributesToTerminal) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a skill or a sub-skill can take children");
+        }
+    }
+
+    private GeneratedNodes buildGeneratedNodes(Course course, GeneratedSubtree generated) {
         List<LearningGoal> subSkills = new ArrayList<>();
         List<List<LearningGoal>> knowledgeBySubSkill = new ArrayList<>();
         List<LearningGoal> nodes = new ArrayList<>();
-        nodes.add(terminal);
         for (GeneratedSubSkill generatedSubSkill : generated.subSkills()) {
             LearningGoal subSkill = newGeneratedGoal(course, generatedSubSkill.text(), GoalOrigin.SYNTHESIZED);
             subSkill.setShortLabel(trimToNull(generatedSubSkill.shortLabel()));
@@ -349,19 +436,31 @@ public class LearningGoalController {
             }
             knowledgeBySubSkill.add(subSkillKnowledge);
         }
+        return new GeneratedNodes(subSkills, knowledgeBySubSkill, nodes);
+    }
 
-        applyClassifications(nodes, model);
-        goalRepository.saveAll(nodes);
+    private List<LearningGoal> allNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
+        List<LearningGoal> nodes = new ArrayList<>(generatedNodes.nodes());
+        nodes.add(0, terminal);
+        return nodes;
+    }
+
+    private void persistGeneratedNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
+        goalRepository.saveAll(allNodes(terminal, generatedNodes));
         goalRepository.flush();
-        for (int i = 0; i < subSkills.size(); i++) {
-            for (LearningGoal knowledgeGoal : knowledgeBySubSkill.get(i)) {
-                linkContributors(List.of(knowledgeGoal), subSkills.get(i));
+        for (int i = 0; i < generatedNodes.subSkills().size(); i++) {
+            for (LearningGoal knowledgeGoal : generatedNodes.knowledgeBySubSkill().get(i)) {
+                linkContributors(List.of(knowledgeGoal), generatedNodes.subSkills().get(i));
             }
         }
-        for (LearningGoal subSkill : subSkills) {
+        for (LearningGoal subSkill : generatedNodes.subSkills()) {
             linkContributors(List.of(subSkill), terminal);
         }
-        return LearningGoalResponse.from(terminal, List.of(), List.of());
+    }
+
+    private record GeneratedNodes(List<LearningGoal> subSkills,
+                                  List<List<LearningGoal>> knowledgeBySubSkill,
+                                  List<LearningGoal> nodes) {
     }
 
     private LearningGoal newGeneratedGoal(Course course, String text, GoalOrigin origin) {
@@ -369,6 +468,14 @@ public class LearningGoalController {
         goal.setOrigin(origin);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.WIZARD_AI_SUBTREE);
+        return goal;
+    }
+
+    private LearningGoal newUserCreatedChild(Course course, String text) {
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+        goal.setOrigin(GoalOrigin.SYNTHESIZED);
+        goal.setStatus(GoalStatus.PENDING);
+        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         return goal;
     }
 
@@ -511,27 +618,56 @@ public class LearningGoalController {
     public void delete(@PathVariable Long courseId, @PathVariable Long goalId) {
         // The DB cascades the delete to goal_source rows and to relationships in both directions.
         LearningGoal goal = findGoal(courseId, goalId);
-        if (goal.getOrigin() == GoalOrigin.TERMINAL
-                && goal.getCreationProvenance() == GoalCreationProvenance.WIZARD_AI_SUBTREE) {
-            deleteGeneratedDescendants(goal);
-        }
+        deleteOwnedDescendants(goal);
         goalRepository.delete(goal);
     }
 
-    private void deleteGeneratedDescendants(LearningGoal root) {
+    /** Regeneration owns only the descendants created by the AI subtree wizard; the root survives. */
+    private void deleteWizardGeneratedDescendants(LearningGoal root) {
+        deleteDescendants(root, Set.of(GoalCreationProvenance.WIZARD_AI_SUBTREE), false);
+    }
+
+    /** DELETE removes both AI-generated and manually added descendants, but never pipeline goals. */
+    private void deleteOwnedDescendants(LearningGoal root) {
+        deleteDescendants(root, Set.of(
+                GoalCreationProvenance.WIZARD_AI_SUBTREE,
+                GoalCreationProvenance.USER_CREATED), true);
+    }
+
+    /**
+     * Collects and removes the descendants of {@code root} whose creation provenance marks them as
+     * owned, together with every edge that would outlive one of its endpoints.
+     *
+     * @param rootDeleted whether {@code root} itself is being removed by the caller. DELETE removes it,
+     *                    so all of its incoming edges go; regeneration keeps it, so only the edges from
+     *                    owned descendants go and manual or extracted contributors stay attached.
+     */
+    private void deleteDescendants(LearningGoal root,
+                                   Set<GoalCreationProvenance> ownedProvenances,
+                                   boolean rootDeleted) {
         List<LearningGoal> descendants = new ArrayList<>();
-        List<GoalRelationship> ownedEdges = new ArrayList<>();
+        List<GoalRelationship> loadedEdges = new ArrayList<>();
         Set<Long> visited = new HashSet<>();
         Deque<LearningGoal> pending = new ArrayDeque<>();
         pending.add(root);
         while (!pending.isEmpty()) {
             LearningGoal target = pending.removeFirst();
+            boolean targetDeleted = rootDeleted || !target.getId().equals(root.getId());
             for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
-                if (relationship.getType() != RelationshipType.CONTRIBUTES_TO
-                        || relationship.getSource().getCreationProvenance() != GoalCreationProvenance.WIZARD_AI_SUBTREE) {
+                // A null provenance marks a pipeline/extracted goal, which is never owned. Test it
+                // explicitly: ownedProvenances is a Set.of(...), and those throw on contains(null).
+                GoalCreationProvenance provenance = relationship.getSource().getCreationProvenance();
+                boolean owned = relationship.getType() == RelationshipType.CONTRIBUTES_TO
+                        && provenance != null
+                        && ownedProvenances.contains(provenance);
+                // An edge dies with either endpoint: its source is an owned goal we delete, or its
+                // target is going away. Anything else stays and keeps its surviving goal attached.
+                if (owned || targetDeleted) {
+                    loadedEdges.add(relationship);
+                }
+                if (!owned) {
                     continue;
                 }
-                ownedEdges.add(relationship);
                 LearningGoal source = relationship.getSource();
                 if (visited.add(source.getId())) {
                     descendants.add(source);
@@ -541,9 +677,9 @@ public class LearningGoalController {
         }
         // Delete the loaded edge entities first: they are managed in the persistence context, so
         // deleting the goals they reference while they linger would fail the flush with a
-        // TransientObjectException. The plain delete() path never loads relationships, hence relies on
-        // the DB cascade alone.
-        goalRelationshipRepository.deleteAll(ownedEdges);
+        // TransientObjectException. Leaving a skipped edge to the DB cascade is not enough — once
+        // loaded, Hibernate still holds it.
+        goalRelationshipRepository.deleteAll(loadedEdges);
         goalRelationshipRepository.flush();
         for (int i = descendants.size() - 1; i >= 0; i--) {
             goalRepository.delete(descendants.get(i));
@@ -624,6 +760,9 @@ public class LearningGoalController {
     }
 
     public record CreateGeneratedTerminalSkillRequest(String text, String shortLabel) {
+    }
+
+    public record AddChildRequest(String text, String shortLabel) {
     }
 
     /** One hierarchy node (module/session/exercise) and its goals; all-null node fields = ungrouped. */

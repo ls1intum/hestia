@@ -7,8 +7,11 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
 import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
+import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import {
   COMPETENCY_ROLE_META,
@@ -45,6 +48,13 @@ type Row = {
 type FilterKey = "role" | "bloom" | "kind" | "session";
 type SortKey = "text" | "bloom" | "items" | "session";
 type SortState = { key: SortKey; dir: 1 | -1 } | null;
+type CreationTier = 1 | 2 | 3;
+type CreationState = {
+  key: string;
+  tier: CreationTier;
+  parentGoalId: number | null;
+  text: string;
+};
 
 // Shared grid template so the sticky header row and every body row line their columns up: a
 // flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
@@ -62,7 +72,8 @@ const BLOOM_ORDER = [
 // "AI_INFERRED" is a synthetic kind value derived from a goal's WIZARD_AI_SUBTREE provenance, so the
 // Kind column and its filter surface AI-generated goals without a separate GoalKind enum on the server.
 const AI_INFERRED_KIND = "AI_INFERRED";
-const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND];
+const MANUAL_KIND = "MANUAL";
+const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
 const ROLE_ORDER: CompetencyRole[] = [
   "competency",
   "sub-skill",
@@ -81,9 +92,10 @@ function valueOf(row: Row, key: FilterKey): string {
     case "bloom":
       return row.goal.bloomLevel ?? "";
     case "kind":
-      return row.goal.creationProvenance === "WIZARD_AI_SUBTREE"
-        ? AI_INFERRED_KIND
-        : (row.goal.kind ?? "");
+      if (row.goal.creationProvenance === "WIZARD_AI_SUBTREE")
+        return AI_INFERRED_KIND;
+      if (row.goal.creationProvenance === "USER_CREATED") return MANUAL_KIND;
+      return row.goal.kind ?? "";
     case "session":
       return sessionTitleOf(row.goal);
   }
@@ -104,6 +116,7 @@ function displayValue(key: FilterKey, value: string): string {
     return COMPETENCY_ROLE_META[value as CompetencyRole].label;
   if (key === "session") return value || "—";
   if (value === AI_INFERRED_KIND) return "AI-inferred";
+  if (value === MANUAL_KIND) return "Manual";
   return value ? titleCase(value) : "—";
 }
 
@@ -128,10 +141,12 @@ const COLUMNS: {
 ];
 
 export default function CompetencyTree({
+  courseId,
   goals,
   onUpdate,
   onDelete,
 }: {
+  courseId: number;
   goals: LearningGoal[];
   onUpdate: (
     goalId: number,
@@ -143,6 +158,71 @@ export default function CompetencyTree({
   ) => void;
   onDelete: (goal: LearningGoal) => void;
 }) {
+  const queryClient = useQueryClient();
+  const [creation, setCreation] = useState<CreationState | null>(null);
+  const createMutation = useMutation({
+    mutationFn: async (vars: CreationState) => {
+      if (vars.tier === 1) {
+        const result = await api.POST(
+          "/api/courses/{courseId}/learning-goals/terminal",
+          { params: { path: { courseId } }, body: { text: vars.text } },
+        );
+        if (!result.data) {
+          throw new Error(
+            result.response.status === 409
+              ? "A skill with that wording already exists."
+              : "Could not add the skill.",
+          );
+        }
+        return result.data;
+      }
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/{goalId}/children",
+        {
+          params: { path: { courseId, goalId: vars.parentGoalId! } },
+          body: { text: vars.text },
+        },
+      );
+      if (!result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Knowledge nodes cannot have children."
+            : "Could not add the goal.",
+        );
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+
+  const beginCreation = (tier: CreationTier, parentGoalId: number | null) => {
+    createMutation.reset();
+    setCreation({
+      key: `${tier}:${parentGoalId ?? "root"}`,
+      tier,
+      parentGoalId,
+      text: "",
+    });
+  };
+  const cancelCreation = () => {
+    if (!createMutation.isPending) setCreation(null);
+  };
+  const updateCreationText = (text: string) => {
+    if (createMutation.isError) createMutation.reset();
+    setCreation((current) => (current ? { ...current, text } : current));
+  };
+  const submitCreation = () => {
+    if (!creation || creation.text.trim() === "") return;
+    createMutation.mutate(
+      { ...creation, text: creation.text.trim() },
+      { onSuccess: () => setCreation(null) },
+    );
+  };
+
   const forest = useMemo(() => buildCompetencyForest(goals), [goals]);
   const rows = useMemo(() => flattenForest(forest), [forest]);
   const childrenOf = useMemo(() => {
@@ -396,8 +476,22 @@ export default function CompetencyTree({
   // Depth-first walk producing the visible rows: expansion state applies while browsing, filters
   // force the full path to every match open.
   const bodyRows: ReactElement[] = [];
-  const walk = (siblings: Row[], depth: number) => {
-    for (const row of sortSiblings(siblings)) {
+  let rowIndex = 0;
+  const walk = (
+    siblings: Row[],
+    depth: number,
+    parentGoalId: number | null,
+    parentRole: CompetencyRole | null,
+    /**
+     * Whether this group's knob lands in the stack of knobs at the very bottom of the grid. Their
+     * containers are zero-height, so every trailing knob shares the same row and a tooltip opening
+     * downward would be clipped by the scroll container — the whole stack has to open upward.
+     */
+    trailing: boolean,
+  ) => {
+    const ordered = sortSiblings(siblings);
+    for (let i = 0; i < ordered.length; i++) {
+      const row = ordered[i];
       const isMatch = !filtering || matchIds!.has(row.id);
       const isContext = filtering && contextIds.has(row.id);
       if (filtering && !isMatch && !isContext) continue;
@@ -406,7 +500,7 @@ export default function CompetencyTree({
           key={row.id}
           row={row}
           depth={depth}
-          zebra={bodyRows.length % 2 === 1}
+          zebra={rowIndex++ % 2 === 1}
           context={isContext}
           filtering={filtering}
           open={expanded.has(row.id)}
@@ -414,11 +508,63 @@ export default function CompetencyTree({
           onOpen={openDetail}
         />,
       );
-      if (filtering || expanded.has(row.id))
-        walk(childrenOf.get(row.id) ?? [], depth + 1);
+      if (
+        filtering ||
+        expanded.has(row.id) ||
+        (row.childCount === 0 && row.role !== "knowledge")
+      )
+        walk(
+          childrenOf.get(row.id) ?? [],
+          depth + 1,
+          row.id,
+          row.role,
+          trailing && i === ordered.length - 1,
+        );
+    }
+    if (!filtering && depth < 3) {
+      const append =
+        depth === 0
+          ? { tier: 1 as const, label: "Add skill", color: "var(--hestia-primary)" }
+          : depth === 1 && parentRole === "competency"
+            ? {
+                tier: 2 as const,
+                label: "Add sub-skill",
+                color: "var(--hestia-accent)",
+              }
+            : depth === 2 && parentRole === "sub-skill"
+              ? {
+                  tier: 3 as const,
+                  label: "Add knowledge",
+                  color: "var(--hestia-text-muted)",
+                }
+              : null;
+      if (append) {
+        bodyRows.push(
+          <AppendKnob
+            key={`append-${append.tier}-${parentGoalId ?? "root"}`}
+            depth={depth}
+            label={append.label}
+            color={append.color}
+            last={trailing}
+            active={creation?.key === `${append.tier}:${parentGoalId ?? "root"}`}
+            value={creation?.text ?? ""}
+            pending={createMutation.isPending}
+            error={
+              creation?.key === `${append.tier}:${parentGoalId ?? "root"}` &&
+              createMutation.isError
+                ? (createMutation.error as Error).message
+                : undefined
+            }
+            onStart={() => beginCreation(append.tier, parentGoalId)}
+            onChange={updateCreationText}
+            onSubmit={submitCreation}
+            onCancel={cancelCreation}
+          />,
+        );
+      }
     }
   };
-  walk(childrenOf.get(null) ?? [], 0);
+  walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
   const activeChips: { label: string; value: string; onRemove: () => void }[] =
     [];
@@ -516,7 +662,8 @@ export default function CompetencyTree({
       )}
 
       <div className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
-        <div className="max-h-[72vh] overflow-auto">
+        {/* pb-4 keeps the trailing append knob inside the scroll area instead of under its edge. */}
+        <div className="max-h-[72vh] overflow-auto pb-4">
           <div
             role="table"
             aria-label="Competency tree"
@@ -524,7 +671,7 @@ export default function CompetencyTree({
           >
             <div
               role="row"
-              className="sticky top-0 z-10 grid border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
+              className="sticky top-0 z-10 grid rounded-t-xl border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
               style={{ gridTemplateColumns: GRID_COLS }}
             >
               {COLUMNS.map((column) => (
@@ -683,6 +830,81 @@ function HeaderCell({
   );
 }
 
+function AppendKnob({
+  depth,
+  label,
+  color,
+  last,
+  active,
+  value,
+  pending,
+  error,
+  onStart,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  depth: number;
+  label: string;
+  color: string;
+  /** Knob in the trailing stack at the grid's bottom edge: its tooltip has to open upward. */
+  last: boolean;
+  active: boolean;
+  value: string;
+  pending: boolean;
+  error?: string;
+  onStart: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const left = `calc(0.625rem + ${depth * 20}px + 0.25rem + 1.5px - 1.2rem)`;
+  return (
+    <div
+      className={`competency-append-container ${
+        active ? "competency-append-container-active" : ""
+      }`}
+    >
+      {active ? (
+        // In flow rather than absolutely positioned: the grid scrolls inside a capped-height
+        // container, which would clip a floating form opened on the last row.
+        <CompetencyCreationField
+          value={value}
+          placeholder={label.replace("Add ", "Describe a ").concat("…")}
+          error={error}
+          pending={pending}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+          className="competency-append-form"
+          style={{ marginLeft: `calc(0.625rem + ${depth * 20}px)` }}
+        />
+      ) : (
+        <button
+          type="button"
+          aria-label={label}
+          className="competency-append-button"
+          style={{ left, color }}
+          disabled={pending}
+          onClick={onStart}
+        >
+          <span
+            aria-hidden="true"
+            className="competency-append-dot"
+            style={{ backgroundColor: color }}
+          />
+          <span
+            role="tooltip"
+            className={`competency-append-label ${last ? "competency-append-label-above" : ""}`}
+          >
+            {label}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function GridRow({
   row,
   depth,
@@ -794,6 +1016,8 @@ function GridRow({
       <div role="gridcell" className="px-2.5 py-1.5">
         {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
           <Pill label="AI-inferred" color="var(--hestia-danger)" />
+        ) : row.goal.creationProvenance === "USER_CREATED" ? (
+          <Pill label="Manual" color="var(--hestia-warning)" />
         ) : (
           row.goal.kind && (
             <Pill

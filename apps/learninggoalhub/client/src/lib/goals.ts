@@ -214,7 +214,9 @@ export const COMPETENCY_ROLE_META: Record<
  * sub-skill when it has children OR carries a doing/judgement Bloom level (a childless
  * apply/analyze/evaluate/create goal is still a capability, not knowledge), otherwise it is
  * leftover knowledge attached directly to the terminal; deeper nodes are knowledge; any
- * GAP-origin goal renders as a gap leaf.
+ * GAP-origin goal renders as a gap leaf. A hand-added depth-1 node is a sub-skill whatever its
+ * Bloom level: manual goals are deliberately left unclassified, and the instructor added it
+ * through the "Add sub-skill" knob, which says the tier outright.
  */
 export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   const byId = new Map<number, LearningGoal>();
@@ -257,7 +259,9 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
         : depth === 0
           ? "competency"
           : depth === 1 &&
-              (children.length > 0 || DOING_BLOOM.has(goal.bloomLevel ?? ""))
+              (children.length > 0 ||
+                DOING_BLOOM.has(goal.bloomLevel ?? "") ||
+                goal.creationProvenance === "USER_CREATED")
             ? "sub-skill"
             : "knowledge";
     return { goal, role, children };

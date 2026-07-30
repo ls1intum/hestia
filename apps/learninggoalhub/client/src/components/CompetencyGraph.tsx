@@ -1,6 +1,20 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LearningGoal } from "../api/client.ts";
-import CompetencyGoalModal, { RoleBadge, AiInferredBadge } from "./CompetencyGoalModal.tsx";
+import { api } from "../api/client.ts";
+import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import CompetencyGoalModal, {
+  RoleBadge,
+  AiInferredBadge,
+  ManualBadge,
+} from "./CompetencyGoalModal.tsx";
 import {
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
@@ -16,6 +30,13 @@ const DRILL_W = 320; // drill-path boxes
 const KNOWLEDGE_W = 240; // knowledge boxes under a focused sub-skill
 const GAP = 12;
 const CONNECTOR_H = 40;
+type CreationTier = 1 | 2 | 3;
+type CreationState = {
+  key: string;
+  tier: CreationTier;
+  parentGoalId: number | null;
+  text: string;
+};
 
 function rowWidth(widths: number[]) {
   return widths.reduce((total, width) => total + width, 0) +
@@ -43,11 +64,13 @@ function childCentres(widths: number[]) {
  * or an already-focused box a second time, opens the goal detail modal.
  */
 export default function CompetencyGraph({
+  courseId,
   goals,
   onEdit,
   onDelete,
   onUpdate,
 }: {
+  courseId: number;
   goals: LearningGoal[];
   onEdit: (goal: LearningGoal) => void;
   onDelete: (goal: LearningGoal) => void;
@@ -60,6 +83,7 @@ export default function CompetencyGraph({
     },
   ) => void;
 }) {
+  const queryClient = useQueryClient();
   const forest = useMemo(() => buildCompetencyForest(goals), [goals]);
   const actions = { onEdit, onDelete };
   // The detail modal always gets the freshest goal for its id, so in-modal edits survive refetches.
@@ -74,6 +98,68 @@ export default function CompetencyGraph({
 
   // Drill path: [selected competency id, selected sub-skill id]. Empty = overview only.
   const [path, setPath] = useState<number[]>([]);
+  const [creation, setCreation] = useState<CreationState | null>(null);
+  const createMutation = useMutation({
+    mutationFn: async (vars: CreationState) => {
+      if (vars.tier === 1) {
+        const result = await api.POST(
+          "/api/courses/{courseId}/learning-goals/terminal",
+          { params: { path: { courseId } }, body: { text: vars.text } },
+        );
+        if (!result.data) {
+          throw new Error(
+            result.response.status === 409
+              ? "A skill with that wording already exists."
+              : "Could not add the skill.",
+          );
+        }
+        return result.data;
+      }
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/{goalId}/children",
+        {
+          params: { path: { courseId, goalId: vars.parentGoalId! } },
+          body: { text: vars.text },
+        },
+      );
+      if (!result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Knowledge nodes cannot have children."
+            : "Could not add the goal.",
+        );
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+  const beginCreation = (tier: CreationTier, parentGoalId: number | null) => {
+    createMutation.reset();
+    setCreation({
+      key: `${tier}:${parentGoalId ?? "root"}`,
+      tier,
+      parentGoalId,
+      text: "",
+    });
+  };
+  const cancelCreation = () => {
+    if (!createMutation.isPending) setCreation(null);
+  };
+  const updateCreationText = (text: string) => {
+    if (createMutation.isError) createMutation.reset();
+    setCreation((current) => (current ? { ...current, text } : current));
+  };
+  const submitCreation = () => {
+    if (!creation || creation.text.trim() === "") return;
+    createMutation.mutate(
+      { ...creation, text: creation.text.trim() },
+      { onSuccess: () => setCreation(null) },
+    );
+  };
 
   const competency = useMemo(
     () => forest.find((n) => n.goal.id === path[0]) ?? null,
@@ -278,6 +364,25 @@ export default function CompetencyGraph({
               </div>
             );
           })}
+          <div key="new-skill" className="grid grid-rows-[1fr_auto]">
+            <CreationGhost
+              label="New skill"
+              color={COMPETENCY_ROLE_META.competency.color}
+              active={creation?.key === "1:root"}
+              fluid
+              value={creation?.text ?? ""}
+              pending={createMutation.isPending}
+              error={
+                creation?.key === "1:root" && createMutation.isError
+                  ? (createMutation.error as Error).message
+                  : undefined
+              }
+              onStart={() => beginCreation(1, null)}
+              onChange={updateCreationText}
+              onSubmit={submitCreation}
+              onCancel={cancelCreation}
+            />
+          </div>
         </div>
         <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
       </div>
@@ -291,9 +396,12 @@ export default function CompetencyGraph({
     : -1;
   // In the focused row, the active box keeps its normal width while dimmed context boxes compact
   // to w-40. Prefix sums keep the row, the parent offset and both connector trunks aligned.
-  const siblingWidths = competency.children.map((child) =>
-    subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
-  );
+  const siblingWidths = [
+    ...competency.children.map((child) =>
+      subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
+    ),
+    BOX_W,
+  ];
   const siblingRowWidth = rowWidth(siblingWidths);
   const siblingCentres = childCentres(siblingWidths);
   const focusedSubCentre =
@@ -301,7 +409,7 @@ export default function CompetencyGraph({
   const focusedSubOffset =
     focusedSubIndex >= 0 ? focusedSubCentre - siblingRowWidth / 2 : 0;
   const knowledgeBranchWidth = subSkill
-    ? rowWidth(subSkill.children.map(() => KNOWLEDGE_W))
+    ? rowWidth([...subSkill.children.map(() => KNOWLEDGE_W), KNOWLEDGE_W])
     : 0;
   // Relative positioning paints the knowledge branch at the focused sub-skill, but does not
   // enlarge the canvas. These layout paddings cover its overhang past the sibling row at either
@@ -393,6 +501,24 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
+                <CreationGhost
+                  label="New sub-skill"
+                  color={subColor}
+                  widthClass="w-56 shrink-0"
+                  active={creation?.key === `2:${competency.goal.id}`}
+                  value={creation?.text ?? ""}
+                  pending={createMutation.isPending}
+                  error={
+                    creation?.key === `2:${competency.goal.id}` &&
+                    createMutation.isError
+                      ? (createMutation.error as Error).message
+                      : undefined
+                  }
+                  onStart={() => beginCreation(2, competency.goal.id!)}
+                  onChange={updateCreationText}
+                  onSubmit={submitCreation}
+                  onCancel={cancelCreation}
+                />
               </div>
             </>
           ) : (
@@ -448,6 +574,24 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
+                <CreationGhost
+                  label="New sub-skill"
+                  color={subColor}
+                  widthClass="w-56 shrink-0"
+                  active={creation?.key === `2:${competency.goal.id}`}
+                  value={creation?.text ?? ""}
+                  pending={createMutation.isPending}
+                  error={
+                    creation?.key === `2:${competency.goal.id}` &&
+                    createMutation.isError
+                      ? (createMutation.error as Error).message
+                      : undefined
+                  }
+                  onStart={() => beginCreation(2, competency.goal.id!)}
+                  onChange={updateCreationText}
+                  onSubmit={submitCreation}
+                  onCancel={cancelCreation}
+                />
               </div>
               {/* The active sub-skill sits at a known fixed position in the sibling row. Moving
                   this whole knowledge branch by that same offset makes its connector originate
@@ -457,7 +601,10 @@ export default function CompetencyGraph({
                 style={{ left: focusedSubOffset }}
               >
                 <Connector
-                  childWidths={subSkill.children.map(() => KNOWLEDGE_W)}
+                  childWidths={[
+                    ...subSkill.children.map(() => KNOWLEDGE_W),
+                    KNOWLEDGE_W,
+                  ]}
                   color={subColor}
                 />
                 <div className="flex justify-center gap-3">
@@ -478,6 +625,24 @@ export default function CompetencyGraph({
                       />
                     </div>
                   ))}
+                  <CreationGhost
+                    label="New knowledge"
+                    color={COMPETENCY_ROLE_META.knowledge.color}
+                    widthClass="w-60 shrink-0"
+                    active={creation?.key === `3:${subSkill.goal.id}`}
+                    value={creation?.text ?? ""}
+                    pending={createMutation.isPending}
+                    error={
+                      creation?.key === `3:${subSkill.goal.id}` &&
+                      createMutation.isError
+                        ? (createMutation.error as Error).message
+                        : undefined
+                    }
+                    onStart={() => beginCreation(3, subSkill.goal.id!)}
+                    onChange={updateCreationText}
+                    onSubmit={submitCreation}
+                    onCancel={cancelCreation}
+                  />
                 </div>
               </div>
             </>
@@ -597,6 +762,73 @@ function BackPill({
         <path d="M13 5l-6 5 6 5" />
       </svg>
       All skills · {count}
+    </button>
+  );
+}
+
+function CreationGhost({
+  label,
+  color,
+  widthClass = "",
+  fluid = false,
+  active,
+  value,
+  pending,
+  error,
+  onStart,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  color: string;
+  widthClass?: string;
+  fluid?: boolean;
+  active: boolean;
+  value: string;
+  pending: boolean;
+  error?: string;
+  onStart: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const style = { "--competency-ghost-color": color } as CSSProperties;
+  const sizeClass = fluid ? "w-full" : widthClass;
+  if (active) {
+    return (
+      <div
+        className={`competency-ghost competency-ghost-active ${sizeClass}`}
+        style={style}
+      >
+        <CompetencyCreationField
+          value={value}
+          placeholder={`Describe a ${label.replace("New ", "").toLowerCase()}…`}
+          error={error}
+          pending={pending}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+          // Box widths are fixed so the SVG connectors can be derived from the layout; a single-row
+          // field would overflow them, so the buttons move below the input instead.
+          stacked
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className={`competency-ghost ${sizeClass}`}
+      style={style}
+      disabled={pending}
+      onClick={onStart}
+    >
+      <span aria-hidden="true" className="competency-ghost-plus">
+        +
+      </span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -778,7 +1010,10 @@ function Box({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <RoleBadge role={node.role} />
-          {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && <AiInferredBadge />}
+          {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && (
+            <AiInferredBadge compact />
+          )}
+          {node.goal.creationProvenance === "USER_CREATED" && <ManualBadge />}
         </div>
         <div className="flex items-center gap-0.5">
           <BoxAction
