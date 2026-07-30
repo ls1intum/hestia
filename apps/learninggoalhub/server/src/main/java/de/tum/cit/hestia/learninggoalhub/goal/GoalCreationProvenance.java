@@ -11,8 +11,8 @@ package de.tum.cit.hestia.learninggoalhub.goal;
  * <ul>
  *   <li>{@code USER_CREATED} — an instructor added this goal by hand (e.g. a terminal skill typed in
  *       the post-extraction review).</li>
- *   <li>{@code WIZARD_AI_SUBTREE} — generated on demand for an instructor-added skill (reserved for a
- *       later stage that grows a full sub-skill/knowledge subtree).</li>
+ *   <li>{@code WIZARD_AI_SUBTREE} — generated on demand for an instructor-added skill's
+ *       sub-skill/knowledge subtree.</li>
  * </ul>
  */
 public enum GoalCreationProvenance {

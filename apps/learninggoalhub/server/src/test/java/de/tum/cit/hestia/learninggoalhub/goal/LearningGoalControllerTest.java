@@ -508,6 +508,57 @@ class LearningGoalControllerTest {
     }
 
     @Test
+    void manualSkillCreationAlsoPersistsGeneratedSubtree() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenReturn(new GeneratedSubtree(List.of(
+                        new GeneratedSubSkill("Configure deployment pipelines.", "Deployment Pipelines",
+                                List.of(new GeneratedKnowledge("Explain pipeline stages.", "Pipeline Stages"))))));
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Automate secure deployments.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.origin").value("TERMINAL"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
+
+        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
+        assertThat(goals).hasSize(3);
+        assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .satisfies(goal -> assertThat(goal.getCreationProvenance())
+                        .isEqualTo(GoalCreationProvenance.USER_CREATED));
+        assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.SYNTHESIZED)
+                .allSatisfy(goal -> assertThat(goal.getCreationProvenance())
+                        .isEqualTo(GoalCreationProvenance.WIZARD_AI_SUBTREE));
+        assertThat(goalRelationshipRepository.findBySourceIdIn(goals.stream()
+                .map(LearningGoal::getId).toList())).hasSize(2);
+    }
+
+    @Test
+    void manualSkillCreationSurvivesSubtreeGenerationFailure() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenThrow(new IllegalStateException("LLM unavailable"));
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Automate secure deployments.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.origin").value("TERMINAL"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
+
+        assertThat(goalRepository.findByCourseId(course.getId())).singleElement()
+                .satisfies(goal -> {
+                    assertThat(goal.getText()).isEqualTo("Automate secure deployments.");
+                    assertThat(goal.getCreationProvenance()).isEqualTo(GoalCreationProvenance.USER_CREATED);
+                });
+        assertThat(goalRelationshipRepository.findBySourceIdIn(
+                goalRepository.findByCourseId(course.getId()).stream().map(LearningGoal::getId).toList()))
+                .isEmpty();
+    }
+
+    @Test
     void createTerminalSkillWithoutClassificationStillCreatesSkill() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         // taxonomyService is a mock and returns null by default — the skill is created without levels
@@ -682,8 +733,305 @@ class LearningGoalControllerTest {
     }
 
     @Test
+    void generatesSubtreeForChildlessUserCreatedTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        HierarchyNode rootNode = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
+        LearningGoal terminal = terminalGoal(course, "Automate secure deployments.",
+                GoalCreationProvenance.USER_CREATED);
+        terminal.setShortLabel("Secure Deployment Automation");
+        terminal.setBloomLevel(BloomLevel.APPLY);
+        terminal.setSoloLevel(SoloLevel.RELATIONAL);
+        terminal.setHierarchyNode(rootNode);
+        terminal = goalRepository.saveAndFlush(terminal);
+        Long terminalId = terminal.getId();
+
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenReturn(new GeneratedSubtree(List.of(
+                        new GeneratedSubSkill("Configure deployment pipelines.", "Deployment Pipelines",
+                                List.of(new GeneratedKnowledge("Explain pipeline stages.", "Pipeline Stages"))))));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminalId)
+                        .param("model", "test-model"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(terminalId.intValue()))
+                .andExpect(jsonPath("$.text").value("Automate secure deployments."))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
+
+        assertThat(goalRepository.findById(terminalId)).isPresent()
+                .get()
+                .satisfies(persisted -> {
+                    assertThat(persisted.getCreationProvenance())
+                            .isEqualTo(GoalCreationProvenance.USER_CREATED);
+                    assertThat(persisted.getShortLabel()).isEqualTo("Secure Deployment Automation");
+                    assertThat(persisted.getBloomLevel()).isEqualTo(BloomLevel.APPLY);
+                    assertThat(persisted.getSoloLevel()).isEqualTo(SoloLevel.RELATIONAL);
+                    assertThat(persisted.getHierarchyNode().getId()).isEqualTo(rootNode.getId());
+                });
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(3)
+                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.SYNTHESIZED)
+                .extracting(LearningGoal::getText)
+                .containsExactlyInAnyOrder("Configure deployment pipelines.", "Explain pipeline stages.");
+        assertThat(goalRelationshipRepository.findByTargetId(terminalId)).hasSize(1);
+    }
+
+    @Test
+    void replacesWizardGeneratedSubtreeWithoutChangingTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        HierarchyNode rootNode = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
+        LearningGoal terminal = terminalGoal(course, "Automate secure deployments.",
+                GoalCreationProvenance.WIZARD_AI_SUBTREE);
+        terminal.setShortLabel("Secure Deployment Automation");
+        terminal.setStatus(GoalStatus.APPROVED);
+        terminal.setBloomLevel(BloomLevel.CREATE);
+        terminal.setSoloLevel(SoloLevel.RELATIONAL);
+        terminal.setHierarchyNode(rootNode);
+        terminal = goalRepository.saveAndFlush(terminal);
+        Long terminalId = terminal.getId();
+        var createdAt = terminal.getCreatedAt();
+        LearningGoal oldSubSkill = goalRepository.save(
+                generatedGoal(course, "Configure old pipelines.", GoalOrigin.SYNTHESIZED));
+        LearningGoal oldKnowledge = goalRepository.save(
+                generatedGoal(course, "Explain old pipeline stages.", GoalOrigin.SYNTHESIZED));
+        goalRelationshipRepository.save(new GoalRelationship(
+                oldKnowledge, oldSubSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                oldSubSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        LearningGoal manualChild = goalRepository.saveAndFlush(userCreatedGoal(
+                course, "Review deployment risks.", GoalOrigin.SYNTHESIZED));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                manualChild, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenReturn(new GeneratedSubtree(List.of(
+                        new GeneratedSubSkill("Configure new pipelines.", "New Pipelines",
+                                List.of(new GeneratedKnowledge("Explain new pipeline stages.", "New Stages"))))));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminalId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(terminalId.intValue()))
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        assertThat(goalRepository.findById(oldSubSkill.getId())).isEmpty();
+        assertThat(goalRepository.findById(oldKnowledge.getId())).isEmpty();
+        assertThat(goalRepository.findById(manualChild.getId())).isPresent();
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(4)
+                .extracting(LearningGoal::getText)
+                .containsExactlyInAnyOrder("Automate secure deployments.", "Configure new pipelines.",
+                        "Explain new pipeline stages.", "Review deployment risks.");
+        assertThat(goalRepository.findById(terminalId)).get().satisfies(persisted -> {
+            assertThat(persisted.getId()).isEqualTo(terminalId);
+            assertThat(persisted.getText()).isEqualTo("Automate secure deployments.");
+            assertThat(persisted.getShortLabel()).isEqualTo("Secure Deployment Automation");
+            assertThat(persisted.getStatus()).isEqualTo(GoalStatus.APPROVED);
+            assertThat(persisted.getCreatedAt()).isEqualTo(createdAt);
+            assertThat(persisted.getBloomLevel()).isEqualTo(BloomLevel.CREATE);
+            assertThat(persisted.getSoloLevel()).isEqualTo(SoloLevel.RELATIONAL);
+            assertThat(persisted.getHierarchyNode().getId()).isEqualTo(rootNode.getId());
+            assertThat(persisted.getCreationProvenance()).isEqualTo(GoalCreationProvenance.WIZARD_AI_SUBTREE);
+        });
+        // The relationship's source is a lazy proxy outside the request's session, so compare ids
+        // rather than dereferencing the goal.
+        Long newSubSkillId = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> "Configure new pipelines.".equals(goal.getText()))
+                .map(LearningGoal::getId)
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findByTargetId(terminalId))
+                .extracting(relationship -> relationship.getSource().getId())
+                .containsExactlyInAnyOrder(newSubSkillId, manualChild.getId());
+    }
+
+    @Test
+    void subtreeGenerationRejectsNonTerminalGoal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal goal = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), goal.getId()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void subtreeGenerationKeepsExtractedContributor() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
+        LearningGoal extracted = goalRepository.save(
+                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenReturn(new GeneratedSubtree(List.of(
+                        new GeneratedSubSkill("Configure new pipelines.", "New Pipelines",
+                                List.of(new GeneratedKnowledge("Explain new pipeline stages.", "New Stages"))))));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminal.getId()))
+                .andExpect(status().isOk());
+
+        // An extracted goal carries no creation provenance and is therefore never owned by the
+        // wizard: regeneration must leave it, and its edge to the terminal, in place.
+        assertThat(goalRepository.findById(extracted.getId())).isPresent();
+        assertThat(goalRelationshipRepository.findByTargetId(terminal.getId()))
+                .extracting(relationship -> relationship.getSource().getId())
+                .contains(extracted.getId());
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .extracting(LearningGoal::getText)
+                .containsExactlyInAnyOrder("Automate secure deployments.",
+                        "Configure deployment pipelines.", "Configure new pipelines.",
+                        "Explain new pipeline stages.");
+    }
+
+    @Test
+    void failedSubtreeGenerationLeavesExistingSubtreeIntact() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
+        LearningGoal oldSubSkill = goalRepository.save(
+                generatedGoal(course, "Configure old pipelines.", GoalOrigin.SYNTHESIZED));
+        LearningGoal oldKnowledge = goalRepository.save(
+                generatedGoal(course, "Explain old pipeline stages.", GoalOrigin.SYNTHESIZED));
+        goalRelationshipRepository.save(new GoalRelationship(
+                oldKnowledge, oldSubSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                oldSubSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
+                .thenThrow(new IllegalStateException("LLM unavailable"));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminal.getId()))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(goalRepository.findById(terminal.getId())).isPresent();
+        assertThat(goalRepository.findById(oldSubSkill.getId())).isPresent();
+        assertThat(goalRepository.findById(oldKnowledge.getId())).isPresent();
+        assertThat(goalRelationshipRepository.findByTargetId(terminal.getId())).hasSize(1);
+        assertThat(goalRelationshipRepository.findByTargetId(oldSubSkill.getId())).hasSize(1);
+    }
+
+    @Test
+    void addsManualChildToTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
+        when(taxonomyService.classify(any()))
+                .thenReturn(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+                        course.getId(), terminal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Review deployment risks.\","
+                                + "\"shortLabel\": \"Deployment Risks\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.text").value("Review deployment risks."))
+                .andExpect(jsonPath("$.shortLabel").value("Deployment Risks"))
+                .andExpect(jsonPath("$.origin").value("SYNTHESIZED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"))
+                .andExpect(jsonPath("$.hierarchy").doesNotExist())
+                .andExpect(jsonPath("$.bloomLevel").value("APPLY"));
+
+        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> "Review deployment risks.".equals(goal.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(child.getHierarchyNode()).isNull();
+        assertThat(goalRelationshipRepository.findByTargetId(terminal.getId()))
+                .extracting(relationship -> relationship.getSource().getId())
+                .containsExactly(child.getId());
+    }
+
+    @Test
+    void addsManualChildToSubSkill() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
+        LearningGoal subSkill = goalRepository.saveAndFlush(
+                generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
+        // A sub-skill is tier 2 by virtue of contributing to a terminal, which is what makes it
+        // eligible to take knowledge children.
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+                        course.getId(), subSkill.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Explain pipeline stages.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.origin").value("SYNTHESIZED"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
+
+        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> "Explain pipeline stages.".equals(goal.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findByTargetId(subSkill.getId()))
+                .extracting(relationship -> relationship.getSource().getId())
+                .containsExactly(child.getId());
+    }
+
+    @Test
+    void addsManualChildToExtractedGoal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
+        LearningGoal extracted = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+                        course.getId(), extracted.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Identify release criteria.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.origin").value("SYNTHESIZED"))
+                .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
+
+        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> "Identify release criteria.".equals(goal.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findByTargetId(extracted.getId()))
+                .extracting(relationship -> relationship.getSource().getId())
+                .containsExactly(child.getId());
+    }
+
+    @Test
+    void rejectsManualChildUnderKnowledge() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
+        LearningGoal subSkill = goalRepository.saveAndFlush(
+                generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
+        LearningGoal knowledge = goalRepository.saveAndFlush(
+                generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED));
+        goalRelationshipRepository.save(new GoalRelationship(
+                subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        // The forest is capped at three tiers, so a child here would never render in any view.
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+                        course.getId(), knowledge.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Name the stage order.\"}"))
+                .andExpect(status().isConflict());
+
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(3);
+    }
+
+    @Test
     void deletingGeneratedTerminalSkillRemovesOwnedDescendants() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
+        Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         HierarchyNode rootNode = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
         LearningGoal terminal = generatedGoal(course, "Automate deployments.", GoalOrigin.TERMINAL);
@@ -693,15 +1041,45 @@ class LearningGoalControllerTest {
                 course, "Configure deployments.", GoalOrigin.SYNTHESIZED));
         LearningGoal knowledge = goalRepository.save(generatedGoal(
                 course, "Explain deployment stages.", GoalOrigin.SYNTHESIZED));
+        LearningGoal manualChild = goalRepository.save(userCreatedGoal(
+                course, "Review deployment risks.", GoalOrigin.SYNTHESIZED));
+        LearningGoal extracted = goalRepository.save(
+                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        goalSourceRepository.save(new GoalSource(extracted, lecture, "deployment pipeline evidence"));
         goalRelationshipRepository.save(new GoalRelationship(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
         goalRelationshipRepository.save(new GoalRelationship(
                 subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalRelationshipRepository.save(new GoalRelationship(
+                manualChild, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), terminal.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(terminal.getId())).isEmpty();
+        assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
+        assertThat(goalRepository.findById(knowledge.getId())).isEmpty();
+        assertThat(goalRepository.findById(manualChild.getId())).isEmpty();
+        assertThat(goalRepository.findById(extracted.getId())).isPresent();
+        assertThat(goalSourceRepository.findByGoalId(extracted.getId())).hasSize(1);
+        assertThat(goalRelationshipRepository.findBySourceId(extracted.getId())).isEmpty();
+    }
+
+    @Test
+    void deletingSubSkillRemovesOwnedKnowledge() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal subSkill = goalRepository.save(
+                generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
+        LearningGoal knowledge = goalRepository.saveAndFlush(
+                generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), subSkill.getId()))
+                .andExpect(status().isNoContent());
+
         assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
         assertThat(goalRepository.findById(knowledge.getId())).isEmpty();
     }
@@ -711,6 +1089,22 @@ class LearningGoalControllerTest {
         goal.setOrigin(origin);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.WIZARD_AI_SUBTREE);
+        return goal;
+    }
+
+    private LearningGoal terminalGoal(Course course, String text, GoalCreationProvenance provenance) {
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+        goal.setOrigin(GoalOrigin.TERMINAL);
+        goal.setStatus(GoalStatus.PENDING);
+        goal.setCreationProvenance(provenance);
+        return goal;
+    }
+
+    private LearningGoal userCreatedGoal(Course course, String text, GoalOrigin origin) {
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+        goal.setOrigin(origin);
+        goal.setStatus(GoalStatus.PENDING);
+        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         return goal;
     }
 }
