@@ -279,11 +279,16 @@
   opacity: 1;
 }
 
+.competency-append-container-active {
+  height: auto;
+}
+
 .competency-append-form {
-  position: absolute;
-  top: 0.35rem;
-  z-index: 6;
-  width: min(28rem, calc(100vw - 2rem));
+  /* In normal flow: an absolutely positioned form would be clipped by the grid's scroll container
+     when opened on the last row. The container grows for as long as the field is open. */
+  margin-block: 0.4rem;
+  margin-right: 0.625rem;
+  max-width: min(32rem, 100%);
   border: 1px solid var(--hestia-border);
   border-radius: 0.5rem;
   background: var(--hestia-surface);

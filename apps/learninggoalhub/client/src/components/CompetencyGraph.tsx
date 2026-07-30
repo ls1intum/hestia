@@ -809,6 +809,9 @@ function CreationGhost({
           onChange={onChange}
           onSubmit={onSubmit}
           onCancel={onCancel}
+          // Box widths are fixed so the SVG connectors can be derived from the layout; a single-row
+          // field would overflow them, so the buttons move below the input instead.
+          stacked
         />
       </div>
     );

@@ -845,8 +845,14 @@ function AppendKnob({
 }) {
   const left = `calc(0.625rem + ${depth * 20}px + 0.25rem + 1.5px - 1.2rem)`;
   return (
-    <div className="competency-append-container">
+    <div
+      className={`competency-append-container ${
+        active ? "competency-append-container-active" : ""
+      }`}
+    >
       {active ? (
+        // In flow rather than absolutely positioned: the grid scrolls inside a capped-height
+        // container, which would clip a floating form opened on the last row.
         <CompetencyCreationField
           value={value}
           placeholder={label.replace("Add ", "Describe a ").concat("…")}
@@ -856,7 +862,7 @@ function AppendKnob({
           onSubmit={onSubmit}
           onCancel={onCancel}
           className="competency-append-form"
-          style={{ left }}
+          style={{ marginLeft: `calc(0.625rem + ${depth * 20}px)` }}
         />
       ) : (
         <button
