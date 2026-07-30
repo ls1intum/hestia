@@ -482,8 +482,16 @@ export default function CompetencyTree({
     depth: number,
     parentGoalId: number | null,
     parentRole: CompetencyRole | null,
+    /**
+     * Whether this group's knob lands in the stack of knobs at the very bottom of the grid. Their
+     * containers are zero-height, so every trailing knob shares the same row and a tooltip opening
+     * downward would be clipped by the scroll container — the whole stack has to open upward.
+     */
+    trailing: boolean,
   ) => {
-    for (const row of sortSiblings(siblings)) {
+    const ordered = sortSiblings(siblings);
+    for (let i = 0; i < ordered.length; i++) {
+      const row = ordered[i];
       const isMatch = !filtering || matchIds!.has(row.id);
       const isContext = filtering && contextIds.has(row.id);
       if (filtering && !isMatch && !isContext) continue;
@@ -505,7 +513,13 @@ export default function CompetencyTree({
         expanded.has(row.id) ||
         (row.childCount === 0 && row.role !== "knowledge")
       )
-        walk(childrenOf.get(row.id) ?? [], depth + 1, row.id, row.role);
+        walk(
+          childrenOf.get(row.id) ?? [],
+          depth + 1,
+          row.id,
+          row.role,
+          trailing && i === ordered.length - 1,
+        );
     }
     if (!filtering && depth < 3) {
       const append =
@@ -531,7 +545,7 @@ export default function CompetencyTree({
             depth={depth}
             label={append.label}
             color={append.color}
-            last={depth === 0}
+            last={trailing}
             active={creation?.key === `${append.tier}:${parentGoalId ?? "root"}`}
             value={creation?.text ?? ""}
             pending={createMutation.isPending}
@@ -550,7 +564,7 @@ export default function CompetencyTree({
       }
     }
   };
-  walk(childrenOf.get(null) ?? [], 0, null, null);
+  walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
   const activeChips: { label: string; value: string; onRemove: () => void }[] =
     [];
@@ -833,6 +847,7 @@ function AppendKnob({
   depth: number;
   label: string;
   color: string;
+  /** Knob in the trailing stack at the grid's bottom edge: its tooltip has to open upward. */
   last: boolean;
   active: boolean;
   value: string;
