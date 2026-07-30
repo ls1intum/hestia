@@ -227,9 +227,11 @@ public class LearningGoalController {
      * Adds a terminal skill (competency root) an instructor typed in the post-extraction review. It is
      * NOT part of the ordinary pipeline: created directly as an {@code origin=TERMINAL},
      * {@code status=PENDING} goal with no source snippet, tagged {@code USER_CREATED} so it stays
-     * distinguishable from clustered terminals. Bloom/SOLO and the optional AI subtree are best-effort:
-     * a failure still creates the skill, just without the failed classification or subtree; the subtree
-     * can be retried later. No embedding is computed, matching the pipeline's terminal competencies.
+     * distinguishable from clustered terminals. Bloom/SOLO stay empty — a typed skill is the
+     * instructor's own wording, so the levels are theirs to set in the review rather than a model's
+     * guess; only generated nodes are classified. The AI subtree is best-effort: a failure still
+     * creates the skill and can be retried later.
+     * No embedding is computed, matching the pipeline's terminal competencies.
      * The goal is attached to the course's COMPETENCY root, reusing it or creating it on first use.
      */
     @PostMapping("/terminal")
@@ -254,15 +256,6 @@ public class LearningGoalController {
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal.setHierarchyNode(competencyRoot(course));
-        try {
-            TaxonomyClassification classification = taxonomyService.classify(text);
-            if (classification != null) {
-                goal.setBloomLevel(classification.bloom());
-                goal.setSoloLevel(classification.solo());
-            }
-        } catch (RuntimeException ignored) {
-            // Best-effort, mirroring the pipeline: a classification failure still creates the skill.
-        }
         goalRepository.save(goal);
         String languageName = courseLanguageName(course);
         GeneratedSubtree generated = null;
@@ -380,6 +373,8 @@ public class LearningGoalController {
      * Adds one sub-skill or knowledge item an instructor typed, as a {@code USER_CREATED} child that
      * CONTRIBUTES_TO {@code goalId}. Additive by design: it is allowed under extracted goals too,
      * because it destroys nothing. Only the tier is constrained — see {@link #rejectIfKnowledgeTier}.
+     * Like a typed skill, it stays unclassified: Bloom/SOLO are the instructor's to set, and skipping
+     * the model keeps the add instant.
      */
     @PostMapping("/{goalId}/children")
     @ResponseStatus(HttpStatus.CREATED)
@@ -397,15 +392,6 @@ public class LearningGoalController {
         Course course = parent.getCourse();
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
-        try {
-            TaxonomyClassification classification = taxonomyService.classify(text);
-            if (classification != null) {
-                child.setBloomLevel(classification.bloom());
-                child.setSoloLevel(classification.solo());
-            }
-        } catch (RuntimeException ignored) {
-            // Classification is best-effort; the manually added child is still persisted.
-        }
         goalRepository.save(child);
         goalRepository.flush();
         linkContributors(List.of(child), parent);

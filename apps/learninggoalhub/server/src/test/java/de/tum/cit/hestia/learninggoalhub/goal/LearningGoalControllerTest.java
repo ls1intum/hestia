@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -480,8 +482,6 @@ class LearningGoalControllerTest {
     @Test
     void createTerminalSkillPersistsUserCreatedTerminalUnderCompetencyRoot() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
-        when(taxonomyService.classify(any()))
-                .thenReturn(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL));
 
         mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -492,8 +492,6 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.origin").value("TERMINAL"))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"))
-                .andExpect(jsonPath("$.bloomLevel").value("APPLY"))
-                .andExpect(jsonPath("$.soloLevel").value("RELATIONAL"))
                 .andExpect(jsonPath("$.hierarchy").exists());
 
         // a second skill reuses the same lazily created COMPETENCY root instead of creating another
@@ -559,9 +557,9 @@ class LearningGoalControllerTest {
     }
 
     @Test
-    void createTerminalSkillWithoutClassificationStillCreatesSkill() throws Exception {
+    void createTerminalSkillLeavesTaxonomyLevelsUnset() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
-        // taxonomyService is a mock and returns null by default — the skill is created without levels
+
         mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
@@ -569,6 +567,8 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.origin").value("TERMINAL"))
                 .andExpect(jsonPath("$.bloomLevel").doesNotExist())
                 .andExpect(jsonPath("$.soloLevel").doesNotExist());
+        // A typed skill is the instructor's wording; the levels are theirs to set in the review.
+        verify(taxonomyService, never()).classify(any());
     }
 
     @Test
@@ -921,8 +921,6 @@ class LearningGoalControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
-        when(taxonomyService.classify(any()))
-                .thenReturn(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL));
 
         mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), terminal.getId())
@@ -936,7 +934,10 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"))
                 .andExpect(jsonPath("$.hierarchy").doesNotExist())
-                .andExpect(jsonPath("$.bloomLevel").value("APPLY"));
+                // Manually added nodes stay unclassified, like a typed skill.
+                .andExpect(jsonPath("$.bloomLevel").doesNotExist())
+                .andExpect(jsonPath("$.soloLevel").doesNotExist());
+        verify(taxonomyService, never()).classify(any());
 
         LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
                 .filter(goal -> "Review deployment risks.".equals(goal.getText()))
