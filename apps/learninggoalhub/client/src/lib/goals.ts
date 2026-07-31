@@ -1,75 +1,5 @@
 import type { LearningGoal } from "../api/client.ts";
 
-/** Coarse hierarchy level of a goal — the deepest path segment it actually carries. */
-export type GoalLevel = "MODULE" | "SESSION" | "EXERCISE" | "NONE";
-
-export function levelOf(goal: LearningGoal): GoalLevel {
-  if (goal.hierarchy?.exercise) return "EXERCISE";
-  if (goal.hierarchy?.session) return "SESSION";
-  if (goal.hierarchy?.module) return "MODULE";
-  return "NONE";
-}
-
-/** Label + HESTIA colour token per level. Colours are CSS vars so they track the theme. */
-export const LEVEL_META: Record<GoalLevel, { label: string; color: string }> = {
-  MODULE: { label: "Module", color: "var(--hestia-accent)" },
-  SESSION: { label: "Session", color: "var(--hestia-primary)" },
-  EXERCISE: { label: "Exercise", color: "var(--hestia-warning)" },
-  NONE: { label: "Ungrouped", color: "var(--hestia-text-muted)" },
-};
-
-/** The levels present in a set of goals, in module→exercise order (drops empty buckets). */
-export function presentLevels(goals: LearningGoal[]): GoalLevel[] {
-  const order: GoalLevel[] = ["MODULE", "SESSION", "EXERCISE", "NONE"];
-  return order.filter((l) => goals.some((g) => levelOf(g) === l));
-}
-
-const LEVEL_ORDER: GoalLevel[] = ["MODULE", "SESSION", "EXERCISE", "NONE"];
-
-/** The lecture/exercise title a goal belongs to — the deepest path segment it carries. */
-export function unitTitleOf(goal: LearningGoal): string {
-  const level = levelOf(goal);
-  return (
-    goal.hierarchy?.exercise ??
-    goal.hierarchy?.session ??
-    (level === "MODULE" ? "Course-wide" : "Ungrouped")
-  );
-}
-
-export type GoalGroup = {
-  key: string;
-  title: string;
-  level: GoalLevel;
-  goals: LearningGoal[];
-};
-
-/** Table-of-contents label for a group: the course-wide module bucket reads "Module goals". */
-export function tocLabel(group: GoalGroup): string {
-  return group.level === "MODULE" ? "Module goals" : group.title;
-}
-
-/**
- * Buckets goals by the unit (lecture/exercise) they belong to so the list can show a section per
- * lecture/exercise. Groups are ordered module → session → exercise → ungrouped, then by title;
- * goals keep their original order within a group.
- */
-export function groupGoalsByUnit(goals: LearningGoal[]): GoalGroup[] {
-  const groups = new Map<string, GoalGroup>();
-  for (const goal of goals) {
-    const level = levelOf(goal);
-    const title = unitTitleOf(goal);
-    const key = `${level}:${title}`;
-    const group = groups.get(key) ?? { key, title, level, goals: [] };
-    group.goals.push(goal);
-    groups.set(key, group);
-  }
-  return [...groups.values()].sort(
-    (a, b) =>
-      LEVEL_ORDER.indexOf(a.level) - LEVEL_ORDER.indexOf(b.level) ||
-      a.title.localeCompare(b.title),
-  );
-}
-
 /** Title-cases an ALL-CAPS enum value (e.g. "EXTENDED_ABSTRACT" → "Extended Abstract"). */
 export function titleCase(value: string): string {
   return value
@@ -79,9 +9,8 @@ export function titleCase(value: string): string {
     .join(" ");
 }
 
-/** Level → description lookups (keyed by title-cased term), shared by the list view's badge
- * tooltips and filter infos and the competency map's hover card. Insertion order is the
- * taxonomy's level order. */
+/** Level → description lookups (keyed by title-cased term), shown in the goal modal's Bloom,
+ * SOLO and kind tiles. Insertion order is the taxonomy's level order. */
 export const BLOOM_DESC: Record<string, string> = {
   Remember: "Recall facts and basic concepts.",
   Understand: "Explain ideas or concepts.",
@@ -103,71 +32,6 @@ export const KIND_DESC: Record<string, string> = {
   Explicit: "Stated directly in the source material.",
   Implicit: "Inferred by the model from the content.",
 };
-
-export const RELATIONSHIP_LABELS: Record<string, string> = {
-  CONTRIBUTES_TO: "contributes to",
-  PREREQUISITE_OF: "prerequisite of",
-  OVERLAPS_WITH: "overlaps with",
-};
-
-const RELATIONSHIP_ORDER = [
-  "CONTRIBUTES_TO",
-  "PREREQUISITE_OF",
-  "OVERLAPS_WITH",
-];
-
-/** Per-type relationship counts for a goal, in a stable order, dropping types with none. */
-export function relationshipCounts(
-  goal: LearningGoal,
-): { type: string; label: string; count: number }[] {
-  const byType = new Map<string, number>();
-  for (const rel of goal.relationships ?? []) {
-    if (rel.type) byType.set(rel.type, (byType.get(rel.type) ?? 0) + 1);
-  }
-  return RELATIONSHIP_ORDER.filter((t) => byType.has(t)).map((t) => ({
-    type: t,
-    label: RELATIONSHIP_LABELS[t] ?? t,
-    count: byType.get(t)!,
-  }));
-}
-
-/** Subject-first phrasing per relationship type, e.g. "Prerequisite for 2 goals". */
-export const RELATIONSHIP_PHRASES: Record<string, string> = {
-  PREREQUISITE_OF: "Prerequisite for",
-  OVERLAPS_WITH: "Overlaps with",
-  CONTRIBUTES_TO: "Contributes to",
-};
-
-export type RelationshipGroup = {
-  type: string;
-  phrase: string;
-  count: number;
-  targets: string[];
-};
-
-/**
- * Groups a goal's relationships by type for the card's single-line summary: each entry carries the
- * count and the target goals' texts so a hover can reveal exactly which goals are linked.
- */
-export function groupRelationships(goal: LearningGoal): RelationshipGroup[] {
-  const counts = new Map<string, number>();
-  const targets = new Map<string, string[]>();
-  for (const rel of goal.relationships ?? []) {
-    if (!rel.type) continue;
-    counts.set(rel.type, (counts.get(rel.type) ?? 0) + 1);
-    if (rel.targetText) {
-      const list = targets.get(rel.type) ?? [];
-      list.push(rel.targetText);
-      targets.set(rel.type, list);
-    }
-  }
-  return RELATIONSHIP_ORDER.filter((t) => counts.has(t)).map((t) => ({
-    type: t,
-    phrase: RELATIONSHIP_PHRASES[t] ?? t,
-    count: counts.get(t)!,
-    targets: targets.get(t) ?? [],
-  }));
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Competency tree
@@ -286,13 +150,4 @@ export function generatedChildCount(
   return terminal?.children.filter(
     (child) => child.goal.creationProvenance === "WIZARD_AI_SUBTREE",
   ).length;
-}
-
-/** Distinct source filenames backing a goal, preserving first-seen order. */
-export function sourceFilenames(goal: LearningGoal): string[] {
-  const seen = new Set<string>();
-  for (const source of goal.sources ?? []) {
-    if (source.filename) seen.add(source.filename);
-  }
-  return [...seen];
 }

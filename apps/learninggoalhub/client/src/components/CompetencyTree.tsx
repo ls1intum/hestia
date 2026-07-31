@@ -146,6 +146,7 @@ export default function CompetencyTree({
   goals,
   onUpdate,
   onDelete,
+  viewSwitch,
 }: {
   courseId: number;
   goals: LearningGoal[];
@@ -158,6 +159,8 @@ export default function CompetencyTree({
     },
   ) => void;
   onDelete: (goal: LearningGoal) => void;
+  /** The page's Table/Map switch — it shares this view's toolbar row instead of a row of its own. */
+  viewSwitch?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const [creation, setCreation] = useState<CreationState | null>(null);
@@ -237,9 +240,20 @@ export default function CompetencyTree({
   }, [rows]);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  const [expanded, setExpanded] = useState<Set<number>>(
-    () => new Set(forest.map((n) => n.goal.id!).filter((id) => id != null)),
-  );
+  // Only the first skill starts open, and under it the last sub-skill that carries knowledge: one
+  // branch shows all three tiers at a glance without unfolding the whole course.
+  const [expanded, setExpanded] = useState<Set<number>>(() => {
+    const first = forest[0];
+    if (first?.goal.id == null) return new Set<number>();
+    const lastWithKnowledge = [...first.children]
+      .reverse()
+      .find((child) => child.children.length > 0)?.goal.id;
+    return new Set(
+      lastWithKnowledge != null
+        ? [first.goal.id, lastWithKnowledge]
+        : [first.goal.id],
+    );
+  });
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     role: new Set(),
@@ -590,6 +604,7 @@ export default function CompetencyTree({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
+        {viewSwitch}
         <label className="relative flex min-w-48 max-w-xs flex-1 items-center">
           <svg
             viewBox="0 0 20 20"
@@ -623,8 +638,9 @@ export default function CompetencyTree({
                 setExpanded(new Set(parentIds));
               }
             }}
-            className="text-sm font-medium text-hestia-primary transition hover:text-hestia-primary-hover"
+            className="inline-flex items-center gap-1.5 rounded-md border-[1.5px] border-hestia-primary px-3 py-1.5 text-sm font-semibold text-hestia-primary transition hover:bg-hestia-primary-muted"
           >
+            <FoldIcon collapse={allOpen} />
             {allOpen ? "Collapse all" : "Expand all"}
           </button>
         )}
@@ -1058,6 +1074,28 @@ function Pill({ label, color }: { label: string; color: string }) {
     >
       {label}
     </span>
+  );
+}
+
+/** Chevrons pointing apart (expand) or together (collapse), matching the button's current action. */
+function FoldIcon({ collapse }: { collapse: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+    >
+      {collapse ? (
+        <path d="M6 8.5l4-3.5 4 3.5M6 11.5l4 3.5 4-3.5" />
+      ) : (
+        <path d="M6 5.5l4 3.5 4-3.5M6 14.5l4-3.5 4 3.5" />
+      )}
+    </svg>
   );
 }
 
