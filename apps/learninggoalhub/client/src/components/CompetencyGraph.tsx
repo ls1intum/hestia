@@ -18,6 +18,7 @@ import CompetencyGoalModal, {
 import {
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
+  generatedChildCount,
   type CompetencyNode,
 } from "../lib/goals.ts";
 
@@ -384,7 +385,7 @@ export default function CompetencyGraph({
             />
           </div>
         </div>
-        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
+        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
       </div>
     );
   }
@@ -718,7 +719,7 @@ export default function CompetencyGraph({
           </div>
         )}
       </div>
-      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
+      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={() => setDetail(null)} onUpdate={onUpdate} onDelete={onDelete} />
     </div>
   );
 }

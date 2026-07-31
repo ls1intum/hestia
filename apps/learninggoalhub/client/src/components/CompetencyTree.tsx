@@ -16,6 +16,7 @@ import FilterPopover from "./FilterPopover.tsx";
 import {
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
+  generatedChildCount,
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
@@ -731,6 +732,7 @@ export default function CompetencyTree({
       <CompetencyGoalModal
         goal={detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null}
         role={detail?.role}
+        generatedChildCount={generatedChildCount(forest, detail?.goal.id)}
         onClose={() => setDetail(null)}
         onUpdate={onUpdate}
         onDelete={onDelete}

@@ -273,6 +273,21 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     .sort((a, b) => (a.goal.text ?? "").localeCompare(b.goal.text ?? ""));
 }
 
+/**
+ * How many wizard-generated sub-skills hang under the terminal skill `goalId` — the nodes a
+ * regeneration would replace. `undefined` means the goal is not a terminal skill at all, which is
+ * what tells the goal modal to leave the regeneration action out entirely.
+ */
+export function generatedChildCount(
+  forest: CompetencyNode[],
+  goalId: number | null | undefined,
+): number | undefined {
+  const terminal = forest.find((node) => node.goal.id === goalId);
+  return terminal?.children.filter(
+    (child) => child.goal.creationProvenance === "WIZARD_AI_SUBTREE",
+  ).length;
+}
+
 /** Distinct source filenames backing a goal, preserving first-seen order. */
 export function sourceFilenames(goal: LearningGoal): string[] {
   const seen = new Set<string>();
