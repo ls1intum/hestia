@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX, type GoalSource } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
+import ConfirmDialog from "./ConfirmDialog.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
 // Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
 const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
@@ -30,6 +31,14 @@ import {
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
 
+/** Goal wording reduced to what a reader would call the same sentence, for comparing two versions. */
+const normalize = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[.!?;:,]+$/, "")
+    .trim();
+
 type GoalChanges = {
   text?: string;
   bloomLevel?: LearningGoal["bloomLevel"];
@@ -42,6 +51,7 @@ export default function CompetencyGoalModal({
   goal: freshGoal,
   role,
   relationships,
+  generatedChildCount,
   onClose,
   onUpdate,
   onDelete,
@@ -51,6 +61,12 @@ export default function CompetencyGoalModal({
   role?: CompetencyRole;
   /** The list view passes the goal's grouped relationships to show the relationships tile. */
   relationships?: RelationshipGroup[];
+  /**
+   * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
+   * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
+   * is not one and the action stays out of the modal.
+   */
+  generatedChildCount?: number;
   onClose: () => void;
   /** Enables in-place editing: the goal text via a pencil, Bloom/SOLO by clicking a dot. */
   onUpdate?: (goalId: number, changes: GoalChanges) => void;
@@ -73,6 +89,9 @@ export default function CompetencyGoalModal({
   const [openSource, setOpenSource] = useState<GoalSource | null>(null);
   const [editingSession, setEditingSession] = useState(false);
   const [sessionDraft, setSessionDraft] = useState("");
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
+  // Set when a rename actually changed the wording the AI children were derived from.
+  const [staleSubtree, setStaleSubtree] = useState(false);
   const renameMutation = useMutation({
     mutationFn: async (vars: {
       documentId: number;
@@ -122,6 +141,22 @@ export default function CompetencyGoalModal({
       setEditingSession(false);
     },
   });
+  const regenerateMutation = useMutation({
+    mutationFn: async (goalId: number) => {
+      const { error } = await api.POST(
+        "/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+        { params: { path: { courseId: numericCourseId, goalId } } },
+      );
+      if (error) throw new Error("Could not generate the sub-skills.");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["goals", numericCourseId],
+      });
+      setConfirmRegenerate(false);
+      setStaleSubtree(false);
+    },
+  });
   useEffect(() => setPending({}), [freshGoal]);
   // The draft only resets when another goal opens — a background refetch must not eat typing.
   useEffect(() => {
@@ -129,6 +164,8 @@ export default function CompetencyGoalModal({
     setEditingSourceIndex(null);
     setEditingSession(false);
     setOpenSource(null);
+    setConfirmRegenerate(false);
+    setStaleSubtree(false);
   }, [freshGoal?.id]);
 
   useEffect(() => {
@@ -177,9 +214,24 @@ export default function CompetencyGoalModal({
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
 
+  // A terminal skill the pipeline clustered has no wizard subtree to replace — the server refuses
+  // it, so the action never appears for one (its creation provenance is null).
+  const canRegenerate =
+    generatedChildCount != null && goal.creationProvenance != null;
+
   const saveDraft = () => {
     const trimmed = (draft ?? "").trim();
-    if (trimmed !== "" && trimmed !== goal.text) update({ text: trimmed });
+    if (trimmed !== "" && trimmed !== goal.text) {
+      update({ text: trimmed });
+      // The sub-skills were derived from the old wording. Only flag a real rewording: correcting a
+      // typo or the punctuation leaves them just as valid as before.
+      if (
+        canRegenerate &&
+        generatedChildCount! > 0 &&
+        normalize(trimmed) !== normalize(goal.text ?? "")
+      )
+        setStaleSubtree(true);
+    }
     setDraft(null);
   };
   const saveSession = () => {
@@ -334,6 +386,49 @@ export default function CompetencyGoalModal({
               </div>
             )}
           </div>
+          {/* The subtree action belongs to the skill above, so it sits right under its box rather
+              than as an icon in the header, where nothing would say what it regenerates. */}
+          {canRegenerate && (
+            <div className="flex flex-col gap-1.5">
+              {staleSubtree && (
+                <p className="text-xs leading-snug text-hestia-text-muted">
+                  The sub-skills were generated from the previous wording.
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    generatedChildCount! > 0
+                      ? setConfirmRegenerate(true)
+                      : regenerateMutation.mutate(goal.id!)
+                  }
+                  disabled={regenerateMutation.isPending}
+                  className="rounded-md border border-hestia-border bg-hestia-surface px-2.5 py-1 text-xs font-medium text-hestia-text shadow-sm transition hover:bg-hestia-primary-muted disabled:opacity-50"
+                >
+                  {regenerateMutation.isPending
+                    ? "Generating…"
+                    : generatedChildCount! > 0
+                      ? "Regenerate AI sub-skills"
+                      : "Generate AI sub-skills"}
+                </button>
+                {staleSubtree && (
+                  <button
+                    type="button"
+                    onClick={() => setStaleSubtree(false)}
+                    className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text"
+                  >
+                    Keep them
+                  </button>
+                )}
+              </div>
+              {regenerateMutation.isError && !confirmRegenerate && (
+                <p className="text-xs text-hestia-danger">
+                  {(regenerateMutation.error as Error).message}
+                </p>
+              )}
+            </div>
+          )}
           {/* Session and kind are both one-liners, so they share a row. */}
           {(session || kindTile) && (
             <div
@@ -723,6 +818,29 @@ export default function CompetencyGoalModal({
           )}
         </div>
       </div>
+      {confirmRegenerate && (
+        <ConfirmDialog
+          title="Regenerate the AI sub-skills?"
+          message={`This replaces the ${generatedChildCount} generated sub-skill${
+            generatedChildCount === 1 ? "" : "s"
+          } under this skill, and the knowledge below them, with a fresh set derived from its current wording. Anything you added by hand stays.`}
+          confirmLabel={
+            regenerateMutation.isPending ? "Generating…" : "Regenerate"
+          }
+          tone="primary"
+          busy={regenerateMutation.isPending}
+          error={
+            regenerateMutation.isError
+              ? (regenerateMutation.error as Error).message
+              : undefined
+          }
+          onConfirm={() => regenerateMutation.mutate(goal.id!)}
+          onCancel={() => {
+            regenerateMutation.reset();
+            setConfirmRegenerate(false);
+          }}
+        />
+      )}
     </div>
   );
 }

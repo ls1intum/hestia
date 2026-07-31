@@ -7,6 +7,7 @@ import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import CompetencyGoalModal from "../components/CompetencyGoalModal.tsx";
 import ConceptInfoDialog from "../components/ConceptInfoDialog.tsx";
+import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import FilterPopover from "../components/FilterPopover.tsx";
 import {
   LEVEL_META,
@@ -1108,69 +1109,6 @@ function CourseMenu({
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-/** Small centered confirmation overlay for destructive actions. */
-function ConfirmDialog({
-  title,
-  message,
-  confirmLabel,
-  busy,
-  error,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  busy?: boolean;
-  error?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  return (
-    <div
-      onClick={onCancel}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-xl"
-      >
-        <h3 className="text-lg text-hestia-text">{title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-hestia-text-muted">
-          {message}
-        </p>
-        {error && <p className="mt-3 text-sm text-hestia-danger">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md border border-hestia-border px-3 py-1.5 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className="rounded-md bg-hestia-danger px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
