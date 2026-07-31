@@ -14,7 +14,10 @@ import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import Button from "./Button.tsx";
 import FilterPopover from "./FilterPopover.tsx";
+import InfoTooltip from "./InfoTooltip.tsx";
 import {
+  BLOOM_DESC,
+  BLOOM_SUMMARY,
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
   generatedChildCount,
@@ -122,16 +125,47 @@ function displayValue(key: FilterKey, value: string): string {
   return value ? titleCase(value) : "—";
 }
 
+/** The Bloom column's hover explanation: what the taxonomy is, then its six levels in order. */
+const BLOOM_HINT = (
+  <>
+    <p className="text-sm font-semibold text-hestia-text">
+      Bloom&apos;s revised taxonomy
+    </p>
+    <p className="mt-1 text-xs leading-relaxed text-hestia-text-muted">
+      {BLOOM_SUMMARY}
+    </p>
+    <ul className="mt-2 space-y-1 border-t border-hestia-border pt-2">
+      {Object.entries(BLOOM_DESC).map(([level, desc]) => (
+        <li
+          key={level}
+          className="text-xs leading-relaxed text-hestia-text-muted"
+        >
+          <span className="font-semibold text-hestia-text">{level}</span>:{" "}
+          {desc}
+        </li>
+      ))}
+    </ul>
+  </>
+);
+
 const COLUMNS: {
   key: FilterKey | "text" | "items";
   label: string;
   sortKey?: SortKey;
   filterKey?: FilterKey;
   alignRight?: boolean;
+  /** Explanation shown when hovering (or focusing) the column's ⓘ. */
+  hint?: ReactNode;
 }[] = [
   { key: "text", label: "Learning goal", sortKey: "text" },
   { key: "role", label: "Level", filterKey: "role" },
-  { key: "bloom", label: "Bloom", sortKey: "bloom", filterKey: "bloom" },
+  {
+    key: "bloom",
+    label: "Bloom",
+    sortKey: "bloom",
+    filterKey: "bloom",
+    hint: BLOOM_HINT,
+  },
   { key: "kind", label: "Kind", filterKey: "kind" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
   {
@@ -795,27 +829,35 @@ function HeaderCell({
     sort != null && column.sortKey != null && sort.key === column.sortKey
       ? sort.dir
       : null;
+  const label = column.sortKey ? (
+    <button
+      type="button"
+      onClick={() => onSort(column.sortKey!)}
+      aria-label={`Sort by ${column.label}`}
+      className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:bg-hestia-text/5 hover:text-hestia-text"
+    >
+      {column.label}
+      <span className="inline-block w-2.5 text-xs text-hestia-primary">
+        {sorted === 1 ? "▲" : sorted === -1 ? "▼" : ""}
+      </span>
+    </button>
+  ) : (
+    <span className="px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+      {column.label}
+    </span>
+  );
   return (
     <div
       role="columnheader"
       className={`relative flex items-center gap-0.5 px-2.5 py-2 ${column.alignRight ? "justify-end" : ""}`}
     >
-      {column.sortKey ? (
-        <button
-          type="button"
-          onClick={() => onSort(column.sortKey!)}
-          aria-label={`Sort by ${column.label}`}
-          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:bg-hestia-text/5 hover:text-hestia-text"
-        >
-          {column.label}
-          <span className="inline-block w-2.5 text-xs text-hestia-primary">
-            {sorted === 1 ? "▲" : sorted === -1 ? "▼" : ""}
-          </span>
-        </button>
+      {/* The column label itself is the hint's trigger: hovering the word explains the column. */}
+      {column.hint ? (
+        <InfoTooltip content={column.hint} className="inline-flex items-center">
+          {label}
+        </InfoTooltip>
       ) : (
-        <span className="px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-          {column.label}
-        </span>
+        label
       )}
       {column.filterKey && (
         <button

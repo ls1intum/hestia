@@ -49,17 +49,21 @@ export default function CoursesPage() {
   });
 
   const courses: CourseSummary[] = coursesQuery.data?.content ?? [];
+  // Left out entirely until the list has loaded, so the heading never shows a placeholder "(0)".
+  const courseCount = coursesQuery.data
+    ? (coursesQuery.data.page?.totalElements ?? courses.length)
+    : null;
 
   // Same column width as the course page, so the two don't reflow against each other.
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl">Courses</h1>
-          <p className="mt-1 text-sm text-hestia-text-muted">
-            Each course groups the documents you upload; learning goals are extracted from all of them.
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-3xl">
+          Your Courses{" "}
+          {courseCount != null && (
+            <span className="text-hestia-text-muted">({courseCount})</span>
+          )}
+        </h1>
         <Button size="lg" onClick={() => setCreateOpen(true)} className="shrink-0">
           + Add course
         </Button>
@@ -108,14 +112,17 @@ export default function CoursesPage() {
                   key={course.id}
                   className={`relative ${openMenuId === course.id ? "z-30" : ""}`}
                 >
-                  <div className="relative flex items-center px-6">
+                  {/* The hover tint sits on the whole row, not on the link alone: otherwise it
+                      stops short of the caret and the ⋮ and reads as a floating band. Same soft
+                      primary wash the competency tree-grid uses for its rows. */}
+                  <div className="relative flex items-center px-6 transition-colors hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]">
                     <button
                       type="button"
                       onClick={() => toggleExpanded(course.id)}
                       aria-expanded={expanded}
                       aria-controls={`course-docs-${course.id}`}
                       aria-label={`${expanded ? "Hide" : "Show"} documents for ${course.name}`}
-                      className="mr-2 flex h-8 w-6 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-bg hover:text-hestia-text"
+                      className="mr-2 flex h-8 w-6 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
                     >
                       <svg
                         viewBox="0 0 20 20"
@@ -127,7 +134,7 @@ export default function CoursesPage() {
                     </button>
                     <Link
                       to={`/courses/${course.id}`}
-                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 py-4 transition hover:bg-hestia-primary-muted"
+                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 py-4"
                     >
                       <span className="font-medium text-hestia-text">{course.name}</span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
@@ -231,7 +238,7 @@ function RowMenu({
         onClick={onToggle}
         aria-label="Course actions"
         aria-expanded={open}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-bg hover:text-hestia-text"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
           <circle cx="10" cy="4" r="1.5" />
