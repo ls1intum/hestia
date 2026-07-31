@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import ExtractionProgressModal from "./ExtractionProgressModal.tsx";
+import Button from "./Button.tsx";
 
 // The upload endpoint runs everything through Apache Tika, which parses these
 // out of the box. Kept in sync with the hint shown in the drop zone.
@@ -149,7 +150,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-hestia-border bg-hestia-surface shadow-xl"
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-hestia-border bg-hestia-surface shadow-lg"
       >
         <div className="flex items-center justify-between gap-4 border-b border-hestia-border px-6 py-4">
           <div>
@@ -158,17 +159,17 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               Upload your materials and we'll extract learning goals automatically.
             </p>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onClose}
             disabled={busy}
             aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text disabled:opacity-50"
           >
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
               <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         <form
@@ -178,7 +179,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
             if (trimmed && !busy) create.mutate();
           }}
         >
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+          <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="course-name" className="text-sm font-medium text-hestia-text">
                 Course title
@@ -215,7 +216,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   setIsDragging(false);
                   addFiles(e.dataTransfer.files);
                 }}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition ${
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-12 text-center transition ${
                   isDragging
                     ? "border-hestia-primary bg-hestia-primary-muted"
                     : "border-hestia-border hover:border-hestia-primary"
@@ -307,21 +308,12 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-hestia-border px-6 py-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-hestia-text-muted transition hover:text-hestia-text disabled:opacity-50"
-            >
+            <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!trimmed || busy}
-              className="rounded-md bg-hestia-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-hestia-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" size="lg" disabled={!trimmed || busy}>
               {create.isPending ? "Creating…" : "Create course →"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

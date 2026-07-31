@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { DocumentResponse } from "../api/client.ts";
+import Button from "./Button.tsx";
 
 /**
  * Inline list of a course's uploaded documents with inline rename. Rendered under an expanded
@@ -49,7 +50,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
   const documents = documentsQuery.data ?? [];
 
   return (
-    <div className="border-t border-hestia-border bg-hestia-bg/40 px-5 py-4 pl-14">
+    <div className="border-t border-hestia-border bg-hestia-bg/40 px-6 py-4 pl-14">
       {documentsQuery.isLoading && (
         <p className="text-sm text-hestia-text-muted">Loading…</p>
       )}
@@ -157,21 +158,12 @@ function DocumentRow({
               <span />
             )}
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={busy}
-                className="rounded-md border border-hestia-border px-2.5 py-1 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
-              >
+              <Button variant="neutral" onClick={onCancel} disabled={busy}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={!canSave}
-                className="rounded-md bg-hestia-primary px-2.5 py-1 text-sm font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
-              >
+              </Button>
+              <Button type="submit" disabled={!canSave}>
                 {busy ? "Saving…" : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
@@ -188,12 +180,13 @@ function DocumentRow({
               {uploaded ? `Uploaded ${uploaded}` : null}
             </p>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             title="Rename document"
             aria-label={`Rename ${shown}`}
             onClick={onEdit}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-hestia-text-muted opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 hover:bg-hestia-primary-muted hover:text-hestia-text"
+            className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
           >
             <svg
               viewBox="0 0 20 20"
@@ -206,7 +199,7 @@ function DocumentRow({
             >
               <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
             </svg>
-          </button>
+          </Button>
         </div>
       )}
     </li>

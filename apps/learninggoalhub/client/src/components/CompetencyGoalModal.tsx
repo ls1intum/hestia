@@ -5,6 +5,7 @@ import { api, API_PREFIX, type GoalSource } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
 import ConfirmDialog from "./ConfirmDialog.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
+import Button from "./Button.tsx";
 // Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
 const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
 import {
@@ -266,19 +267,21 @@ export default function CompetencyGoalModal({
             className={`flex min-w-0 flex-col gap-3.5 ${openSource ? "w-full lg:max-w-lg lg:shrink-0" : "w-full"}`}
           >
           <div className="flex items-center justify-between">
-            <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text">
+            <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text">
               Goal details
             </span>
             <div className="flex items-center gap-0.5">
               {onDelete && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => {
                     onClose();
                     onDelete(goal);
                   }}
                   title="Delete this goal permanently."
                   aria-label="Delete goal"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-danger hover:text-white"
+                  className="hover:bg-hestia-danger hover:text-hestia-on-danger"
                 >
                   <svg
                     viewBox="0 0 20 20"
@@ -291,12 +294,13 @@ export default function CompetencyGoalModal({
                   >
                     <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
                   </svg>
-                </button>
+                </Button>
               )}
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={onClose}
                 aria-label="Close"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
               >
                 <svg
                   viewBox="0 0 20 20"
@@ -308,7 +312,7 @@ export default function CompetencyGoalModal({
                 >
                   <path d="M5 5l10 10M15 5L5 15" />
                 </svg>
-              </button>
+              </Button>
             </div>
           </div>
           {/* The goal, dressed as the box that was just clicked. */}
@@ -339,7 +343,7 @@ export default function CompetencyGoalModal({
               </div>
             )}
             {draft == null ? (
-              <p className="text-[0.95rem] font-medium leading-relaxed text-hestia-text">
+              <p className="text-base font-medium leading-relaxed text-hestia-text">
                 {goal.text}
               </p>
             ) : (
@@ -362,19 +366,16 @@ export default function CompetencyGoalModal({
                   className="w-full resize-y rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg p-2.5 text-sm leading-relaxed text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
                 />
                 <div className="flex items-center justify-end gap-2">
-                  <button
-                    onClick={() => setDraft(null)}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={saveDraft}
                     disabled={(draft ?? "").trim() === ""}
-                    className="rounded-md bg-hestia-primary px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
                   >
                     Save
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -430,7 +431,7 @@ export default function CompetencyGoalModal({
               {session && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                       Session
                     </span>
                     {sessionId != null && !editingSession && (
@@ -486,28 +487,28 @@ export default function CompetencyGoalModal({
                         </p>
                       )}
                       <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
+                        <Button
+                          variant="neutral"
+                          size="sm"
                           onClick={() => {
                             sessionRenameMutation.reset();
                             setEditingSession(false);
                           }}
                           disabled={sessionRenameMutation.isPending}
-                          className="rounded-md border border-hestia-border px-2.5 py-1 text-xs font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
                         >
                           Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="submit"
+                          size="sm"
                           disabled={
                             sessionDraft.trim() === "" ||
                             sessionDraft.trim() === session ||
                             sessionRenameMutation.isPending
                           }
-                          className="rounded-md bg-hestia-primary px-2.5 py-1 text-xs font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
                         >
                           {sessionRenameMutation.isPending ? "Saving…" : "Save"}
-                        </button>
+                        </Button>
                       </div>
                     </form>
                   ) : (
@@ -519,7 +520,7 @@ export default function CompetencyGoalModal({
               )}
               {kindTile && (
                 <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
-                  <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                     Kind
                   </span>
                   <p className="mt-2 text-sm font-semibold text-hestia-text">
@@ -537,7 +538,7 @@ export default function CompetencyGoalModal({
           {/* The snippets need room, so source gets its own full-width tile. */}
           {sources.length > 0 && (
             <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+              <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                 Source
               </span>
               <ul className="mt-2 space-y-2.5">
@@ -605,24 +606,20 @@ export default function CompetencyGoalModal({
                               <span />
                             )}
                             <div className="flex gap-2">
-                              <button
-                                type="button"
+                              <Button
+                                variant="neutral"
+                                size="sm"
                                 onClick={() => {
                                   renameMutation.reset();
                                   setEditingSourceIndex(null);
                                 }}
                                 disabled={renameMutation.isPending}
-                                className="rounded-md border border-hestia-border px-2.5 py-1 text-xs font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
                               >
                                 Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                disabled={!canSave}
-                                className="rounded-md bg-hestia-primary px-2.5 py-1 text-xs font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
-                              >
+                              </Button>
+                              <Button type="submit" size="sm" disabled={!canSave}>
                                 {renameMutation.isPending ? "Saving…" : "Save"}
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         </form>
@@ -683,7 +680,7 @@ export default function CompetencyGoalModal({
                           {source.grounded === false && (
                             <span
                               title="Snippet could not be located in the document"
-                              className="shrink-0 pt-1 text-[0.65rem] font-normal text-hestia-text-muted"
+                              className="shrink-0 pt-1 text-xs font-normal text-hestia-text-muted"
                             >
                               unverified
                             </span>
@@ -850,7 +847,7 @@ function TaxonomyTile({
   };
   return (
     <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
-      <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+      <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
         {label}
       </span>
       <div
@@ -918,7 +915,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
   const isGap = role === "gap";
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
       style={{
         color: meta.color,
         backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
@@ -934,7 +931,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
 export function AiInferredBadge({ compact = false }: { compact?: boolean } = {}) {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
       style={{
         color: "var(--hestia-danger)",
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
@@ -949,7 +946,7 @@ export function AiInferredBadge({ compact = false }: { compact?: boolean } = {})
 export function ManualBadge() {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide"
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
       style={{
         color: "var(--hestia-warning)",
         backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",

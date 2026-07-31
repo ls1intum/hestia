@@ -16,7 +16,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="border-b border-hestia-border bg-hestia-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-6 py-3">
           <Link to="/" className="flex items-center gap-3" aria-label="LearningGoalHub home">
-            <img src={wordmark} alt="HESTIA" className="h-8 w-auto" />
+            {/* min 120px wide per the styleguide; the wordmark is ~2.6:1, so height follows width. */}
+            <img src={wordmark} alt="HESTIA" className="h-12 w-auto min-w-[120px]" />
             <span className="rounded-full bg-hestia-primary-muted px-2 py-0.5 text-xs font-semibold text-hestia-primary">
               LearningGoalHub
             </span>

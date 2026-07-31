@@ -252,7 +252,7 @@ export default function SourcePdfPane({
           <p className="truncate text-xs font-semibold text-hestia-text">
             {source.displayName ?? source.filename ?? "Source document"}
           </p>
-          <p className="text-[0.65rem] text-hestia-text-muted">p. {pageNumber}</p>
+          <p className="text-xs text-hestia-text-muted">p. {pageNumber}</p>
         </div>
         <button
           type="button"

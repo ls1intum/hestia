@@ -1,6 +1,6 @@
 /* HESTIA design foundation — see HESTIA_styleguide/HESTIA_STYLEGUIDE.md (local, gitignored).
    Color/typography/spacing tokens live here as the single source of truth for the client. */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+/* The Google Fonts <link> lives in index.html so the request is not chained behind this file. */
 @import "tailwindcss";
 
 /* Make `dark:` utilities follow the explicit data-theme attribute (toggle), not only the OS preference. */
@@ -15,6 +15,10 @@
   --hestia-accent: #386570;
   --hestia-warning: #d4880a;
   --hestia-danger: #c0281f;
+  /* Foreground for text/icons sitting ON a filled primary or danger surface. White clears AA on
+     both light fills; the dark theme flips it because its primary is a light gold. */
+  --hestia-on-primary: #ffffff;
+  --hestia-on-danger: #ffffff;
 }
 
 [data-theme="dark"] {
@@ -25,6 +29,8 @@
   --hestia-accent: #06d6a0;
   --hestia-warning: #f5a623;
   --hestia-danger: #f24b6a;
+  --hestia-on-primary: #121212;
+  --hestia-on-danger: #121212;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,6 +42,8 @@
     --hestia-accent: #06d6a0;
     --hestia-warning: #f5a623;
     --hestia-danger: #f24b6a;
+    --hestia-on-primary: #121212;
+    --hestia-on-danger: #121212;
   }
 }
 
@@ -55,6 +63,8 @@
   --color-hestia-primary: var(--hestia-primary);
   --color-hestia-primary-hover: var(--hestia-primary-hover);
   --color-hestia-primary-muted: var(--hestia-primary-muted);
+  --color-hestia-on-primary: var(--hestia-on-primary);
+  --color-hestia-on-danger: var(--hestia-on-danger);
   --color-hestia-text: var(--hestia-text);
   --color-hestia-text-muted: var(--hestia-text-muted);
   --color-hestia-accent: var(--hestia-accent);

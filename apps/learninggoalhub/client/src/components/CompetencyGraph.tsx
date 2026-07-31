@@ -743,7 +743,7 @@ function BackPill({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2.5 py-1 text-[0.6rem] font-semibold uppercase tracking-wider shadow-sm transition hover:shadow"
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-dashed px-2.5 py-1 text-xs font-semibold uppercase tracking-wider shadow-sm transition hover:shadow"
       style={{
         borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
         backgroundColor: `color-mix(in srgb, ${color} 4%, transparent)`,
@@ -1041,7 +1041,7 @@ function Box({
             tip="Delete this goal permanently."
             tipBelow
             onClick={() => actions.onDelete(node.goal)}
-            className="text-hestia-text-muted hover:bg-hestia-danger hover:text-white"
+            className="text-hestia-text-muted hover:bg-hestia-danger hover:text-hestia-on-danger"
           >
             <svg
               viewBox="0 0 20 20"
@@ -1058,7 +1058,7 @@ function Box({
         </div>
       </div>
       <p
-        className={`text-[0.8rem] font-medium leading-snug ${
+        className={`text-sm font-medium leading-snug ${
           isGap ? "text-hestia-danger" : "text-hestia-text"
         } ${!node.goal.shortLabel && clampText ? "line-clamp-3" : ""}`}
       >
@@ -1133,7 +1133,7 @@ function Stub({
         {xs.map((x) => (
           <span
             key={x}
-            className="h-[7px] w-[34px] rounded"
+            className="h-[7px] w-[34px] rounded-full"
             style={{ backgroundColor: barColor }}
           />
         ))}
@@ -1237,7 +1237,7 @@ function BoxAction({
       </button>
       <span
         role="tooltip"
-        className={`pointer-events-none absolute right-0 z-30 hidden w-44 rounded-lg border border-hestia-border border-l-[3px] border-l-hestia-primary bg-hestia-surface p-2 text-left text-[0.7rem] font-normal normal-case leading-snug text-hestia-text shadow-lg group-hover/tip:block ${
+        className={`pointer-events-none absolute right-0 z-30 hidden w-44 rounded-lg border border-hestia-border border-l-[3px] border-l-hestia-primary bg-hestia-surface p-2 text-left text-xs font-normal normal-case leading-snug text-hestia-text shadow-lg group-hover/tip:block ${
           tipBelow ? "top-full mt-1.5" : "bottom-full mb-1.5"
         }`}
       >
