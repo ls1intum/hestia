@@ -344,7 +344,15 @@ public class LearningGoalController {
         return LearningGoalResponse.from(terminal, List.of(), List.of());
     }
 
-    /** Generates a new subtree for an existing terminal, replacing only its owned AI descendants. */
+    /**
+     * Generates a new subtree for an existing terminal, replacing only its owned AI descendants.
+     *
+     * <p>Refused for a terminal the pipeline clustered (no creation provenance): its structure was
+     * extracted alongside it, so there is nothing owned to replace and the generated nodes would
+     * simply hang next to goals that carry source quotes — an ungrounded branch in a grounded tree.
+     * A hand-typed or wizard-generated terminal may well have picked up extracted contributors along
+     * the way; those survive regeneration untouched, which is the intended mix.
+     */
     @PostMapping("/{goalId}/subtree")
     @Transactional
     public LearningGoalResponse generateSubtree(@PathVariable Long courseId,
@@ -354,6 +362,10 @@ public class LearningGoalController {
         if (terminal.getOrigin() != GoalOrigin.TERMINAL) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only terminal skills can generate a subtree");
+        }
+        if (terminal.getCreationProvenance() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A skill extracted from the course material cannot be regenerated");
         }
 
         Course course = terminal.getCourse();

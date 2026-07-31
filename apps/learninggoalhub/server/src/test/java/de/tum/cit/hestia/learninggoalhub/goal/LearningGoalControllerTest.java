@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -855,6 +856,20 @@ class LearningGoalControllerTest {
         mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
                         course.getId(), goal.getId()))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void subtreeGenerationRejectsPipelineClusteredTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        // No creation provenance: the pipeline clustered this terminal together with its structure.
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", null));
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminal.getId()))
+                .andExpect(status().isConflict());
+
+        verifyNoInteractions(subtreeSynthesizer);
     }
 
     @Test
