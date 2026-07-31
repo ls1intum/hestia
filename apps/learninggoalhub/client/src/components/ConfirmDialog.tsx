@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Button from "./Button.tsx";
 
 /**
  * Small centered confirmation overlay for actions that cannot be taken back. `tone` colours the
@@ -40,30 +41,24 @@ export default function ConfirmDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-xl"
+        className="w-full max-w-sm rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg"
       >
         <h3 className="text-lg text-hestia-text">{title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-hestia-text-muted">
           {message}
         </p>
         {error && <p className="mt-3 text-sm text-hestia-danger">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md border border-hestia-border px-3 py-1.5 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
-          >
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="neutral" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={tone === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             disabled={busy}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50 ${
-              tone === "danger" ? "bg-hestia-danger" : "bg-hestia-primary"
-            }`}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

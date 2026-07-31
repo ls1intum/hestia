@@ -6,6 +6,7 @@ import type { LearningGoal } from "../api/client.ts";
 import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import Button from "../components/Button.tsx";
 import { titleCase } from "../lib/goals.ts";
 
 // The course page shows the synthesised skills in one of two representations: the filterable
@@ -267,9 +268,9 @@ export default function CoursePage() {
 }
 
 /**
- * Segmented control switching between the two skill representations. It is the page's primary
- * switch now that the learning-goal list is gone, so it keeps the raised-pill look the concept
- * tabs used to have.
+ * Segmented control switching between the two skill representations. Follows the styleguide's
+ * toggle: one surface pill, the selected segment filled with primary. The end segments carry the
+ * rounding themselves rather than the track clipping them, so the focus ring stays visible.
  */
 function ViewSwitch({
   view,
@@ -286,7 +287,7 @@ function ViewSwitch({
     <div
       role="tablist"
       aria-label="Skills representation"
-      className="inline-flex gap-0.5 rounded-[0.625rem] bg-[color-mix(in_srgb,var(--hestia-text)_7%,transparent)] p-0.5"
+      className="inline-flex rounded-full border border-hestia-border bg-hestia-surface"
     >
       {options.map((option) => {
         const active = view === option.key;
@@ -297,9 +298,9 @@ function ViewSwitch({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(option.key)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm transition first:rounded-l-full last:rounded-r-full ${
               active
-                ? "bg-hestia-surface font-semibold text-hestia-text shadow-sm"
+                ? "bg-hestia-primary font-semibold text-hestia-on-primary"
                 : "font-medium text-hestia-text-muted hover:text-hestia-text"
             }`}
           >
@@ -364,20 +365,20 @@ function CourseMenu({
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
+      <Button
+        variant="neutral"
+        size="icon-md"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More actions"
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-hestia-border text-hestia-text transition hover:bg-hestia-primary-muted"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
           <circle cx="10" cy="4" r="1.6" />
           <circle cx="10" cy="10" r="1.6" />
           <circle cx="10" cy="16" r="1.6" />
         </svg>
-      </button>
+      </Button>
       {open && (
         <div
           role="menu"
@@ -410,7 +411,7 @@ function CourseMenu({
               setOpen(false);
               onDelete();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-hestia-danger transition hover:bg-hestia-danger hover:text-white"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-hestia-danger transition hover:bg-hestia-danger hover:text-hestia-on-danger"
           >
             <svg
               viewBox="0 0 20 20"
@@ -489,7 +490,7 @@ function EditGoalDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-xl"
+        className="w-full max-w-lg rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg"
       >
         <h3 className="text-lg text-hestia-text">Edit learning goal</h3>
         <textarea
@@ -515,20 +516,12 @@ function EditGoalDialog({
         </div>
         {error && <p className="mt-2 text-sm text-hestia-danger">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md border border-hestia-border px-3 py-1.5 text-sm font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
-          >
+          <Button variant="neutral" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
-            onClick={save}
-            disabled={!canSave}
-            className="rounded-md bg-hestia-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={save} disabled={!canSave}>
             {busy ? "Saving…" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

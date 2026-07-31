@@ -12,6 +12,7 @@ import { api } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
 import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import Button from "./Button.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import {
   COMPETENCY_ROLE_META,
@@ -628,8 +629,7 @@ export default function CompetencyTree({
         </label>
         <span className="flex-1" />
         {!filtering && (
-          <button
-            type="button"
+          <Button
             onClick={() => {
               if (allOpen) {
                 setExpanded(new Set());
@@ -638,11 +638,10 @@ export default function CompetencyTree({
                 setExpanded(new Set(parentIds));
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-md border-[1.5px] border-hestia-primary px-3 py-1.5 text-sm font-semibold text-hestia-primary transition hover:bg-hestia-primary-muted"
           >
             <FoldIcon collapse={allOpen} />
             {allOpen ? "Collapse all" : "Expand all"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -736,7 +735,7 @@ export default function CompetencyTree({
               {bodyRows.length > 0 ? (
                 bodyRows
               ) : (
-                <div className="p-9 text-center text-sm text-hestia-text-muted">
+                <div className="p-8 text-center text-sm text-hestia-text-muted">
                   No goals match the current filters.
                 </div>
               )}
@@ -806,15 +805,15 @@ function HeaderCell({
           type="button"
           onClick={() => onSort(column.sortKey!)}
           aria-label={`Sort by ${column.label}`}
-          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:bg-hestia-text/5 hover:text-hestia-text"
+          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:bg-hestia-text/5 hover:text-hestia-text"
         >
           {column.label}
-          <span className="inline-block w-2.5 text-[0.6rem] text-hestia-primary">
+          <span className="inline-block w-2.5 text-xs text-hestia-primary">
             {sorted === 1 ? "▲" : sorted === -1 ? "▼" : ""}
           </span>
         </button>
       ) : (
-        <span className="px-1 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+        <span className="px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
           {column.label}
         </span>
       )}
@@ -994,7 +993,7 @@ function GridRow({
                 e.stopPropagation();
                 onToggle(row.id);
               }}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
             >
               <svg
                 viewBox="0 0 20 20"
@@ -1066,7 +1065,7 @@ function GridRow({
 function Pill({ label, color }: { label: string; color: string }) {
   return (
     <span
-      className="inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide"
+      className="inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
       style={{
         color,
         backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,

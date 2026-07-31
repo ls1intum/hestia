@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import Button from "./Button.tsx";
 
 export default function CompetencyCreationField({
   value,
@@ -60,31 +61,31 @@ export default function CompetencyCreationField({
             stacked ? "justify-end" : ""
           }`}
         >
-          <button
-            type="button"
+          <Button
+            variant="neutral"
+            size="sm"
             onClick={onCancel}
             disabled={pending}
-            className="rounded-md border border-hestia-border px-2 py-1.5 text-xs font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            size="sm"
             disabled={value.trim() === "" || pending}
-            className="rounded-md bg-hestia-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-hestia-primary-hover disabled:opacity-50"
           >
             {pending ? (
               <span className="flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
-                  className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                  className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
                 />
                 Adding…
               </span>
             ) : (
               "Add"
             )}
-          </button>
+          </Button>
         </div>
       </div>
       {error && (

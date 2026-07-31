@@ -5,6 +5,7 @@ import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
 import CourseDocuments from "../components/CourseDocuments.tsx";
+import Button from "../components/Button.tsx";
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
@@ -59,13 +60,9 @@ export default function CoursesPage() {
             Each course groups the documents you upload; learning goals are extracted from all of them.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="shrink-0 rounded-md bg-hestia-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-hestia-primary-hover"
-        >
+        <Button size="lg" onClick={() => setCreateOpen(true)} className="shrink-0">
           + Add course
-        </button>
+        </Button>
       </div>
 
       {deleteMutation.isError && (
@@ -76,28 +73,24 @@ export default function CoursesPage() {
 
       <div className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         {coursesQuery.isLoading && (
-          <p className="px-5 py-6 text-sm text-hestia-text-muted">Loading courses…</p>
+          <p className="px-6 py-6 text-sm text-hestia-text-muted">Loading courses…</p>
         )}
         {coursesQuery.isError && (
-          <p className="px-5 py-6 text-sm text-hestia-danger">
+          <p className="px-6 py-6 text-sm text-hestia-danger">
             {(coursesQuery.error as Error).message}
           </p>
         )}
         {!coursesQuery.isLoading && !coursesQuery.isError && courses.length === 0 && (
-          <div className="px-5 py-12 text-center">
+          <div className="px-6 py-12 text-center">
             <p className="text-sm text-hestia-text-muted">No courses yet.</p>
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="mt-3 inline-block rounded-md bg-hestia-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-hestia-primary-hover"
-            >
+            <Button size="lg" onClick={() => setCreateOpen(true)} className="mt-3">
               Create your first course
-            </button>
+            </Button>
           </div>
         )}
         {courses.length > 0 && (
           <ul className="divide-y divide-hestia-border">
-            <li className="flex items-center px-5 py-3 text-xs font-semibold uppercase tracking-wide text-hestia-text-muted">
+            <li className="flex items-center px-6 py-3 text-xs font-semibold uppercase tracking-wide text-hestia-text-muted">
               <span className="mr-2 w-6 shrink-0" aria-hidden />
               <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] gap-4">
                 <span>Course</span>
@@ -115,7 +108,7 @@ export default function CoursesPage() {
                   key={course.id}
                   className={`relative ${openMenuId === course.id ? "z-30" : ""}`}
                 >
-                  <div className="relative flex items-center px-5">
+                  <div className="relative flex items-center px-6">
                     <button
                       type="button"
                       onClick={() => toggleExpanded(course.id)}
@@ -256,22 +249,22 @@ function RowMenu({
             <div className="px-3 py-2">
               <p className="text-xs text-hestia-text-muted">Delete this course?</p>
               <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={onDelete}
                   disabled={deleting}
-                  className="rounded-md bg-hestia-danger px-2.5 py-1 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                 >
                   {deleting ? "Deleting…" : "Delete"}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="neutral"
+                  size="sm"
                   onClick={onClose}
                   disabled={deleting}
-                  className="rounded-md border border-hestia-border px-2.5 py-1 text-xs font-medium text-hestia-text transition hover:bg-hestia-primary-muted disabled:opacity-50"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
