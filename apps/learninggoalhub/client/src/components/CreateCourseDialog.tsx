@@ -132,7 +132,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
         onClose={() => {
           setProgressOpen(false);
           if (courseId != null) {
-            navigate(`/courses/${courseId}`, { state: { showSkills: true } });
+            navigate(`/courses/${courseId}`);
           }
         }}
       />

@@ -12,9 +12,7 @@
     "generate:api": "openapi-typescript ./openapi/openapi.json -o ./src/api/schema.d.ts"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.0.0",
     "@tanstack/react-query": "^5.62.7",
-    "@xyflow/react": "^12.10.2",
     "openapi-fetch": "^0.13.4",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",

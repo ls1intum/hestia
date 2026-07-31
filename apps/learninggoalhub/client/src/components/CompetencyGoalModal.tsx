@@ -14,7 +14,6 @@ import {
   SOLO_DESC,
   titleCase,
   type CompetencyRole,
-  type RelationshipGroup,
 } from "../lib/goals.ts";
 
 /**
@@ -22,11 +21,9 @@ import {
  * panel chrome, the pieces float over the blurred backdrop. Top row names the dialog and carries
  * the ✕; the goal itself appears as a box (an optional role badge for the competency views, then
  * its text); a session tile and a kind tile (explicit vs implicit) share the next row; a
- * full-width source tile quotes the exact snippet(s) each source contributed; Bloom and SOLO
- * follow as two tiles with a filled dot scale, level name and one-line explanation; and — for the
- * list view — a relationships tile lists the goal's links to other goals, grouped by type. Pass
- * `role` for the competency views (drives the badge) and `relationships` to show the
- * relationships tile.
+ * full-width source tile quotes the exact snippet(s) each source contributed; and Bloom and SOLO
+ * follow as two tiles with a filled dot scale, level name and one-line explanation. Pass `role`
+ * for the competency views, which drives the badge.
  */
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
@@ -50,17 +47,14 @@ type PendingChanges = GoalChanges & { shortLabel?: string | null };
 export default function CompetencyGoalModal({
   goal: freshGoal,
   role,
-  relationships,
   generatedChildCount,
   onClose,
   onUpdate,
   onDelete,
 }: {
   goal: LearningGoal | null;
-  /** Competency views pass the node's role for the header badge; the list view omits it. */
+  /** The node's role in the competency tree, shown as the header badge. */
   role?: CompetencyRole;
-  /** The list view passes the goal's grouped relationships to show the relationships tile. */
-  relationships?: RelationshipGroup[];
   /**
    * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
    * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
@@ -210,7 +204,6 @@ export default function CompetencyGoalModal({
         : goal.kind
           ? { label: titleCase(goal.kind), desc: KIND_DESC[titleCase(goal.kind)] }
           : null;
-  const rels = relationships ?? [];
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
 
@@ -749,36 +742,6 @@ export default function CompetencyGoalModal({
                   }
                 />
               )}
-            </div>
-          )}
-          {rels.length > 0 && (
-            <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
-                Relationships
-              </span>
-              <ul className="mt-2 space-y-2.5">
-                {rels.map((rel) => (
-                  <li key={rel.type}>
-                    <p className="text-sm font-semibold text-hestia-text">
-                      {rel.phrase}{" "}
-                      <span className="tabular-nums">{rel.count}</span> goal
-                      {rel.count === 1 ? "" : "s"}
-                    </p>
-                    {rel.targets.length > 0 && (
-                      <ul className="mt-1 space-y-1 border-l-2 border-hestia-border pl-2.5">
-                        {rel.targets.map((target, i) => (
-                          <li
-                            key={i}
-                            className="text-xs leading-relaxed text-hestia-text-muted"
-                          >
-                            {target}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
           </div>
