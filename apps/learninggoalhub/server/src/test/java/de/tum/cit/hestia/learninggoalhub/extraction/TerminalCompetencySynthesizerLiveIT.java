@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.extraction.TerminalCompetencySynthesizer.Candidate;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.chat.client.ChatClient;
@@ -51,31 +52,30 @@ class TerminalCompetencySynthesizerLiveIT {
         TerminalCompetencySynthesizer synthesizer = new TerminalCompetencySynthesizer(builder);
         List<TerminalCompetency> competencies = synthesizer.synthesize(candidates, null);
 
+        // Naming and assignment are separate calls, so the harness runs both: the interesting number
+        // is how many goals the assignment step could not place, which is the tree's quality signal.
+        List<String> competencyTexts = competencies.stream().map(TerminalCompetency::text).toList();
+        List<CompetencyAssignmentSynthesizer.Candidate> assignmentInput = candidates.stream()
+                .map(c -> new CompetencyAssignmentSynthesizer.Candidate(c.text(), c.bloomLevel(), null))
+                .toList();
+        Map<Integer, Integer> assignment =
+                new CompetencyAssignmentSynthesizer(builder).assign(competencyTexts, assignmentInput, null);
+
         System.out.println("\n===== TERMINAL COMPETENCIES (" + label + ", " + model + ") =====");
         System.out.println(candidates.size() + " apply+ candidates -> " + competencies.size() + " competencies\n");
-        int n = 1;
-        for (TerminalCompetency c : competencies) {
-            System.out.println(n++ + ". " + c.text());
-            for (int idx : c.supporting()) {
-                if (idx >= 0 && idx < candidates.size()) {
-                    Candidate cand = candidates.get(idx);
-                    System.out.println("     [" + idx + "] (" + cand.bloomLevel() + ") " + cand.text());
+        for (int ci = 0; ci < competencies.size(); ci++) {
+            System.out.println((ci + 1) + ". " + competencies.get(ci).text());
+            for (int i = 0; i < candidates.size(); i++) {
+                if (Integer.valueOf(ci).equals(assignment.get(i))) {
+                    Candidate cand = candidates.get(i);
+                    System.out.println("     [" + i + "] (" + cand.bloomLevel() + ") " + cand.text());
                 }
             }
             System.out.println();
         }
-        // Surface any candidate no competency claimed — these are the dropped / unmapped ones.
-        boolean[] used = new boolean[candidates.size()];
-        for (TerminalCompetency c : competencies) {
-            for (int idx : c.supporting()) {
-                if (idx >= 0 && idx < used.length) {
-                    used[idx] = true;
-                }
-            }
-        }
-        System.out.println("----- candidates not claimed by any competency (dropped/unmapped) -----");
+        System.out.println("----- candidates the assignment placed under no competency -----");
         for (int i = 0; i < candidates.size(); i++) {
-            if (!used[i]) {
+            if (assignment.get(i) == null) {
                 System.out.println("     [" + i + "] (" + candidates.get(i).bloomLevel() + ") " + candidates.get(i).text());
             }
         }

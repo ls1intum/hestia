@@ -7,9 +7,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
 /**
- * Derives a course's <em>terminal competencies</em> — the applied capabilities a student should be
- * able to perform after the whole course — and assigns all of the course's extracted goals to them
- * in one course-wide LLM call.
+ * Names a course's <em>terminal competencies</em> — the applied capabilities a student should be
+ * able to perform after the whole course — in one course-wide LLM call.
  *
  * <p>This keeps "understand" goals at "understand" in the ordinary extracted hierarchy. A
  * competency tree instead needs the <em>doing</em>
@@ -22,17 +21,21 @@ import org.springframework.stereotype.Service;
  *       their own right;</li>
  *   <li>clusters across the whole course in a single call, so a capability spanning several topics
  *       is named once instead of split per session;</li>
- *   <li>assigns every input goal, including lower-Bloom knowledge goals, through complete
- *       {@code supporting} index lists;</li>
  *   <li>drops course-administration / tooling-trivia candidates that carry a high-Bloom verb but are
  *       not learning competencies;</li>
  *   <li>does <b>not</b> target a fixed number — it names as many distinct competencies as the
  *       material genuinely supports.</li>
  * </ul>
  *
- * <p>The caller passes every session/exercise goal; each candidate carries its Bloom level so the
- * prompt can tell seeds from supporting knowledge. The returned {@code supporting} indices are the
- * complete per-goal assignment and point back into the candidate list positionally.
+ * <p>It <b>names only</b>. Which goal belongs to which competency is decided afterwards by
+ * {@link CompetencyAssignmentSynthesizer}, against the finished competency list. Naming and
+ * assigning used to share this one call, which let the model commit a goal to an early competency
+ * before the competency that actually fits it had been written.
+ *
+ * <p>The caller still passes <b>every</b> session/exercise goal, not just the seeds: a capability
+ * carried mainly by {@code ANALYZE}/{@code EVALUATE} goals would otherwise go unnamed, and the
+ * lower-Bloom goals are what tell the model how broad a competency may be. Each candidate carries
+ * its Bloom level so the prompt can tell seeds from supporting knowledge.
  */
 @Service
 public class TerminalCompetencySynthesizer {
@@ -46,8 +49,8 @@ public class TerminalCompetencySynthesizer {
             would list as "by the end of this course you can ...", each built around a concrete DOING
             verb (deploy, build, configure, secure, automate, design ...).
 
-            Write every generated text and shortLabel value in %s. Keep the JSON property names text,
-            shortLabel and supporting exactly as written. The Bloom labels in the input are fixed
+            Write every generated text and shortLabel value in %s. Keep the JSON property names text
+            and shortLabel exactly as written. The Bloom labels in the input are fixed
             English enum values and must remain exactly as provided.
 
             Below are ALL of the course's session/exercise learning goals, each prefixed with its index
@@ -76,16 +79,18 @@ public class TerminalCompetencySynthesizer {
                 folds into a broader competency before keeping it standalone.
 
             Other rules:
-              - ASSIGNMENT: use each competency's supporting list to assign every input goal to exactly
-                ONE competency. This includes ANALYZE, EVALUATE, REMEMBER and UNDERSTAND goals. The
-                first matching competency in list order wins if a goal appears more than once.
-              - COVERAGE: every APPLY and CREATE candidate must end up under at least one competency.
-                If a genuine doing-capability fits none of the broad competencies, that is a signal to
-                ADD its own competency for it — NOT to drop it. Likewise, place every lower-level goal
-                under the best-fit competency when it supports one.
-              - The ONLY candidates you may leave unassigned are course administration, logistics,
-                exam/submission mechanics, ONE-OFF tool usage (e.g. a tunneling utility), or a single
-                exercise's throwaway implementation task — these are not course-level competencies.
+              - NAME ONLY. Do NOT state which goals belong to which competency — a separate step
+                assigns every goal afterwards, against your finished list. Your job is to make that
+                list complete and well-cut.
+              - COVERAGE: the list must leave no genuine doing-capability homeless. Read through the
+                APPLY and CREATE candidates and check each one is covered by some competency; if one
+                fits none of them, that is a signal to ADD a competency for it — NOT to drop it.
+              - Capabilities carried mainly by ANALYZE or EVALUATE goals still deserve a competency
+                when no APPLY/CREATE goal covers the same ground; do not leave a whole topic unnamed
+                just because it lacks a doing verb in the candidates.
+              - Course administration, logistics, exam/submission mechanics, ONE-OFF tool usage (e.g.
+                a tunneling utility) and a single exercise's throwaway implementation task are NOT
+                course-level competencies — do not name competencies for them.
               - One competency covers exactly ONE capability, stated with a SINGLE leading action verb.
                 Do NOT chain verbs with "and" or commas — choose a single verb broad enough to cover
                 the merged goals (e.g. "Orchestrate ...", "Secure ...", "Scale ...").
@@ -99,9 +104,6 @@ public class TerminalCompetencySynthesizer {
               - text: the competency as a single concise sentence built around ONE action verb.
               - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
                 do not start it with a verb or end it with a period.
-              - supporting: the complete list of indices (the numbers in square brackets) of the
-                candidate goals assigned to this competency. Do not use supporting as sparse hints:
-                every non-administrative candidate should occur in exactly one supporting list.
 
             Candidate goals:
             ---
