@@ -37,10 +37,13 @@ public class CompetencyTreeSynthesizer {
             ---
 
             ATTACH each knowledge goal under the ONE sub-skill it most directly underpins. Return a
-            knowledge link {knowledgeIndex, subSkillIndex} for each. Attach EVERY knowledge goal to
-            its best fit: these sub-skills are the only places it can live, so prefer the closest
-            match over dropping it. Only omit a knowledge goal when it genuinely underpins none of
-            these sub-skills — that should be the rare exception, not a convenient default.
+            knowledge link {knowledgeIndex, subSkillIndex} for each one you place.
+
+            OMIT a knowledge goal when none of that competency's sub-skills genuinely underpins it.
+            An omitted goal is not lost: it hangs directly under the competency itself, which is the
+            right home for knowledge that serves the competency broadly rather than one particular
+            sub-skill. Prefer omitting over forcing a goal under a sub-skill it has nothing to do
+            with — a visibly wrong parent is worse than a goal sitting one tier higher.
 
             Return one result for every competency, each with its competencyIndex (the C number) and
             knowledge links. A result has the shape {competencyIndex, knowledge}. Use the local S/K

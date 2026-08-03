@@ -28,7 +28,7 @@ class TerminalCompetencySynthesizerTest {
 
         List<TerminalCompetency> expected = List.of(
                 new TerminalCompetency("Deploy a cloud-native application to a managed environment.",
-                        "Application Deployment", List.of(0, 1)));
+                        "Application Deployment"));
         when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
                 .thenReturn(expected);
 
@@ -66,17 +66,24 @@ class TerminalCompetencySynthesizerTest {
                 .contains("MERGE AGGRESSIVELY")
                 .contains("TOO FINE")
                 .contains("supported by only ONE goal is SUSPICIOUS")
-                .contains("COVERAGE: every APPLY and CREATE candidate")
-                .contains("ADD its own competency")
-                .contains("assign every input goal to exactly")
-                .contains("REMEMBER and UNDERSTAND")
+                .contains("ADD a competency for it")
                 .contains("SINGLE leading action verb")
                 .contains("shortLabel")
                 .contains("2-5 word noun phrase")
                 .contains("ERR ON THE SIDE OF FEWER")
-                .contains("not target or pad to a number")
-                .contains("complete list")
-                .contains("supporting");
+                .contains("not target or pad to a number");
+    }
+
+    /**
+     * Naming and assigning are separate calls now, so this prompt must not ask for an assignment:
+     * a model that answers with goal indices here would place goals against a competency list that
+     * is still being written, which is the failure the split exists to remove.
+     */
+    @Test
+    void promptNamesOnlyAndDoesNotAskForGoalAssignment() {
+        assertThat(TerminalCompetencySynthesizer.PROMPT)
+                .contains("NAME ONLY")
+                .doesNotContain("supporting");
     }
 
     @Test
@@ -136,6 +143,6 @@ class TerminalCompetencySynthesizerTest {
         assertThat(promptCaptor.getValue())
                 .contains("in German")
                 .contains("English enum values")
-                .contains("supporting");
+                .contains("shortLabel");
     }
 }

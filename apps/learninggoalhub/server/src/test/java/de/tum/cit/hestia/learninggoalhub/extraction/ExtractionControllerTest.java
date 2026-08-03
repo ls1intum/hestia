@@ -31,6 +31,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
@@ -71,6 +72,9 @@ class ExtractionControllerTest {
     private GoalSourceRepository goalSourceRepository;
 
     @Autowired
+    private GoalRelationshipRepository goalRelationshipRepository;
+
+    @Autowired
     private HierarchyNodeRepository hierarchyRepository;
 
     @Autowired
@@ -99,6 +103,9 @@ class ExtractionControllerTest {
 
     @MockitoBean
     private TerminalCompetencySynthesizer terminalCompetencySynthesizer;
+
+    @MockitoBean
+    private CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer;
 
     @MockitoBean
     private CompetencyTreeSynthesizer competencyTreeSynthesizer;
@@ -240,7 +247,9 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
-                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability", List.of(0))));
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
@@ -251,6 +260,296 @@ class ExtractionControllerTest {
                 .singleElement()
                 .extracting(LearningGoal::getShortLabel)
                 .isEqualTo("Terminal Capability");
+    }
+
+    /**
+     * A goal the assignment step could not place must still reach the tree. The client only renders
+     * goals reachable from a terminal, so leaving it unlinked would make it invisible — the catch-all
+     * keeps it visible without asserting it belongs to a competency it does not serve.
+     */
+    @Test
+    void goalsMatchingNoCompetencyLandUnderACatchAllTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Unmatched goals"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability")));
+        // The model placed the only goal nowhere.
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(java.util.Collections.singletonMap(0, null));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        List<LearningGoal> terminals = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .toList();
+        assertThat(terminals).extracting(LearningGoal::getShortLabel)
+                .contains("Additional Course Outcomes");
+        LearningGoal catchAll = terminals.stream()
+                .filter(g -> "Additional Course Outcomes".equals(g.getShortLabel()))
+                .findFirst()
+                .orElseThrow();
+        // The catch-all is a container, so it stays unclassified rather than carrying a Bloom level.
+        assertThat(catchAll.getBloomLevel()).isNull();
+        LearningGoal extracted = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> g.getOrigin() != GoalOrigin.TERMINAL)
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findBySourceId(extracted.getId()))
+                .extracting(r -> r.getTarget().getId())
+                .contains(catchAll.getId());
+    }
+
+    /**
+     * The naming call may propose a competency the assignment then gives nothing. The course does not
+     * build toward it, so it must not reach the tree as a childless top-level node.
+     */
+    @Test
+    void competenciesThatReceiveNoGoalsAreNotPersisted() throws Exception {
+        Course course = courseRepository.save(new Course("Empty competency"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Claimed"),
+                        new TerminalCompetency("Perform something nobody teaches.", "Unclaimed")));
+        // Everything lands on the first competency; the second is left empty.
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .extracting(LearningGoal::getShortLabel)
+                .isEqualTo("Claimed");
+    }
+
+    /**
+     * The rebuild exists so the tree can be iterated on without re-reading documents: it replaces the
+     * terminals and their edges while the extracted goals stay exactly where they were.
+     */
+    @Test
+    void rebuildReplacesTheTreeAndKeepsExtractedGoals() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "First Label")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+        List<Long> extractedIdsBefore = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> g.getOrigin() != GoalOrigin.TERMINAL)
+                .map(LearningGoal::getId)
+                .toList();
+
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Second Label")));
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.competencies").value(1))
+                .andExpect(jsonPath("$.unmatchedGoals").value(0));
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .extracting(LearningGoal::getShortLabel)
+                .isEqualTo("Second Label");
+        assertThat(goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> g.getOrigin() != GoalOrigin.TERMINAL)
+                .map(LearningGoal::getId))
+                .containsExactlyInAnyOrderElementsOf(extractedIdsBefore);
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .filteredOn(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
+                .hasSize(1);
+    }
+
+    /**
+     * The tree's knowledge → sub-skill edges join two extracted goals, so neither endpoint is deleted
+     * by a rebuild. If those edges survived, the new arrangement would stack on top of the old one and
+     * a goal would end up with parents from both — including the wrong parent the rebuild was meant to
+     * correct.
+     */
+    @Test
+    void rebuildLeavesNoEdgesFromThePreviousTree() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild edges"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf",
+                "Apply the capability. Understand the basics."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("English"), eq(null)))
+                .thenReturn(List.of(
+                        new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT, "...capability..."),
+                        new ExtractedGoal("Understand the basics.", "Basics", GoalKind.EXPLICIT, "...basics...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null))).thenAnswer(inv -> {
+            List<String> texts = inv.getArgument(0);
+            return texts.stream()
+                    .map(t -> t.startsWith("Understand")
+                            ? new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.UNISTRUCTURAL)
+                            : new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL))
+                    .toList();
+        });
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Capability")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0, 1, 0));
+        // First tree: the knowledge goal hangs under the sub-skill.
+        when(competencyTreeSynthesizer.expandAll(anyList(), eq(null)))
+                .thenReturn(List.of(new CompetencyExpansion(0, List.of(new CompetencyExpansion.KnowledgeLink(0, 0)))));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
+                "Understand the basics.", orthogonalEmbedding(1)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        // Second tree: the knowledge goal hangs on the terminal instead.
+        when(competencyTreeSynthesizer.expandAll(anyList(), eq(null)))
+                .thenReturn(List.of(new CompetencyExpansion(0, List.of())));
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk());
+
+        LearningGoal knowledge = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> "Understand the basics.".equals(g.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findBySourceId(knowledge.getId()))
+                .as("the knowledge goal must have exactly one parent, from the current tree only")
+                .hasSize(1);
+    }
+
+    /**
+     * A rebuild synthesises the replacement before it destroys anything, so a model outage mid-rebuild
+     * cannot leave the course with its tree deleted and nothing in its place.
+     */
+    @Test
+    void failedRebuildLeavesTheExistingTreeIntact() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild failure"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Survivor")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        // The model goes down before the rebuild can synthesise a replacement.
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenThrow(new IllegalStateException("model unavailable"));
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isBadGateway());
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .extracting(LearningGoal::getShortLabel)
+                .isEqualTo("Survivor");
+    }
+
+    /**
+     * A rebuild replaces exactly the nodes an instructor may have approved or typed, and nothing
+     * records what they were — so it refuses rather than destroying them silently.
+     */
+    @Test
+    void rebuildRefusesWhenTheTreeHoldsApprovedWork() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild guard"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenReturn(Map.of(0, 0));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        LearningGoal terminal = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .findFirst()
+                .orElseThrow();
+        terminal.setStatus(de.tum.cit.hestia.learninggoalhub.goal.GoalStatus.APPROVED);
+        goalRepository.save(terminal);
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isConflict());
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .anyMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
+
+        // The override is what makes the destruction deliberate.
+        mockMvc.perform(post("/api/courses/{id}/competency-tree?force=true", course.getId()))
+                .andExpect(status().isOk());
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .singleElement()
+                .satisfies(g -> assertThat(g.getStatus())
+                        .isEqualTo(de.tum.cit.hestia.learninggoalhub.goal.GoalStatus.PENDING));
+    }
+
+    /**
+     * Without a single placement the tree would be one bucket holding the whole course, which is
+     * worse than no tree. Nothing may be persisted in that case — not even the competency root.
+     */
+    @Test
+    void failedAssignmentLeavesNoCompetencyTree() throws Exception {
+        Course course = courseRepository.save(new Course("Assignment failure"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability...")));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Terminal Capability")));
+        when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
+                .thenThrow(new IllegalStateException("assignment call failed"));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .noneMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .noneMatch(n -> n.getLevel() == HierarchyLevel.COMPETENCY);
     }
 
     @Test
