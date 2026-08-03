@@ -22,8 +22,9 @@ public class ExtractionController {
 
     @PostMapping("/extract")
     public ExtractionRunner.ExtractionSummary extract(@PathVariable Long courseId,
-                                                      @RequestParam(name = "model", required = false) String model) {
-        return runner.runForCourse(courseId, model);
+                                                      @RequestParam(name = "model", required = false) String model,
+                                                      @RequestParam(name = "force", defaultValue = "false") boolean force) {
+        return runner.runForCourse(courseId, model, force);
     }
 
     /**

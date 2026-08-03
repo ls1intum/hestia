@@ -121,6 +121,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
@@ -1165,6 +1174,19 @@
           },
           "grounded": {
             "type": "boolean"
+          },
+          "groundingQuality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "EXACT_IN_SESSION",
+              "EXACT_IN_DOCUMENT",
+              "NORMALIZED",
+              "FRAGMENT",
+              "NONE"
+            ]
           }
         }
       },

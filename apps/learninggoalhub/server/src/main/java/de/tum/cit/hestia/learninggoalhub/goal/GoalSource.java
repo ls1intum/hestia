@@ -1,9 +1,12 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.extraction.SourceMatchQuality;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -36,6 +39,10 @@ public class GoalSource {
     @Column(nullable = false)
     private boolean grounded;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "grounding_quality", length = 32)
+    private SourceMatchQuality groundingQuality;
+
     protected GoalSource() {
     }
 
@@ -48,12 +55,24 @@ public class GoalSource {
     }
 
     public GoalSource(LearningGoal goal, Document document, String snippet, Integer page, boolean grounded) {
+        this(goal, document, snippet, page, grounded, null);
+    }
+
+    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page,
+                      SourceMatchQuality groundingQuality) {
+        this(goal, document, snippet, page,
+                groundingQuality != null && groundingQuality != SourceMatchQuality.NONE, groundingQuality);
+    }
+
+    private GoalSource(LearningGoal goal, Document document, String snippet, Integer page,
+                       boolean grounded, SourceMatchQuality groundingQuality) {
         this.goal = goal;
         this.document = document;
         this.id = new GoalSourceId(goal.getId(), document.getId());
         this.snippet = snippet;
         this.page = page;
         this.grounded = grounded;
+        this.groundingQuality = groundingQuality;
     }
 
     public GoalSourceId getId() {
@@ -78,5 +97,9 @@ public class GoalSource {
 
     public boolean isGrounded() {
         return grounded;
+    }
+
+    public SourceMatchQuality getGroundingQuality() {
+        return groundingQuality;
     }
 }

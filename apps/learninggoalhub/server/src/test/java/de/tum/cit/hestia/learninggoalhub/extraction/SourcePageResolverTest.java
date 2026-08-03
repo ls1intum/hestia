@@ -14,7 +14,7 @@ class SourcePageResolverTest {
                 rawText, new int[]{0, 22, rawText.length()}, 22, rawText.length(), "unit text");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
     }
 
     @Test
@@ -25,7 +25,7 @@ class SourcePageResolverTest {
                 rawText, new int[]{0, 20, rawText.length()}, 0, rawText.length(), "alpha\n\nbeta");
 
         assertThat(resolution.page()).isEqualTo(1);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
     }
 
     @Test
@@ -34,7 +34,7 @@ class SourcePageResolverTest {
                 "first second", new int[]{0, 6, 12}, 6, 12, "  \n");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isFalse();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 
     @Test
@@ -42,7 +42,7 @@ class SourcePageResolverTest {
         SourcePageResolver.Resolution resolution = SourcePageResolver.resolve("text", null, 0, 4, "text");
 
         assertThat(resolution.page()).isNull();
-        assertThat(resolution.grounded()).isFalse();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 
     @Test
@@ -59,24 +59,24 @@ class SourcePageResolverTest {
                 "012345678901234", pageOffsets, 10, 15, "not found");
 
         assertThat(first.page()).isEqualTo(1);
-        assertThat(first.grounded()).isTrue();
+        assertThat(first.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
         assertThat(second.page()).isEqualTo(2);
-        assertThat(second.grounded()).isTrue();
+        assertThat(second.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
         assertThat(third.page()).isEqualTo(3);
-        assertThat(third.grounded()).isTrue();
+        assertThat(third.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
         assertThat(fallback.page()).isEqualTo(3);
-        assertThat(fallback.grounded()).isFalse();
+        assertThat(fallback.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 
     @Test
-    void resolvesExactSnippetDocumentWideWhenOutsideUnit() {
+    void resolvesExactSnippetInDifferentSessionAsDocumentWide() {
         String rawText = "unit text\ntarget text";
 
         SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
                 rawText, new int[]{0, 10, rawText.length()}, 0, 9, "target text");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_DOCUMENT);
     }
 
     @Test
@@ -87,7 +87,7 @@ class SourcePageResolverTest {
                 rawText, new int[]{0, 10, rawText.length()}, 0, 9, "alpha\nbeta");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
     }
 
     @Test
@@ -99,7 +99,7 @@ class SourcePageResolverTest {
                 "Read After Write (RAW) ... Data Hazards entstehen durch Datenabhängigkeiten");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
     }
 
     @Test
@@ -111,7 +111,7 @@ class SourcePageResolverTest {
                 "Einfügen von NOPs verhindert den Konflikt … Forwarding als Alternative");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
     }
 
     @Test
@@ -123,7 +123,7 @@ class SourcePageResolverTest {
                 "Stalling ... Forwarding");
 
         assertThat(resolution.page()).isEqualTo(1);
-        assertThat(resolution.grounded()).isFalse();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 
     @Test
@@ -135,7 +135,7 @@ class SourcePageResolverTest {
                 "Branch Prediction verringert die Kosten...");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
     }
 
     @Test
@@ -147,7 +147,7 @@ class SourcePageResolverTest {
                 "Zweistufige Adressierung Zunächst Aktivierung einer Zeile der Matrix Dann Selektion");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
     }
 
     @Test
@@ -159,7 +159,7 @@ class SourcePageResolverTest {
                 "Kosten eines CRn: C(CRn) = n  C(FA) = 5n = O(n) linear");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
     }
 
     @Test
@@ -168,7 +168,7 @@ class SourcePageResolverTest {
                 "first second", new int[]{0, 6, 12}, 6, 12, "→ □ ■ ⋅ = () -- !!");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isFalse();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 
     @Test
@@ -181,7 +181,7 @@ class SourcePageResolverTest {
                 "Data Hazards entstehen durch Datenabhängigkeiten\nControl Hazards entstehen durch Kontrollfluss");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isTrue();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
     }
 
     @Test
@@ -193,6 +193,6 @@ class SourcePageResolverTest {
                 "a fragment that appears nowhere ... another missing fragment entirely");
 
         assertThat(resolution.page()).isEqualTo(2);
-        assertThat(resolution.grounded()).isFalse();
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
     }
 }

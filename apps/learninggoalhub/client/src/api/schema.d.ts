@@ -353,6 +353,8 @@ export interface components {
             page?: number;
             contentAvailable?: boolean;
             grounded?: boolean;
+            /** @enum {string|null} */
+            groundingQuality?: "EXACT_IN_SESSION" | "EXACT_IN_DOCUMENT" | "NORMALIZED" | "FRAGMENT" | "NONE" | null;
         };
         HierarchyPath: {
             module?: string;
@@ -552,6 +554,7 @@ export interface operations {
         parameters: {
             query?: {
                 model?: string;
+                force?: boolean;
             };
             header?: never;
             path: {
