@@ -133,13 +133,31 @@ public class ExtractionRunner {
 
     @Transactional
     public ExtractionSummary runForCourse(Long courseId) {
-        return runForCourse(courseId, null);
+        return runForCourse(courseId, null, false);
     }
 
     @Transactional
     public ExtractionSummary runForCourse(Long courseId, String modelOverride) {
+        return runForCourse(courseId, modelOverride, false);
+    }
+
+    @Transactional
+    public ExtractionSummary runForCourse(Long courseId, String modelOverride, boolean force) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+
+        boolean hasExtractedGoals = !goalRepository.findByCourseIdAndOriginIn(
+                courseId, List.of(GoalOrigin.EXTRACTED)).isEmpty();
+        boolean hasExtractionHierarchy = hierarchyNodeRepository.existsByCourseIdAndLevel(
+                courseId, HierarchyLevel.MODULE)
+                || hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY);
+        if ((hasExtractedGoals || hasExtractionHierarchy) && !force) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A re-extraction replaces the existing extraction artefacts; pass force=true to discard them.");
+        }
+        if (force) {
+            clearExtractionArtifacts(course);
+        }
 
         List<Document> documents = documentRepository.findByCourseId(courseId);
         String dominantLanguage = dominantLanguage(documents);
@@ -247,7 +265,7 @@ public class ExtractionRunner {
                         document.getRawText(), document.getPageOffsets(), unitStart, unitEnd,
                         e.sourceSnippet());
                 goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(),
-                        resolution.page(), resolution.grounded()));
+                        resolution.page(), resolution.quality()));
             }
 
             // Only fallback outcomes have raw candidates to connect to their surfaced goal.
@@ -655,20 +673,8 @@ public class ExtractionRunner {
         List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
                 .map(LearningGoal::getId)
                 .toList();
-        List<GoalRelationship> edges = new ArrayList<>(
-                goalRelationshipRepository.findBySourceIdIn(courseGoalIds).stream()
-                        .filter(r -> r.getType() == RelationshipType.CONTRIBUTES_TO)
-                        .toList());
-        // A manual node may also be the TARGET of an edge whose source sits outside that list.
-        for (LearningGoal goal : doomed) {
-            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(goal.getId())) {
-                if (edges.stream().noneMatch(e -> e.getId().equals(relationship.getId()))) {
-                    edges.add(relationship);
-                }
-            }
-        }
-        goalRelationshipRepository.deleteAll(edges);
-        goalRelationshipRepository.flush();
+        Set<Long> doomedIds = doomed.stream().map(LearningGoal::getId).collect(Collectors.toSet());
+        clearRelationshipsForGoals(courseGoalIds, doomedIds, true);
         goalRepository.deleteAll(doomed);
         goalRepository.flush();
 
@@ -677,6 +683,72 @@ public class ExtractionRunner {
                 .toList();
         hierarchyNodeRepository.deleteAll(competencyRoots);
         hierarchyNodeRepository.flush();
+    }
+
+    /**
+     * Clears every artefact owned by a previous full extraction while leaving uploaded documents in place.
+     * The competency tree is cleared first through the same path as the standalone tree rebuild; the
+     * remaining extracted goals then lose their sources, candidates, relationships and module hierarchy.
+     */
+    private void clearExtractionArtifacts(Course course) {
+        List<LearningGoal> extracted = goalRepository.findByCourseIdAndOriginIn(
+                course.getId(), List.of(GoalOrigin.EXTRACTED));
+        List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
+                .map(LearningGoal::getId)
+                .toList();
+        Set<Long> extractedIds = extracted.stream().map(LearningGoal::getId).collect(Collectors.toSet());
+
+        List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(
+                course.getId(), List.of(GoalOrigin.TERMINAL));
+        clearCompetencyTree(course, terminals, manualTreeGoals(course.getId(), terminals));
+
+        List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
+        goalCandidateRepository.deleteAll(candidates);
+        goalCandidateRepository.flush();
+
+        if (!extracted.isEmpty()) {
+            List<GoalSource> sources = goalSourceRepository.findByGoalIdIn(extractedIds);
+            goalSourceRepository.deleteAll(sources);
+            goalSourceRepository.flush();
+            clearRelationshipsForGoals(courseGoalIds, extractedIds, false);
+            goalRepository.deleteAll(extracted);
+            goalRepository.flush();
+        }
+
+        List<HierarchyNode> moduleHierarchy = hierarchyNodeRepository.findByCourseId(course.getId()).stream()
+                .filter(node -> node.getLevel() == HierarchyLevel.MODULE
+                        || node.getLevel() == HierarchyLevel.SESSION
+                        || node.getLevel() == HierarchyLevel.EXERCISE)
+                .sorted(java.util.Comparator.comparing(HierarchyNode::getLevel).reversed())
+                .toList();
+        hierarchyNodeRepository.deleteAll(moduleHierarchy);
+        hierarchyNodeRepository.flush();
+    }
+
+    /** Deletes loaded relationship entities before deleting any of their goals. */
+    private void clearRelationshipsForGoals(Collection<Long> courseGoalIds, Set<Long> doomedIds,
+                                             boolean allContributes) {
+        List<GoalRelationship> edges = new ArrayList<>();
+        for (GoalRelationship relationship : goalRelationshipRepository.findBySourceIdIn(courseGoalIds)) {
+            boolean treeEdge = allContributes && relationship.getType() == RelationshipType.CONTRIBUTES_TO;
+            boolean touchesDoomed = doomedIds.contains(relationship.getSource().getId())
+                    || doomedIds.contains(relationship.getTarget().getId());
+            if (treeEdge || touchesDoomed) {
+                edges.add(relationship);
+            }
+        }
+        // A doomed node may be the target of an edge whose source sits outside the course goal list.
+        for (Long doomedId : doomedIds) {
+            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(doomedId)) {
+                if (edges.stream().noneMatch(edge -> edge.getId().equals(relationship.getId()))) {
+                    edges.add(relationship);
+                }
+            }
+        }
+        if (!edges.isEmpty()) {
+            goalRelationshipRepository.deleteAll(edges);
+            goalRelationshipRepository.flush();
+        }
     }
 
     /**

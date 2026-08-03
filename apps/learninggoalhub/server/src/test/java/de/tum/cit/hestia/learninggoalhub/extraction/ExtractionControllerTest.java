@@ -24,6 +24,7 @@ import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
@@ -122,6 +123,51 @@ class ExtractionControllerTest {
                     .mapToObj(i -> new ConsolidatedGoal(candidates.get(i), List.of(i)))
                     .toList();
         });
+    }
+
+    @Test
+    void extractionRefusesToReplaceExistingGoalsWithoutForce() throws Exception {
+        Course course = courseRepository.save(new Course("Extraction guard"));
+        LearningGoal existing = goalRepository.save(new LearningGoal(course, "Existing goal", GoalKind.EXPLICIT));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isConflict());
+
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), any());
+        assertThat(goalRepository.findById(existing.getId())).isPresent();
+    }
+
+    @Test
+    void forcedExtractionClearsThePreviousRunBeforeBuildingItAgain() throws Exception {
+        Course course = courseRepository.save(new Course("Forced extraction"));
+        Document document = documentRepository.save(
+                new Document(course, "forced.pdf", "application/pdf", "new outcome"));
+        HierarchyNode oldModule = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
+        HierarchyNode oldSession = hierarchyRepository.save(
+                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document));
+        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
+        oldGoal.setHierarchyNode(oldSession);
+        oldGoal = goalRepository.saveAndFlush(oldGoal);
+        goalSourceRepository.save(new GoalSource(oldGoal, document, "old source"));
+        goalCandidateRepository.save(new GoalCandidate(course, oldSession, "old candidate",
+                GoalKind.EXPLICIT, "old candidate source"));
+
+        when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("English"), eq(null)))
+                .thenReturn(List.of(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome")));
+
+        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.goalsCreated").value(1));
+
+        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
+        assertThat(goalSourceRepository.findByGoalId(oldGoal.getId())).isEmpty();
+        assertThat(goalCandidateRepository.findByCourseId(course.getId())).isEmpty();
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .noneMatch(node -> node.getLabel().equals("Old module") || node.getLabel().equals("Old session"));
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .extracting(LearningGoal::getText)
+                .containsExactly("New goal");
     }
 
     @Test

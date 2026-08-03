@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
+import de.tum.cit.hestia.learninggoalhub.extraction.SourceMatchQuality;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
@@ -37,6 +38,7 @@ import java.util.Deque;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -792,10 +794,12 @@ public class LearningGoalController {
     }
 
     public record GoalSourceResponse(Long documentId, String filename, String displayName,
-                                     String snippet, Integer page, boolean contentAvailable, boolean grounded) {
+                                     String snippet, Integer page, boolean contentAvailable, boolean grounded,
+                                     @Schema(nullable = true) SourceMatchQuality groundingQuality) {
         static GoalSourceResponse from(GoalSource s, boolean contentAvailable) {
             return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(),
-                    s.getDocument().getDisplayName(), s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded());
+                    s.getDocument().getDisplayName(), s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded(),
+                    s.getGroundingQuality());
         }
     }
 
