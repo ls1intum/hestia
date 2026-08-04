@@ -22,6 +22,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MimeTypeUtils;
 
 /** Describes eligible text-poor PDF pages without changing the document's extracted text. */
@@ -57,8 +59,12 @@ public class PageDescriptionService {
 
     /**
      * Describes each eligible page not already stored for the document. A failed batch is isolated
-     * so later pages still get a chance to be described.
+     * so later pages still get a chance to be described. Runs in its own transaction so the VLM
+     * work commits per document — the extraction run wrapping this is one long transaction, and a
+     * failure in a later pipeline phase must not roll the descriptions back (they are what makes
+     * re-runs free).
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void describeEligiblePages(Document document, byte[] pdfBytes) {
         try {
             describeEligiblePagesInternal(document, pdfBytes);
