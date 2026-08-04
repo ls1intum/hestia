@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -41,5 +45,22 @@ class ExtractionRunnerLanguageTest {
         longEnglish.setLanguage("en");
 
         assertThat(ExtractionRunner.dominantLanguage(List.of(shortGerman, longEnglish))).isEqualTo("en");
+    }
+
+    @Test
+    void usesRoleBeforeBloomAndKeepsBloomFallbackForLegacyGoals() {
+        Course course = new Course("Course");
+        LearningGoal taggedKnowledge = new LearningGoal(course, "Explain the method.", GoalKind.IMPLICIT);
+        taggedKnowledge.setRole(GoalRole.KNOWLEDGE);
+        taggedKnowledge.setBloomLevel(BloomLevel.APPLY);
+        LearningGoal taggedSkill = new LearningGoal(course, "Know the method.", GoalKind.IMPLICIT);
+        taggedSkill.setRole(GoalRole.SKILL);
+        taggedSkill.setBloomLevel(BloomLevel.UNDERSTAND);
+        LearningGoal legacySkill = new LearningGoal(course, "Apply the method.", GoalKind.IMPLICIT);
+        legacySkill.setBloomLevel(BloomLevel.APPLY);
+
+        assertThat(ExtractionRunner.isSkillTier(taggedKnowledge)).isFalse();
+        assertThat(ExtractionRunner.isSkillTier(taggedSkill)).isTrue();
+        assertThat(ExtractionRunner.isSkillTier(legacySkill)).isTrue();
     }
 }

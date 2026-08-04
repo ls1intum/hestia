@@ -79,12 +79,12 @@ export const COMPETENCY_ROLE_META: Record<
  * Tree depth is capped at three tiers (terminal → sub-skill → knowledge/gap) and traversal
  * tracks the current path so a stray edge can never produce a cycle or revisit a node within
  * its own branch. Roles are assigned by position: depth 0 = competency; a depth-1 node is a
- * sub-skill when it has children OR carries a doing/judgement Bloom level (a childless
- * apply/analyze/evaluate/create goal is still a capability, not knowledge), otherwise it is
- * leftover knowledge attached directly to the terminal; deeper nodes are knowledge; any
- * GAP-origin goal renders as a gap leaf. A hand-added depth-1 node is a sub-skill whatever its
- * Bloom level: manual goals are deliberately left unclassified, and the instructor added it
- * through the "Add sub-skill" knob, which says the tier outright.
+ * sub-skill when it has children, is explicitly marked as a skill, or carries a doing/judgement
+ * Bloom level for legacy role-null data; otherwise it is knowledge attached directly to the
+ * terminal. Deeper nodes are knowledge; any GAP-origin goal renders as a gap leaf. A hand-added
+ * depth-1 node is a sub-skill whatever its Bloom level: manual goals are deliberately left
+ * unclassified, and the instructor added it through the "Add sub-skill" knob, which says the tier
+ * outright.
  */
 export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   const byId = new Map<number, LearningGoal>();
@@ -106,6 +106,8 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
 
   // Bloom levels that make a goal a capability (mirrors the server's SUB_SKILL_BLOOM split).
   const DOING_BLOOM = new Set(["APPLY", "ANALYZE", "EVALUATE", "CREATE"]);
+  const isSkillTier = (goal: LearningGoal): boolean =>
+    goal.role != null ? goal.role === "SKILL" : DOING_BLOOM.has(goal.bloomLevel ?? "");
 
   const build = (
     goal: LearningGoal,
@@ -128,7 +130,7 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
           ? "competency"
           : depth === 1 &&
               (children.length > 0 ||
-                DOING_BLOOM.has(goal.bloomLevel ?? "") ||
+                isSkillTier(goal) ||
                 goal.creationProvenance === "USER_CREATED")
             ? "sub-skill"
             : "knowledge";

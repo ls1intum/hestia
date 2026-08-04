@@ -6,6 +6,7 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
@@ -107,15 +108,24 @@ public class LearningGoalController {
     @Transactional(readOnly = true)
     public PagedModel<LearningGoalResponse> list(@PathVariable Long courseId,
                                                  @RequestParam(required = false) GoalStatus status,
+                                                 @Parameter(description = "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.")
+                                                 @RequestParam(required = false) GoalRole role,
                                                  @ParameterObject @PageableDefault(size = 50, sort = "id", direction = Sort.Direction.ASC)
                                                  Pageable pageable) {
         if (!courseRepository.existsById(courseId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
         }
 
-        Page<LearningGoal> page = status == null
-                ? goalRepository.findByCourseId(courseId, pageable)
-                : goalRepository.findByCourseIdAndStatus(courseId, status, pageable);
+        Page<LearningGoal> page;
+        if (status == null && role == null) {
+            page = goalRepository.findByCourseId(courseId, pageable);
+        } else if (status == null) {
+            page = goalRepository.findByCourseIdAndRole(courseId, role, pageable);
+        } else if (role == null) {
+            page = goalRepository.findByCourseIdAndStatus(courseId, status, pageable);
+        } else {
+            page = goalRepository.findByCourseIdAndStatusAndRole(courseId, status, role, pageable);
+        }
         List<Long> goalIds = page.getContent().stream().map(LearningGoal::getId).toList();
         Map<Long, List<GoalSourceResponse>> sourcesByGoal = sourcesByGoal(goalIds);
         Map<Long, List<GoalRelationshipResponse>> relationshipsByGoal = relationshipsByGoal(goalIds);
@@ -144,6 +154,8 @@ public class LearningGoalController {
     public List<SessionGoalsResponse> listBySession(@PathVariable Long courseId,
                                                     @Parameter(description = "Optional review-status filter: PENDING or APPROVED. Omit for all goals.")
                                                     @RequestParam(required = false) GoalStatus status,
+                                                    @Parameter(description = "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.")
+                                                    @RequestParam(required = false) GoalRole role,
                                                     @Parameter(description = "Optional id of a single hierarchy node (module/session/exercise) to return only that group. "
                                                             + "Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list.")
                                                     @RequestParam(required = false) Long nodeId) {
@@ -151,9 +163,16 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
         }
 
-        List<LearningGoal> goals = status == null
-                ? goalRepository.findByCourseId(courseId)
-                : goalRepository.findByCourseIdAndStatus(courseId, status);
+        List<LearningGoal> goals;
+        if (status == null && role == null) {
+            goals = goalRepository.findByCourseId(courseId);
+        } else if (status == null) {
+            goals = goalRepository.findByCourseIdAndRole(courseId, role);
+        } else if (role == null) {
+            goals = goalRepository.findByCourseIdAndStatus(courseId, status);
+        } else {
+            goals = goalRepository.findByCourseIdAndStatusAndRole(courseId, status, role);
+        }
         if (nodeId != null) {
             goals = goals.stream()
                     .filter(g -> g.getHierarchyNode() != null && nodeId.equals(g.getHierarchyNode().getId()))
@@ -734,6 +753,7 @@ public class LearningGoalController {
                                        String text,
                                        String shortLabel,
                                        GoalKind kind,
+                                       GoalRole role,
                                        GoalStatus status,
                                        GoalOrigin origin,
                                        GoalCreationProvenance creationProvenance,
@@ -754,6 +774,7 @@ public class LearningGoalController {
                     g.getText(),
                     g.getShortLabel(),
                     g.getKind(),
+                    g.getRole(),
                     g.getStatus(),
                     g.getOrigin(),
                     g.getCreationProvenance(),
@@ -795,11 +816,12 @@ public class LearningGoalController {
 
     public record GoalSourceResponse(Long documentId, String filename, String displayName,
                                      String snippet, Integer page, boolean contentAvailable, boolean grounded,
-                                     @Schema(nullable = true) SourceMatchQuality groundingQuality) {
+                                     @Schema(nullable = true) SourceMatchQuality groundingQuality,
+                                     @Schema(nullable = true) List<HighlightRect> highlightRects) {
         static GoalSourceResponse from(GoalSource s, boolean contentAvailable) {
             return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(),
                     s.getDocument().getDisplayName(), s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded(),
-                    s.getGroundingQuality());
+                    s.getGroundingQuality(), s.getHighlightRects());
         }
     }
 

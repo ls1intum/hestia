@@ -15,6 +15,8 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
+        assertThat(resolution.matchStart()).isEqualTo(rawText.lastIndexOf("unit text"));
+        assertThat(resolution.matchEnd()).isEqualTo(rawText.length());
     }
 
     @Test
@@ -26,6 +28,8 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(1);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
+        assertThat(resolution.matchStart()).isEqualTo(rawText.indexOf("alpha"));
+        assertThat(resolution.matchEnd()).isEqualTo(rawText.indexOf("second page") - 1);
     }
 
     @Test
@@ -35,14 +39,26 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
+        assertThat(resolution.matchStart()).isNull();
+        assertThat(resolution.matchEnd()).isNull();
     }
 
+    /** A document without page boundaries still has verifiable text — only the page is unknown. */
     @Test
-    void nullPageOffsetsCannotResolvePage() {
+    void nullPageOffsetsStillVerifyTheQuote() {
         SourcePageResolver.Resolution resolution = SourcePageResolver.resolve("text", null, 0, 4, "text");
 
         assertThat(resolution.page()).isNull();
-        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NONE);
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
+        assertThat(resolution.matchStart()).isZero();
+        assertThat(resolution.matchEnd()).isEqualTo(4);
+
+        SourcePageResolver.Resolution absent = SourcePageResolver.resolve("text", null, 0, 4, "elsewhere");
+
+        assertThat(absent.page()).isNull();
+        assertThat(absent.quality()).isEqualTo(SourceMatchQuality.NONE);
+        assertThat(absent.matchStart()).isNull();
+        assertThat(absent.matchEnd()).isNull();
     }
 
     @Test
@@ -88,6 +104,22 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
+        assertThat(resolution.matchStart()).isEqualTo(rawText.indexOf("alpha"));
+        assertThat(resolution.matchEnd()).isEqualTo(rawText.length());
+    }
+
+    @Test
+    void normalizedRangeCoversOriginalWhitespaceSpan() {
+        String rawText = "alpha   beta";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, rawText.length()}, 0, rawText.length(), "alpha beta");
+
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
+        assertThat(resolution.matchStart()).isEqualTo(0);
+        assertThat(resolution.matchEnd()).isEqualTo(rawText.length());
+        assertThat(rawText.substring(resolution.matchStart(), resolution.matchEnd()))
+                .isEqualTo("alpha   beta");
     }
 
     @Test
@@ -100,6 +132,9 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
+        assertThat(resolution.matchStart()).isEqualTo(rawText.indexOf("Data Hazards"));
+        assertThat(resolution.matchEnd()).isEqualTo(rawText.indexOf("Data Hazards")
+                + "Data Hazards entstehen durch Datenabhängigkeiten".length());
     }
 
     @Test
@@ -112,6 +147,23 @@ class SourcePageResolverTest {
 
         assertThat(resolution.page()).isEqualTo(2);
         assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.FRAGMENT);
+    }
+
+    /**
+     * Observed on a real corpus: the model reproduced "NP-vollständig" with a non-breaking hyphen.
+     * Too short for the letters-and-digits pass, it used to count as unlocatable although the
+     * document contains it.
+     */
+    @Test
+    void groundsQuotesThatOnlySwapDashOrSpaceVariants() {
+        String rawText = "first page filler text\nDas Problem ist NP-vollständig und teuer";
+
+        SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
+                rawText, new int[]{0, 23, rawText.length()}, 0, rawText.length(),
+                "NP‑vollständig");
+
+        assertThat(resolution.page()).isEqualTo(2);
+        assertThat(resolution.quality()).isEqualTo(SourceMatchQuality.NORMALIZED);
     }
 
     @Test

@@ -41,6 +41,10 @@ public class LearningGoal {
     private GoalKind kind;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "role", length = 16)
+    private GoalRole role;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private GoalOrigin origin = GoalOrigin.EXTRACTED;
 
@@ -107,6 +111,14 @@ public class LearningGoal {
 
     public GoalKind getKind() {
         return kind;
+    }
+
+    public GoalRole getRole() {
+        return role;
+    }
+
+    public void setRole(GoalRole role) {
+        this.role = role;
     }
 
     public GoalOrigin getOrigin() {
