@@ -37,8 +37,12 @@ public class PageDescriptionService {
     static final double MIN_ALNUM_RATIO = 0.40;
     // Fixed before any evaluation run; keep the VLM request shape stable.
     static final int BATCH_SIZE = 8;
-    /** Enough for the model to read a diagram; 120 dpi cost ~40% more wall clock for no benefit. */
-    static final int RENDER_DPI = 72;
+    /**
+     * Latency turned out not to depend on this: a 72 dpi run cost the same 11.5 s per page as 120,
+     * but its descriptions named measurably fewer of the identifiers a diagram is about (digits in
+     * 27% of descriptions instead of 35%, acronyms in 49% instead of 58%, over 192 paired pages).
+     */
+    static final int RENDER_DPI = 120;
 
     static final String PROMPT = """
             These images are pages of university course material (lecture slides, an exercise sheet or an exam), and the page numbers are given in the same order as the images. For each page, return 1-3 sentences describing the figure or diagram content and what it teaches — factual, with no meta-commentary.
