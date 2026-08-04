@@ -30,6 +30,10 @@ public class PageDescription {
     @Column(length = 255)
     private String model;
 
+    /** False for title, section-header and summary pages, which are described but teach nothing. */
+    @Column(name = "teaches_content", nullable = false)
+    private boolean teachesContent = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -38,10 +42,16 @@ public class PageDescription {
     }
 
     public PageDescription(Document document, int page, String description, String model) {
+        this(document, page, description, model, true);
+    }
+
+    public PageDescription(Document document, int page, String description, String model,
+                           boolean teachesContent) {
         this.document = document;
         this.id = new PageDescriptionId(document.getId(), page);
         this.description = description;
         this.model = model;
+        this.teachesContent = teachesContent;
     }
 
     public PageDescriptionId getId() {
@@ -62,6 +72,10 @@ public class PageDescription {
 
     public String getModel() {
         return model;
+    }
+
+    public boolean isTeachesContent() {
+        return teachesContent;
     }
 
     public OffsetDateTime getCreatedAt() {

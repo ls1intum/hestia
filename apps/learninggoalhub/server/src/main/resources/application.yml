@@ -36,6 +36,9 @@ hestia:
   figures:
     # Vision model used to describe eligible text-poor slide pages during extraction.
     vision-model: qwen3.6-35b-a3b
+    # Far below the text phases' parallelism: each call carries several rendered pages, so a wide
+    # burst of them draws 429s and the oversized payloads also provoke 500s.
+    parallelism: 4
   title:
     # Whether to name bookmark-less PDFs with the vision model below. Off → every such document falls
     # back to its filename, with no VLM call during upload. Disabled for now because the vision model

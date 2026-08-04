@@ -37,10 +37,15 @@ public class PageDescriptionService {
     static final double MIN_ALNUM_RATIO = 0.40;
     // Fixed before any evaluation run; keep the VLM request shape stable.
     static final int BATCH_SIZE = 8;
-    static final int RENDER_DPI = 120;
+    /** Enough for the model to read a diagram; 120 dpi cost ~40% more wall clock for no benefit. */
+    static final int RENDER_DPI = 72;
 
     static final String PROMPT = """
-            These images are lecture slides, and the page numbers are given in the same order as the images. For each page, return 1-3 sentences describing the figure or diagram content and what it teaches — factual, with no meta-commentary. Reply as a JSON array of {"page": n, "description": "..."} using the given page numbers.
+            These images are pages of university course material (lecture slides, an exercise sheet or an exam), and the page numbers are given in the same order as the images. For each page, return 1-3 sentences describing the figure or diagram content and what it teaches — factual, with no meta-commentary.
+
+            Also set teachesContent for each page. It is false when the page carries no subject matter of its own — a title page, a section header, a page that only announces a topic, a pure summary or agenda, an author/affiliation page, or a blank or answer-box page. It is true when the page shows something a student could learn from, such as a diagram, circuit, table, plot, worked example or task.
+
+            Reply as a JSON array of {"page": n, "description": "...", "teachesContent": true|false} using the given page numbers.
 
             Requested page numbers: %s
             """;
@@ -165,17 +170,19 @@ public class PageDescriptionService {
             return;
         }
         Set<Integer> requested = Set.copyOf(batch);
-        Map<Integer, String> descriptions = new LinkedHashMap<>();
+        Map<Integer, PageReply> accepted = new LinkedHashMap<>();
         for (PageReply reply : replies) {
             if (reply == null || reply.page() == null || !requested.contains(reply.page())
                     || reply.description() == null || reply.description().isBlank()) {
                 continue;
             }
-            descriptions.put(reply.page(), reply.description().strip());
+            accepted.put(reply.page(), reply);
         }
-        for (Map.Entry<Integer, String> entry : descriptions.entrySet()) {
+        for (Map.Entry<Integer, PageReply> entry : accepted.entrySet()) {
+            PageReply reply = entry.getValue();
             pageDescriptionRepository.save(new PageDescription(
-                    document, entry.getKey(), entry.getValue(), visionModel));
+                    document, entry.getKey(), reply.description().strip(), visionModel,
+                    !Boolean.FALSE.equals(reply.teachesContent())));
         }
     }
 
@@ -189,6 +196,7 @@ public class PageDescriptionService {
     public record FigureDescription(int page, String description) {
     }
 
-    public record PageReply(Integer page, String description) {
+    /** A missing teachesContent is treated as true so a terse model reply still yields evidence. */
+    public record PageReply(Integer page, String description, Boolean teachesContent) {
     }
 }
