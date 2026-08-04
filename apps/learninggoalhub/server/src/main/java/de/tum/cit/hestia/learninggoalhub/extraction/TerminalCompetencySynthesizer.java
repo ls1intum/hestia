@@ -11,14 +11,12 @@ import org.springframework.stereotype.Service;
  * able to perform after the whole course — in one course-wide LLM call.
  *
  * <p>This keeps "understand" goals at "understand" in the ordinary extracted hierarchy. A
- * competency tree instead needs the <em>doing</em>
- * capabilities, which live in the {@code APPLY}/{@code CREATE} goals and cut across several sessions
+ * competency tree instead needs the extracted <em>skill</em> goals, which cut across several sessions
  * (e.g. Docker + Kubernetes → "containerise and orchestrate applications"). So this synthesiser:
  *
  * <ul>
- *   <li>seeds competencies from {@code APPLY}/{@code CREATE} goals and treats {@code ANALYZE}/
- *       {@code EVALUATE} "compare/understand" goals as supporting knowledge, not competencies in
- *       their own right;</li>
+ *   <li>seeds competencies from {@code APPLY}/{@code CREATE} skill goals while also using
+ *       {@code ANALYZE}/{@code EVALUATE} skills to shape the competency boundaries;</li>
  *   <li>clusters across the whole course in a single call, so a capability spanning several topics
  *       is named once instead of split per session;</li>
  *   <li>drops course-administration / tooling-trivia candidates that carry a high-Bloom verb but are
@@ -32,10 +30,10 @@ import org.springframework.stereotype.Service;
  * assigning used to share this one call, which let the model commit a goal to an early competency
  * before the competency that actually fits it had been written.
  *
- * <p>The caller still passes <b>every</b> session/exercise goal, not just the seeds: a capability
- * carried mainly by {@code ANALYZE}/{@code EVALUATE} goals would otherwise go unnamed, and the
- * lower-Bloom goals are what tell the model how broad a competency may be. Each candidate carries
- * its Bloom level so the prompt can tell seeds from supporting knowledge.
+ * <p>The caller passes <b>every</b> session/exercise skill, not just the seeds: a capability carried
+ * mainly by {@code ANALYZE}/{@code EVALUATE} skills would otherwise go unnamed, and lower-Bloom skills
+ * still tell the model how broad a competency may be. Each candidate carries its Bloom level so the
+ * prompt can distinguish seeds from context.
  */
 @Service
 public class TerminalCompetencySynthesizer {
@@ -53,17 +51,16 @@ public class TerminalCompetencySynthesizer {
             and shortLabel exactly as written. The Bloom labels in the input are fixed
             English enum values and must remain exactly as provided.
 
-            Below are ALL of the course's session/exercise learning goals, each prefixed with its index
+            Below are ALL of the course's session/exercise SKILL goals, each prefixed with its index
             in square brackets and its Bloom level in parentheses. They come from many different
-            sessions and include higher-level goals as well as lower-level knowledge goals.
+            sessions and can have different Bloom levels.
 
             How to read the input:
               - APPLY and CREATE goals are the SEEDS: they describe things the student actually does and
                 are what terminal competencies are built from.
-              - ANALYZE and EVALUATE goals are usually "compare X and Y" / "understand the trade-offs":
-                these are SUPPORTING KNOWLEDGE beneath a competency, not competencies in their own
-                right. Fold them under the competency they serve; do not elevate a bare "compare ..."
-                goal into a terminal competency.
+              - ANALYZE and EVALUATE skill goals may describe "compare X and Y" / "understand the
+                trade-offs". Use them to shape the competency they serve; do not elevate a bare
+                "compare ..." goal into a separate terminal competency.
 
             MERGE AGGRESSIVELY into broad, course-level competencies:
               - A whole course converges on only a HANDFUL of broad competencies. One competency per

@@ -63,7 +63,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
       const { data, error } = await api.POST("/api/courses", {
         body: {
           name: name.trim(),
-          outputLanguage: outputLanguage === "" ? null : outputLanguage,
+          outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
         },
       });
       if (error || !data?.id) throw new Error("Could not create the course.");

@@ -36,7 +36,7 @@ public final class SourcePageResolver {
     private SourcePageResolver() {
     }
 
-    public record Resolution(Integer page, SourceMatchQuality quality) {
+    public record Resolution(Integer page, SourceMatchQuality quality, Integer matchStart, Integer matchEnd) {
 
         public boolean grounded() {
             return quality != SourceMatchQuality.NONE;
@@ -45,11 +45,9 @@ public final class SourcePageResolver {
 
     public static Resolution resolve(String rawText, int[] pageOffsets,
                                      int unitStart, int unitEnd, String snippet) {
-        if (pageOffsets == null || pageOffsets.length < 2) {
-            return new Resolution(null, SourceMatchQuality.NONE);
-        }
         if (rawText == null || snippet == null || snippet.isBlank()) {
-            return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), SourceMatchQuality.NONE);
+            return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), SourceMatchQuality.NONE,
+                    null, null);
         }
 
         int start = Math.max(0, Math.min(unitStart, rawText.length()));
@@ -57,7 +55,7 @@ public final class SourcePageResolver {
         Match match = locate(rawText, start, end, snippet);
         if (match != null) {
             return new Resolution(pageForOffset(pageOffsets, match.offset()).orElse(null),
-                    cap(match.quality(), snippet));
+                    cap(match.quality(), snippet), match.start(), match.end());
         }
 
         // The prompt demands one contiguous quote, but the model may still stitch fragments together
@@ -73,12 +71,13 @@ public final class SourcePageResolver {
                 match = locate(rawText, start, end, fragment);
                 if (match != null) {
                     return new Resolution(pageForOffset(pageOffsets, match.offset()).orElse(null),
-                            SourceMatchQuality.FRAGMENT);
+                            SourceMatchQuality.FRAGMENT, match.start(), match.end());
                 }
             }
         }
 
-        return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), SourceMatchQuality.NONE);
+        return new Resolution(pageForOffset(pageOffsets, unitStart).orElse(null), SourceMatchQuality.NONE,
+                null, null);
     }
 
     /**
@@ -90,27 +89,27 @@ public final class SourcePageResolver {
         int match = rawText.indexOf(needle, start);
         while (match >= 0) {
             if (match + needle.length() <= end) {
-                return new Match(match, SourceMatchQuality.EXACT_IN_SESSION);
+                return new Match(match, match + needle.length(), SourceMatchQuality.EXACT_IN_SESSION);
             }
             match = rawText.indexOf(needle, match + 1);
         }
 
         match = rawText.indexOf(needle);
         if (match >= 0) {
-            return new Match(match, SourceMatchQuality.EXACT_IN_DOCUMENT);
+            return new Match(match, match + needle.length(), SourceMatchQuality.EXACT_IN_DOCUMENT);
         }
 
         String normalizedNeedle = normalize(needle).text();
         NormalizedText normalizedUnit = normalize(rawText.substring(start, end), start);
         match = normalizedUnit.text().indexOf(normalizedNeedle);
         if (match >= 0) {
-            return new Match(normalizedUnit.originalOffsets()[match], SourceMatchQuality.NORMALIZED);
+            return normalizedMatch(normalizedUnit, match, normalizedNeedle.length());
         }
 
         NormalizedText normalizedText = normalize(rawText);
         match = normalizedText.text().indexOf(normalizedNeedle);
         if (match >= 0) {
-            return new Match(normalizedText.originalOffsets()[match], SourceMatchQuality.NORMALIZED);
+            return normalizedMatch(normalizedText, match, normalizedNeedle.length());
         }
 
         // Last resort: models quoting slide content tend to silently drop layout glyphs the text
@@ -121,20 +120,31 @@ public final class SourcePageResolver {
             NormalizedText aggressiveUnit = normalizeAggressive(rawText.substring(start, end), start);
             match = aggressiveUnit.text().indexOf(aggressiveNeedle);
             if (match >= 0) {
-                return new Match(aggressiveUnit.originalOffsets()[match], SourceMatchQuality.NORMALIZED);
+                return normalizedMatch(aggressiveUnit, match, aggressiveNeedle.length());
             }
 
             NormalizedText aggressiveText = normalizeAggressive(rawText, 0);
             match = aggressiveText.text().indexOf(aggressiveNeedle);
             if (match >= 0) {
-                return new Match(aggressiveText.originalOffsets()[match], SourceMatchQuality.NORMALIZED);
+                return normalizedMatch(aggressiveText, match, aggressiveNeedle.length());
             }
         }
 
         return null;
     }
 
-    private static Optional<Integer> pageForOffset(int[] pageOffsets, int offset) {
+    private static Match normalizedMatch(NormalizedText normalized, int matchStart, int needleLength) {
+        int originalStart = normalized.originalOffsets()[matchStart];
+        int lastMatchedIndex = matchStart + needleLength - 1;
+        int originalEnd = normalized.originalOffsets()[lastMatchedIndex] + 1;
+        return new Match(originalStart, originalEnd, SourceMatchQuality.NORMALIZED);
+    }
+
+    /** Documents parsed without page boundaries (everything but PDFs) simply have no page to report. */
+    static Optional<Integer> pageForOffset(int[] pageOffsets, int offset) {
+        if (pageOffsets == null || pageOffsets.length < 2) {
+            return Optional.empty();
+        }
         if (offset < pageOffsets[0] || offset >= pageOffsets[pageOffsets.length - 1]) {
             return Optional.empty();
         }
@@ -175,25 +185,44 @@ public final class SourcePageResolver {
         int[] offsets = new int[text.length()];
         int offsetCount = 0;
         for (int i = 0; i < text.length(); i++) {
-            if (!keep.test(text.charAt(i))) {
+            char folded = fold(text.charAt(i));
+            if (!keep.test(folded)) {
                 int firstSeparator = i;
-                while (i + 1 < text.length() && !keep.test(text.charAt(i + 1))) {
+                while (i + 1 < text.length() && !keep.test(fold(text.charAt(i + 1)))) {
                     i++;
                 }
                 normalized.append(' ');
                 offsets[offsetCount++] = originalOffset + firstSeparator;
             } else {
-                normalized.append(text.charAt(i));
+                normalized.append(folded);
                 offsets[offsetCount++] = originalOffset + i;
             }
         }
         return new NormalizedText(normalized.toString(), java.util.Arrays.copyOf(offsets, offsetCount));
     }
 
+    /**
+     * Maps the dash and space variants a model tends to substitute onto their plain counterparts, so
+     * that "NP‑vollständig" with a non-breaking hyphen still matches the document's "NP-vollständig".
+     * Character-for-character identity is judged before any normalization, so this only ever affects
+     * how a {@code NORMALIZED} match is reached, never an exact one.
+     */
+    private static char fold(char c) {
+        return switch (c) {
+            case '\u2010', '\u2011', '\u2012', '\u2013', '\u2014', '\u2015', '\u2212' -> '-';
+            case '\u00A0', '\u2007', '\u2009', '\u202F' -> ' ';
+            default -> c;
+        };
+    }
+
     private record NormalizedText(String text, int[] originalOffsets) {
     }
 
-    private record Match(int offset, SourceMatchQuality quality) {
+    private record Match(int start, int end, SourceMatchQuality quality) {
+
+        private int offset() {
+            return start;
+        }
     }
 
     /**

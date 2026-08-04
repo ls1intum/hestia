@@ -103,6 +103,38 @@ function findHighlightRects(
     .map((entry) => itemRect(entry.item, viewport));
 }
 
+function convertHighlightRects(
+  rects: GoalSource["highlightRects"],
+  viewport: PdfViewport,
+): HighlightRect[] {
+  return (rects ?? []).flatMap((rect) => {
+    if (
+      rect.x == null ||
+      rect.y == null ||
+      rect.width == null ||
+      rect.height == null
+    ) {
+      return [];
+    }
+    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([
+      rect.x,
+      rect.y,
+      rect.x + rect.width,
+      rect.y + rect.height,
+    ]);
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    return [
+      {
+        left,
+        top,
+        width: Math.max(2, Math.abs(x2 - x1)),
+        height: Math.max(2, Math.abs(y2 - y1)),
+      },
+    ];
+  });
+}
+
 export default function SourcePdfPane({
   courseId,
   source,
@@ -205,14 +237,13 @@ export default function SourcePdfPane({
     canvas.height = Math.floor(viewport.height * outputScale);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
+    const highlights = source.highlightRects?.length
+      ? convertHighlightRects(source.highlightRects, viewport)
+      : findHighlightRects(loadedPage.textItems, source.snippet, viewport);
     setRenderedPage({
       width: viewport.width,
       height: viewport.height,
-      highlights: findHighlightRects(
-        loadedPage.textItems,
-        source.snippet,
-        viewport,
-      ),
+      highlights,
     });
 
     renderTask = loadedPage.page.render({
@@ -237,7 +268,7 @@ export default function SourcePdfPane({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [loadedPage, paneWidth, source.snippet]);
+  }, [loadedPage, paneWidth, source.highlightRects, source.snippet]);
 
   useEffect(() => {
     if (renderedPage?.highlights.length) {

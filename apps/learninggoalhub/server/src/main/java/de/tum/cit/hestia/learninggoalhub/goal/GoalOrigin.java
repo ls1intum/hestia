@@ -16,9 +16,8 @@ package de.tum.cit.hestia.learninggoalhub.goal;
  *       abstraction without a source snippet.
  *       See {@code TerminalCompetencySynthesizer}.</li>
  *   <li>{@code GAP} — a "should-be-taught" knowledge aspect the gap analysis judges MISSING from the
- *       material beneath a sub-skill of a terminal competency; deliberately UNANCHORED (no source
- *       snippet) and rendered distinctly so an instructor sees what the course does not yet cover.
- *       See {@code CompetencyTreeSynthesizer}.</li>
+ *       material beneath a skill of a terminal competency; deliberately UNANCHORED (no source
+ *       snippet) and rendered distinctly so an instructor sees what the course does not yet cover.</li>
  * </ul>
  */
 public enum GoalOrigin {

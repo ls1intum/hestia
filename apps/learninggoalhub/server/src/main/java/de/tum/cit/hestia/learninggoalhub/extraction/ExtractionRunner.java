@@ -3,14 +3,18 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
+import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
+import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceId;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
@@ -26,6 +30,7 @@ import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,12 +41,16 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.HashSet;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,6 +67,7 @@ public class ExtractionRunner {
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
+    private final DocumentContentRepository documentContentRepository;
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
@@ -69,7 +79,6 @@ public class ExtractionRunner {
     private final DocumentSectionRepository documentSectionRepository;
     private final TerminalCompetencySynthesizer terminalCompetencySynthesizer;
     private final CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer;
-    private final CompetencyTreeSynthesizer competencyTreeSynthesizer;
     private final DocumentChunker documentChunker;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
@@ -80,9 +89,11 @@ public class ExtractionRunner {
     private final String configuredDefaultModel;
     private final int taxonomyBatchSize;
     private final int embeddingBatchSize;
+    private final HighlightGeometryService highlightGeometryService;
 
     public ExtractionRunner(CourseRepository courseRepository,
                             DocumentRepository documentRepository,
+                            DocumentContentRepository documentContentRepository,
                             LearningGoalRepository goalRepository,
                             GoalSourceRepository goalSourceRepository,
                             GoalRelationshipRepository goalRelationshipRepository,
@@ -94,7 +105,6 @@ public class ExtractionRunner {
                             DocumentSectionRepository documentSectionRepository,
                             TerminalCompetencySynthesizer terminalCompetencySynthesizer,
                             CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer,
-                            CompetencyTreeSynthesizer competencyTreeSynthesizer,
                             DocumentChunker documentChunker,
                             HierarchyNodeRepository hierarchyNodeRepository,
                             TaxonomyService taxonomyService,
@@ -104,9 +114,11 @@ public class ExtractionRunner {
                             @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
-                            @Value("${hestia.embedding.batch-size:64}") int embeddingBatchSize) {
+                            @Value("${hestia.embedding.batch-size:64}") int embeddingBatchSize,
+                            HighlightGeometryService highlightGeometryService) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
+        this.documentContentRepository = documentContentRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
@@ -118,7 +130,6 @@ public class ExtractionRunner {
         this.documentSectionRepository = documentSectionRepository;
         this.terminalCompetencySynthesizer = terminalCompetencySynthesizer;
         this.competencyAssignmentSynthesizer = competencyAssignmentSynthesizer;
-        this.competencyTreeSynthesizer = competencyTreeSynthesizer;
         this.documentChunker = documentChunker;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
@@ -129,6 +140,7 @@ public class ExtractionRunner {
         this.configuredDefaultModel = configuredDefaultModel;
         this.taxonomyBatchSize = taxonomyBatchSize;
         this.embeddingBatchSize = embeddingBatchSize;
+        this.highlightGeometryService = highlightGeometryService;
     }
 
     @Transactional
@@ -234,49 +246,80 @@ public class ExtractionRunner {
 
         run.phase(ExtractionProgressTracker.Phase.PERSISTING, enriched.size());
         int goalsCreated = 0;
-        for (EnrichedGoal eg : enriched) {
-            ExtractedGoal e = eg.classified().extracted();
-            Document document = eg.classified().document();
+        Map<ExtractedGoal, LearningGoal> persistedGoals = new IdentityHashMap<>();
+        Map<Long, PDDocument> pdfDocuments = new HashMap<>();
+        Set<Long> attemptedPdfDocuments = new HashSet<>();
+        try {
+            for (EnrichedGoal eg : enriched) {
+                ExtractedGoal e = eg.classified().extracted();
+                Document document = eg.classified().document();
 
-            LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
-            goal.setShortLabel(e.shortLabel());
-            HierarchyNode node = eg.classified().node();
-            if (node != null) {
-                goal.setHierarchyNode(node);
-            }
-            if (eg.classified().classification() != null) {
-                goal.setBloomLevel(eg.classified().classification().bloom());
-                goal.setSoloLevel(eg.classified().classification().solo());
-            }
-            if (eg.embedding() != null) {
-                goal.setEmbedding(eg.embedding());
-            }
-            LearningGoal target = goalRepository.saveAndFlush(goal);
-            goalsCreated++;
-
-            GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
-            if (!goalSourceRepository.existsById(sourceId)) {
-                HierarchyNode sourceNode = eg.classified().node();
-                Unit unit = sourceNode == null ? null : unitsByNode.get(sourceNode.getId());
-                int textLength = document.getRawText() == null ? 0 : document.getRawText().length();
-                int unitStart = unit == null ? 0 : unit.start();
-                int unitEnd = unit == null ? textLength : unit.end();
-                SourcePageResolver.Resolution resolution = SourcePageResolver.resolve(
-                        document.getRawText(), document.getPageOffsets(), unitStart, unitEnd,
-                        e.sourceSnippet());
-                goalSourceRepository.save(new GoalSource(target, document, e.sourceSnippet(),
-                        resolution.page(), resolution.quality()));
-            }
-
-            // Only fallback outcomes have raw candidates to connect to their surfaced goal.
-            List<GoalCandidate> supporters = assembly.provenance().get(e);
-            if (supporters != null) {
-                for (GoalCandidate candidate : supporters) {
-                    candidate.setConsolidatedGoal(target);
-                    goalCandidateRepository.save(candidate);
+                LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
+                goal.setShortLabel(e.shortLabel());
+                goal.setRole(eg.classified().role());
+                HierarchyNode node = eg.classified().node();
+                if (node != null) {
+                    goal.setHierarchyNode(node);
                 }
+                if (eg.classified().classification() != null) {
+                    goal.setBloomLevel(eg.classified().classification().bloom());
+                    goal.setSoloLevel(eg.classified().classification().solo());
+                }
+                if (eg.embedding() != null) {
+                    goal.setEmbedding(eg.embedding());
+                }
+                LearningGoal target = goalRepository.saveAndFlush(goal);
+                persistedGoals.put(e, target);
+                goalsCreated++;
+
+                GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
+                if (!goalSourceRepository.existsById(sourceId)) {
+                    HierarchyNode sourceNode = eg.classified().node();
+                    Unit unit = sourceNode == null ? null : unitsByNode.get(sourceNode.getId());
+                    SourcePageResolver.Resolution resolution;
+                    String modelSnippet;
+                    if (eg.classified().sourceLineSelection() != null) {
+                        resolution = resolveDirectSource(document, unit,
+                                eg.classified().sourceLineSelection());
+                        modelSnippet = "";
+                    } else {
+                        String rawText = document.getRawText();
+                        int textLength = rawText == null ? 0 : rawText.length();
+                        int unitStart = unit == null ? 0 : unit.start();
+                        int unitEnd = unit == null ? textLength : unit.end();
+                        resolution = SourcePageResolver.resolve(
+                                rawText, document.getPageOffsets(), unitStart, unitEnd,
+                                e.sourceSnippet());
+                        modelSnippet = e.sourceSnippet();
+                    }
+                    persistGoalSource(target, document, modelSnippet, resolution,
+                            pdfDocuments, attemptedPdfDocuments);
+                }
+
+                // Only fallback outcomes have raw candidates to connect to their surfaced goal.
+                List<GoalCandidate> supporters = assembly.provenance().get(e);
+                if (supporters != null) {
+                    for (GoalCandidate candidate : supporters) {
+                        candidate.setConsolidatedGoal(target);
+                        goalCandidateRepository.save(candidate);
+                    }
+                }
+                run.increment();
             }
-            run.increment();
+        } finally {
+            closePdfDocuments(pdfDocuments);
+        }
+
+        for (EnrichedGoal eg : enriched) {
+            ClassifiedGoal classifiedGoal = eg.classified();
+            if (classifiedGoal.role() != GoalRole.KNOWLEDGE || classifiedGoal.parentSkill() == null) {
+                continue;
+            }
+            LearningGoal knowledge = persistedGoals.get(classifiedGoal.extracted());
+            LearningGoal skill = persistedGoals.get(classifiedGoal.parentSkill());
+            if (knowledge != null && skill != null) {
+                linkContributors(List.of(knowledge), skill);
+            }
         }
 
         // Drop units the outline detected but the extraction routed no goals to (e.g. a session with
@@ -301,12 +344,18 @@ public class ExtractionRunner {
                         String languageName = LanguageUtils.englishName(resolveLanguage(
                                 course, session.document().getLanguage(), dominantLanguage));
                         if (usesDirectPath(session.text())) {
-                            List<ExtractedGoal> goals = sessionExtractionService.extract(
+                            List<ExtractedSkill> skills = sessionExtractionService.extract(
                                     session.title(), session.text(), languageName, modelOverride);
+                            if (skills != null && skills.size() > 7) {
+                                log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
+                                        session.title(), skills.size());
+                            }
                             run.increment();
-                            return SessionExtraction.direct(session, goals == null ? List.of() : goals);
+                            return SessionExtraction.direct(session, skills == null ? List.of() : skills);
                         }
 
+                        // Oversized-session fallback intentionally remains flat and role-null; it keeps
+                        // the existing Bloom-based split for pre-V24 and threshold-routed sessions.
                         List<ExtractedGoal> candidates = new ArrayList<>();
                         for (String chunk : documentChunker.chunk(session.text())) {
                             List<ExtractedGoal> extracted = extractionService.extract(
@@ -419,9 +468,24 @@ public class ExtractionRunner {
         Map<ExtractedGoal, List<GoalCandidate>> provenance = new IdentityHashMap<>();
         for (SessionExtraction extraction : extractedSessions) {
             if (extraction.direct()) {
-                if (!extraction.goals().isEmpty()) {
+                List<SessionGoal> goals = new ArrayList<>();
+                for (ExtractedSkill skill : extraction.skills()) {
+                    ExtractedGoal skillGoal = new ExtractedGoal(
+                            skill.text(), skill.shortLabel(), skill.kind(),
+                            "");
+                    goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
+                            new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine())));
+                    for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
+                        ExtractedGoal knowledgeGoal = new ExtractedGoal(
+                                knowledge.text(), knowledge.shortLabel(), knowledge.kind(),
+                                "");
+                        goals.add(new SessionGoal(knowledgeGoal, GoalRole.KNOWLEDGE, skillGoal,
+                                new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine())));
+                    }
+                }
+                if (!goals.isEmpty()) {
                     sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(),
-                            extraction.goals()));
+                            goals));
                 }
                 continue;
             }
@@ -431,7 +495,7 @@ public class ExtractionRunner {
                 saved.add(goalCandidateRepository.save(new GoalCandidate(course, extraction.node(), c.text(),
                         c.kind(), c.sourceSnippet())));
             }
-            List<ExtractedGoal> outcomes = new ArrayList<>();
+            List<SessionGoal> outcomes = new ArrayList<>();
             for (ConsolidatedGoal cg : extraction.consolidated()) {
                 if (cg.text() == null || cg.text().isBlank()) {
                     continue;
@@ -440,7 +504,7 @@ public class ExtractionRunner {
                         cg.supporting() == null ? List.of() : cg.supporting(), saved);
                 ExtractedGoal outcome = new ExtractedGoal(
                         cg.text(), cg.shortLabel(), deriveKind(supporters), snippetFor(supporters));
-                outcomes.add(outcome);
+                outcomes.add(new SessionGoal(outcome, null, null, null));
                 provenance.put(outcome, supporters);
             }
             if (!outcomes.isEmpty()) {
@@ -496,11 +560,11 @@ public class ExtractionRunner {
 
     /** One session's direct result or its legacy candidates and reduced outcomes. */
     private record SessionExtraction(Document document, HierarchyNode node, boolean direct,
-                                     List<ExtractedGoal> goals, List<ExtractedGoal> candidates,
+                                     List<ExtractedSkill> skills, List<ExtractedGoal> candidates,
                                      List<ConsolidatedGoal> consolidated) {
 
-        private static SessionExtraction direct(SessionUnit session, List<ExtractedGoal> goals) {
-            return new SessionExtraction(session.document(), session.node(), true, goals, List.of(), List.of());
+        private static SessionExtraction direct(SessionUnit session, List<ExtractedSkill> skills) {
+            return new SessionExtraction(session.document(), session.node(), true, skills, List.of(), List.of());
         }
 
         private static SessionExtraction fallback(SessionUnit session, List<ExtractedGoal> candidates,
@@ -560,17 +624,14 @@ public class ExtractionRunner {
         return created;
     }
 
-    /** Bloom levels worth clustering into terminal competencies (the higher-Bloom doing/judgement goals). */
-    private static final Set<BloomLevel> HIGH_BLOOM =
-            EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
-
-    /**
-     * Bloom levels that make a goal a SUB-SKILL — a doing/judgement capability. Only the pure
-     * knowledge levels ({@code REMEMBER}/{@code UNDERSTAND}) become tier-3 knowledge leaves, so the
-     * lowest tier stays declarative knowledge.
-     */
+    /** Legacy Bloom fallback for role-null pre-V24 goals. */
     private static final Set<BloomLevel> SUB_SKILL_BLOOM =
             EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
+
+    static boolean isSkillTier(LearningGoal goal) {
+        return goal.getRole() == GoalRole.SKILL
+                || (goal.getRole() == null && SUB_SKILL_BLOOM.contains(goal.getBloomLevel()));
+    }
 
     /** How many terminal competencies the competency tree produced. */
     /**
@@ -652,14 +713,16 @@ public class ExtractionRunner {
     }
 
     /**
-     * Removes the terminals, the given manual nodes and EVERY CONTRIBUTES_TO edge in the course, then
-     * the now-empty {@code COMPETENCY} root. Extracted goals keep existing; they just lose their tree
-     * edges, which the rebuild draws again.
+     * Removes the terminals, the given manual nodes and the tree CONTRIBUTES_TO edges in the course,
+     * then the now-empty {@code COMPETENCY} root. Extracted goals keep existing; the rebuild draws
+     * their skill → terminal edges again.
      *
-     * <p>All CONTRIBUTES_TO edges have to go, not only those touching a deleted goal: the tree's
-     * knowledge → sub-skill edges join two extracted goals, so a rebuild that spared them would leave
-     * the previous arrangement in place and stack the new one on top, giving goals several parents.
-     * Other relationship types are not part of this tree and are left alone.
+     * <p>Knowledge → skill edges are created during extraction and survive a tree rebuild. On a
+     * pre-V24 course no goal has a role, so every edge is still deleted — identical to today's
+     * behaviour, with no legacy multi-parent stacking. Hand-added ({@code USER_CREATED}) and wizard
+     * ({@code WIZARD_AI_SUBTREE}) nodes also have no role, so their edges keep being cleared exactly
+     * as today. Do not use "target is a TERMINAL" as the predicate: legacy knowledge → sub-skill
+     * edges must not survive.
      */
     private void clearCompetencyTree(Course course, List<LearningGoal> terminals, List<LearningGoal> manual) {
         List<LearningGoal> doomed = new ArrayList<>(terminals);
@@ -730,7 +793,12 @@ public class ExtractionRunner {
                                              boolean allContributes) {
         List<GoalRelationship> edges = new ArrayList<>();
         for (GoalRelationship relationship : goalRelationshipRepository.findBySourceIdIn(courseGoalIds)) {
-            boolean treeEdge = allContributes && relationship.getType() == RelationshipType.CONTRIBUTES_TO;
+            boolean extractionEdge = relationship.getType() == RelationshipType.CONTRIBUTES_TO
+                    && relationship.getSource().getRole() == GoalRole.KNOWLEDGE
+                    && relationship.getTarget().getRole() == GoalRole.SKILL;
+            boolean treeEdge = allContributes
+                    && relationship.getType() == RelationshipType.CONTRIBUTES_TO
+                    && !extractionEdge;
             boolean touchesDoomed = doomedIds.contains(relationship.getSource().getId())
                     || doomedIds.contains(relationship.getTarget().getId());
             if (treeEdge || touchesDoomed) {
@@ -755,17 +823,14 @@ public class ExtractionRunner {
      * Builds the competency-tree view ALONGSIDE the module goals (not a replacement) in a fixed three
      * tiers — terminal competency → sub-skill → knowledge — under its own {@code COMPETENCY} root.
      *
-     * <p>Three course-wide synthesis calls run BEFORE anything is written: competencies are named
-     * ({@link TerminalCompetencySynthesizer}), every goal is assigned to one of them against the
-     * FINISHED list ({@link CompetencyAssignmentSynthesizer}), and the sub-skill → knowledge layer is
-     * expanded ({@link CompetencyTreeSynthesizer}). Naming and assigning used to share one call,
-     * which let a goal be committed to an early competency before its proper one had been named —
-     * and nothing downstream could move it, since expansion only ever sees one competency's own
-     * goals. Persisting only after all calls succeed also means a failed call leaves the course
-     * untouched instead of half-built.
+     * <p>Two course-wide synthesis calls run BEFORE anything is written: competencies are named
+     * ({@link TerminalCompetencySynthesizer}) and every extracted skill is assigned to one of them
+     * against the finished list ({@link CompetencyAssignmentSynthesizer}). Persisting only after all
+     * calls succeed also means a failed call leaves the course untouched instead of half-built.
      *
-     * <p>Terminal goals use batched taxonomy classification. CONTRIBUTES_TO edges thread the tiers
-     * (knowledge → sub-skill → terminal); any synthesis failure is swallowed so it never breaks a run.
+     * <p>Terminal goals use batched taxonomy classification. Extraction already links knowledge →
+     * skill; this stage links skills → terminal. Any synthesis failure is swallowed so it never
+     * breaks a run.
      */
     private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride,
                                                      String languageName) {
@@ -790,16 +855,19 @@ public class ExtractionRunner {
      */
     private CompetencyTreePlan planFullCompetencyTree(Course course, String modelOverride,
                                                       String languageName) {
-        // All session/exercise goals are tree candidates: the higher-Bloom ones seed competencies and
-        // become sub-skills, the lower-Bloom ones become knowledge leaves.
+        // Only skill-tier session/exercise goals are tree candidates. Role is structural for V24+
+        // data, while role-null legacy goals retain the Bloom fallback.
         List<LearningGoal> candidates = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
                 .filter(g -> g.getHierarchyNode().getLevel() != HierarchyLevel.MODULE
                         && g.getHierarchyNode().getLevel() != HierarchyLevel.COMPETENCY)
+                .filter(ExtractionRunner::isSkillTier)
                 .toList();
-        List<LearningGoal> seeds = candidates.stream()
-                .filter(g -> HIGH_BLOOM.contains(g.getBloomLevel()))
-                .toList();
-        if (seeds.isEmpty()) {
+        // The skill tier IS the seed set. Bloom must not narrow it any further: extraction now
+        // decides the tier, and the session prompt deliberately keeps verbs low ("when in doubt,
+        // prefer understand/know"), so a course whose skills all classify as UNDERSTAND would
+        // otherwise produce no seeds and silently lose its whole competency tree. For role-null
+        // legacy goals isSkillTier already means "high Bloom", so their seeds are unchanged.
+        if (candidates.isEmpty()) {
             return null;
         }
 
@@ -876,21 +944,14 @@ public class ExtractionRunner {
      * @param classification its Bloom/SOLO levels, or {@code null} to persist it unclassified. The
      *                       catch-all is a container, not a capability, so it stays unclassified
      *                       rather than carrying a meaningless Bloom level.
-     * @param subSkills      the tier-2 goals, in order.
-     * @param knowledge      the tier-3 goals with the sub-skill each one hangs under, or
-     *                       {@code null} for "hang directly on the terminal".
+     * @param subSkills      the skill goals assigned to this competency, in order.
      */
     private record PlannedCompetency(String text, String shortLabel, TaxonomyClassification classification,
-                                     List<LearningGoal> subSkills,
-                                     List<PlannedKnowledge> knowledge) {}
-
-    /** One knowledge goal and the sub-skill it underpins ({@code null} → hang on the terminal). */
-    private record PlannedKnowledge(LearningGoal goal, LearningGoal parentSubSkill) {}
+                                     List<LearningGoal> subSkills) {}
 
     /**
-     * Turns the per-goal assignment into the tree's shape, running the tier-2/3 expansion call for
-     * every competency that has sub-skills. Goals the assignment left unplaced are gathered into a
-     * single catch-all competency rather than force-fitted under a competency they do not serve —
+     * Turns the per-skill assignment into the tree's shape. Goals the assignment left unplaced are
+     * gathered into a single catch-all competency rather than force-fitted under a competency they do not serve —
      * the client only renders goals reachable from a terminal, so dropping them would make them
      * invisible, and picking a "nearest" terminal would just restate the force-fit this whole split
      * exists to remove.
@@ -932,59 +993,6 @@ public class ExtractionRunner {
         List<TaxonomyClassification> classifications =
                 safeClassifyBatch(texts.subList(0, classifiableCount), modelOverride);
 
-        // Split every competency's goals into the two tiers, and expand the ones that have both.
-        List<List<LearningGoal>> subSkillsPer = new ArrayList<>();
-        List<List<LearningGoal>> knowledgePer = new ArrayList<>();
-        List<CompetencyTreeSynthesizer.ExpansionInput> expansionInputs = new ArrayList<>();
-        List<Integer> expansionCompetencyIndices = new ArrayList<>();
-        for (int ci = 0; ci < goalsByCompetency.size(); ci++) {
-            List<LearningGoal> assigned = goalsByCompetency.get(ci);
-            List<LearningGoal> subSkills = assigned.stream()
-                    .filter(g -> SUB_SKILL_BLOOM.contains(g.getBloomLevel()))
-                    .toList();
-            List<LearningGoal> knowledge = assigned.stream()
-                    .filter(g -> !SUB_SKILL_BLOOM.contains(g.getBloomLevel()))
-                    .toList();
-            subSkillsPer.add(subSkills);
-            knowledgePer.add(knowledge);
-            if (subSkills.isEmpty() || knowledge.isEmpty()) {
-                // Nothing to arrange: a competency with no doing-capability keeps its knowledge on
-                // the terminal (degenerate two-tier branch), and one with no knowledge needs no call.
-                continue;
-            }
-            expansionCompetencyIndices.add(ci);
-            expansionInputs.add(new CompetencyTreeSynthesizer.ExpansionInput(
-                    texts.get(ci),
-                    subSkills.stream().map(LearningGoal::getText).toList(),
-                    knowledge.stream().map(LearningGoal::getText).toList()));
-        }
-
-        // Call 3 — arrange knowledge under sub-skills for all competencies at once.
-        List<CompetencyExpansion> expansions;
-        try {
-            expansions = competencyTreeSynthesizer.expandAll(expansionInputs, modelOverride);
-        } catch (RuntimeException ex) {
-            log.warn("Course-wide competency expansion failed, attaching knowledge to terminals: {}",
-                    ex.getMessage());
-            expansions = List.of();
-        }
-        Map<Integer, CompetencyExpansion> expansionsByInput = new LinkedHashMap<>();
-        if (expansions != null) {
-            for (CompetencyExpansion expansion : expansions) {
-                if (expansion != null && expansion.competencyIndex() >= 0
-                        && expansion.competencyIndex() < expansionInputs.size()) {
-                    expansionsByInput.putIfAbsent(expansion.competencyIndex(), expansion);
-                }
-            }
-        }
-        Map<Integer, CompetencyExpansion> expansionByCompetency = new LinkedHashMap<>();
-        for (int inputIndex = 0; inputIndex < expansionCompetencyIndices.size(); inputIndex++) {
-            CompetencyExpansion expansion = expansionsByInput.get(inputIndex);
-            if (expansion != null) {
-                expansionByCompetency.put(expansionCompetencyIndices.get(inputIndex), expansion);
-            }
-        }
-
         List<PlannedCompetency> planned = new ArrayList<>();
         for (int ci = 0; ci < goalsByCompetency.size(); ci++) {
             if (goalsByCompetency.get(ci).isEmpty()) {
@@ -992,35 +1000,18 @@ public class ExtractionRunner {
                 // toward it. Persisting it would put a childless node at the top of the tree.
                 continue;
             }
-            List<LearningGoal> subSkills = subSkillsPer.get(ci);
-            List<LearningGoal> knowledge = knowledgePer.get(ci);
-            Map<LearningGoal, LearningGoal> parents = new IdentityHashMap<>();
-            CompetencyExpansion expansion = expansionByCompetency.get(ci);
-            if (expansion != null) {
-                for (CompetencyExpansion.KnowledgeLink link : expansion.knowledge()) {
-                    if (link == null
-                            || link.knowledgeIndex() < 0 || link.knowledgeIndex() >= knowledge.size()
-                            || link.subSkillIndex() < 0 || link.subSkillIndex() >= subSkills.size()) {
-                        continue;
-                    }
-                    parents.putIfAbsent(knowledge.get(link.knowledgeIndex()),
-                            subSkills.get(link.subSkillIndex()));
-                }
-            }
-            List<PlannedKnowledge> plannedKnowledge = knowledge.stream()
-                    .map(g -> new PlannedKnowledge(g, parents.get(g)))
-                    .toList();
+            List<LearningGoal> subSkills = goalsByCompetency.get(ci);
             planned.add(new PlannedCompetency(texts.get(ci), labels.get(ci),
                     ci < classifiableCount ? classifications.get(ci) : null,
-                    subSkills, plannedKnowledge));
+                    subSkills));
         }
         return new CompetencyTreePlan(planned, unmatched.size());
     }
 
     /**
      * Writes a planned tree: the {@code COMPETENCY} root, one terminal goal per competency, and the
-     * CONTRIBUTES_TO edges threading knowledge → sub-skill → terminal. All LLM work is already done
-     * by the time this runs.
+     * skill → terminal CONTRIBUTES_TO edges. Knowledge → skill edges were created during extraction.
+     * All LLM work is already done by the time this runs.
      */
     private void persistCompetencyTree(Course course, CompetencyTreePlan plan) {
         HierarchyNode competencyRoot = hierarchyNodeRepository.save(
@@ -1044,10 +1035,6 @@ public class ExtractionRunner {
             PlannedCompetency competency = plan.competencies().get(ci);
             LearningGoal terminal = terminalGoals.get(ci);
             linkContributors(competency.subSkills(), terminal);
-            for (PlannedKnowledge knowledge : competency.knowledge()) {
-                linkContributors(List.of(knowledge.goal()),
-                        knowledge.parentSubSkill() == null ? terminal : knowledge.parentSubSkill());
-            }
         }
     }
 
@@ -1074,9 +1061,9 @@ public class ExtractionRunner {
         // Flatten goals while remembering each one's owning chunk, so classifications map back to the
         // right document + hierarchy node after the (order-preserving) batch calls.
         List<ChunkExtraction> owners = new ArrayList<>();
-        List<ExtractedGoal> goals = new ArrayList<>();
+        List<SessionGoal> goals = new ArrayList<>();
         for (ChunkExtraction de : extractions) {
-            for (ExtractedGoal e : de.goals()) {
+            for (SessionGoal e : de.goals()) {
                 owners.add(de);
                 goals.add(e);
             }
@@ -1093,7 +1080,8 @@ public class ExtractionRunner {
             for (int start = 0; start < goals.size(); start += batchSize) {
                 int from = start;
                 int to = Math.min(start + batchSize, goals.size());
-                List<String> texts = goals.subList(from, to).stream().map(ExtractedGoal::text).toList();
+                List<String> texts = goals.subList(from, to).stream()
+                        .map(e -> e.extracted().text()).toList();
                 futures.add(CompletableFuture.supplyAsync(
                         () -> {
                             List<TaxonomyClassification> result = safeClassifyBatch(texts, modelOverride);
@@ -1108,8 +1096,9 @@ public class ExtractionRunner {
             for (CompletableFuture<List<TaxonomyClassification>> future : futures) {
                 List<TaxonomyClassification> batch = future.join();
                 for (TaxonomyClassification c : batch) {
+                    SessionGoal goal = goals.get(i);
                     classified.add(new ClassifiedGoal(owners.get(i).document(), owners.get(i).node(),
-                            goals.get(i), c));
+                            goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(), c));
                     i++;
                 }
             }
@@ -1208,6 +1197,128 @@ public class ExtractionRunner {
         }
     }
 
+    private SourcePageResolver.Resolution resolveDirectSource(Document document, Unit unit,
+                                                               SourceLineSelection selection) {
+        String rawText = document.getRawText();
+        if (rawText == null || unit == null || selection.startLine() == null || selection.endLine() == null) {
+            log.info("Rejected source line selection [{}..{}] in document {}: selection incomplete",
+                    selection.startLine(), selection.endLine(), document.getId());
+            return noneResolution();
+        }
+
+        int unitStart = Math.max(0, Math.min(unit.start(), rawText.length()));
+        int unitEnd = Math.max(unitStart, Math.min(unit.end(), rawText.length()));
+        String sessionText = rawText.substring(unitStart, unitEnd);
+        NumberedLines numberedLines = NumberedLines.of(sessionText);
+        Optional<NumberedLines.Span> span = numberedLines.span(selection.startLine(), selection.endLine());
+        if (span.isEmpty()) {
+            log.info("Rejected source line selection [{}..{}] in document {}: {}",
+                    selection.startLine(), selection.endLine(), document.getId(),
+                    numberedLines.rejectionReason(selection.startLine(), selection.endLine()));
+            return noneResolution();
+        }
+
+        int matchStart = unitStart + span.get().start();
+        int matchEnd = unitStart + span.get().end();
+        Integer page = SourcePageResolver.pageForOffset(document.getPageOffsets(), matchStart).orElse(null);
+        return new SourcePageResolver.Resolution(page, SourceMatchQuality.EXACT_IN_SESSION,
+                matchStart, matchEnd);
+    }
+
+    private static SourcePageResolver.Resolution noneResolution() {
+        return new SourcePageResolver.Resolution(null, SourceMatchQuality.NONE, null, null);
+    }
+
+    private void persistGoalSource(LearningGoal goal, Document document, String modelSnippet,
+                                   SourcePageResolver.Resolution resolution,
+                                   Map<Long, PDDocument> pdfDocuments,
+                                   Set<Long> attemptedPdfDocuments) {
+        String rawText = document.getRawText();
+        String persistedSnippet = modelSnippet;
+        if (resolution.grounded() && resolution.matchStart() != null && resolution.matchEnd() != null
+                && rawText != null && resolution.matchStart() >= 0
+                && resolution.matchStart() <= resolution.matchEnd()
+                && resolution.matchEnd() <= rawText.length()) {
+            persistedSnippet = rawText.substring(resolution.matchStart(), resolution.matchEnd());
+        }
+        GoalSource source = new GoalSource(goal, document, persistedSnippet,
+                resolution.page(), resolution.quality());
+        if (resolution.grounded() && resolution.page() != null
+                && resolution.matchStart() != null && resolution.matchEnd() != null
+                && document.getPageOffsets() != null
+                && resolution.page() >= 1
+                && resolution.page() < document.getPageOffsets().length) {
+            PDDocument pdf = openPdf(document, pdfDocuments, attemptedPdfDocuments);
+            if (pdf != null) {
+                int pageStart = document.getPageOffsets()[resolution.page() - 1];
+                int pageLocalStart = resolution.matchStart() - pageStart;
+                int pageLocalEnd = resolution.matchEnd() - pageStart;
+                try {
+                    List<HighlightRect> rects = highlightGeometryService.findHighlightRects(
+                            pdf, resolution.page(), pageLocalStart, pageLocalEnd);
+                    // An empty result is "no geometry", not "highlight nothing": leave the
+                    // column null so the client can fall back to its own text match.
+                    source.setHighlightRects(rects.isEmpty() ? null : rects);
+                } catch (IOException | RuntimeException geometryFailure) {
+                    log.warn("Could not compute source highlight geometry for document {}: {}",
+                            document.getId(), geometryFailure.getMessage());
+                }
+            }
+        }
+        goalSourceRepository.save(source);
+    }
+
+    private PDDocument openPdf(Document document, Map<Long, PDDocument> pdfDocuments,
+                               Set<Long> attemptedPdfDocuments) {
+        Long documentId = document.getId();
+        if (!attemptedPdfDocuments.add(documentId)) {
+            return pdfDocuments.get(documentId);
+        }
+        if (!isPdf(document)) {
+            pdfDocuments.put(documentId, null);
+            return null;
+        }
+        try {
+            byte[] bytes = documentContentRepository.findById(documentId)
+                    .map(content -> content.getBytes())
+                    .orElse(null);
+            if (bytes == null) {
+                log.debug("No PDF bytes available for document {}, skipping source geometry", documentId);
+                pdfDocuments.put(documentId, null);
+                return null;
+            }
+            PDDocument pdf = Loader.loadPDF(bytes);
+            pdfDocuments.put(documentId, pdf);
+            return pdf;
+        } catch (IOException | RuntimeException loadFailure) {
+            log.warn("Could not open PDF document {} for source geometry: {}",
+                    documentId, loadFailure.getMessage());
+            pdfDocuments.put(documentId, null);
+            return null;
+        }
+    }
+
+    private static void closePdfDocuments(Map<Long, PDDocument> pdfDocuments) {
+        for (PDDocument pdf : pdfDocuments.values()) {
+            if (pdf == null) {
+                continue;
+            }
+            try {
+                pdf.close();
+            } catch (IOException closeFailure) {
+                log.warn("Could not close PDF document used for source geometry: {}",
+                        closeFailure.getMessage());
+            }
+        }
+    }
+
+    private static boolean isPdf(Document document) {
+        return (document.getContentType() != null
+                && document.getContentType().toLowerCase(Locale.ROOT).contains("pdf"))
+                || (document.getFilename() != null
+                && document.getFilename().toLowerCase(Locale.ROOT).endsWith(".pdf"));
+    }
+
     /**
      * Creates one SESSION/EXERCISE hierarchy node per persisted structural section of the document
      * (each a character range of the raw text), under the course's module root. A document with no
@@ -1257,11 +1368,20 @@ public class ExtractionRunner {
     private record SessionUnit(Document document, HierarchyNode node, String title, String text) {
     }
 
-    private record ChunkExtraction(Document document, HierarchyNode node, List<ExtractedGoal> goals) {
+    private record ChunkExtraction(Document document, HierarchyNode node, List<SessionGoal> goals) {
+    }
+
+    private record SessionGoal(ExtractedGoal extracted, GoalRole role, ExtractedGoal parentSkill,
+                               SourceLineSelection sourceLineSelection) {
     }
 
     private record ClassifiedGoal(Document document, HierarchyNode node, ExtractedGoal extracted,
+                                  GoalRole role, ExtractedGoal parentSkill,
+                                  SourceLineSelection sourceLineSelection,
                                   TaxonomyClassification classification) {
+    }
+
+    private record SourceLineSelection(Integer startLine, Integer endLine) {
     }
 
     private record EnrichedGoal(ClassifiedGoal classified, float[] embedding) {

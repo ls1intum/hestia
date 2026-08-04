@@ -19,7 +19,16 @@ public interface LearningGoalRepository extends JpaRepository<LearningGoal, Long
 
     Page<LearningGoal> findByCourseIdAndStatus(Long courseId, GoalStatus status, Pageable pageable);
 
+    Page<LearningGoal> findByCourseIdAndRole(Long courseId, GoalRole role, Pageable pageable);
+
+    Page<LearningGoal> findByCourseIdAndStatusAndRole(Long courseId, GoalStatus status, GoalRole role,
+                                                       Pageable pageable);
+
     List<LearningGoal> findByCourseIdAndStatus(Long courseId, GoalStatus status);
+
+    List<LearningGoal> findByCourseIdAndRole(Long courseId, GoalRole role);
+
+    List<LearningGoal> findByCourseIdAndStatusAndRole(Long courseId, GoalStatus status, GoalRole role);
 
     List<LearningGoal> findByCourseIdAndHierarchyNodeIsNotNull(Long courseId);
 }
