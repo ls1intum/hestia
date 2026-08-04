@@ -237,9 +237,12 @@ export default function SourcePdfPane({
     canvas.height = Math.floor(viewport.height * outputScale);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    const highlights = source.highlightRects?.length
-      ? convertHighlightRects(source.highlightRects, viewport)
-      : findHighlightRects(loadedPage.textItems, source.snippet, viewport);
+    const highlights =
+      source.evidenceKind === "FIGURE"
+        ? []
+        : source.highlightRects?.length
+          ? convertHighlightRects(source.highlightRects, viewport)
+          : findHighlightRects(loadedPage.textItems, source.snippet, viewport);
     setRenderedPage({
       width: viewport.width,
       height: viewport.height,
@@ -268,7 +271,7 @@ export default function SourcePdfPane({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [loadedPage, paneWidth, source.highlightRects, source.snippet]);
+  }, [loadedPage, paneWidth, source.evidenceKind, source.highlightRects, source.snippet]);
 
   useEffect(() => {
     if (renderedPage?.highlights.length) {
@@ -284,6 +287,18 @@ export default function SourcePdfPane({
             {source.displayName ?? source.filename ?? "Source document"}
           </p>
           <p className="text-xs text-hestia-text-muted">p. {pageNumber}</p>
+          {source.evidenceKind === "FIGURE" && (
+            <div className="mt-1.5 max-w-[22rem]">
+              <span className="inline-flex rounded-full border border-hestia-primary/40 bg-hestia-primary-muted px-1.5 py-0.5 text-[10px] font-medium text-hestia-primary">
+                Figure-derived (AI description)
+              </span>
+              {source.figureDescription && (
+                <p className="mt-1 line-clamp-2 text-xs leading-snug text-hestia-text-muted">
+                  {source.figureDescription}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <button
           type="button"

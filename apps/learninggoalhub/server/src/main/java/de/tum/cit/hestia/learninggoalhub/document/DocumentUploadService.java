@@ -52,14 +52,17 @@ public class DocumentUploadService {
             for (int i = 0; i < sections.size(); i++) {
                 DocumentStructureService.SectionSpan s = sections.get(i);
                 documentSectionRepository.save(
-                        new DocumentSection(document, i, s.title(), s.startOffset(), s.endOffset()));
+                        new DocumentSection(document, i, s.title(), s.startOffset(), s.endOffset(),
+                                s.startPage(), s.endPage()));
             }
             return;
         }
         String title = titleService.deriveTitle(bytes, contentType, filename);
         if (title != null) {
             int end = parsed.rawText() == null ? 0 : parsed.rawText().length();
-            documentSectionRepository.save(new DocumentSection(document, 0, title, 0, end));
+            int pageCount = parsed.pageOffsets() == null ? 0 : parsed.pageOffsets().length - 1;
+            documentSectionRepository.save(new DocumentSection(document, 0, title, 0, end,
+                    pageCount > 0 ? 1 : null, pageCount > 0 ? pageCount : null));
         }
     }
 }

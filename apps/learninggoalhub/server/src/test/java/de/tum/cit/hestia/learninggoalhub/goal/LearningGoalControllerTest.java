@@ -24,6 +24,8 @@ import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
@@ -73,6 +75,9 @@ class LearningGoalControllerTest {
     private GoalSourceRepository goalSourceRepository;
 
     @Autowired
+    private PageDescriptionRepository pageDescriptionRepository;
+
+    @Autowired
     private HierarchyNodeRepository hierarchyRepository;
 
     @Autowired
@@ -116,11 +121,30 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.content[1].sources[0].filename").value("lecture.pdf"))
                 .andExpect(jsonPath("$.content[1].sources[0].contentAvailable").value(true))
                 .andExpect(jsonPath("$.content[1].sources[0].grounded").value(false))
+                .andExpect(jsonPath("$.content[1].sources[0].evidenceKind").value("UNSUPPORTED"))
                 // goals without hierarchy/taxonomy/relationships expose null/empty, not missing keys
                 .andExpect(jsonPath("$.content[0].hierarchy").doesNotExist())
                 .andExpect(jsonPath("$.content[0].bloomLevel").doesNotExist())
                 .andExpect(jsonPath("$.content[0].soloLevel").doesNotExist())
                 .andExpect(jsonPath("$.content[0].relationships", Matchers.hasSize(0)));
+    }
+
+    @Test
+    void joinsFigureDescriptionIntoFigureSourceResponse() throws Exception {
+        Course course = courseRepository.save(new Course("Figure source API"));
+        Document document = documentRepository.save(new Document(
+                course, "figures.pdf", "application/pdf", "text"));
+        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Explain the diagram.", GoalKind.IMPLICIT));
+        goalSourceRepository.save(GoalSource.figure(goal, document, 3));
+        pageDescriptionRepository.save(new PageDescription(document, 3, "A diagram shows the data flow.", "vision"));
+
+        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId()).param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].sources[0].evidenceKind").value("FIGURE"))
+                .andExpect(jsonPath("$.content[0].sources[0].page").value(3))
+                .andExpect(jsonPath("$.content[0].sources[0].snippet").value(""))
+                .andExpect(jsonPath("$.content[0].sources[0].figureDescription")
+                        .value("A diagram shows the data flow."));
     }
 
     @Test

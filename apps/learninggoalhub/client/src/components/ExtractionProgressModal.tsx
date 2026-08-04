@@ -29,6 +29,7 @@ type SkillSuggestion = {
 
 /** Ordered list of phases the backend walks through, with their display labels. */
 const PHASES: { key: Phase; label: string }[] = [
+  { key: "DESCRIBING_FIGURES", label: "Understanding figures" },
   { key: "OUTLINING", label: "Outlining documents" },
   { key: "PARSING", label: "Parsing documents" },
   { key: "EXTRACTING", label: "Extracting learning goals" },
@@ -291,6 +292,9 @@ export default function ExtractionProgressModal({
               <Stat label="Documents" value={result?.documentsProcessed} />
               <Stat label="Goals created" value={result?.goalsCreated} />
               <Stat label="Terminal competencies" value={result?.terminalCompetencies} />
+              <Stat label="Text sources" value={result?.textSources} />
+              <Stat label="Figure sources" value={result?.figureSources} />
+              <Stat label="Unsupported" value={result?.unsupportedSources} />
             </dl>
             <div className="mt-6 flex justify-end">
               <Button size="lg" onClick={() => setStep(2)}>

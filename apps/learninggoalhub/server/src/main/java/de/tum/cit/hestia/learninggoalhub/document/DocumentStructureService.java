@@ -43,8 +43,13 @@ public class DocumentStructureService {
     public record ParsedDocument(String rawText, List<SectionSpan> sections, int[] pageOffsets) {
     }
 
-    /** One detected section: a title and the half-open {@code [startOffset, endOffset)} into rawText. */
-    public record SectionSpan(String title, int startOffset, int endOffset) {
+    /** One detected section: its raw-text range and its 1-based inclusive page range. */
+    public record SectionSpan(String title, int startOffset, int endOffset,
+                              Integer startPage, Integer endPage) {
+
+        public SectionSpan(String title, int startOffset, int endOffset) {
+            this(title, startOffset, endOffset, null, null);
+        }
     }
 
     public ParsedDocument parse(byte[] bytes, String contentType, String filename) {
@@ -130,7 +135,7 @@ public class DocumentStructureService {
      */
     private List<SectionSpan> sectionsFromOutline(PDDocument doc, PDDocumentOutline outline,
                                                   int[] pageStart, int textLength) {
-        record Marker(int offset, String title) {
+        record Marker(int offset, String title, int page) {
         }
         List<Marker> markers = new ArrayList<>();
         for (PDOutlineItem item = outline.getFirstChild(); item != null; item = item.getNextSibling()) {
@@ -148,7 +153,7 @@ public class DocumentStructureService {
             if (!markers.isEmpty() && markers.get(markers.size() - 1).offset() == offset) {
                 continue;
             }
-            markers.add(new Marker(offset, title));
+            markers.add(new Marker(offset, title, pageIndex + 1));
         }
         if (markers.isEmpty()) {
             return List.of();
@@ -158,7 +163,13 @@ public class DocumentStructureService {
         for (int i = 0; i < markers.size(); i++) {
             int start = i == 0 ? 0 : markers.get(i).offset();
             int end = i + 1 < markers.size() ? markers.get(i + 1).offset() : textLength;
-            sections.add(new SectionSpan(markers.get(i).title(), start, end));
+            // The first section absorbs everything before its bookmark (offset 0), so its page range
+            // starts at page 1 for the same reason.
+            int startPage = i == 0 ? 1 : markers.get(i).page();
+            int endPage = i + 1 < markers.size()
+                    ? markers.get(i + 1).page() - 1
+                    : pageStart.length - 1;
+            sections.add(new SectionSpan(markers.get(i).title(), start, end, startPage, endPage));
         }
         return sections;
     }
