@@ -1193,6 +1193,20 @@
               "NONE"
             ]
           },
+          "evidenceKind": {
+            "type": "string",
+            "enum": [
+              "TEXT",
+              "FIGURE",
+              "UNSUPPORTED"
+            ]
+          },
+          "figureDescription": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "highlightRects": {
             "type": [
               "array",
@@ -1389,6 +1403,18 @@
             "format": "int32"
           },
           "terminalCompetencies": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "textSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "figureSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unsupportedSources": {
             "type": "integer",
             "format": "int32"
           }
@@ -1683,6 +1709,7 @@
           "phase": {
             "type": "string",
             "enum": [
+              "DESCRIBING_FIGURES",
               "OUTLINING",
               "PARSING",
               "EXTRACTING",

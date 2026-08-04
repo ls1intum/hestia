@@ -10,11 +10,15 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceId;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
@@ -34,6 +38,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -68,6 +73,8 @@ public class ExtractionRunner {
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
     private final DocumentContentRepository documentContentRepository;
+    private final PageDescriptionService pageDescriptionService;
+    private final PageDescriptionRepository pageDescriptionRepository;
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
@@ -94,6 +101,8 @@ public class ExtractionRunner {
     public ExtractionRunner(CourseRepository courseRepository,
                             DocumentRepository documentRepository,
                             DocumentContentRepository documentContentRepository,
+                            PageDescriptionService pageDescriptionService,
+                            PageDescriptionRepository pageDescriptionRepository,
                             LearningGoalRepository goalRepository,
                             GoalSourceRepository goalSourceRepository,
                             GoalRelationshipRepository goalRelationshipRepository,
@@ -119,6 +128,8 @@ public class ExtractionRunner {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
+        this.pageDescriptionService = pageDescriptionService;
+        this.pageDescriptionRepository = pageDescriptionRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
@@ -201,6 +212,26 @@ public class ExtractionRunner {
     private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
                                     String courseLanguageName, String dominantLanguage,
                                     ExtractionProgressTracker.Run run) {
+        run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
+        for (Document document : documents) {
+            try {
+                documentContentRepository.findById(document.getId())
+                        .map(content -> content.getBytes())
+                        .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(document, bytes));
+            } catch (RuntimeException e) {
+                log.warn("Could not prepare figure descriptions for document {}: {}",
+                        document.getId(), e.getMessage());
+            }
+            run.increment();
+        }
+        Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument = documents.stream()
+                .collect(Collectors.toMap(Document::getId,
+                        document -> pageDescriptionRepository.findByDocumentId(document.getId()).stream()
+                                .sorted(Comparator.comparingInt(PageDescription::getPage))
+                                .map(description -> new PageDescriptionService.FigureDescription(
+                                        description.getPage(), description.getDescription()))
+                                .toList()));
+
         // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
         // one module root. Sessions come from the document's persisted structural sections (PDF
         // bookmarks, detected deterministically at upload); a document with none is one session.
@@ -229,7 +260,9 @@ public class ExtractionRunner {
                 for (Unit unit : unitsByDocument.getOrDefault(d.getId(), List.of())) {
                     String unitText = text.substring(unit.start(), Math.min(unit.end(), text.length()));
                     if (!unitText.isBlank()) {
-                        sessions.add(new SessionUnit(d, unit.node(), unit.node().getLabel(), unitText));
+                        sessions.add(new SessionUnit(d, unit.node(), unit.node().getLabel(), unitText,
+                                figureDescriptionsFor(d, unit,
+                                        figuresByDocument.getOrDefault(d.getId(), List.of()))));
                     }
                 }
             }
@@ -246,6 +279,9 @@ public class ExtractionRunner {
 
         run.phase(ExtractionProgressTracker.Phase.PERSISTING, enriched.size());
         int goalsCreated = 0;
+        int textSources = 0;
+        int figureSources = 0;
+        int unsupportedSources = 0;
         Map<ExtractedGoal, LearningGoal> persistedGoals = new IdentityHashMap<>();
         Map<Long, PDDocument> pdfDocuments = new HashMap<>();
         Set<Long> attemptedPdfDocuments = new HashSet<>();
@@ -277,10 +313,13 @@ public class ExtractionRunner {
                     HierarchyNode sourceNode = eg.classified().node();
                     Unit unit = sourceNode == null ? null : unitsByNode.get(sourceNode.getId());
                     SourcePageResolver.Resolution resolution;
+                    EvidenceKind evidenceKind;
                     String modelSnippet;
                     if (eg.classified().sourceLineSelection() != null) {
-                        resolution = resolveDirectSource(document, unit,
-                                eg.classified().sourceLineSelection());
+                        DirectSourceResolution direct = resolveDirectSource(document, unit,
+                                eg.classified().sourceLineSelection(), eg.classified().figures());
+                        resolution = direct.resolution();
+                        evidenceKind = direct.evidenceKind();
                         modelSnippet = "";
                     } else {
                         String rawText = document.getRawText();
@@ -290,10 +329,16 @@ public class ExtractionRunner {
                         resolution = SourcePageResolver.resolve(
                                 rawText, document.getPageOffsets(), unitStart, unitEnd,
                                 e.sourceSnippet());
+                        evidenceKind = resolution.grounded() ? EvidenceKind.TEXT : EvidenceKind.UNSUPPORTED;
                         modelSnippet = e.sourceSnippet();
                     }
-                    persistGoalSource(target, document, modelSnippet, resolution,
+                    persistGoalSource(target, document, modelSnippet, resolution, evidenceKind,
                             pdfDocuments, attemptedPdfDocuments);
+                    switch (evidenceKind) {
+                        case TEXT -> textSources++;
+                        case FIGURE -> figureSources++;
+                        case UNSUPPORTED -> unsupportedSources++;
+                    }
                 }
 
                 // Only fallback outcomes have raw candidates to connect to their surfaced goal.
@@ -330,7 +375,8 @@ public class ExtractionRunner {
         // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
         CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride, courseLanguageName);
 
-        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies());
+        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies(),
+                textSources, figureSources, unsupportedSources);
     }
 
     /** Runs one direct call per small session, or the complete legacy pipeline for oversized sessions. */
@@ -344,8 +390,12 @@ public class ExtractionRunner {
                         String languageName = LanguageUtils.englishName(resolveLanguage(
                                 course, session.document().getLanguage(), dominantLanguage));
                         if (usesDirectPath(session.text())) {
-                            List<ExtractedSkill> skills = sessionExtractionService.extract(
-                                    session.title(), session.text(), languageName, modelOverride);
+                            List<ExtractedSkill> skills = session.figures().isEmpty()
+                                    ? sessionExtractionService.extract(
+                                            session.title(), session.text(), languageName, modelOverride)
+                                    : sessionExtractionService.extract(
+                                            session.title(), session.text(), languageName, modelOverride,
+                                            session.figures());
                             if (skills != null && skills.size() > 7) {
                                 log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
                                         session.title(), skills.size());
@@ -474,18 +524,20 @@ public class ExtractionRunner {
                             skill.text(), skill.shortLabel(), skill.kind(),
                             "");
                     goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
-                            new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine())));
+                            new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine(),
+                                    skill.sourceFigure())));
                     for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
                         ExtractedGoal knowledgeGoal = new ExtractedGoal(
                                 knowledge.text(), knowledge.shortLabel(), knowledge.kind(),
                                 "");
                         goals.add(new SessionGoal(knowledgeGoal, GoalRole.KNOWLEDGE, skillGoal,
-                                new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine())));
+                                new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
+                                        knowledge.sourceFigure())));
                     }
                 }
                 if (!goals.isEmpty()) {
                     sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(),
-                            goals));
+                            goals, extraction.figures()));
                 }
                 continue;
             }
@@ -508,7 +560,7 @@ public class ExtractionRunner {
                 provenance.put(outcome, supporters);
             }
             if (!outcomes.isEmpty()) {
-                sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(), outcomes));
+                sessionGoals.add(new ChunkExtraction(extraction.document(), extraction.node(), outcomes, List.of()));
             }
         }
         return new SessionAssembly(sessionGoals, provenance);
@@ -561,16 +613,18 @@ public class ExtractionRunner {
     /** One session's direct result or its legacy candidates and reduced outcomes. */
     private record SessionExtraction(Document document, HierarchyNode node, boolean direct,
                                      List<ExtractedSkill> skills, List<ExtractedGoal> candidates,
-                                     List<ConsolidatedGoal> consolidated) {
+                                     List<ConsolidatedGoal> consolidated,
+                                     List<PageDescriptionService.FigureDescription> figures) {
 
         private static SessionExtraction direct(SessionUnit session, List<ExtractedSkill> skills) {
-            return new SessionExtraction(session.document(), session.node(), true, skills, List.of(), List.of());
+            return new SessionExtraction(session.document(), session.node(), true, skills, List.of(), List.of(),
+                    session.figures());
         }
 
         private static SessionExtraction fallback(SessionUnit session, List<ExtractedGoal> candidates,
                                                   List<ConsolidatedGoal> consolidated) {
             return new SessionExtraction(session.document(), session.node(), false, List.of(), candidates,
-                    consolidated);
+                    consolidated, List.of());
         }
     }
 
@@ -1098,7 +1152,8 @@ public class ExtractionRunner {
                 for (TaxonomyClassification c : batch) {
                     SessionGoal goal = goals.get(i);
                     classified.add(new ClassifiedGoal(owners.get(i).document(), owners.get(i).node(),
-                            goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(), c));
+                            goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
+                            owners.get(i).figures(), c));
                     i++;
                 }
             }
@@ -1197,32 +1252,43 @@ public class ExtractionRunner {
         }
     }
 
-    private SourcePageResolver.Resolution resolveDirectSource(Document document, Unit unit,
-                                                               SourceLineSelection selection) {
+    private DirectSourceResolution resolveDirectSource(
+            Document document, Unit unit, SourceLineSelection selection,
+            List<PageDescriptionService.FigureDescription> figures) {
         String rawText = document.getRawText();
-        if (rawText == null || unit == null || selection.startLine() == null || selection.endLine() == null) {
-            log.info("Rejected source line selection [{}..{}] in document {}: selection incomplete",
-                    selection.startLine(), selection.endLine(), document.getId());
-            return noneResolution();
-        }
-
-        int unitStart = Math.max(0, Math.min(unit.start(), rawText.length()));
-        int unitEnd = Math.max(unitStart, Math.min(unit.end(), rawText.length()));
-        String sessionText = rawText.substring(unitStart, unitEnd);
-        NumberedLines numberedLines = NumberedLines.of(sessionText);
-        Optional<NumberedLines.Span> span = numberedLines.span(selection.startLine(), selection.endLine());
-        if (span.isEmpty()) {
+        if (rawText != null && unit != null && selection.startLine() != null && selection.endLine() != null) {
+            int unitStart = Math.max(0, Math.min(unit.start(), rawText.length()));
+            int unitEnd = Math.max(unitStart, Math.min(unit.end(), rawText.length()));
+            String sessionText = rawText.substring(unitStart, unitEnd);
+            NumberedLines numberedLines = NumberedLines.of(sessionText);
+            Optional<NumberedLines.Span> span = numberedLines.span(selection.startLine(), selection.endLine());
+            if (span.isPresent()) {
+                int matchStart = unitStart + span.get().start();
+                int matchEnd = unitStart + span.get().end();
+                Integer page = SourcePageResolver.pageForOffset(document.getPageOffsets(), matchStart).orElse(null);
+                return new DirectSourceResolution(
+                        new SourcePageResolver.Resolution(page, SourceMatchQuality.EXACT_IN_SESSION,
+                                matchStart, matchEnd), EvidenceKind.TEXT);
+            }
             log.info("Rejected source line selection [{}..{}] in document {}: {}",
                     selection.startLine(), selection.endLine(), document.getId(),
                     numberedLines.rejectionReason(selection.startLine(), selection.endLine()));
-            return noneResolution();
+        } else {
+            log.info("Rejected source line selection [{}..{}] in document {}: selection incomplete",
+                    selection.startLine(), selection.endLine(), document.getId());
         }
 
-        int matchStart = unitStart + span.get().start();
-        int matchEnd = unitStart + span.get().end();
-        Integer page = SourcePageResolver.pageForOffset(document.getPageOffsets(), matchStart).orElse(null);
-        return new SourcePageResolver.Resolution(page, SourceMatchQuality.EXACT_IN_SESSION,
-                matchStart, matchEnd);
+        if (selection.figure() != null && selection.figure() >= 0 && selection.figure() < figures.size()) {
+            PageDescriptionService.FigureDescription figure = figures.get(selection.figure());
+            return new DirectSourceResolution(
+                    new SourcePageResolver.Resolution(figure.page(), SourceMatchQuality.NONE, null, null),
+                    EvidenceKind.FIGURE);
+        }
+        if (selection.figure() != null) {
+            log.info("Rejected source figure index {} in document {}: outside the {} offered figure descriptions",
+                    selection.figure(), document.getId(), figures.size());
+        }
+        return new DirectSourceResolution(noneResolution(), EvidenceKind.UNSUPPORTED);
     }
 
     private static SourcePageResolver.Resolution noneResolution() {
@@ -1231,6 +1297,7 @@ public class ExtractionRunner {
 
     private void persistGoalSource(LearningGoal goal, Document document, String modelSnippet,
                                    SourcePageResolver.Resolution resolution,
+                                   EvidenceKind evidenceKind,
                                    Map<Long, PDDocument> pdfDocuments,
                                    Set<Long> attemptedPdfDocuments) {
         String rawText = document.getRawText();
@@ -1241,8 +1308,9 @@ public class ExtractionRunner {
                 && resolution.matchEnd() <= rawText.length()) {
             persistedSnippet = rawText.substring(resolution.matchStart(), resolution.matchEnd());
         }
-        GoalSource source = new GoalSource(goal, document, persistedSnippet,
-                resolution.page(), resolution.quality());
+        GoalSource source = evidenceKind == EvidenceKind.FIGURE
+                ? GoalSource.figure(goal, document, resolution.page())
+                : new GoalSource(goal, document, persistedSnippet, resolution.page(), resolution.quality());
         if (resolution.grounded() && resolution.page() != null
                 && resolution.matchStart() != null && resolution.matchEnd() != null
                 && document.getPageOffsets() != null
@@ -1319,6 +1387,38 @@ public class ExtractionRunner {
                 && document.getFilename().toLowerCase(Locale.ROOT).endsWith(".pdf"));
     }
 
+    private static List<PageDescriptionService.FigureDescription> figureDescriptionsFor(
+            Document document, Unit unit, List<PageDescriptionService.FigureDescription> descriptions) {
+        if (descriptions.isEmpty()) {
+            return List.of();
+        }
+        if (unit.startPage() != null && unit.endPage() != null) {
+            return descriptions.stream()
+                    .filter(d -> d.page() >= unit.startPage() && d.page() <= unit.endPage())
+                    .toList();
+        }
+        int[] pageOffsets = document.getPageOffsets();
+        String rawText = document.getRawText();
+        if (pageOffsets == null || pageOffsets.length < 2 || rawText == null) {
+            return List.of();
+        }
+        int start = Math.max(0, Math.min(unit.start(), rawText.length()));
+        int end = Math.max(start, Math.min(unit.end(), rawText.length()));
+        return descriptions.stream()
+                .filter(description -> pageOverlaps(description.page(), pageOffsets, start, end))
+                .toList();
+    }
+
+    private static boolean pageOverlaps(int page, int[] pageOffsets, int sectionStart, int sectionEnd) {
+        if (page < 1 || page >= pageOffsets.length) {
+            return false;
+        }
+        int pageStart = pageOffsets[page - 1];
+        int pageEnd = pageOffsets[page];
+        return pageEnd > sectionStart && pageStart < sectionEnd
+                || pageStart == pageEnd && pageStart == sectionStart;
+    }
+
     /**
      * Creates one SESSION/EXERCISE hierarchy node per persisted structural section of the document
      * (each a character range of the raw text), under the course's module root. A document with no
@@ -1337,12 +1437,14 @@ public class ExtractionRunner {
             int end = Math.max(start, Math.min(s.getEndOffset(), text.length()));
             HierarchyNode node = hierarchyNodeRepository.save(
                     new HierarchyNode(course, moduleRoot, levelFor(s.getTitle()), s.getTitle(), document));
-            units.add(new Unit(node, start, end));
+            units.add(new Unit(node, start, end, s.getStartPage(), s.getEndPage()));
         }
         if (units.isEmpty()) {
             HierarchyNode node = hierarchyNodeRepository.save(new HierarchyNode(
                     course, moduleRoot, levelFor(document.getFilename()), document.getFilename(), document));
-            units.add(new Unit(node, 0, text.length()));
+            int pageCount = document.getPageOffsets() == null ? 0 : document.getPageOffsets().length - 1;
+            units.add(new Unit(node, 0, text.length(), pageCount > 0 ? 1 : null,
+                    pageCount > 0 ? pageCount : null));
         }
         return units;
     }
@@ -1362,13 +1464,15 @@ public class ExtractionRunner {
     }
 
     /** One session/exercise unit: its hierarchy node and the raw-text range [start, end) it covers. */
-    private record Unit(HierarchyNode node, int start, int end) {
+    private record Unit(HierarchyNode node, int start, int end, Integer startPage, Integer endPage) {
     }
 
-    private record SessionUnit(Document document, HierarchyNode node, String title, String text) {
+    private record SessionUnit(Document document, HierarchyNode node, String title, String text,
+                               List<PageDescriptionService.FigureDescription> figures) {
     }
 
-    private record ChunkExtraction(Document document, HierarchyNode node, List<SessionGoal> goals) {
+    private record ChunkExtraction(Document document, HierarchyNode node, List<SessionGoal> goals,
+                                   List<PageDescriptionService.FigureDescription> figures) {
     }
 
     private record SessionGoal(ExtractedGoal extracted, GoalRole role, ExtractedGoal parentSkill,
@@ -1378,15 +1482,25 @@ public class ExtractionRunner {
     private record ClassifiedGoal(Document document, HierarchyNode node, ExtractedGoal extracted,
                                   GoalRole role, ExtractedGoal parentSkill,
                                   SourceLineSelection sourceLineSelection,
+                                  List<PageDescriptionService.FigureDescription> figures,
                                   TaxonomyClassification classification) {
     }
 
-    private record SourceLineSelection(Integer startLine, Integer endLine) {
+    private record SourceLineSelection(Integer startLine, Integer endLine, Integer figure) {
+    }
+
+    private record DirectSourceResolution(SourcePageResolver.Resolution resolution,
+                                          EvidenceKind evidenceKind) {
     }
 
     private record EnrichedGoal(ClassifiedGoal classified, float[] embedding) {
     }
 
-    public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies) {
+    public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies,
+                                    int textSources, int figureSources, int unsupportedSources) {
+
+        public ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies) {
+            this(documentsProcessed, goalsCreated, terminalCompetencies, 0, 0, 0);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v7";
+    static final String PROMPT_VERSION = "direct-v8";
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
@@ -89,6 +90,15 @@ public class SessionExtractionService {
             ---
             """;
 
+    private static final String FIGURE_PROMPT_SUFFIX = """
+
+            Figure descriptions (AI-generated from rendered slides — NOT verbatim text):
+            ---
+            %s---
+
+            Source selection with figure descriptions: outcomes should cite sourceStartLine/sourceEndLine as before. ONLY when no numbered lines support an outcome taught by a figure may the outcome instead set sourceFigure to the [Fn] index and omit the line fields. Never cite a figure when numbered lines support the outcome, and never invent outcomes the material does not teach.
+            """;
+
     private final ChatClient chatClient;
 
     public SessionExtractionService(ChatClient.Builder chatClientBuilder) {
@@ -111,14 +121,30 @@ public class SessionExtractionService {
 
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String languageName,
                                         String modelOverride) {
+        return extract(sessionTitle, sessionText, languageName, modelOverride, List.of());
+    }
+
+    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String languageName,
+                                        String modelOverride,
+                                        List<PageDescriptionService.FigureDescription> figureDescriptions) {
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
         if (modelOverride != null && !modelOverride.isBlank()) {
             spec = spec.options(ChatOptions.builder().model(modelOverride).build());
         }
         String numberedSessionText = NumberedLines.of(sessionText).render();
+        String prompt = PROMPT_TEMPLATE.formatted(languageName, title, numberedSessionText);
+        if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
+            StringBuilder figures = new StringBuilder();
+            for (int i = 0; i < figureDescriptions.size(); i++) {
+                PageDescriptionService.FigureDescription figure = figureDescriptions.get(i);
+                figures.append("[F").append(i).append("] (page ").append(figure.page()).append(") ")
+                        .append(figure.description()).append('\n');
+            }
+            prompt += FIGURE_PROMPT_SUFFIX.formatted(figures);
+        }
         List<ExtractedSkill> skills = spec
-                .user(PROMPT_TEMPLATE.formatted(languageName, title, numberedSessionText))
+                .user(prompt)
                 .call()
                 .entity(new ParameterizedTypeReference<List<ExtractedSkill>>() {});
         return skills == null ? List.of() : skills;

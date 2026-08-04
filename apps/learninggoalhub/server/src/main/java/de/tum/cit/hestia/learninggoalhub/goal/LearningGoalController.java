@@ -8,6 +8,8 @@ import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
@@ -69,6 +71,7 @@ public class LearningGoalController {
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
     private final DocumentContentRepository documentContentRepository;
+    private final PageDescriptionRepository pageDescriptionRepository;
     private final DocumentRepository documentRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
@@ -81,6 +84,7 @@ public class LearningGoalController {
                                   LearningGoalRepository goalRepository,
                                   GoalSourceRepository goalSourceRepository,
                                   DocumentContentRepository documentContentRepository,
+                                  PageDescriptionRepository pageDescriptionRepository,
                                   DocumentRepository documentRepository,
                                   GoalRelationshipRepository goalRelationshipRepository,
                                   HierarchyNodeRepository hierarchyNodeRepository,
@@ -92,6 +96,7 @@ public class LearningGoalController {
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.documentContentRepository = documentContentRepository;
+        this.pageDescriptionRepository = pageDescriptionRepository;
         this.documentRepository = documentRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
@@ -226,11 +231,13 @@ public class LearningGoalController {
         }
         List<GoalSource> sources = goalSourceRepository.findByGoalIdIn(goalIds);
         Set<Long> contentDocumentIds = contentDocumentIds(sources);
+        Map<Long, Map<Integer, String>> figureDescriptions = figureDescriptionsBySource(sources);
         return sources.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getGoal().getId(),
                         Collectors.mapping(s -> GoalSourceResponse.from(s,
-                                contentDocumentIds.contains(s.getDocument().getId())), Collectors.toList())));
+                                contentDocumentIds.contains(s.getDocument().getId()),
+                                figureDescription(s, figureDescriptions)), Collectors.toList())));
     }
 
     private Map<Long, List<GoalRelationshipResponse>> relationshipsByGoal(List<Long> goalIds) {
@@ -624,8 +631,10 @@ public class LearningGoalController {
 
         List<GoalSource> goalSources = goalSourceRepository.findByGoalIdIn(List.of(goalId));
         Set<Long> contentDocumentIds = contentDocumentIds(goalSources);
+        Map<Long, Map<Integer, String>> figureDescriptions = figureDescriptionsBySource(goalSources);
         List<GoalSourceResponse> sources = goalSources.stream()
-                .map(s -> GoalSourceResponse.from(s, contentDocumentIds.contains(s.getDocument().getId())))
+                .map(s -> GoalSourceResponse.from(s, contentDocumentIds.contains(s.getDocument().getId()),
+                        figureDescription(s, figureDescriptions)))
                 .toList();
         List<GoalRelationshipResponse> relationships = goalRelationshipRepository
                 .findBySourceIdInWithTarget(List.of(goalId)).stream()
@@ -643,6 +652,26 @@ public class LearningGoalController {
         return documentIds.isEmpty()
                 ? Set.of()
                 : documentContentRepository.findExistingDocumentIds(documentIds);
+    }
+
+    private Map<Long, Map<Integer, String>> figureDescriptionsBySource(Collection<GoalSource> sources) {
+        Set<Long> documentIds = sources.stream()
+                .filter(source -> source.getEvidenceKind() == EvidenceKind.FIGURE && source.getPage() != null)
+                .map(source -> source.getDocument().getId())
+                .collect(Collectors.toSet());
+        if (documentIds.isEmpty()) {
+            return Map.of();
+        }
+        return pageDescriptionRepository.findByDocumentIdIn(documentIds).stream()
+                .collect(Collectors.groupingBy(description -> description.getDocument().getId(),
+                        Collectors.toMap(PageDescription::getPage, PageDescription::getDescription)));
+    }
+
+    private static String figureDescription(GoalSource source, Map<Long, Map<Integer, String>> descriptions) {
+        if (source.getEvidenceKind() != EvidenceKind.FIGURE || source.getPage() == null) {
+            return null;
+        }
+        return descriptions.getOrDefault(source.getDocument().getId(), Map.of()).get(source.getPage());
     }
 
     @DeleteMapping("/{goalId}")
@@ -817,11 +846,13 @@ public class LearningGoalController {
     public record GoalSourceResponse(Long documentId, String filename, String displayName,
                                      String snippet, Integer page, boolean contentAvailable, boolean grounded,
                                      @Schema(nullable = true) SourceMatchQuality groundingQuality,
+                                     EvidenceKind evidenceKind,
+                                     @Schema(nullable = true) String figureDescription,
                                      @Schema(nullable = true) List<HighlightRect> highlightRects) {
-        static GoalSourceResponse from(GoalSource s, boolean contentAvailable) {
+        static GoalSourceResponse from(GoalSource s, boolean contentAvailable, String figureDescription) {
             return new GoalSourceResponse(s.getDocument().getId(), s.getDocument().getFilename(),
                     s.getDocument().getDisplayName(), s.getSnippet(), s.getPage(), contentAvailable, s.isGrounded(),
-                    s.getGroundingQuality(), s.getHighlightRects());
+                    s.getGroundingQuality(), s.getEvidenceKind(), figureDescription, s.getHighlightRects());
         }
     }
 

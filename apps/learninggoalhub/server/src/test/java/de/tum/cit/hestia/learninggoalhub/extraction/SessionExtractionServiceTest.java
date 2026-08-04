@@ -6,10 +6,12 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -107,5 +109,49 @@ class SessionExtractionServiceTest {
                 .contains("in German")
                 .contains("never translate")
                 .contains("EXPLICIT or IMPLICIT");
+    }
+
+    @Test
+    void emptyFigureListLeavesTheDirectPromptWithoutFigureInstructions() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+                .thenReturn(List.of());
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        clearInvocations(chatClient.prompt());
+        SessionExtractionService service = new SessionExtractionService(builder);
+        service.extract("title", "text", "English", null);
+        service.extract("title", "text", "English", null, List.of());
+
+        verify(chatClient.prompt(), times(2)).user(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues().get(0))
+                .isEqualTo(promptCaptor.getAllValues().get(1));
+        assertThat(promptCaptor.getAllValues().get(1))
+                .doesNotContain("Figure descriptions")
+                .doesNotContain("sourceFigure")
+                .contains("[0] text");
+    }
+
+    @Test
+    void appendsFigureDescriptionsAndFigureOnlySourceRuleWhenProvided() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+                .thenReturn(List.of());
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        clearInvocations(chatClient.prompt());
+        new SessionExtractionService(builder).extract("title", "text", "English", null,
+                List.of(new PageDescriptionService.FigureDescription(12, "A process diagram.")));
+
+        verify(chatClient.prompt()).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue())
+                .contains("Figure descriptions (AI-generated from rendered slides — NOT verbatim text):")
+                .contains("[F0] (page 12) A process diagram.")
+                .contains("ONLY when no numbered lines support an outcome")
+                .contains("sourceFigure");
     }
 }

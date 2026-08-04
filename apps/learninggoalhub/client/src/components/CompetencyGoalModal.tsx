@@ -677,7 +677,7 @@ export default function CompetencyGoalModal({
                               <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
                             </svg>
                           </button>
-                          {source.grounded === false && (
+                          {source.grounded === false && source.evidenceKind !== "FIGURE" && (
                             <span
                               title="Snippet could not be located in the document"
                               className="shrink-0 pt-1 text-xs font-normal text-hestia-text-muted"
@@ -687,11 +687,20 @@ export default function CompetencyGoalModal({
                           )}
                         </div>
                       )}
-                      {source.snippet && (
+                      {source.evidenceKind === "FIGURE" ? (
+                        <div className="mt-1.5 border-l-2 border-hestia-primary pl-2.5 leading-relaxed text-hestia-text-muted">
+                          <span className="inline-flex rounded-full border border-hestia-primary/40 bg-hestia-primary-muted px-1.5 py-0.5 text-[10px] font-medium text-hestia-primary">
+                            Figure-derived (AI description)
+                          </span>
+                          {source.figureDescription && (
+                            <p className="mt-1 italic">{source.figureDescription}</p>
+                          )}
+                        </div>
+                      ) : source.snippet ? (
                         <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
                           “{source.snippet}”
                         </p>
-                      )}
+                      ) : null}
                     </li>
                   );
                 })}

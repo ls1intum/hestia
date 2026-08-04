@@ -20,8 +20,12 @@ import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
+import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
@@ -71,6 +75,9 @@ class ExtractionControllerTest {
     private DocumentSectionRepository documentSectionRepository;
 
     @Autowired
+    private PageDescriptionRepository pageDescriptionRepository;
+
+    @Autowired
     private LearningGoalRepository goalRepository;
 
     @Autowired
@@ -99,6 +106,9 @@ class ExtractionControllerTest {
 
     @MockitoBean
     private SessionGoalConsolidator sessionGoalConsolidator;
+
+    @MockitoBean
+    private PageDescriptionService pageDescriptionService;
 
     @MockitoBean
     private EmbeddingService embeddingService;
@@ -133,6 +143,10 @@ class ExtractionControllerTest {
     private static ExtractedSkill skill(ExtractedGoal goal, int sourceStartLine, int sourceEndLine) {
         return new ExtractedSkill(goal.text(), goal.shortLabel(), goal.kind(),
                 sourceStartLine, sourceEndLine, List.of());
+    }
+
+    private static ExtractedSkill figureSkill(String text, int sourceFigure) {
+        return new ExtractedSkill(text, text, GoalKind.IMPLICIT, null, null, sourceFigure, List.of());
     }
 
     @Test
@@ -284,6 +298,48 @@ class ExtractionControllerTest {
     }
 
     @Test
+    void directSourcesPreferLinesThenUseFiguresAndRejectInvalidFigureIndices() throws Exception {
+        Course course = courseRepository.save(new Course("Figure source precedence"));
+        String rawText = "verbatim line";
+        Document document = documentRepository.save(
+                new Document(course, "figures.pdf", "application/pdf", rawText));
+        document.setPageOffsets(new int[]{0, rawText.length(), rawText.length()});
+        documentRepository.saveAndFlush(document);
+        documentSectionRepository.saveAndFlush(new DocumentSection(
+                document, 0, "Section", 0, rawText.length(), 1, 2));
+        pageDescriptionRepository.saveAndFlush(
+                new PageDescription(document, 2, "A diagram teaches the process.", "vision-test"));
+
+        when(sessionExtractionService.extract(eq("Section"), eq(rawText), eq("English"), eq(null), anyList()))
+                .thenReturn(List.of(
+                        new ExtractedSkill("Text outcome", "Text", GoalKind.IMPLICIT,
+                                0, 0, 0, List.of()),
+                        figureSkill("Figure outcome", 0),
+                        figureSkill("Unsupported outcome", 4)));
+        stubEmbedAll(Map.of(
+                "Text outcome", orthogonalEmbedding(0),
+                "Figure outcome", orthogonalEmbedding(1),
+                "Unsupported outcome", orthogonalEmbedding(2)));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.textSources").value(1))
+                .andExpect(jsonPath("$.figureSources").value(1))
+                .andExpect(jsonPath("$.unsupportedSources").value(1));
+
+        Map<Long, String> goalTextById = goalRepository.findByCourseId(course.getId()).stream()
+                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<String, GoalSource> sources = goalSourceRepository.findAll().stream()
+                .filter(source -> source.getDocument().getId().equals(document.getId()))
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()), source -> source));
+        assertThat(sources.get("Text outcome").getEvidenceKind()).isEqualTo(EvidenceKind.TEXT);
+        assertThat(sources.get("Figure outcome").getEvidenceKind()).isEqualTo(EvidenceKind.FIGURE);
+        assertThat(sources.get("Figure outcome").getPage()).isEqualTo(2);
+        assertThat(sources.get("Figure outcome").getSnippet()).isEmpty();
+        assertThat(sources.get("Unsupported outcome").getEvidenceKind()).isEqualTo(EvidenceKind.UNSUPPORTED);
+    }
+
+    @Test
     void oversizedSessionUsesFallbackCandidatesAndProvenance() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         String oversizedText = "This session is deliberately longer than the direct extraction threshold. "
@@ -312,6 +368,11 @@ class ExtractionControllerTest {
         assertThat(goalSourceRepository.findAll())
                 .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
                 .hasSize(1);
+        assertThat(goalSourceRepository.findAll())
+                .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
+                .singleElement()
+                .extracting(GoalSource::getEvidenceKind)
+                .isEqualTo(EvidenceKind.UNSUPPORTED);
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .extracting(LearningGoal::getShortLabel)
