@@ -3,6 +3,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -92,6 +93,7 @@ public class ExtractionRunner {
     private final EmbeddingService embeddingService;
     private final ExtractionProgressTracker progressTracker;
     private final int parallelism;
+    private final int figureParallelism;
     private final int directMaxChars;
     private final String configuredDefaultModel;
     private final int taxonomyBatchSize;
@@ -120,6 +122,7 @@ public class ExtractionRunner {
                             EmbeddingService embeddingService,
                             ExtractionProgressTracker progressTracker,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
+                            @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
@@ -147,6 +150,7 @@ public class ExtractionRunner {
         this.embeddingService = embeddingService;
         this.progressTracker = progressTracker;
         this.parallelism = parallelism;
+        this.figureParallelism = figureParallelism;
         this.directMaxChars = directMaxChars;
         this.configuredDefaultModel = configuredDefaultModel;
         this.taxonomyBatchSize = taxonomyBatchSize;
@@ -212,21 +216,36 @@ public class ExtractionRunner {
     private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
                                     String courseLanguageName, String dominantLanguage,
                                     ExtractionProgressTracker.Run run) {
+        // Documents are described concurrently, but at a much lower width than the text phases: each
+        // call carries several rendered pages, so the provider rejects a wide burst of them, and every
+        // document opens its own transaction for the commit-per-document guarantee.
         run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
-        for (Document document : documents) {
-            try {
-                documentContentRepository.findById(document.getId())
-                        .map(content -> content.getBytes())
-                        .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(document, bytes));
-            } catch (RuntimeException e) {
-                log.warn("Could not prepare figure descriptions for document {}: {}",
-                        document.getId(), e.getMessage());
-            }
-            run.increment();
+        ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
+        try {
+            List<CompletableFuture<Void>> futures = documents.stream()
+                    .map(document -> CompletableFuture.runAsync(() -> {
+                        try {
+                            documentContentRepository.findById(document.getId())
+                                    .map(DocumentContent::getBytes)
+                                    .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(
+                                            document, bytes));
+                        } catch (RuntimeException e) {
+                            log.warn("Could not prepare figure descriptions for document {}: {}",
+                                    document.getId(), e.getMessage());
+                        }
+                        run.increment();
+                    }, figureExecutor))
+                    .toList();
+            futures.forEach(CompletableFuture::join);
+        } finally {
+            figureExecutor.shutdown();
         }
+        // Pages the model marked as carrying no subject matter of their own (title slides, section
+        // headers, agendas, blank answer pages) stay stored but are never offered as evidence.
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument = documents.stream()
                 .collect(Collectors.toMap(Document::getId,
                         document -> pageDescriptionRepository.findByDocumentId(document.getId()).stream()
+                                .filter(PageDescription::isTeachesContent)
                                 .sorted(Comparator.comparingInt(PageDescription::getPage))
                                 .map(description -> new PageDescriptionService.FigureDescription(
                                         description.getPage(), description.getDescription()))
