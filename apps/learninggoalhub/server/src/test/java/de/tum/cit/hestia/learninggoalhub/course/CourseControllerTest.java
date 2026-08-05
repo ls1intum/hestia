@@ -73,6 +73,8 @@ class CourseControllerTest {
                         .value(Matchers.contains(3)))
                 .andExpect(jsonPath("$.content[?(@.id == %d)].createdAt", analyzed.getId())
                         .value(Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].figuresEnabled", analyzed.getId())
+                        .value(Matchers.contains(false)))
                 .andExpect(jsonPath("$.content[?(@.id == %d)].documentCount", withDocs.getId())
                         .value(Matchers.contains(2)))
                 .andExpect(jsonPath("$.content[?(@.id == %d)].goalCount", withDocs.getId())
@@ -94,6 +96,7 @@ class CourseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(course.getId()))
                 .andExpect(jsonPath("$.name").value("Single Course"))
+                .andExpect(jsonPath("$.figuresEnabled").value(false))
                 .andExpect(jsonPath("$.documentCount").value(1))
                 .andExpect(jsonPath("$.goalCount").value(2))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty());
@@ -124,6 +127,39 @@ class CourseControllerTest {
                         .content("{\"outputLanguage\":null}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outputLanguage").value(Matchers.nullValue()));
+    }
+
+    @Test
+    void createsPatchesAndReadsFiguresSetting() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Figures Course\",\"figuresEnabled\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        Course course = courseRepository.save(new Course("Patch Figures Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(false));
     }
 
     @Test
@@ -178,7 +214,8 @@ class CourseControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"German Course\",\"outputLanguage\":\"de\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.outputLanguage").value("de"));
+                .andExpect(jsonPath("$.outputLanguage").value("de"))
+                .andExpect(jsonPath("$.figuresEnabled").value(false));
     }
 
     @Test

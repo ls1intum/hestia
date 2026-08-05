@@ -1,0 +1,2 @@
+ALTER TABLE course
+    ADD COLUMN figures_enabled BOOLEAN NOT NULL DEFAULT FALSE;

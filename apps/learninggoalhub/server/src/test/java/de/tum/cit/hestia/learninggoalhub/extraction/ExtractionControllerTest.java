@@ -299,7 +299,10 @@ class ExtractionControllerTest {
 
     @Test
     void directSourcesPreferLinesThenUseFiguresAndRejectInvalidFigureIndices() throws Exception {
-        Course course = courseRepository.save(new Course("Figure source precedence"));
+        Course course = new Course("Figure source precedence");
+        // Figure evidence is opt-in per course, and this test is about what it does once opted in.
+        course.setFiguresEnabled(true);
+        courseRepository.save(course);
         String rawText = "verbatim line";
         Document document = documentRepository.save(
                 new Document(course, "figures.pdf", "application/pdf", rawText));

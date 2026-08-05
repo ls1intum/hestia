@@ -23,6 +23,9 @@ public class Course {
     @Column(name = "output_language", length = 16)
     private String outputLanguage;
 
+    @Column(name = "figures_enabled", nullable = false)
+    private boolean figuresEnabled = false;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -52,6 +55,14 @@ public class Course {
 
     public void setOutputLanguage(String outputLanguage) {
         this.outputLanguage = outputLanguage;
+    }
+
+    public boolean isFiguresEnabled() {
+        return figuresEnabled;
+    }
+
+    public void setFiguresEnabled(boolean figuresEnabled) {
+        this.figuresEnabled = figuresEnabled;
     }
 
     public OffsetDateTime getCreatedAt() {

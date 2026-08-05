@@ -319,12 +319,14 @@ export interface components {
         CreateCourseRequest: {
             name: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         CourseResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         GoalRelationshipResponse: {
             /** @enum {string} */
@@ -458,6 +460,7 @@ export interface components {
         };
         UpdateCourseRequest: {
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         UpdateLearningGoalRequest: {
             text?: string;
@@ -488,6 +491,7 @@ export interface components {
             id?: number;
             name?: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
             /** Format: date-time */
             createdAt?: string;
             /** Format: int64 */
