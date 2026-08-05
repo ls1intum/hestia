@@ -38,9 +38,10 @@ public class PageDescriptionService {
     // Fixed before any evaluation run; keep the VLM request shape stable.
     static final int BATCH_SIZE = 8;
     /**
-     * Latency turned out not to depend on this: a 72 dpi run cost the same 11.5 s per page as 120,
-     * but its descriptions named measurably fewer of the identifiers a diagram is about (digits in
-     * 27% of descriptions instead of 35%, acronyms in 49% instead of 58%, over 192 paired pages).
+     * Latency does not depend on this: 72 dpi cost the same ~11.5 s per page as 120. A later run at
+     * 120 dpi with this prompt produced descriptions as short and as identifier-poor as the 72 dpi
+     * one (189 vs 186 chars), so resolution buys nothing measurable either way — the richer earlier
+     * descriptions came from the older prompt. Kept at 120 as the higher-fidelity input.
      */
     static final int RENDER_DPI = 120;
 
