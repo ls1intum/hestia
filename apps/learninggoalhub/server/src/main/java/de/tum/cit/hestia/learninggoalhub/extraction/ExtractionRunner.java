@@ -196,7 +196,7 @@ public class ExtractionRunner {
             effectiveModel = null;
         }
         Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
-                runParams(courseLanguage));
+                runParams(courseLanguage, course.isFiguresEnabled()));
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         try {
             ExtractionSummary summary = doRun(course, documents, modelOverride,
@@ -216,40 +216,45 @@ public class ExtractionRunner {
     private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
                                     String courseLanguageName, String dominantLanguage,
                                     ExtractionProgressTracker.Run run) {
-        // Documents are described concurrently, but at a much lower width than the text phases: each
-        // call carries several rendered pages, so the provider rejects a wide burst of them, and every
-        // document opens its own transaction for the commit-per-document guarantee.
-        run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
-        ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
-        try {
-            List<CompletableFuture<Void>> futures = documents.stream()
-                    .map(document -> CompletableFuture.runAsync(() -> {
-                        try {
-                            documentContentRepository.findById(document.getId())
-                                    .map(DocumentContent::getBytes)
-                                    .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(
-                                            document, bytes));
-                        } catch (RuntimeException e) {
-                            log.warn("Could not prepare figure descriptions for document {}: {}",
-                                    document.getId(), e.getMessage());
-                        }
-                        run.increment();
-                    }, figureExecutor))
-                    .toList();
-            futures.forEach(CompletableFuture::join);
-        } finally {
-            figureExecutor.shutdown();
+        Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
+        if (course.isFiguresEnabled()) {
+            // Documents are described concurrently, but at a much lower width than the text phases: each
+            // call carries several rendered pages, so the provider rejects a wide burst of them, and every
+            // document opens its own transaction for the commit-per-document guarantee.
+            run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
+            ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
+            try {
+                List<CompletableFuture<Void>> futures = documents.stream()
+                        .map(document -> CompletableFuture.runAsync(() -> {
+                            try {
+                                documentContentRepository.findById(document.getId())
+                                        .map(DocumentContent::getBytes)
+                                        .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(
+                                                document, bytes));
+                            } catch (RuntimeException e) {
+                                log.warn("Could not prepare figure descriptions for document {}: {}",
+                                        document.getId(), e.getMessage());
+                            }
+                            run.increment();
+                        }, figureExecutor))
+                        .toList();
+                futures.forEach(CompletableFuture::join);
+            } finally {
+                figureExecutor.shutdown();
+            }
+            // Pages the model marked as carrying no subject matter of their own (title slides, section
+            // headers, agendas, blank answer pages) stay stored but are never offered as evidence.
+            figuresByDocument = documents.stream()
+                    .collect(Collectors.toMap(Document::getId,
+                            document -> pageDescriptionRepository.findByDocumentId(document.getId()).stream()
+                                    .filter(PageDescription::isTeachesContent)
+                                    .sorted(Comparator.comparingInt(PageDescription::getPage))
+                                    .map(description -> new PageDescriptionService.FigureDescription(
+                                            description.getPage(), description.getDescription()))
+                                    .toList()));
+        } else {
+            figuresByDocument = Map.of();
         }
-        // Pages the model marked as carrying no subject matter of their own (title slides, section
-        // headers, agendas, blank answer pages) stay stored but are never offered as evidence.
-        Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument = documents.stream()
-                .collect(Collectors.toMap(Document::getId,
-                        document -> pageDescriptionRepository.findByDocumentId(document.getId()).stream()
-                                .filter(PageDescription::isTeachesContent)
-                                .sorted(Comparator.comparingInt(PageDescription::getPage))
-                                .map(description -> new PageDescriptionService.FigureDescription(
-                                        description.getPage(), description.getDescription()))
-                                .toList()));
 
         // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
         // one module root. Sessions come from the document's persisted structural sections (PDF
@@ -477,11 +482,12 @@ public class ExtractionRunner {
         return FALLBACK_PROMPT_VERSION;
     }
 
-    private String runParams(String language) {
+    private String runParams(String language, boolean figuresEnabled) {
         return "{\"chunk-size\":" + documentChunker.getChunkSize()
                 + ",\"direct-max-chars\":" + directMaxChars
                 + ",\"parallelism\":" + parallelism
-                + ",\"output-language\":\"" + language + "\"}";
+                + ",\"output-language\":\"" + language + "\""
+                + ",\"figures-enabled\":" + figuresEnabled + "}";
     }
 
     static String resolveLanguage(Course course, String documentLanguage, String dominantLanguage) {

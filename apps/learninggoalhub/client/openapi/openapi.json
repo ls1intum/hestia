@@ -1101,6 +1101,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1119,6 +1122,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         }
       },
@@ -1510,6 +1516,9 @@
         "properties": {
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         }
       },
@@ -1603,6 +1612,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           },
           "createdAt": {
             "type": "string",
