@@ -208,6 +208,29 @@ class LearningGoalControllerTest {
     }
 
     @Test
+    void filtersByRoleWithoutChangingTheDefaultList() throws Exception {
+        Course course = courseRepository.save(new Course("Role filter"));
+        LearningGoal skill = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        skill.setRole(GoalRole.SKILL);
+        goalRepository.save(skill);
+        LearningGoal knowledge = new LearningGoal(course, "Explain tests.", GoalKind.EXPLICIT);
+        knowledge.setRole(GoalRole.KNOWLEDGE);
+        goalRepository.save(knowledge);
+        goalRepository.save(new LearningGoal(course, "Legacy goal.", GoalKind.IMPLICIT));
+
+        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+                        .param("role", "KNOWLEDGE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].role").value("KNOWLEDGE"));
+
+        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId())
+                        .param("role", "SKILL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].goals[0].role").value("SKILL"));
+    }
+
+    @Test
     void listsGoalsGroupedBySession() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 

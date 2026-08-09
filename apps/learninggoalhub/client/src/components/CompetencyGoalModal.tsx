@@ -43,7 +43,7 @@ type GoalChanges = {
   soloLevel?: LearningGoal["soloLevel"];
 };
 
-type PendingChanges = GoalChanges & { shortLabel?: string | null };
+type PendingChanges = GoalChanges & { shortLabel?: string };
 
 export default function CompetencyGoalModal({
   goal: freshGoal,
@@ -185,7 +185,7 @@ export default function CompetencyGoalModal({
     setPending((prev) => ({
       ...prev,
       ...changes,
-      ...(changes.text !== undefined ? { shortLabel: null } : {}),
+      ...(changes.text !== undefined ? { shortLabel: undefined } : {}),
     }));
     onUpdate!(goal.id!, changes);
   };

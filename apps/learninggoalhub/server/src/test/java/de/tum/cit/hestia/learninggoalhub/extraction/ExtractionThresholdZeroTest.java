@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,6 +18,8 @@ import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -42,6 +45,9 @@ class ExtractionThresholdZeroTest {
 
     @Autowired
     private DocumentRepository documentRepository;
+
+    @Autowired
+    private LearningGoalRepository goalRepository;
 
     @MockitoBean
     private ExtractionService extractionService;
@@ -79,5 +85,9 @@ class ExtractionThresholdZeroTest {
 
         verify(extractionService).extract(eq(text), eq("English"), eq(null));
         verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .extracting(LearningGoal::getRole)
+                .isNull();
     }
 }

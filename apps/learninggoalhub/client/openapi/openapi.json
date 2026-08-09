@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8082",
+      "url": "http://localhost:8080",
       "description": "Generated server url"
     }
   ],
@@ -98,12 +98,200 @@
         }
       }
     },
-    "/api/courses/{courseId}/extract": {
+    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
       "post": {
         "tags": [
-          "extraction-controller"
+          "learning-goal-controller"
         ],
-        "operationId": "extract",
+        "operationId": "generateSubtree",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "goalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "addChild",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "goalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddChildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/terminal": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "createTerminalSkill",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/terminal/generated": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "createGeneratedTerminalSkill",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGeneratedTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
+      "post": {
+        "tags": [
+          "learning-goal-controller"
+        ],
+        "operationId": "suggestTerminalSkills",
         "parameters": [
           {
             "name": "courseId",
@@ -129,6 +317,57 @@
             "content": {
               "*/*": {
                 "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillSuggestionResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/extract": {
+      "post": {
+        "tags": [
+          "extraction-controller"
+        ],
+        "operationId": "extract",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
                   "$ref": "#/components/schemas/ExtractionSummary"
                 }
               }
@@ -143,7 +382,7 @@
           "exam-goal-controller"
         ],
         "summary": "Generate learning goals for exam tasks",
-        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous \u2014 expect a few seconds per task block.",
+        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.",
         "operationId": "generate",
         "parameters": [
           {
@@ -270,53 +509,12 @@
         }
       }
     },
-    "/api/courses/{courseId}/learning-goals/terminal": {
+    "/api/courses/{courseId}/competency-tree": {
       "post": {
         "tags": [
-          "learning-goal-controller"
+          "extraction-controller"
         ],
-        "operationId": "createTerminalSkill",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTerminalSkillRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "suggestTerminalSkills",
+        "operationId": "rebuildCompetencyTree",
         "parameters": [
           {
             "name": "courseId",
@@ -333,6 +531,15 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ],
@@ -342,10 +549,7 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SkillSuggestionResponse"
-                  }
+                  "$ref": "#/components/schemas/CompetencyTreeResult"
                 }
               }
             }
@@ -353,28 +557,71 @@
         }
       }
     },
-    "/api/courses/{courseId}/learning-goals/terminal/generated": {
-      "post": {
+    "/api/courses/{id}": {
+      "get": {
         "tags": [
-          "learning-goal-controller"
+          "course-controller"
         ],
-        "operationId": "createGeneratedTerminalSkill",
+        "operationId": "getCourse",
         "parameters": [
           {
-            "name": "courseId",
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
               "format": "int64"
             }
-          },
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseSummaryResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "course-controller"
+        ],
+        "operationId": "delete",
+        "parameters": [
           {
-            "name": "model",
-            "in": "query",
-            "required": false,
+            "name": "id",
+            "in": "path",
+            "required": true,
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "course-controller"
+        ],
+        "operationId": "update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
         ],
@@ -382,19 +629,19 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateGeneratedTerminalSkillRequest"
+                "$ref": "#/components/schemas/UpdateCourseRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Created",
+          "200": {
+            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
+                  "$ref": "#/components/schemas/CourseResponse"
                 }
               }
             }
@@ -407,7 +654,7 @@
         "tags": [
           "learning-goal-controller"
         ],
-        "operationId": "delete",
+        "operationId": "delete_1",
         "parameters": [
           {
             "name": "courseId",
@@ -438,7 +685,7 @@
         "tags": [
           "learning-goal-controller"
         ],
-        "operationId": "update",
+        "operationId": "update_1",
         "parameters": [
           {
             "name": "courseId",
@@ -483,62 +730,12 @@
         }
       }
     },
-    "/api/courses/{courseId}/documents/{documentId}": {
-      "patch": {
-        "tags": [
-          "document-controller"
-        ],
-        "operationId": "update_2",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "documentId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDocumentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DocumentResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
       "patch": {
         "tags": [
           "hierarchy-node-controller"
         ],
-        "operationId": "update_1",
+        "operationId": "update_2",
         "parameters": [
           {
             "name": "courseId",
@@ -583,44 +780,24 @@
         }
       }
     },
-    "/api/courses/{id}": {
-      "get": {
+    "/api/courses/{courseId}/documents/{documentId}": {
+      "patch": {
         "tags": [
-          "course-controller"
+          "document-controller"
         ],
-        "operationId": "getCourse",
+        "operationId": "update_3",
         "parameters": [
           {
-            "name": "id",
+            "name": "courseId",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
               "format": "int64"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseSummaryResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "update_3",
-        "parameters": [
+          },
           {
-            "name": "id",
+            "name": "documentId",
             "in": "path",
             "required": true,
             "schema": {
@@ -633,7 +810,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateCourseRequest"
+                "$ref": "#/components/schemas/UpdateDocumentRequest"
               }
             }
           },
@@ -645,32 +822,10 @@
             "content": {
               "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/CourseResponse"
+                  "$ref": "#/components/schemas/DocumentResponse"
                 }
               }
             }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "delete_1",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
           }
         }
       }
@@ -700,6 +855,19 @@
               "enum": [
                 "PENDING",
                 "APPROVED"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "description": "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SKILL",
+                "KNOWLEDGE"
               ]
             }
           },
@@ -809,6 +977,19 @@
             }
           },
           {
+            "name": "role",
+            "in": "query",
+            "description": "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SKILL",
+                "KNOWLEDGE"
+              ]
+            }
+          },
+          {
             "name": "nodeId",
             "in": "query",
             "description": "Optional id of a single hierarchy node (module/session/exercise) to return only that group. Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list.",
@@ -907,104 +1088,6 @@
           }
         }
       }
-    },
-    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "generateSubtree",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "addChild",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddChildRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -1017,10 +1100,7 @@
             "minLength": 1
           },
           "outputLanguage": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         },
         "required": [
@@ -1038,73 +1118,7 @@
             "type": "string"
           },
           "outputLanguage": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "ExtractionSummary": {
-        "type": "object",
-        "properties": {
-          "documentsProcessed": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "goalsCreated": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "terminalCompetencies": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "ExamBlock": {
-        "type": "object",
-        "properties": {
-          "blockId": {
             "type": "string"
-          },
-          "blockType": {
-            "type": "string",
-            "enum": [
-              "CONTEXT",
-              "TASK"
-            ]
-          },
-          "taskType": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          }
-        }
-      },
-      "GenerateExamGoalsRequest": {
-        "type": "object",
-        "properties": {
-          "blocks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExamBlock"
-            }
-          }
-        }
-      },
-      "ExamTaskGoalsResponse": {
-        "type": "object",
-        "properties": {
-          "blockId": {
-            "type": "string"
-          },
-          "goals": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LearningGoalResponse"
-            }
           }
         }
       },
@@ -1165,6 +1179,28 @@
           },
           "grounded": {
             "type": "boolean"
+          },
+          "groundingQuality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "EXACT_IN_SESSION",
+              "EXACT_IN_DOCUMENT",
+              "NORMALIZED",
+              "FRAGMENT",
+              "NONE"
+            ]
+          },
+          "highlightRects": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/HighlightRect"
+            }
           }
         }
       },
@@ -1186,29 +1222,24 @@
           }
         }
       },
-      "HierarchyNodeResponse": {
+      "HighlightRect": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+          "x": {
+            "type": "number",
+            "format": "double"
           },
-          "courseId": {
-            "type": "integer",
-            "format": "int64"
+          "y": {
+            "type": "number",
+            "format": "double"
           },
-          "level": {
-            "type": "string",
-            "enum": [
-              "MODULE",
-              "SESSION",
-              "EXERCISE",
-              "EXAM",
-              "COMPETENCY"
-            ]
+          "width": {
+            "type": "number",
+            "format": "double"
           },
-          "label": {
-            "type": "string"
+          "height": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -1223,16 +1254,20 @@
             "type": "string"
           },
           "shortLabel": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "kind": {
             "type": "string",
             "enum": [
               "EXPLICIT",
               "IMPLICIT"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SKILL",
+              "KNOWLEDGE"
             ]
           },
           "status": {
@@ -1301,6 +1336,110 @@
           }
         }
       },
+      "AddChildRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateTerminalSkillRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateGeneratedTerminalSkillRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillSuggestionResponse": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          }
+        }
+      },
+      "ExtractionSummary": {
+        "type": "object",
+        "properties": {
+          "documentsProcessed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "goalsCreated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "terminalCompetencies": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ExamBlock": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "blockType": {
+            "type": "string",
+            "enum": [
+              "CONTEXT",
+              "TASK"
+            ]
+          },
+          "taskType": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "GenerateExamGoalsRequest": {
+        "type": "object",
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExamBlock"
+            }
+          }
+        }
+      },
+      "ExamTaskGoalsResponse": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningGoalResponse"
+            }
+          }
+        }
+      },
       "DocumentResponse": {
         "type": "object",
         "properties": {
@@ -1327,21 +1466,23 @@
           }
         }
       },
-      "CreateTerminalSkillRequest": {
+      "CompetencyTreeResult": {
         "type": "object",
         "properties": {
-          "text": {
-            "type": "string"
+          "competencies": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unmatchedGoals": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
-      "CreateGeneratedTerminalSkillRequest": {
+      "UpdateCourseRequest": {
         "type": "object",
         "properties": {
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
+          "outputLanguage": {
             "type": "string"
           }
         }
@@ -1382,18 +1523,44 @@
           }
         }
       },
-      "UpdateDocumentRequest": {
-        "type": "object",
-        "properties": {
-          "displayName": {
-            "type": "string"
-          }
-        }
-      },
       "UpdateHierarchyNodeRequest": {
         "type": "object",
         "properties": {
           "label": {
+            "type": "string"
+          }
+        }
+      },
+      "HierarchyNodeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "MODULE",
+              "SESSION",
+              "EXERCISE",
+              "EXAM",
+              "COMPETENCY"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
             "type": "string"
           }
         }
@@ -1408,6 +1575,9 @@
           "name": {
             "type": "string"
           },
+          "outputLanguage": {
+            "type": "string"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -1419,12 +1589,6 @@
           "goalCount": {
             "type": "integer",
             "format": "int64"
-          },
-          "outputLanguage": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -1505,17 +1669,6 @@
           }
         }
       },
-      "SkillSuggestionResponse": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
-            "type": "string"
-          }
-        }
-      },
       "Snapshot": {
         "type": "object",
         "properties": {
@@ -1553,28 +1706,6 @@
             "$ref": "#/components/schemas/ExtractionSummary"
           },
           "error": {
-            "type": "string"
-          }
-        }
-      },
-      "UpdateCourseRequest": {
-        "type": "object",
-        "properties": {
-          "outputLanguage": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "AddChildRequest": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
             "type": "string"
           }
         }

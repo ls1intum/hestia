@@ -60,9 +60,9 @@ class TerminalCompetencySynthesizerTest {
     void promptSeedsFromDoingVerbsAndMergesAggressively() {
         assertThat(TerminalCompetencySynthesizer.PROMPT)
                 .contains("TERMINAL COMPETENCIES")
-                .contains("ALL of the course's session/exercise learning goals")
+                .contains("ALL of the course's session/exercise SKILL goals")
                 .contains("APPLY and CREATE goals are the SEEDS")
-                .contains("ANALYZE and EVALUATE goals are usually")
+                .contains("ANALYZE and EVALUATE skill goals may describe")
                 .contains("MERGE AGGRESSIVELY")
                 .contains("TOO FINE")
                 .contains("supported by only ONE goal is SUSPICIOUS")

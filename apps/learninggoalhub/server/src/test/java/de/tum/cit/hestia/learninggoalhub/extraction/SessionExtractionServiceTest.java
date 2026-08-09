@@ -25,16 +25,18 @@ class SessionExtractionServiceTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
 
-        List<ExtractedGoal> expected = List.of(
-                new ExtractedGoal("Explain the testing strategy.", "Testing Strategy", GoalKind.EXPLICIT,
-                        "...learning objectives..."),
-                new ExtractedGoal("Apply the strategy to a small project.", "Testing Practice", GoalKind.IMPLICIT,
-                        "...project example..."));
+        List<ExtractedSkill> expected = List.of(
+                new ExtractedSkill("Apply the testing strategy.", "Testing Strategy", GoalKind.EXPLICIT,
+                        0, 0,
+                        List.of(new ExtractedSkill.Knowledge("Explain the testing strategy.", "Testing Strategy",
+                                GoalKind.EXPLICIT, 0, 0))),
+                new ExtractedSkill("Apply the strategy to a small project.", "Testing Practice", GoalKind.IMPLICIT,
+                        0, 0, List.of()));
         when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
                 .thenReturn(expected);
 
         clearInvocations(chatClient.prompt());
-        List<ExtractedGoal> result = new SessionExtractionService(builder)
+        List<ExtractedSkill> result = new SessionExtractionService(builder)
                 .extract("Session 4: Testing", "FULL-SESSION-MARKER-42");
 
         assertThat(result).containsExactlyElementsOf(expected);
@@ -42,14 +44,33 @@ class SessionExtractionServiceTest {
         verify(chatClient.prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
                 .contains("Session 4: Testing")
-                .contains("FULL-SESSION-MARKER-42")
-                .contains("three to seven")
+                .contains("[0] FULL-SESSION-MARKER-42")
+                // Asserted in fragments: the template wraps both sentences across two lines.
+                .contains("HARD CAP")
+                .contains("more than seven skills")
+                .contains("If you are unsure whether something")
+                .contains("is a skill or knowledge, make it knowledge")
+                .contains("knowledge children")
+                .contains("Apply Bayes' theorem")
+                // Knowledge must be demanded as an OUTCOME, not as a bare fact: the word
+                // "declarative" used to licence propositions and produced 55% bare statements.
+                .doesNotContain("declarative")
+                .contains("start with a verb naming what the student does with it")
+                .contains("Never state a bare fact")
+                .contains("WRONG:")
+                .contains("RIGHT:")
+                .contains("The verb-initial rule and every")
+                .contains("source-line rule")
+                // Guards the recomposed-quote failure: heading + its bullets read as one block.
+                .contains("are SEPARATE")
                 .contains("learning objectives")
                 .contains("Choose each outcome's verb by what the STUDENT")
                 .contains("Do not invent outcomes")
                 .contains("shortLabel")
                 .contains("2-5 word noun phrase")
-                .contains("sourceSnippet");
+                .contains("sourceStartLine")
+                .contains("sourceEndLine")
+                .doesNotContain("sourceSnippet");
     }
 
     @Test
@@ -70,7 +91,7 @@ class SessionExtractionServiceTest {
     }
 
     @Test
-    void instructsModelToUseRequestedLanguageAndPreserveSnippets() {
+    void instructsModelToUseRequestedLanguageAndReturnLineIndices() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);

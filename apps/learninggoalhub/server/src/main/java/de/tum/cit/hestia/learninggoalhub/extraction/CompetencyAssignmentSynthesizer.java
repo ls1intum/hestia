@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  * to whichever earlier competency was closest, and nothing could move it afterwards. Here the model
  * sees the finished list before it places anything.
  *
- * <p>Each goal carries its session/document label, but only as a TIE-BREAKER: terminal competencies
+ * <p>Each skill carries its session/document label, but only as a TIE-BREAKER: terminal competencies
  * are supposed to cut ACROSS sessions, so clustering by document would defeat their purpose. The
  * prompt says so explicitly.
  *
@@ -33,7 +33,7 @@ public class CompetencyAssignmentSynthesizer {
     public record Candidate(String text, String bloomLevel, String session) {}
 
     static final String PROMPT = """
-            You assign each of a course's learning goals to exactly ONE of its TERMINAL COMPETENCIES.
+            You assign each of a course's SKILL goals to exactly ONE of its TERMINAL COMPETENCIES.
             The competencies are already fixed — do NOT rename, merge, split or add to them.
 
             Competencies, each prefixed with its index:
@@ -41,7 +41,7 @@ public class CompetencyAssignmentSynthesizer {
             %s
             ---
 
-            Learning goals, each prefixed with its index, then its Bloom level in parentheses, then
+            Skill goals, each prefixed with its index, then its Bloom level in parentheses, then
             the session or document it came from in braces:
             ---
             %s
@@ -54,7 +54,7 @@ public class CompetencyAssignmentSynthesizer {
             apart — use it only to break a genuine tie, NEVER as the thing you group by. Grouping the
             goals by their session or document is the one clearly wrong answer.
 
-            Lower-Bloom goals (REMEMBER, UNDERSTAND) belong under the competency whose capability they
+            Lower-Bloom skills (REMEMBER, UNDERSTAND) belong under the competency whose capability they
             underpin, not under whichever competency mentions similar words.
 
             If a goal serves NONE of the listed competencies, return it with a null competencyIndex.

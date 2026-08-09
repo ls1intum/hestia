@@ -20,6 +20,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["generateSubtree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addChild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createTerminalSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/terminal/generated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createGeneratedTerminalSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["suggestTerminalSkills"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{courseId}/extract": {
         parameters: {
             query?: never;
@@ -72,7 +152,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/learning-goals/terminal": {
+    "/api/courses/{courseId}/competency-tree": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,43 +161,27 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["createTerminalSkill"];
+        post: operations["rebuildCompetencyTree"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
+    "/api/courses/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getCourse"];
         put?: never;
-        post: operations["suggestTerminalSkills"];
-        delete?: never;
+        post?: never;
+        delete: operations["delete"];
         options?: never;
         head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/terminal/generated": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["createGeneratedTerminalSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
+        patch: operations["update"];
         trace?: never;
     };
     "/api/courses/{courseId}/learning-goals/{goalId}": {
@@ -130,26 +194,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete: operations["delete_1"];
         options?: never;
         head?: never;
-        patch: operations["update"];
-        trace?: never;
-    };
-    "/api/courses/{courseId}/documents/{documentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["update_2"];
+        patch: operations["update_1"];
         trace?: never;
     };
     "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
@@ -165,20 +213,20 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch: operations["update_1"];
+        patch: operations["update_2"];
         trace?: never;
     };
-    "/api/courses/{id}": {
+    "/api/courses/{courseId}/documents/{documentId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getCourse"];
+        get?: never;
         put?: never;
         post?: never;
-        delete: operations["delete_1"];
+        delete?: never;
         options?: never;
         head?: never;
         patch: operations["update_3"];
@@ -264,51 +312,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["generateSubtree"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["addChild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         CreateCourseRequest: {
             name: string;
-            outputLanguage?: string | null;
+            outputLanguage?: string;
         };
         CourseResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
-            outputLanguage?: string | null;
+            outputLanguage?: string;
+        };
+        GoalRelationshipResponse: {
+            /** @enum {string} */
+            type?: "CONTRIBUTES_TO" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
+            /** Format: int64 */
+            targetGoalId?: number;
+            targetText?: string;
+            /** Format: double */
+            confidence?: number;
+            /** @enum {string} */
+            origin?: "HIERARCHY" | "EMBEDDING" | "LLM";
+        };
+        GoalSourceResponse: {
+            /** Format: int64 */
+            documentId?: number;
+            filename?: string;
+            displayName?: string;
+            snippet?: string;
+            /** Format: int32 */
+            page?: number;
+            contentAvailable?: boolean;
+            grounded?: boolean;
+            /** @enum {string|null} */
+            groundingQuality?: "EXACT_IN_SESSION" | "EXACT_IN_DOCUMENT" | "NORMALIZED" | "FRAGMENT" | "NONE" | null;
+            highlightRects?: components["schemas"]["HighlightRect"][] | null;
+        };
+        HierarchyPath: {
+            module?: string;
+            session?: string;
+            exercise?: string;
+            /** Format: int64 */
+            sessionId?: number;
+        };
+        HighlightRect: {
+            /** Format: double */
+            x?: number;
+            /** Format: double */
+            y?: number;
+            /** Format: double */
+            width?: number;
+            /** Format: double */
+            height?: number;
+        };
+        LearningGoalResponse: {
+            /** Format: int64 */
+            id?: number;
+            text?: string;
+            shortLabel?: string;
+            /** @enum {string} */
+            kind?: "EXPLICIT" | "IMPLICIT";
+            /** @enum {string} */
+            role?: "SKILL" | "KNOWLEDGE";
+            /** @enum {string} */
+            status?: "PENDING" | "APPROVED";
+            /** @enum {string} */
+            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
+            /** @enum {string} */
+            creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
+            hierarchy?: components["schemas"]["HierarchyPath"];
+            /** @enum {string} */
+            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            /** @enum {string} */
+            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+            /** Format: date-time */
+            createdAt?: string;
+            sources?: components["schemas"]["GoalSourceResponse"][];
+            relationships?: components["schemas"]["GoalRelationshipResponse"][];
+        };
+        AddChildRequest: {
+            text?: string;
+            shortLabel?: string;
+        };
+        CreateTerminalSkillRequest: {
+            text?: string;
+        };
+        CreateGeneratedTerminalSkillRequest: {
+            text?: string;
+            shortLabel?: string;
+        };
+        SkillSuggestionResponse: {
+            text?: string;
+            shortLabel?: string;
         };
         ExtractionSummary: {
             /** Format: int32 */
@@ -332,67 +430,6 @@ export interface components {
             blockId?: string;
             goals?: components["schemas"]["LearningGoalResponse"][];
         };
-        GoalRelationshipResponse: {
-            /** @enum {string} */
-            type?: "CONTRIBUTES_TO" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
-            /** Format: int64 */
-            targetGoalId?: number;
-            targetText?: string;
-            /** Format: double */
-            confidence?: number;
-            /** @enum {string} */
-            origin?: "HIERARCHY" | "EMBEDDING" | "LLM";
-        };
-        GoalSourceResponse: {
-            /** Format: int64 */
-            documentId?: number;
-            filename?: string;
-            displayName?: string;
-            snippet?: string;
-            /** Format: int32 */
-            page?: number;
-            contentAvailable?: boolean;
-            grounded?: boolean;
-        };
-        HierarchyPath: {
-            module?: string;
-            session?: string;
-            exercise?: string;
-            /** Format: int64 */
-            sessionId?: number;
-        };
-        HierarchyNodeResponse: {
-            /** Format: int64 */
-            id?: number;
-            /** Format: int64 */
-            courseId?: number;
-            /** @enum {string} */
-            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
-            label?: string;
-        };
-        LearningGoalResponse: {
-            /** Format: int64 */
-            id?: number;
-            text?: string;
-            shortLabel?: string | null;
-            /** @enum {string} */
-            kind?: "EXPLICIT" | "IMPLICIT";
-            /** @enum {string} */
-            status?: "PENDING" | "APPROVED";
-            /** @enum {string} */
-            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
-            /** @enum {string} */
-            creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
-            hierarchy?: components["schemas"]["HierarchyPath"];
-            /** @enum {string} */
-            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
-            /** @enum {string} */
-            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
-            /** Format: date-time */
-            createdAt?: string;
-            sources?: components["schemas"]["GoalSourceResponse"][];
-            relationships?: components["schemas"]["GoalRelationshipResponse"][];
-        };
         DocumentResponse: {
             /** Format: int64 */
             id?: number;
@@ -404,12 +441,14 @@ export interface components {
             /** Format: date-time */
             uploadedAt?: string;
         };
-        CreateTerminalSkillRequest: {
-            text?: string;
+        CompetencyTreeResult: {
+            /** Format: int32 */
+            competencies?: number;
+            /** Format: int32 */
+            unmatchedGoals?: number;
         };
-        CreateGeneratedTerminalSkillRequest: {
-            text?: string;
-            shortLabel?: string;
+        UpdateCourseRequest: {
+            outputLanguage?: string;
         };
         UpdateLearningGoalRequest: {
             text?: string;
@@ -420,23 +459,32 @@ export interface components {
             /** @enum {string} */
             soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
         };
-        UpdateDocumentRequest: {
-            displayName?: string;
-        };
         UpdateHierarchyNodeRequest: {
             label?: string;
+        };
+        HierarchyNodeResponse: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            courseId?: number;
+            /** @enum {string} */
+            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
+            label?: string;
+        };
+        UpdateDocumentRequest: {
+            displayName?: string;
         };
         CourseSummaryResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
+            outputLanguage?: string;
             /** Format: date-time */
             createdAt?: string;
             /** Format: int64 */
             documentCount?: number;
             /** Format: int64 */
             goalCount?: number;
-            outputLanguage?: string | null;
         };
         PageMetadata: {
             /** Format: int64 */
@@ -464,10 +512,6 @@ export interface components {
             label?: string;
             goals?: components["schemas"]["LearningGoalResponse"][];
         };
-        SkillSuggestionResponse: {
-            text?: string;
-            shortLabel?: string;
-        };
         Snapshot: {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
@@ -480,13 +524,6 @@ export interface components {
             model?: string;
             summary?: components["schemas"]["ExtractionSummary"];
             error?: string;
-        };
-        UpdateCourseRequest: {
-            outputLanguage?: string | null;
-        };
-        AddChildRequest: {
-            text?: string;
-            shortLabel?: string;
         };
     };
     responses: never;
@@ -548,10 +585,141 @@ export interface operations {
             };
         };
     };
+    generateSubtree: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+                goalId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    addChild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                goalId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddChildRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    createTerminalSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTerminalSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    createGeneratedTerminalSkill: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGeneratedTerminalSkillRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    suggestTerminalSkills: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SkillSuggestionResponse"][];
+                };
+            };
+        };
+    };
     extract: {
         parameters: {
             query?: {
                 model?: string;
+                force?: boolean;
             };
             header?: never;
             path: {
@@ -647,36 +815,11 @@ export interface operations {
             };
         };
     };
-    createTerminalSkill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTerminalSkillRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
-    suggestTerminalSkills: {
+    rebuildCompetencyTree: {
         parameters: {
             query?: {
                 model?: string;
+                force?: boolean;
             };
             header?: never;
             path: {
@@ -692,40 +835,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["SkillSuggestionResponse"][];
+                    "*/*": components["schemas"]["CompetencyTreeResult"];
                 };
             };
         };
     };
-    createGeneratedTerminalSkill: {
+    getCourse: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
-                courseId: number;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateGeneratedTerminalSkillRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Created */
-            201: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
+                    "*/*": components["schemas"]["CourseSummaryResponse"];
                 };
             };
         };
     };
     delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CourseResponse"];
+                };
+            };
+        };
+    };
+    delete_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -746,7 +929,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    update_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -779,33 +962,6 @@ export interface operations {
             header?: never;
             path: {
                 courseId: number;
-                documentId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateDocumentRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["DocumentResponse"];
-                };
-            };
-        };
-    };
-    update_1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
                 nodeId: number;
             };
             cookie?: never;
@@ -827,60 +983,19 @@ export interface operations {
             };
         };
     };
-    getCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["CourseSummaryResponse"];
-                };
-            };
-        };
-    };
-    delete_1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     update_3: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                courseId: number;
+                documentId: number;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateCourseRequest"];
+                "application/json": components["schemas"]["UpdateDocumentRequest"];
             };
         };
         responses: {
@@ -890,7 +1005,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["CourseResponse"];
+                    "*/*": components["schemas"]["DocumentResponse"];
                 };
             };
         };
@@ -899,6 +1014,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "PENDING" | "APPROVED";
+                /** @description Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals. */
+                role?: "SKILL" | "KNOWLEDGE";
                 /** @description Zero-based page index (0..N) */
                 page?: number;
                 /** @description The size of the page to be returned */
@@ -950,6 +1067,8 @@ export interface operations {
             query?: {
                 /** @description Optional review-status filter: PENDING or APPROVED. Omit for all goals. */
                 status?: "PENDING" | "APPROVED";
+                /** @description Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals. */
+                role?: "SKILL" | "KNOWLEDGE";
                 /** @description Optional id of a single hierarchy node (module/session/exercise) to return only that group. Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list. */
                 nodeId?: number;
             };
@@ -1013,58 +1132,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": string;
-                };
-            };
-        };
-    };
-    generateSubtree: {
-        parameters: {
-            query?: {
-                model?: string;
-            };
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
-    addChild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddChildRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
                 };
             };
         };

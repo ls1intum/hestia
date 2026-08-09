@@ -24,6 +24,8 @@ import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
@@ -32,6 +34,9 @@ import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
@@ -107,9 +112,6 @@ class ExtractionControllerTest {
     @MockitoBean
     private CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer;
 
-    @MockitoBean
-    private CompetencyTreeSynthesizer competencyTreeSynthesizer;
-
     /**
      * Identity consolidation: pass each session's candidates through unchanged (one outcome per
      * candidate, each supported by itself). This isolates the fallback path from the consolidation LLM.
@@ -124,6 +126,60 @@ class ExtractionControllerTest {
         });
     }
 
+    private static ExtractedSkill skill(ExtractedGoal goal) {
+        return skill(goal, 0, 0);
+    }
+
+    private static ExtractedSkill skill(ExtractedGoal goal, int sourceStartLine, int sourceEndLine) {
+        return new ExtractedSkill(goal.text(), goal.shortLabel(), goal.kind(),
+                sourceStartLine, sourceEndLine, List.of());
+    }
+
+    @Test
+    void extractionRefusesToReplaceExistingGoalsWithoutForce() throws Exception {
+        Course course = courseRepository.save(new Course("Extraction guard"));
+        LearningGoal existing = goalRepository.save(new LearningGoal(course, "Existing goal", GoalKind.EXPLICIT));
+
+        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
+                .andExpect(status().isConflict());
+
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), any());
+        assertThat(goalRepository.findById(existing.getId())).isPresent();
+    }
+
+    @Test
+    void forcedExtractionClearsThePreviousRunBeforeBuildingItAgain() throws Exception {
+        Course course = courseRepository.save(new Course("Forced extraction"));
+        Document document = documentRepository.save(
+                new Document(course, "forced.pdf", "application/pdf", "new outcome"));
+        HierarchyNode oldModule = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
+        HierarchyNode oldSession = hierarchyRepository.save(
+                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document));
+        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
+        oldGoal.setHierarchyNode(oldSession);
+        oldGoal = goalRepository.saveAndFlush(oldGoal);
+        goalSourceRepository.save(new GoalSource(oldGoal, document, "old source"));
+        goalCandidateRepository.save(new GoalCandidate(course, oldSession, "old candidate",
+                GoalKind.EXPLICIT, "old candidate source"));
+
+        when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome"))));
+
+        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.goalsCreated").value(1));
+
+        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
+        assertThat(goalSourceRepository.findByGoalId(oldGoal.getId())).isEmpty();
+        assertThat(goalCandidateRepository.findByCourseId(course.getId())).isEmpty();
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .noneMatch(node -> node.getLabel().equals("Old module") || node.getLabel().equals("Old session"));
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .extracting(LearningGoal::getText)
+                .containsExactly("New goal");
+    }
+
     @Test
     void extractionPersistsGoalsAndSourcesPerDocument() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
@@ -131,14 +187,14 @@ class ExtractionControllerTest {
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply test-driven development.", "Test-Driven Development", GoalKind.EXPLICIT,
-                        "...write a failing test first..."),
-                new ExtractedGoal("Value short feedback loops.", "Feedback Loops", GoalKind.IMPLICIT,
-                        "...keep tests fast...")
+                skill(new ExtractedGoal("Apply test-driven development.", "Test-Driven Development", GoalKind.EXPLICIT,
+                        "...write a failing test first..."), 99, 99),
+                skill(new ExtractedGoal("Value short feedback loops.", "Feedback Loops", GoalKind.IMPLICIT,
+                        "...keep tests fast..."))
         ));
         when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise on refactoring"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
-                        GoalKind.EXPLICIT, "...extract method...")
+                skill(new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
+                        GoalKind.EXPLICIT, "...extract method..."))
         ));
         stubEmbedAll(Map.of(
                 "Apply test-driven development.", orthogonalEmbedding(0),
@@ -173,6 +229,32 @@ class ExtractionControllerTest {
                 .count();
         assertThat(sourcesForLecture).isEqualTo(2);
         assertThat(sourcesForExercise).isEqualTo(1);
+
+        LearningGoal fabricatedGoal = goals.stream()
+                .filter(g -> g.getText().equals("Apply test-driven development."))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalSourceRepository.findByGoalId(fabricatedGoal.getId()))
+                .singleElement()
+                .satisfies(source -> {
+                    assertThat(source.getSnippet()).isEmpty();
+                    assertThat(source.getPage()).isNull();
+                    assertThat(source.getGroundingQuality()).isEqualTo(SourceMatchQuality.NONE);
+                    assertThat(source.isGrounded()).isFalse();
+                    assertThat(source.getUnverifiedSnippet()).isNull();
+                });
+
+        LearningGoal exactGoal = goals.stream()
+                .filter(g -> g.getText().equals("Value short feedback loops."))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalSourceRepository.findByGoalId(exactGoal.getId()))
+                .singleElement()
+                .satisfies(source -> {
+                    assertThat(source.getSnippet()).isEqualTo("lecture text about TDD");
+                    assertThat(source.getGroundingQuality()).isEqualTo(SourceMatchQuality.EXACT_IN_SESSION);
+                    assertThat(source.isGrounded()).isTrue();
+                });
 
         ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
                 .findFirst()
@@ -242,8 +324,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -273,8 +355,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -317,8 +399,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -349,8 +431,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -365,6 +447,18 @@ class ExtractionControllerTest {
                 .filter(g -> g.getOrigin() != GoalOrigin.TERMINAL)
                 .map(LearningGoal::getId)
                 .toList();
+        LearningGoal legacySkill = goalRepository.findById(extractedIdsBefore.getFirst()).orElseThrow();
+        legacySkill.setRole(null);
+        goalRepository.saveAndFlush(legacySkill);
+        LearningGoal legacyKnowledge = new LearningGoal(course, "Explain the legacy basics.", GoalKind.EXPLICIT);
+        legacyKnowledge.setRole(null);
+        legacyKnowledge.setBloomLevel(BloomLevel.UNDERSTAND);
+        legacyKnowledge.setHierarchyNode(legacySkill.getHierarchyNode());
+        legacyKnowledge = goalRepository.saveAndFlush(legacyKnowledge);
+        goalRelationshipRepository.save(new GoalRelationship(legacyKnowledge, legacySkill,
+                RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        extractedIdsBefore = java.util.stream.Stream.concat(extractedIdsBefore.stream(),
+                java.util.stream.Stream.of(legacyKnowledge.getId())).toList();
 
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Second Label")));
@@ -386,24 +480,22 @@ class ExtractionControllerTest {
         assertThat(hierarchyRepository.findByCourseId(course.getId()))
                 .filteredOn(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
                 .hasSize(1);
+        assertThat(goalRepository.findById(legacySkill.getId()).orElseThrow().getRole()).isNull();
+        assertThat(goalRelationshipRepository.findBySourceId(legacyKnowledge.getId())).isEmpty();
     }
 
-    /**
-     * The tree's knowledge → sub-skill edges join two extracted goals, so neither endpoint is deleted
-     * by a rebuild. If those edges survived, the new arrangement would stack on top of the old one and
-     * a goal would end up with parents from both — including the wrong parent the rebuild was meant to
-     * correct.
-     */
+    /** Extraction creates knowledge → skill edges, and rebuilding preserves them while replacing tree edges. */
     @Test
     void rebuildLeavesNoEdgesFromThePreviousTree() throws Exception {
         Course course = courseRepository.save(new Course("Rebuild edges"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf",
-                "Apply the capability. Understand the basics."));
+                "Apply the capability.\n\nUnderstand the basics."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("English"), eq(null)))
                 .thenReturn(List.of(
-                        new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT, "...capability..."),
-                        new ExtractedGoal("Understand the basics.", "Basics", GoalKind.EXPLICIT, "...basics...")));
+                        new ExtractedSkill("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                                0, 0, List.of(new ExtractedSkill.Knowledge(
+                                        "Understand the basics.", "Basics", GoalKind.EXPLICIT, 1, 1)))));
         when(taxonomyService.classifyBatch(anyList(), eq(null))).thenAnswer(inv -> {
             List<String> texts = inv.getArgument(0);
             return texts.stream()
@@ -415,20 +507,37 @@ class ExtractionControllerTest {
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Capability")));
         when(competencyAssignmentSynthesizer.assign(anyList(), anyList(), eq(null)))
-                .thenReturn(Map.of(0, 0, 1, 0));
-        // First tree: the knowledge goal hangs under the sub-skill.
-        when(competencyTreeSynthesizer.expandAll(anyList(), eq(null)))
-                .thenReturn(List.of(new CompetencyExpansion(0, List.of(new CompetencyExpansion.KnowledgeLink(0, 0)))));
+                .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
                 "Understand the basics.", orthogonalEmbedding(1)));
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
                 .andExpect(status().isOk());
 
-        // Second tree: the knowledge goal hangs on the terminal instead.
-        when(competencyTreeSynthesizer.expandAll(anyList(), eq(null)))
-                .thenReturn(List.of(new CompetencyExpansion(0, List.of())));
+        LearningGoal knowledgeBefore = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> "Understand the basics.".equals(g.getText()))
+                .findFirst()
+                .orElseThrow();
+        LearningGoal skillBefore = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> "Apply the capability.".equals(g.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(knowledgeBefore.getRole()).isEqualTo(GoalRole.KNOWLEDGE);
+        assertThat(skillBefore.getRole()).isEqualTo(GoalRole.SKILL);
+        assertThat(goalSourceRepository.findByGoalId(skillBefore.getId()))
+                .singleElement()
+                .extracting(GoalSource::getSnippet)
+                .isEqualTo("Apply the capability.");
+        assertThat(goalSourceRepository.findByGoalId(knowledgeBefore.getId()))
+                .singleElement()
+                .extracting(GoalSource::getSnippet)
+                .isEqualTo("Understand the basics.");
+        assertThat(goalRelationshipRepository.findBySourceId(knowledgeBefore.getId()))
+                .extracting(r -> r.getTarget().getId())
+                .containsExactly(skillBefore.getId());
 
+        when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenReturn(List.of(new TerminalCompetency("Perform the capability.", "Rebuilt Capability")));
         mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
@@ -436,9 +545,22 @@ class ExtractionControllerTest {
                 .filter(g -> "Understand the basics.".equals(g.getText()))
                 .findFirst()
                 .orElseThrow();
+        LearningGoal skill = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> "Apply the capability.".equals(g.getText()))
+                .findFirst()
+                .orElseThrow();
+        LearningGoal terminal = goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.TERMINAL))
+                .stream()
+                .findFirst()
+                .orElseThrow();
+        // Compare ids, not text: the edge's target is a lazy proxy and this runs outside a session.
         assertThat(goalRelationshipRepository.findBySourceId(knowledge.getId()))
-                .as("the knowledge goal must have exactly one parent, from the current tree only")
-                .hasSize(1);
+                .as("the extraction edge must survive the rebuild")
+                .extracting(r -> r.getTarget().getId())
+                .containsExactly(skill.getId());
+        assertThat(goalRelationshipRepository.findBySourceId(skill.getId()))
+                .extracting(r -> r.getTarget().getId())
+                .containsExactly(terminal.getId());
     }
 
     /**
@@ -451,8 +573,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -488,8 +610,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -533,8 +655,8 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
-                .thenReturn(List.of(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
-                        "...capability...")));
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -580,10 +702,10 @@ class ExtractionControllerTest {
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise body"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...lecture snippet...")
+                skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...lecture snippet..."))
         ));
         when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet...")
+                skill(new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet..."))
         ));
         // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
         stubEmbedAll(Map.of());
@@ -607,8 +729,8 @@ class ExtractionControllerTest {
 
         // A direct response can contain closely related goals; each enriched goal is persisted.
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet..."),
-                new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet...")
+                skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet...")),
+                skill(new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet..."))
         ));
         stubEmbedAll(Map.of());
 
@@ -644,7 +766,7 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first...")
+                skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first..."))
         ));
         stubEmbedAll(Map.of());
 
@@ -674,11 +796,11 @@ class ExtractionControllerTest {
                 sessionText.length(), sessionText.length() + exerciseText.length()));
 
         when(sessionExtractionService.extract(eq("Lecture 3: Testing"), eq(sessionText), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...failing test first..."),
-                new ExtractedGoal("Understand SE scope.", GoalKind.IMPLICIT, "...overview...")
+                skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...failing test first...")),
+                skill(new ExtractedGoal("Understand SE scope.", GoalKind.IMPLICIT, "...overview..."))
         ));
         when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata...")
+                skill(new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata..."))
         ));
         stubEmbedAll(Map.of(
                 "Apply TDD.", orthogonalEmbedding(0),
