@@ -25,6 +25,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
   const [isDragging, setIsDragging] = useState(false);
   // "" = detect from the uploaded materials.
   const [outputLanguage, setOutputLanguage] = useState<"" | "de" | "en">("");
+  const [figuresEnabled, setFiguresEnabled] = useState(false);
   const [courseId, setCourseId] = useState<number | null>(null);
   const [progressOpen, setProgressOpen] = useState(false);
 
@@ -64,6 +65,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
         body: {
           name: name.trim(),
           outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
+          figuresEnabled,
         },
       });
       if (error || !data?.id) throw new Error("Could not create the course.");
@@ -299,6 +301,21 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               <span className="text-xs text-hestia-text-muted">
                 Learning goals are written in the language of your uploaded materials unless you
                 pick one here.
+              </span>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={figuresEnabled}
+                onChange={(e) => setFiguresEnabled(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-hestia-primary"
+              />
+              <span className="flex flex-col gap-1.5">
+                <span className="font-medium text-hestia-text">Analyse slide images and diagrams</span>
+                <span className="text-xs text-hestia-text-muted">
+                  This makes extraction noticeably slower.
+                </span>
               </span>
             </label>
 

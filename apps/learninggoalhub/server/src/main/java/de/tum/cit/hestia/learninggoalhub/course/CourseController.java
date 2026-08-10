@@ -43,6 +43,7 @@ public class CourseController {
         validateOutputLanguage(request.outputLanguage());
         Course course = new Course(request.name());
         course.setOutputLanguage(request.outputLanguage());
+        course.setFiguresEnabled(Boolean.TRUE.equals(request.figuresEnabled()));
         Course saved = courseRepository.save(course);
         return ResponseEntity
                 .created(URI.create("/api/courses/" + saved.getId()))
@@ -67,6 +68,7 @@ public class CourseController {
                 course.getId(),
                 course.getName(),
                 course.getOutputLanguage(),
+                course.isFiguresEnabled(),
                 course.getCreatedAt(),
                 documentCounts.getOrDefault(course.getId(), 0L),
                 goalCounts.getOrDefault(course.getId(), 0L))));
@@ -80,7 +82,8 @@ public class CourseController {
         long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
         long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
         return new CourseSummaryResponse(
-                course.getId(), course.getName(), course.getOutputLanguage(), course.getCreatedAt(),
+                course.getId(), course.getName(), course.getOutputLanguage(), course.isFiguresEnabled(),
+                course.getCreatedAt(),
                 documentCount, goalCount);
     }
 
@@ -93,6 +96,9 @@ public class CourseController {
         }
         validateOutputLanguage(request.outputLanguage());
         course.setOutputLanguage(request.outputLanguage());
+        if (request.figuresEnabled() != null) {
+            course.setFiguresEnabled(request.figuresEnabled());
+        }
         return CourseResponse.from(courseRepository.save(course));
     }
 
@@ -124,20 +130,21 @@ public class CourseController {
                 CourseRepository.CourseCount::getCount));
     }
 
-    public record CreateCourseRequest(@NotBlank String name, String outputLanguage) {
+    public record CreateCourseRequest(@NotBlank String name, String outputLanguage, Boolean figuresEnabled) {
     }
 
-    public record CourseResponse(Long id, String name, String outputLanguage) {
+    public record CourseResponse(Long id, String name, String outputLanguage, boolean figuresEnabled) {
         static CourseResponse from(Course course) {
-            return new CourseResponse(course.getId(), course.getName(), course.getOutputLanguage());
+            return new CourseResponse(course.getId(), course.getName(), course.getOutputLanguage(),
+                    course.isFiguresEnabled());
         }
     }
 
     public record CourseSummaryResponse(
-            Long id, String name, String outputLanguage, OffsetDateTime createdAt,
+            Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
             long documentCount, long goalCount) {
     }
 
-    public record UpdateCourseRequest(String outputLanguage) {
+    public record UpdateCourseRequest(String outputLanguage, Boolean figuresEnabled) {
     }
 }

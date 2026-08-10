@@ -1101,6 +1101,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1119,6 +1122,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         }
       },
@@ -1191,6 +1197,20 @@
               "NORMALIZED",
               "FRAGMENT",
               "NONE"
+            ]
+          },
+          "evidenceKind": {
+            "type": "string",
+            "enum": [
+              "TEXT",
+              "FIGURE",
+              "UNSUPPORTED"
+            ]
+          },
+          "figureDescription": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           "highlightRects": {
@@ -1391,6 +1411,18 @@
           "terminalCompetencies": {
             "type": "integer",
             "format": "int32"
+          },
+          "textSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "figureSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unsupportedSources": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1484,6 +1516,9 @@
         "properties": {
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           }
         }
       },
@@ -1577,6 +1612,9 @@
           },
           "outputLanguage": {
             "type": "string"
+          },
+          "figuresEnabled": {
+            "type": "boolean"
           },
           "createdAt": {
             "type": "string",
@@ -1683,6 +1721,7 @@
           "phase": {
             "type": "string",
             "enum": [
+              "DESCRIBING_FIGURES",
               "OUTLINING",
               "PARSING",
               "EXTRACTING",

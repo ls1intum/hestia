@@ -18,6 +18,7 @@ class GoalSourceTest {
         assertThat(source.getSnippet()).isEmpty();
         assertThat(source.getPage()).isNull();
         assertThat(source.getGroundingQuality()).isEqualTo(SourceMatchQuality.NONE);
+        assertThat(source.getEvidenceKind()).isEqualTo(EvidenceKind.UNSUPPORTED);
         assertThat(source.isGrounded()).isFalse();
         assertThat(source.getUnverifiedSnippet()).isEqualTo("fabricated heading and bullet");
     }
@@ -29,9 +30,11 @@ class GoalSourceTest {
 
         assertThat(exact.getSnippet()).isEqualTo("verbatim quote");
         assertThat(exact.getPage()).isEqualTo(4);
+        assertThat(exact.getEvidenceKind()).isEqualTo(EvidenceKind.TEXT);
         assertThat(exact.getUnverifiedSnippet()).isNull();
         assertThat(fragment.getSnippet()).isEqualTo("verbatim fragment");
         assertThat(fragment.getPage()).isEqualTo(5);
+        assertThat(fragment.getEvidenceKind()).isEqualTo(EvidenceKind.TEXT);
         assertThat(fragment.getUnverifiedSnippet()).isNull();
     }
 
@@ -68,9 +71,23 @@ class GoalSourceTest {
         assertThat(unknownQuality.getPage()).isEqualTo(9);
         assertThat(unknownQuality.isGrounded()).isFalse();
         assertThat(unknownQuality.getGroundingQuality()).isNull();
+        assertThat(snippetOnly.getEvidenceKind()).isEqualTo(EvidenceKind.UNSUPPORTED);
+        assertThat(withGroundedFlag.getEvidenceKind()).isEqualTo(EvidenceKind.TEXT);
         assertThat(snippetOnly.getUnverifiedSnippet()).isNull();
         assertThat(withPage.getUnverifiedSnippet()).isNull();
         assertThat(withGroundedFlag.getUnverifiedSnippet()).isNull();
         assertThat(unknownQuality.getUnverifiedSnippet()).isNull();
+    }
+
+    @Test
+    void figureSourceKeepsPageWithoutPresentingVerbatimEvidence() {
+        GoalSource source = GoalSource.figure(goal, document, 7);
+
+        assertThat(source.isGrounded()).isFalse();
+        assertThat(source.getGroundingQuality()).isEqualTo(SourceMatchQuality.NONE);
+        assertThat(source.getEvidenceKind()).isEqualTo(EvidenceKind.FIGURE);
+        assertThat(source.getPage()).isEqualTo(7);
+        assertThat(source.getSnippet()).isEmpty();
+        assertThat(source.getUnverifiedSnippet()).isNull();
     }
 }

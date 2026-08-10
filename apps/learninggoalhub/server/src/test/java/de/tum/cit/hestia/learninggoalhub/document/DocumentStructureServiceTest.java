@@ -52,6 +52,10 @@ class DocumentStructureServiceTest {
         assertThat(parsed.pageOffsets()).hasSize(4);
         assertThat(parsed.pageOffsets()[0]).isZero();
         assertThat(parsed.pageOffsets()[3]).isEqualTo(parsed.rawText().length());
+        assertThat(sections.get(0).startPage()).isEqualTo(1);
+        assertThat(sections.get(0).endPage()).isEqualTo(1);
+        assertThat(sections.get(1).startPage()).isEqualTo(2);
+        assertThat(sections.get(1).endPage()).isEqualTo(3);
     }
 
     @Test

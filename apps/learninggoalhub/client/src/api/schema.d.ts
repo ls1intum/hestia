@@ -319,12 +319,14 @@ export interface components {
         CreateCourseRequest: {
             name: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         CourseResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         GoalRelationshipResponse: {
             /** @enum {string} */
@@ -349,6 +351,9 @@ export interface components {
             grounded?: boolean;
             /** @enum {string|null} */
             groundingQuality?: "EXACT_IN_SESSION" | "EXACT_IN_DOCUMENT" | "NORMALIZED" | "FRAGMENT" | "NONE" | null;
+            /** @enum {string} */
+            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
+            figureDescription?: string | null;
             highlightRects?: components["schemas"]["HighlightRect"][] | null;
         };
         HierarchyPath: {
@@ -415,6 +420,12 @@ export interface components {
             goalsCreated?: number;
             /** Format: int32 */
             terminalCompetencies?: number;
+            /** Format: int32 */
+            textSources?: number;
+            /** Format: int32 */
+            figureSources?: number;
+            /** Format: int32 */
+            unsupportedSources?: number;
         };
         ExamBlock: {
             blockId?: string;
@@ -449,6 +460,7 @@ export interface components {
         };
         UpdateCourseRequest: {
             outputLanguage?: string;
+            figuresEnabled?: boolean;
         };
         UpdateLearningGoalRequest: {
             text?: string;
@@ -479,6 +491,7 @@ export interface components {
             id?: number;
             name?: string;
             outputLanguage?: string;
+            figuresEnabled?: boolean;
             /** Format: date-time */
             createdAt?: string;
             /** Format: int64 */
@@ -516,7 +529,7 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
+            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */

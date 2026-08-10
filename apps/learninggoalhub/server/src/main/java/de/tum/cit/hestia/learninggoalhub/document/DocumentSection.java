@@ -42,15 +42,28 @@ public class DocumentSection {
     @Column(name = "end_offset", nullable = false)
     private int endOffset;
 
+    @Column(name = "start_page")
+    private Integer startPage;
+
+    @Column(name = "end_page")
+    private Integer endPage;
+
     protected DocumentSection() {
     }
 
     public DocumentSection(Document document, int ordinal, String title, int startOffset, int endOffset) {
+        this(document, ordinal, title, startOffset, endOffset, null, null);
+    }
+
+    public DocumentSection(Document document, int ordinal, String title, int startOffset, int endOffset,
+                           Integer startPage, Integer endPage) {
         this.document = document;
         this.ordinal = ordinal;
         this.title = title;
         this.startOffset = startOffset;
         this.endOffset = endOffset;
+        this.startPage = startPage;
+        this.endPage = endPage;
     }
 
     public Long getId() {
@@ -75,5 +88,13 @@ public class DocumentSection {
 
     public int getEndOffset() {
         return endOffset;
+    }
+
+    public Integer getStartPage() {
+        return startPage;
+    }
+
+    public Integer getEndPage() {
+        return endPage;
     }
 }

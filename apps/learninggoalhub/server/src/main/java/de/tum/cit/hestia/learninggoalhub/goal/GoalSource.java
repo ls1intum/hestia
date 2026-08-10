@@ -50,6 +50,10 @@ public class GoalSource {
     @Column(name = "grounding_quality", length = 32)
     private SourceMatchQuality groundingQuality;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evidence_kind", nullable = false, length = 16)
+    private EvidenceKind evidenceKind;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "highlight_rects", columnDefinition = "jsonb")
     private List<HighlightRect> highlightRects;
@@ -66,7 +70,8 @@ public class GoalSource {
     }
 
     public GoalSource(LearningGoal goal, Document document, String snippet, Integer page, boolean grounded) {
-        this(goal, document, snippet, page, grounded, null);
+        this(goal, document, snippet, page, grounded, null,
+                grounded ? EvidenceKind.TEXT : EvidenceKind.UNSUPPORTED);
     }
 
     /**
@@ -80,14 +85,21 @@ public class GoalSource {
         this(goal, document,
                 groundingQuality == SourceMatchQuality.NONE ? "" : snippet,
                 groundingQuality == SourceMatchQuality.NONE ? null : page,
-                groundingQuality != null && groundingQuality != SourceMatchQuality.NONE, groundingQuality);
+                groundingQuality != null && groundingQuality != SourceMatchQuality.NONE, groundingQuality,
+                groundingQuality != null && groundingQuality != SourceMatchQuality.NONE
+                        ? EvidenceKind.TEXT : EvidenceKind.UNSUPPORTED);
         if (groundingQuality == SourceMatchQuality.NONE && snippet != null && !snippet.isBlank()) {
             this.unverifiedSnippet = snippet;
         }
     }
 
+    /** Builds a non-verbatim source backed by a persisted page figure description. */
+    public static GoalSource figure(LearningGoal goal, Document document, Integer page) {
+        return new GoalSource(goal, document, "", page, false, SourceMatchQuality.NONE, EvidenceKind.FIGURE);
+    }
+
     private GoalSource(LearningGoal goal, Document document, String snippet, Integer page,
-                       boolean grounded, SourceMatchQuality groundingQuality) {
+                       boolean grounded, SourceMatchQuality groundingQuality, EvidenceKind evidenceKind) {
         this.goal = goal;
         this.document = document;
         this.id = new GoalSourceId(goal.getId(), document.getId());
@@ -95,6 +107,7 @@ public class GoalSource {
         this.page = page;
         this.grounded = grounded;
         this.groundingQuality = groundingQuality;
+        this.evidenceKind = evidenceKind;
     }
 
     public GoalSourceId getId() {
@@ -127,6 +140,10 @@ public class GoalSource {
 
     public SourceMatchQuality getGroundingQuality() {
         return groundingQuality;
+    }
+
+    public EvidenceKind getEvidenceKind() {
+        return evidenceKind;
     }
 
     public List<HighlightRect> getHighlightRects() {
