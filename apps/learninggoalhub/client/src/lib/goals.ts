@@ -9,10 +9,6 @@ export function titleCase(value: string): string {
     .join(" ");
 }
 
-/** One-line answer to "what is Bloom?", shown above the level list in the tree-grid's column hint. */
-export const BLOOM_SUMMARY =
-  "Bloom's revised taxonomy names the kind of thinking a learning goal demands, from recalling facts up to creating something new. Each goal is classified into exactly one level.";
-
 /** Level → description lookups (keyed by title-cased term), shown in the goal modal's Bloom,
  * SOLO and kind tiles. Insertion order is the taxonomy's level order. */
 export const BLOOM_DESC: Record<string, string> = {
@@ -141,6 +137,23 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     .filter((g) => g.origin === "TERMINAL")
     .map((g) => build(g, 0, new Set()))
     .sort((a, b) => (a.goal.text ?? "").localeCompare(b.goal.text ?? ""));
+}
+
+/** Finds a node in the competency forest and returns the immediate child goals attached to it. */
+export function childGoalsOf(
+  forest: CompetencyNode[],
+  goalId: number | null | undefined,
+): LearningGoal[] {
+  if (goalId == null) return [];
+  const find = (nodes: CompetencyNode[]): CompetencyNode | undefined => {
+    for (const node of nodes) {
+      if (node.goal.id === goalId) return node;
+      const found = find(node.children);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return find(forest)?.children.map((child) => child.goal) ?? [];
 }
 
 /**
