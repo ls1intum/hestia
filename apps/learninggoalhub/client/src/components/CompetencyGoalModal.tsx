@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX, type GoalSource } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
+import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import ConfirmDialog from "./ConfirmDialog.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
 import Button from "./Button.tsx";
@@ -48,14 +49,20 @@ type PendingChanges = GoalChanges & { shortLabel?: string };
 export default function CompetencyGoalModal({
   goal: freshGoal,
   role,
+  knowledge,
   generatedChildCount,
   onClose,
   onUpdate,
   onDelete,
+  onOpenGoal,
+  onBack,
+  backLabel,
 }: {
   goal: LearningGoal | null;
   /** The node's role in the competency tree, shown as the header badge. */
   role?: CompetencyRole;
+  /** Immediate knowledge goals under a sub-skill, shown as read-only evidence rows. */
+  knowledge?: LearningGoal[];
   /**
    * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
    * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
@@ -67,6 +74,12 @@ export default function CompetencyGoalModal({
   onUpdate?: (goalId: number, changes: GoalChanges) => void;
   /** Delete action in the header; the modal closes itself before handing the goal over. */
   onDelete?: (goal: LearningGoal) => void;
+  /** Opens a knowledge goal in this modal for editing. */
+  onOpenGoal?: (goal: LearningGoal) => void;
+  /** Returns to the goal this one was opened from; absent when nothing led here. */
+  onBack?: () => void;
+  /** Names the goal `onBack` returns to, so the control says where it goes. */
+  backLabel?: string;
 }) {
   // The modal only renders under /courses/:courseId; the id builds the source deep links.
   const { courseId } = useParams();
@@ -82,6 +95,25 @@ export default function CompetencyGoalModal({
   );
   const [sourceDraft, setSourceDraft] = useState("");
   const [openSource, setOpenSource] = useState<GoalSource | null>(null);
+  const [addingKnowledge, setAddingKnowledge] = useState(false);
+  const [knowledgeDraft, setKnowledgeDraft] = useState("");
+  // Which column asked for the preview. That column stays beside it; the other one steps aside, so
+  // whatever was clicked keeps its context while its page is on screen.
+  const [sourceOrigin, setSourceOrigin] = useState<"attributes" | "evidence">(
+    "attributes",
+  );
+  const pdfPaneRef = useRef<HTMLDivElement>(null);
+  const sourceTriggerRef = useRef<HTMLElement | null>(null);
+  /** Opens the preview, remembering its origin column and the control that asked for it. */
+  const showSource = (
+    source: GoalSource,
+    trigger: HTMLElement | null,
+    origin: "attributes" | "evidence",
+  ) => {
+    sourceTriggerRef.current = trigger;
+    setSourceOrigin(origin);
+    setOpenSource(source);
+  };
   const [editingSession, setEditingSession] = useState(false);
   const [sessionDraft, setSessionDraft] = useState("");
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
@@ -152,6 +184,36 @@ export default function CompetencyGoalModal({
       setStaleSubtree(false);
     },
   });
+  const addKnowledgeMutation = useMutation({
+    mutationFn: async (vars: { goalId: number; text: string }) => {
+      const result = await api.POST(
+        "/api/courses/{courseId}/learning-goals/{goalId}/children",
+        {
+          params: { path: { courseId: numericCourseId, goalId: vars.goalId } },
+          body: { text: vars.text },
+        },
+      );
+      if (!result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Knowledge nodes cannot have children."
+            : "Could not add the goal.",
+        );
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["goals", numericCourseId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["course", numericCourseId],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      setKnowledgeDraft("");
+      setAddingKnowledge(false);
+    },
+  });
   useEffect(() => setPending({}), [freshGoal]);
   // The draft only resets when another goal opens — a background refetch must not eat typing.
   useEffect(() => {
@@ -178,6 +240,18 @@ export default function CompetencyGoalModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [freshGoal, onClose, openSource]);
+
+  // Opening the preview takes the attribute column off screen on wide viewports, so focus has to be
+  // moved deliberately: into the pane on open, back to the row or link that asked for it on close.
+  // Without this the keyboard user is left on a detached element and lands back at the document.
+  useEffect(() => {
+    if (openSource) {
+      pdfPaneRef.current?.focus();
+    } else if (sourceTriggerRef.current?.isConnected) {
+      sourceTriggerRef.current.focus();
+      sourceTriggerRef.current = null;
+    }
+  }, [openSource]);
 
   if (!freshGoal) return null;
   const goal: LearningGoal = { ...freshGoal, ...pending };
@@ -207,6 +281,23 @@ export default function CompetencyGoalModal({
           : null;
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
+  const knowledgeSources = knowledge?.map((item) => item.sources?.[0]);
+  const knowledgePages = knowledgeSources
+    ?.map((source) => source?.page)
+    .filter((page): page is number => page != null);
+  const knowledgePageSummary =
+    knowledgePages && knowledgePages.length > 0
+      ? knowledgePages.length === 1
+        ? ` · page ${knowledgePages[0]}`
+        : ` · pages ${Math.min(...knowledgePages)}–${Math.max(...knowledgePages)}`
+      : "";
+  // Counted exactly as the rows below mark themselves, so the summary can never disagree with the
+  // pills: a missing source and an ungrounded one both read as unsupported.
+  const unsupportedKnowledgeCount = knowledgeSources?.filter(
+    (source) => !source || source.grounded === false,
+  ).length;
+  // Only a sub-skill has an evidence column; every other role keeps the original single column.
+  const showEvidence = role === "sub-skill" && knowledge !== undefined;
 
   // A terminal skill the pipeline clustered has no wizard subtree to replace — the server refuses
   // it, so the action never appears for one (its creation provenance is null).
@@ -261,15 +352,40 @@ export default function CompetencyGoalModal({
             the backdrop-filter keeps the browser from caching the blurred layer. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${openSource ? "max-w-6xl lg:flex-row lg:items-start" : "max-w-lg"}`}
+          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${
+            openSource ? "max-w-6xl" : showEvidence ? "max-w-5xl" : "max-w-lg"
+          }`}
         >
-          <div
-            className={`flex min-w-0 flex-col gap-3.5 ${openSource ? "w-full lg:max-w-lg lg:shrink-0" : "w-full"}`}
-          >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text">
-              Goal details
-            </span>
+          {/* The header spans the whole panel rather than riding on the first column: with the
+              preview open that column steps aside, and the close button must never go with it. */}
+          <div className="flex items-center justify-between gap-2">
+            {/* Drilling into a knowledge goal replaces what the modal shows, so the trail back to
+                the goal that led here takes the header's naming slot. */}
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className="flex min-w-0 items-center gap-1 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:text-hestia-text"
+              >
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className="h-3 w-3 shrink-0"
+                >
+                  <path d="M12 5l-5 5 5 5" />
+                </svg>
+                <span className="truncate">{backLabel ?? "Back"}</span>
+              </button>
+            ) : (
+              <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text">
+                Goal details
+              </span>
+            )}
             <div className="flex items-center gap-0.5">
               {onDelete && (
                 <Button
@@ -315,6 +431,16 @@ export default function CompetencyGoalModal({
               </Button>
             </div>
           </div>
+          <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-start">
+          {/* Attributes. They stay when the preview was opened from the sub-skill's own source and
+              step aside when a knowledge row asked for it. Below `lg` everything stacks. */}
+          <div
+            className={`flex min-w-0 flex-col gap-3.5 ${
+              showEvidence || openSource
+                ? "w-full lg:max-w-lg lg:shrink-0"
+                : "w-full"
+            } ${openSource && sourceOrigin === "evidence" ? "lg:hidden" : ""}`}
+          >
           {/* The goal, dressed as the box that was just clicked. */}
           <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
             {(role || onUpdate) && (
@@ -631,7 +757,7 @@ export default function CompetencyGoalModal({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setOpenSource(source);
+                                  showSource(source, e.currentTarget, "attributes");
                                 }}
                                 className="flex min-w-0 items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
                                 title="View source in the PDF preview"
@@ -751,7 +877,188 @@ export default function CompetencyGoalModal({
             </div>
           )}
           </div>
+          {/* Evidence. Its own column beside the attributes, so the sub-skill and the material it
+              rests on read at once. It stays beside the preview when a knowledge row opened it, so
+              the reviewer can step from one quote to the next, and yields when the preview belongs
+              to the sub-skill's own source. */}
+          {showEvidence && (
+            <div
+              className={`flex w-full min-w-0 flex-col gap-3.5 lg:max-w-md lg:shrink-0 ${
+                openSource && sourceOrigin === "attributes" ? "lg:hidden" : ""
+              }`}
+            >
+            <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                  Knowledge
+                </span>
+                <span className="text-right text-xs tabular-nums text-hestia-text-muted">
+                  {knowledge.length} items
+                  {knowledgePageSummary}
+                  {unsupportedKnowledgeCount
+                    ? ` · ${unsupportedKnowledgeCount} unsupported`
+                    : ""}
+                </span>
+              </div>
+              {knowledge.length === 0 ? (
+                <p className="mt-2 text-xs text-hestia-text-muted">
+                  No knowledge is attached to this sub-skill.
+                </p>
+              ) : (
+                <ul className="mt-2">
+                  {knowledge.map((knowledgeGoal, i) => {
+                    const source = knowledgeGoal.sources?.[0];
+                    // The full wording, not the short label: the evidence list is where the goal is
+                    // actually read and judged, and the tree already carries the abbreviated form.
+                    const label = knowledgeGoal.text ?? knowledgeGoal.shortLabel;
+                    const noSource = !source || source.grounded === false;
+                    return (
+                      <li
+                        key={knowledgeGoal.id ?? i}
+                        className={`text-xs text-hestia-text ${i > 0 ? "border-t border-hestia-border/60" : ""}`}
+                      >
+                        <div className="flex min-w-0 items-start gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              source && showSource(source, e.currentTarget, "evidence")
+                            }
+                            aria-label={`View evidence for ${label}`}
+                            className={`min-w-0 flex-1 rounded-md px-1.5 py-2 text-left transition hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)] ${source === openSource ? "bg-[color-mix(in_srgb,var(--hestia-primary)_9%,transparent)]" : ""}`}
+                          >
+                            <span className="flex min-w-0 items-start justify-between gap-2">
+                              {/* Wraps rather than truncates: the wording is the thing being judged. */}
+                              <span className="min-w-0 flex-1 font-medium text-hestia-text">
+                                {label}
+                              </span>
+                              <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                                {knowledgeGoal.kind && (
+                                  <EvidencePill
+                                    label={titleCase(knowledgeGoal.kind)}
+                                    color="var(--hestia-text-muted)"
+                                  />
+                                )}
+                                {source?.evidenceKind === "FIGURE" && (
+                                  <EvidencePill
+                                    label="Figure"
+                                    color="var(--hestia-primary)"
+                                  />
+                                )}
+                                {noSource && (
+                                  <EvidencePill
+                                    label="No source"
+                                    color="var(--hestia-danger)"
+                                  />
+                                )}
+                                {source?.page != null && (
+                                  <span className="text-xs tabular-nums text-hestia-text-muted">
+                                    p. {source.page}
+                                  </span>
+                                )}
+                              </span>
+                            </span>
+                            {source?.snippet ? (
+                              <p className="mt-1 line-clamp-2 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
+                                “{source.snippet}”
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-xs italic text-hestia-text-muted">
+                                No passage in the session supports this goal.
+                              </p>
+                            )}
+                          </button>
+                          {onOpenGoal && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Open ${label}`}
+                              title="Open this goal for editing"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenGoal(knowledgeGoal);
+                              }}
+                            >
+                              <svg
+                                viewBox="0 0 20 20"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-4 w-4"
+                                aria-hidden="true"
+                              >
+                                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+                              </svg>
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {onOpenGoal && !addingKnowledge && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    addKnowledgeMutation.reset();
+                    setKnowledgeDraft("");
+                    setAddingKnowledge(true);
+                  }}
+                  className="mt-2 text-xs font-medium text-hestia-text-muted underline underline-offset-2 transition hover:text-hestia-text"
+                >
+                  Add knowledge
+                </button>
+              )}
+              {onOpenGoal && addingKnowledge && (
+                // Escape has to stop here: the field cancels itself on it, and the modal's window
+                // listener would otherwise read the same key as "close the whole dialog".
+                <div
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") e.stopPropagation();
+                  }}
+                >
+                <CompetencyCreationField
+                  value={knowledgeDraft}
+                  placeholder="Describe a knowledge goal…"
+                  error={
+                    addKnowledgeMutation.isError
+                      ? (addKnowledgeMutation.error as Error).message
+                      : undefined
+                  }
+                  pending={addKnowledgeMutation.isPending}
+                  onChange={(text) => {
+                    if (addKnowledgeMutation.isError) addKnowledgeMutation.reset();
+                    setKnowledgeDraft(text);
+                  }}
+                  onSubmit={() =>
+                    addKnowledgeMutation.mutate({
+                      goalId: goal.id!,
+                      text: knowledgeDraft.trim(),
+                    })
+                  }
+                  onCancel={() => {
+                    if (!addKnowledgeMutation.isPending) {
+                      addKnowledgeMutation.reset();
+                      setKnowledgeDraft("");
+                      setAddingKnowledge(false);
+                    }
+                  }}
+                  className="mt-2"
+                  stacked
+                />
+                </div>
+              )}
+            </div>
+            </div>
+          )}
           {openSource && (
+            <div
+              ref={pdfPaneRef}
+              tabIndex={-1}
+              className="w-full outline-none lg:w-[min(44vw,42rem)] lg:shrink-0"
+            >
             <ErrorBoundary
               resetKey={openSource.documentId}
               fallback={
@@ -784,7 +1091,9 @@ export default function CompetencyGoalModal({
                 />
               </Suspense>
             </ErrorBoundary>
+            </div>
           )}
+          </div>
         </div>
       </div>
       {confirmRegenerate && (
@@ -962,6 +1271,21 @@ export function ManualBadge() {
       }}
     >
       Manual
+    </span>
+  );
+}
+
+/** Small tinted pill for evidence attributes in the knowledge tile. */
+function EvidencePill({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+      style={{
+        color,
+        backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
+      }}
+    >
+      {label}
     </span>
   );
 }

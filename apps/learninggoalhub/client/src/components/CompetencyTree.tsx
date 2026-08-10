@@ -14,12 +14,10 @@ import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import Button from "./Button.tsx";
 import FilterPopover from "./FilterPopover.tsx";
-import InfoTooltip from "./InfoTooltip.tsx";
 import {
-  BLOOM_DESC,
-  BLOOM_SUMMARY,
   COMPETENCY_ROLE_META,
   buildCompetencyForest,
+  childGoalsOf,
   generatedChildCount,
   titleCase,
   type CompetencyNode,
@@ -27,10 +25,16 @@ import {
 } from "../lib/goals.ts";
 
 /**
- * The competency tree as an Excel-like tree-grid: the Skill → Sub-skill → Knowledge hierarchy
- * (the same forest the map view shows) lives in the first column with expand/collapse carets,
- * while every goal attribute becomes a proper column with a funnel filter (multi-select
- * checkboxes) and hierarchy-preserving sorting (siblings are sorted within their parent).
+ * The competency tree as an Excel-like tree-grid: the Skill → Sub-skill hierarchy lives in the
+ * first column with expand/collapse carets, while every goal attribute becomes a proper column
+ * with a funnel filter (multi-select checkboxes) and hierarchy-preserving sorting (siblings are
+ * sorted within their parent).
+ *
+ * The third tier is deliberately absent. Knowledge is evidence for the sub-skill above it, so it
+ * is shown in that sub-skill's detail modal instead of as rows here — the grid stays the review
+ * list of the things an instructor actually judges. The Items column still counts what hides
+ * underneath, and search still reaches the hidden wording (see `evidenceText`). The map keeps
+ * rendering all three tiers, because seeing the branch is that view's job.
  *
  * Filter semantics: matching rows stay in their tree position; ancestors of a match that don't
  * match themselves are shown dimmed as context-only rows. While a filter or search is active the
@@ -48,10 +52,16 @@ type Row = {
   goal: LearningGoal;
   role: CompetencyRole;
   childCount: number;
+  /**
+   * Every session this row covers, sorted: its own plus all of its descendants'. Skills and
+   * sub-skills are synthesised and carry no hierarchy themselves, so their sessions are exactly
+   * the ones their grounded children came from.
+   */
+  sessions: string[];
 };
 
-type FilterKey = "role" | "bloom" | "kind" | "session";
-type SortKey = "text" | "bloom" | "items" | "session";
+type FilterKey = "role" | "kind" | "session";
+type SortKey = "text" | "items" | "session";
 type SortState = { key: SortKey; dir: 1 | -1 } | null;
 type CreationTier = 1 | 2 | 3;
 type CreationState = {
@@ -64,16 +74,11 @@ type CreationState = {
 // Shared grid template so the sticky header row and every body row line their columns up: a
 // flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
 // rows can never drift apart.
-const GRID_COLS = "minmax(240px,1fr) 108px 128px 96px 72px 152px";
+// Session carries full titles (often several on one skill row), so it takes a share of the free
+// space rather than a fixed width — otherwise the goal column swallows everything.
+const GRID_COLS =
+  "minmax(240px,1fr) 108px 96px 72px minmax(200px,0.55fr)";
 
-const BLOOM_ORDER = [
-  "REMEMBER",
-  "UNDERSTAND",
-  "APPLY",
-  "ANALYZE",
-  "EVALUATE",
-  "CREATE",
-];
 // "AI_INFERRED" is a synthetic kind value derived from a goal's WIZARD_AI_SUBTREE provenance, so the
 // Kind column and its filter surface AI-generated goals without a separate GoalKind enum on the server.
 const AI_INFERRED_KIND = "AI_INFERRED";
@@ -89,20 +94,21 @@ const ROLE_ORDER: CompetencyRole[] = [
 const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The filterable value of a row in one column. */
-function valueOf(row: Row, key: FilterKey): string {
+/**
+ * The filterable values of a row in one column. Session is the only multi-valued column: a skill
+ * covers every session its children were grounded in, and filtering for any one of them keeps it.
+ */
+function valuesOf(row: Row, key: FilterKey): string[] {
   switch (key) {
     case "role":
-      return row.role;
-    case "bloom":
-      return row.goal.bloomLevel ?? "";
+      return [row.role];
     case "kind":
       if (row.goal.creationProvenance === "WIZARD_AI_SUBTREE")
-        return AI_INFERRED_KIND;
-      if (row.goal.creationProvenance === "USER_CREATED") return MANUAL_KIND;
-      return row.goal.kind ?? "";
+        return [AI_INFERRED_KIND];
+      if (row.goal.creationProvenance === "USER_CREATED") return [MANUAL_KIND];
+      return [row.goal.kind ?? ""];
     case "session":
-      return sessionTitleOf(row.goal);
+      return row.sessions;
   }
 }
 
@@ -125,47 +131,15 @@ function displayValue(key: FilterKey, value: string): string {
   return value ? titleCase(value) : "—";
 }
 
-/** The Bloom column's hover explanation: what the taxonomy is, then its six levels in order. */
-const BLOOM_HINT = (
-  <>
-    <p className="text-sm font-semibold text-hestia-text">
-      Bloom&apos;s revised taxonomy
-    </p>
-    <p className="mt-1 text-xs leading-relaxed text-hestia-text-muted">
-      {BLOOM_SUMMARY}
-    </p>
-    <ul className="mt-2 space-y-1 border-t border-hestia-border pt-2">
-      {Object.entries(BLOOM_DESC).map(([level, desc]) => (
-        <li
-          key={level}
-          className="text-xs leading-relaxed text-hestia-text-muted"
-        >
-          <span className="font-semibold text-hestia-text">{level}</span>:{" "}
-          {desc}
-        </li>
-      ))}
-    </ul>
-  </>
-);
-
 const COLUMNS: {
   key: FilterKey | "text" | "items";
   label: string;
   sortKey?: SortKey;
   filterKey?: FilterKey;
   alignRight?: boolean;
-  /** Explanation shown when hovering (or focusing) the column's ⓘ. */
-  hint?: ReactNode;
 }[] = [
   { key: "text", label: "Learning goal", sortKey: "text" },
   { key: "role", label: "Level", filterKey: "role" },
-  {
-    key: "bloom",
-    label: "Bloom",
-    sortKey: "bloom",
-    filterKey: "bloom",
-    hint: BLOOM_HINT,
-  },
   { key: "kind", label: "Kind", filterKey: "kind" },
   { key: "items", label: "Items", sortKey: "items", alignRight: true },
   {
@@ -275,24 +249,47 @@ export default function CompetencyTree({
   }, [rows]);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  // Only the first skill starts open, and under it the last sub-skill that carries knowledge: one
-  // branch shows all three tiers at a glance without unfolding the whole course.
-  const [expanded, setExpanded] = useState<Set<number>>(() => {
-    const first = forest[0];
-    if (first?.goal.id == null) return new Set<number>();
-    const lastWithKnowledge = [...first.children]
-      .reverse()
-      .find((child) => child.children.length > 0)?.goal.id;
-    return new Set(
-      lastWithKnowledge != null
-        ? [first.goal.id, lastWithKnowledge]
-        : [first.goal.id],
-    );
-  });
+  // Knowledge under a sub-skill is evidence, and it now lives in that sub-skill's detail modal
+  // rather than as rows here — the grid is the review list of skills and sub-skills. Knowledge in
+  // any other position (a legacy node hanging straight off a skill) keeps its row, because no
+  // modal would show it and the goal would otherwise become unreachable.
+  const hiddenIds = useMemo(() => {
+    const hidden = new Set<number>();
+    for (const row of rows) {
+      if (row.role !== "knowledge" || row.parent == null) continue;
+      if (byId.get(row.parent)?.role === "sub-skill") hidden.add(row.id);
+    }
+    return hidden;
+  }, [rows, byId]);
+
+  // The wording of the knowledge a row hides, so a search term that only occurs down there still
+  // finds the sub-skill holding it instead of silently matching nothing.
+  const evidenceText = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const row of rows) {
+      if (!hiddenIds.has(row.id) || row.parent == null) continue;
+      const text = `${row.goal.shortLabel ?? ""} ${row.goal.text ?? ""}`.toLowerCase();
+      map.set(row.parent, `${map.get(row.parent) ?? ""} ${text}`);
+    }
+    return map;
+  }, [rows, hiddenIds]);
+
+  // How many children a row still shows, which is what decides whether it gets a caret at all.
+  const visibleChildCount = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const row of rows) {
+      if (row.parent == null || hiddenIds.has(row.id)) continue;
+      map.set(row.parent, (map.get(row.parent) ?? 0) + 1);
+    }
+    return map;
+  }, [rows, hiddenIds]);
+
+  // Everything starts collapsed: the skills alone are the overview, and opening one is the reader's
+  // first deliberate step rather than a state they arrive in.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     role: new Set(),
-    bloom: new Set(),
     kind: new Set(),
     session: new Set(),
   });
@@ -304,35 +301,60 @@ export default function CompetencyTree({
     goal: LearningGoal;
     role: CompetencyRole;
   } | null>(null);
-  const openDetail = (row: Row) =>
+  // The goal the modal was drilled into from, so a knowledge goal opened out of the evidence list
+  // can hand the reader back to its sub-skill instead of dropping them out of the modal entirely.
+  const [detailParent, setDetailParent] = useState<{
+    goal: LearningGoal;
+    role: CompetencyRole;
+  } | null>(null);
+  const openDetail = (row: Row) => {
+    setDetailParent(null);
     setDetail({ goal: row.goal, role: row.role });
+  };
+  const onOpenGoal = (goal: LearningGoal) => {
+    setDetailParent(detail);
+    setDetail({ goal, role: "knowledge" });
+  };
+  const closeDetail = () => {
+    setDetail(null);
+    setDetailParent(null);
+  };
 
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
 
-  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
-  const { matchIds, contextIds } = useMemo(() => {
+  // Rows surviving the filters, plus their non-matching ancestors as dimmed context. `evidenceIds`
+  // are the rows that only matched through the knowledge they hide, which the row then says out
+  // loud — otherwise a hit with no visible cause looks like a bug.
+  const { matchIds, contextIds, evidenceIds } = useMemo(() => {
     if (!filtering)
       return {
         matchIds: null as Set<number> | null,
         contextIds: new Set<number>(),
+        evidenceIds: new Set<number>(),
       };
     const needle = search.trim().toLowerCase();
+    const evidence = new Set<number>();
     const matchesRow = (row: Row): boolean => {
-      if (
-        needle &&
-        ![row.goal.shortLabel, row.goal.text].some((value) =>
+      if (needle) {
+        const inOwnText = [row.goal.shortLabel, row.goal.text].some((value) =>
           (value ?? "").toLowerCase().includes(needle),
-        )
-      )
-        return false;
+        );
+        const inEvidence =
+          !inOwnText && (evidenceText.get(row.id) ?? "").includes(needle);
+        if (!inOwnText && !inEvidence) return false;
+        if (inEvidence) evidence.add(row.id);
+      }
       for (const key of Object.keys(filters) as FilterKey[]) {
         const set = filters[key];
-        if (set.size > 0 && !set.has(valueOf(row, key))) return false;
+        if (set.size > 0 && !valuesOf(row, key).some((v) => set.has(v)))
+          return false;
       }
       return true;
     };
-    const matches = new Set(rows.filter(matchesRow).map((r) => r.id));
+    const matches = new Set(
+      rows.filter((row) => !hiddenIds.has(row.id) && matchesRow(row)).map((r) => r.id),
+    );
     const context = new Set<number>();
     for (const id of matches) {
       let parent = byId.get(id)?.parent ?? null;
@@ -341,22 +363,27 @@ export default function CompetencyTree({
         parent = byId.get(parent)?.parent ?? null;
       }
     }
-    return { matchIds: matches, contextIds: context };
-  }, [rows, byId, search, filters, filtering]);
+    return {
+      matchIds: matches,
+      contextIds: context,
+      evidenceIds: evidence,
+    };
+  }, [rows, byId, hiddenIds, evidenceText, search, filters, filtering]);
 
-  // Only offer filter values that actually occur, in taxonomy order or alphabetically for titles.
+  // Only offer filter values that actually occur — counted over the rows the grid still shows, so
+  // no filter can promise a value that has no row to land on.
   const filterOptions = useMemo(() => {
+    const visible = rows.filter((r) => !hiddenIds.has(r.id));
     const present = (key: FilterKey) =>
-      new Set(rows.map((r) => valueOf(r, key)).filter((v) => v !== ""));
+      new Set(visible.flatMap((r) => valuesOf(r, key)).filter((v) => v !== ""));
     const ordered = (order: string[], values: Set<string>) =>
       order.filter((v) => values.has(v));
     return {
       role: ordered(ROLE_ORDER, present("role")),
-      bloom: ordered(BLOOM_ORDER, present("bloom")),
       kind: ordered(KIND_ORDER, present("kind")),
       session: [...present("session")].sort((a, b) => a.localeCompare(b)),
     };
-  }, [rows]);
+  }, [rows, hiddenIds]);
 
   const sortSiblings = (siblings: Row[]): Row[] => {
     if (!sort) return siblings;
@@ -365,12 +392,10 @@ export default function CompetencyTree({
       switch (key) {
         case "text":
           return displayedGoalLabel(row.goal);
-        case "bloom":
-          return BLOOM_ORDER.indexOf(row.goal.bloomLevel ?? "");
         case "items":
           return row.childCount;
         case "session":
-          return sessionTitleOf(row.goal);
+          return row.sessions[0] ?? "";
       }
     };
     return [...siblings].sort((a, b) => {
@@ -493,7 +518,6 @@ export default function CompetencyTree({
     setSearch("");
     setFilters({
       role: new Set(),
-      bloom: new Set(),
       kind: new Set(),
       session: new Set(),
     });
@@ -509,8 +533,8 @@ export default function CompetencyTree({
     );
 
   const parentIds = useMemo(
-    () => rows.filter((r) => r.childCount > 0).map((r) => r.id),
-    [rows],
+    () => rows.filter((r) => (visibleChildCount.get(r.id) ?? 0) > 0).map((r) => r.id),
+    [rows, visibleChildCount],
   );
   const allOpen =
     parentIds.length > 0 && parentIds.every((id) => expanded.has(id));
@@ -539,7 +563,7 @@ export default function CompetencyTree({
      */
     trailing: boolean,
   ) => {
-    const ordered = sortSiblings(siblings);
+    const ordered = sortSiblings(siblings.filter((r) => !hiddenIds.has(r.id)));
     for (let i = 0; i < ordered.length; i++) {
       const row = ordered[i];
       const isMatch = !filtering || matchIds!.has(row.id);
@@ -554,14 +578,17 @@ export default function CompetencyTree({
           context={isContext}
           filtering={filtering}
           open={expanded.has(row.id)}
+          childCount={visibleChildCount.get(row.id) ?? 0}
+          evidenceMatch={evidenceIds.has(row.id)}
           onToggle={onToggle}
           onOpen={openDetail}
         />,
       );
+      // A childless skill is still walked into so its "Add sub-skill" knob has somewhere to live.
       if (
         filtering ||
         expanded.has(row.id) ||
-        (row.childCount === 0 && row.role !== "knowledge")
+        ((visibleChildCount.get(row.id) ?? 0) === 0 && row.role === "competency")
       )
         walk(
           childrenOf.get(row.id) ?? [],
@@ -571,7 +598,8 @@ export default function CompetencyTree({
           trailing && i === ordered.length - 1,
         );
     }
-    if (!filtering && depth < 3) {
+    // Only two tiers are addable here — knowledge is added from its sub-skill's evidence list.
+    if (!filtering && depth < 2) {
       const append =
         depth === 0
           ? { tier: 1 as const, label: "Add skill", color: "var(--hestia-primary)" }
@@ -581,13 +609,7 @@ export default function CompetencyTree({
                 label: "Add sub-skill",
                 color: "var(--hestia-accent)",
               }
-            : depth === 2 && parentRole === "sub-skill"
-              ? {
-                  tier: 3 as const,
-                  label: "Add knowledge",
-                  color: "var(--hestia-text-muted)",
-                }
-              : null;
+            : null;
       if (append) {
         bodyRows.push(
           <AppendKnob
@@ -781,28 +803,51 @@ export default function CompetencyTree({
       <CompetencyGoalModal
         goal={detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null}
         role={detail?.role}
+        knowledge={childGoalsOf(forest, detail?.goal.id)}
         generatedChildCount={generatedChildCount(forest, detail?.goal.id)}
-        onClose={() => setDetail(null)}
+        onClose={closeDetail}
         onUpdate={onUpdate}
         onDelete={onDelete}
+        onOpenGoal={onOpenGoal}
+        onBack={detailParent ? () => {
+          setDetail(detailParent);
+          setDetailParent(null);
+        } : undefined}
+        backLabel={
+          detailParent
+            ? displayedGoalLabel(detailParent.goal)
+            : undefined
+        }
       />
     </div>
   );
 }
 
-/** Flattens the forest depth-first into rows that keep the structure via parent ids. */
+/**
+ * Flattens the forest depth-first into rows that keep the structure via parent ids. Each walk
+ * returns the sessions its subtree covers, which is how a synthesised skill or sub-skill — which
+ * has no hierarchy of its own — ends up reporting the sessions of its grounded descendants.
+ */
 function flattenForest(forest: CompetencyNode[]): Row[] {
   const rows: Row[] = [];
-  const walk = (node: CompetencyNode, parent: number | null) => {
-    if (node.goal.id == null) return;
-    rows.push({
+  const walk = (node: CompetencyNode, parent: number | null): string[] => {
+    if (node.goal.id == null) return [];
+    const row: Row = {
       id: node.goal.id,
       parent,
       goal: node.goal,
       role: node.role,
       childCount: node.children.length,
-    });
-    for (const child of node.children) walk(child, node.goal.id);
+      sessions: [],
+    };
+    rows.push(row);
+    const sessions = new Set<string>();
+    const own = sessionTitleOf(node.goal);
+    if (own) sessions.add(own);
+    for (const child of node.children)
+      for (const session of walk(child, node.goal.id)) sessions.add(session);
+    row.sessions = [...sessions].sort((a, b) => a.localeCompare(b));
+    return row.sessions;
   };
   for (const node of forest) walk(node, null);
   return rows;
@@ -851,14 +896,7 @@ function HeaderCell({
       role="columnheader"
       className={`relative flex items-center gap-0.5 px-2.5 py-2 ${column.alignRight ? "justify-end" : ""}`}
     >
-      {/* The column label itself is the hint's trigger: hovering the word explains the column. */}
-      {column.hint ? (
-        <InfoTooltip content={column.hint} className="inline-flex items-center">
-          {label}
-        </InfoTooltip>
-      ) : (
-        label
-      )}
+      {label}
       {column.filterKey && (
         <button
           type="button"
@@ -971,6 +1009,8 @@ function GridRow({
   context,
   filtering,
   open,
+  childCount,
+  evidenceMatch,
   onToggle,
   onOpen,
 }: {
@@ -980,19 +1020,27 @@ function GridRow({
   context: boolean;
   filtering: boolean;
   open: boolean;
+  /** Children this row still renders — knowledge is not among them, so it decides the caret. */
+  childCount: number;
+  /** The row only survived the search because of the knowledge it hides, which it says below. */
+  evidenceMatch: boolean;
   onToggle: (id: number) => void;
   onOpen: (row: Row) => void;
 }) {
   const meta = COMPETENCY_ROLE_META[row.role];
   const interactive = !context;
-  const canToggle = row.childCount > 0 && !filtering;
+  const canToggle = childCount > 0 && !filtering;
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
   // capability tiers (skill / sub-skill) and gaps stand out.
   const railColor =
     row.role === "knowledge"
       ? `color-mix(in srgb, ${meta.color} 55%, transparent)`
       : meta.color;
-  const session = sessionTitleOf(row.goal);
+  // A skill covers its children's sessions, and a document can be called anything, so the cell
+  // shows one chip and counts the rest rather than guessing how much text will fit. The count is
+  // expandable in place, so nothing here is reachable only by hovering.
+  const [allSessions, setAllSessions] = useState(false);
+  const shownSessions = allSessions ? row.sessions : row.sessions.slice(0, 1);
   return (
     <div
       role="row"
@@ -1058,19 +1106,16 @@ function GridRow({
             }`}
           >
             {displayedGoalLabel(row.goal)}
+            {evidenceMatch && (
+              <span className="ml-2 whitespace-nowrap text-xs text-hestia-text-muted">
+                matched in its knowledge
+              </span>
+            )}
           </span>
         </div>
       </div>
       <div role="gridcell" className="px-2.5 py-1.5">
         <Pill label={meta.label} color={meta.color} />
-      </div>
-      <div role="gridcell" className="px-2.5 py-1.5">
-        {row.goal.bloomLevel && (
-          <Pill
-            label={titleCase(row.goal.bloomLevel)}
-            color="var(--hestia-text-muted)"
-          />
-        )}
       </div>
       <div role="gridcell" className="px-2.5 py-1.5">
         {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
@@ -1094,10 +1139,47 @@ function GridRow({
       </div>
       <div
         role="gridcell"
-        title={session || undefined}
-        className="max-w-[18ch] truncate px-2.5 py-1.5 text-xs text-hestia-text-muted"
+        className="min-w-0 px-2.5 py-1.5 text-xs text-hestia-text-muted"
       >
-        {session || "—"}
+        {row.sessions.length === 0 ? (
+          "—"
+        ) : (
+          <div
+            className={`flex min-w-0 items-center gap-1 ${allSessions ? "flex-wrap" : ""}`}
+          >
+            {shownSessions.map((session) => (
+              <span
+                key={session}
+                title={session}
+                className="max-w-full truncate rounded-md border border-hestia-border/60 bg-hestia-text/3 px-1.5 py-0.5"
+              >
+                {session}
+              </span>
+            ))}
+            {row.sessions.length > 1 && (
+              <button
+                type="button"
+                aria-expanded={allSessions}
+                aria-label={
+                  allSessions
+                    ? "Show fewer sessions"
+                    : `Show ${row.sessions.length - 1} more sessions`
+                }
+                title={allSessions ? undefined : row.sessions.slice(1).join("\n")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAllSessions((open) => !open);
+                }}
+                // The row itself opens the goal on click and on Enter/Space, so this control has to
+                // keep both to itself.
+                onKeyDown={(e) => e.stopPropagation()}
+                className="shrink-0 rounded-md border border-[color-mix(in_srgb,var(--hestia-primary)_30%,transparent)] bg-hestia-primary-muted px-1.5 py-0.5 font-medium tabular-nums text-hestia-primary transition hover:bg-[color-mix(in_srgb,var(--hestia-primary)_28%,transparent)]"
+              >
+                {allSessions ? "−" : `+${row.sessions.length - 1}`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
