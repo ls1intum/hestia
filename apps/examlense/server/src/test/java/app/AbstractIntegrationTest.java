@@ -1,6 +1,8 @@
 package app;
 
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -22,6 +24,9 @@ public abstract class AbstractIntegrationTest {
 
     /** Matches the docker-compose Postgres version so migrations behave identically. */
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16");
+
+    @MockBean
+    private RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
 
     static {
         POSTGRES.start();
