@@ -246,6 +246,9 @@ public class WorkshopService {
 
         // 1. Generate title concurrently
         java.util.concurrent.CompletableFuture<String> titleFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                if (meta.title() != null && !meta.title().isBlank()) {
+                    return meta.title();
+                }
                 return generateSessionTitle(filteredSkeleton, goals, meta, sessionTypeLabel);
             }, llmExecutor);
 
@@ -388,7 +391,11 @@ public class WorkshopService {
         sb.append("\nTARGET BLOCK TO HYDRATE:\n");
         sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(targetBlock));
 
-        sb.append(
+        int totalDur = meta.duration() > 0 ? meta.duration() : 90;
+        int minClosingTime = (int) Math.round(totalDur * 0.13);
+        int maxClosingTime = (int) Math.round(totalDur * 0.20);
+
+        sb.append(String.format(
                 """
 
                         INSTRUCTIONS:
@@ -410,6 +417,9 @@ public class WorkshopService {
                         8. For non-learning-cycle blocks (ARRIVE, ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
                         9. The 'phaseLabel' should be a short, topic-focused title.
                         10. Do NOT list "Lecture" or "Presentation" under 'methods'.
+                        11. When generating an 'Understanding Check', design it for active peer instruction. The activity in this block MUST prompt regarding ALL learning goals of the session (e.g. assessing all LGs combined), instead of just asking one question for a single learning goal. If using polls, include a step for students to discuss mixed results with a neighbor. Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block. Limit this block to a maximum of 1 activity (methods), or 0 if unnecessary.
+                        12. When generating a 'Summary & Wrap-up' block, shift the cognitive load to the participants. Do NOT generate passive, sequential reviews of learning goals (e.g., 'Review LG1'). Generate student-centered synthesis activities (e.g., 'One-Minute Paper', or having students state takeaways). Consolidate all final Q&A, logistics, and the formal session closure into a single, final step lasting no more than 3 minutes. CRITICAL: Keep the phaseLabel strictly as "Summary & Wrap-up" (do not rename it to "Synthesis & Closure" or anything else). Limit this block to a maximum of 1 activity (methods), or 0 if unnecessary.
+                        13. Ensure the combined duration of the final evaluation and wrap-up blocks is strictly between %d and %d minutes. To maintain momentum, no single sub-step within these final blocks should exceed 4 minutes.
 
                         OUTPUT FORMAT (return only this JSON object, no markdown):
                         {
@@ -443,7 +453,7 @@ public class WorkshopService {
                             }
                           ]
                         }
-                        """);
+                        """, minClosingTime, maxClosingTime));
 
         return sb.toString();
     }

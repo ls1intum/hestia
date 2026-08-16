@@ -207,6 +207,125 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
   const canContinue = goals.some((g) => g.text.trim().length > 5) && !isLoading;
 
+  const lghDrafts = goals.filter((g) => g.id.startsWith("lgh-"));
+  const manualDrafts = goals.filter((g) => !g.id.startsWith("lgh-"));
+
+  const renderGoal = (g: GoalDraft) => (
+    <div key={g.id} className="space-y-2">
+      {/* Header row */}
+      <div className="flex gap-2 items-start">
+        <div className="flex-1 relative">
+          <Textarea
+            id={`textarea-${g.id}`}
+            placeholder="e.g. apply logistic regression to classification problems…"
+            value={g.text}
+            onChange={(e) => handleTextChange(g.id, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                addGoal();
+              }
+            }}
+            rows={2}
+            className="resize-none h-[60px] min-h-[60px] font-body text-sm leading-relaxed"
+            disabled={isLoading}
+          />
+          {g.checking && (
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> checking…
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-stretch gap-1 shrink-0 pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => triggerCheck(g.id, g.text)}
+            className="h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 border-primary/20 gap-1.5"
+            disabled={g.checking || isLoading}
+            title="Check with AI"
+          >
+            <Sparkles className="h-3 w-3" />
+            Refine with AI
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => removeGoal(g.id)}
+            className="h-7 px-2.5 text-xs text-destructive gap-1.5 hover:bg-destructive/10 hover:text-destructive"
+            disabled={goals.length === 1 || isLoading}
+          >
+            <Trash2 className="h-3 w-3" />
+            Remove
+          </Button>
+        </div>
+      </div>
+
+      {/* AI suggestions */}
+      {g.looksGood && g.suggestions.length === 0 && !g.checking && (
+        <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 px-3 py-2.5 text-sm flex items-center gap-2">
+          <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">
+            Looks good! The AI didn't find any issues with this learning goal.
+          </p>
+        </div>
+      )}
+      {g.suggestions.map((s, sIdx) => (
+        <div
+          key={sIdx}
+          className={`rounded-lg border px-3 py-2.5 text-sm space-y-1.5 ${s.type === "split"
+            ? "border-blue-400/30 bg-blue-500/5"
+            : "border-amber-400/30 bg-amber-500/5"
+            }`}
+        >
+          {/* G-5: text label so type is readable in grayscale */}
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              s.type === "split"
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            }`}>
+              {s.type === "split" ? "Split Goal" : "Refinement"}
+            </span>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <AlertCircle
+              className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${s.type === "split" ? "text-blue-500" : "text-amber-500"
+                }`}
+            />
+            <p className="text-xs text-muted-foreground leading-relaxed">{s.message}</p>
+          </div>
+          {s.values.map((v, vi) => (
+            <p key={vi} className="text-xs font-medium text-foreground ml-5 italic">
+              {s.type === "split" ? `Goal ${vi + 1}: ` : "→ "}
+              {v}
+            </p>
+          ))}
+          <div className="flex gap-2 ml-5 mt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs gap-1 border-green-500/30 text-green-700 hover:bg-green-500/10"
+              onClick={() => acceptSuggestion(g.id, s)}
+            >
+              <Check className="h-3 w-3" /> Accept
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs gap-1 text-muted-foreground"
+              onClick={() => dismissSuggestion(g.id, sIdx)}
+            >
+              <X className="h-3 w-3" /> Dismiss
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-4 pb-20">
       <Card className="border-border/60 shadow-lg relative overflow-visible flex flex-col">
@@ -221,7 +340,16 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         </CardHeader>
         <CardContent className="space-y-5">
 
-          <LGHImport onAddGoals={handleAddGoalsFromLGH} disabled={isLoading} />
+          <div>
+            <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Import from LearningGoalHub</h3>
+            <LGHImport onAddGoals={handleAddGoalsFromLGH} disabled={isLoading} />
+            
+            {lghDrafts.length > 0 && (
+              <div className="mt-4 space-y-4">
+                {lghDrafts.map(renderGoal)}
+              </div>
+            )}
+          </div>
 
           <div className="pt-4 border-t border-border/40">
             <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option B: Enter Manually</h3>
@@ -229,121 +357,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
               Participants will be able to...
             </h4>
             <div className="space-y-4">
-              {goals.map((g, idx) => (
-                <div key={g.id} className="space-y-2">
-                  {/* Header row */}
-                  <div className="flex gap-2 items-start">
-                    <div className="flex-1 relative">
-                      <Textarea
-                        id={`textarea-${g.id}`}
-                        placeholder="e.g. apply logistic regression to classification problems…"
-                        value={g.text}
-                        onChange={(e) => handleTextChange(g.id, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            addGoal();
-                          }
-                        }}
-                        rows={2}
-                        className="resize-none h-[60px] min-h-[60px] font-body text-sm leading-relaxed"
-                        disabled={isLoading}
-                      />
-                      {g.checking && (
-                        <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Loader2 className="h-3 w-3 animate-spin" /> checking…
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-stretch gap-1 shrink-0 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => triggerCheck(g.id, g.text)}
-                        className="h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 border-primary/20 gap-1.5"
-                        disabled={g.checking || isLoading}
-                        title="Check with AI"
-                      >
-                        <Sparkles className="h-3 w-3" />
-                        Refine with AI
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeGoal(g.id)}
-                        className="h-7 px-2.5 text-xs text-destructive gap-1.5 hover:bg-destructive/10 hover:text-destructive"
-                        disabled={goals.length === 1 || isLoading}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* AI suggestions */}
-                  {g.looksGood && g.suggestions.length === 0 && !g.checking && (
-                    <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 px-3 py-2.5 text-sm flex items-center gap-2">
-                      <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                      <p className="text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">
-                        Looks good! The AI didn't find any issues with this learning goal.
-                      </p>
-                    </div>
-                  )}
-                  {g.suggestions.map((s, sIdx) => (
-                    <div
-                      key={sIdx}
-                      className={`rounded-lg border px-3 py-2.5 text-sm space-y-1.5 ${s.type === "split"
-                        ? "border-blue-400/30 bg-blue-500/5"
-                        : "border-amber-400/30 bg-amber-500/5"
-                        }`}
-                    >
-                      {/* G-5: text label so type is readable in grayscale */}
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                          s.type === "split"
-                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                        }`}>
-                          {s.type === "split" ? "Split Goal" : "Refinement"}
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-1.5">
-                        <AlertCircle
-                          className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${s.type === "split" ? "text-blue-500" : "text-amber-500"
-                            }`}
-                        />
-                        <p className="text-xs text-muted-foreground leading-relaxed">{s.message}</p>
-                      </div>
-                      {s.values.map((v, vi) => (
-                        <p key={vi} className="text-xs font-medium text-foreground ml-5 italic">
-                          {s.type === "split" ? `Goal ${vi + 1}: ` : "→ "}
-                          {v}
-                        </p>
-                      ))}
-                      <div className="flex gap-2 ml-5 mt-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs gap-1 border-green-500/30 text-green-700 hover:bg-green-500/10"
-                          onClick={() => acceptSuggestion(g.id, s)}
-                        >
-                          <Check className="h-3 w-3" /> Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-xs gap-1 text-muted-foreground"
-                          onClick={() => dismissSuggestion(g.id, sIdx)}
-                        >
-                          <X className="h-3 w-3" /> Dismiss
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
+              {manualDrafts.map(renderGoal)}
             </div>
           </div>
 
@@ -360,11 +374,16 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         </CardContent>
 
         {/* Floating Footer Bar */}
-        <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">
-          <Button variant="outline" size="sm" onClick={onBack} className="gap-2 font-body shrink-0" disabled={isLoading}>
+        <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBack}
+            className="gap-2 font-body shrink-0 bg-transparent border-[1.5px] border-primary text-primary hover:bg-primary/5 transition-all duration-150"
+          >
             <ArrowLeft className="h-4 w-4" /> Previous
           </Button>
-          <Button onClick={handleContinue} disabled={!canContinue || isFixingGrammar} size="sm" className="px-6 gap-2 shadow-md hover:shadow-lg transition-shadow shrink-0">
+          <Button onClick={handleContinue} disabled={!canContinue || isFixingGrammar} size="sm" className="px-6 gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150">
             {isFixingGrammar ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…</>
             ) : (

@@ -15,7 +15,8 @@ export function InlineEditText({
   disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     setDraft(value);
@@ -23,9 +24,17 @@ export function InlineEditText({
 
   useEffect(() => {
     if (editing && !alwaysEdit) {
-      setTimeout(() => ref.current?.focus(), 30);
+      setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [editing, alwaysEdit]);
+
+  // Sync input width to mirror span width
+  useEffect(() => {
+    if (inputRef.current && mirrorRef.current) {
+      const w = mirrorRef.current.offsetWidth;
+      inputRef.current.style.width = `${Math.max(40, w + 8)}px`;
+    }
+  }, [draft]);
 
   const commit = () => onSave(draft);
 
@@ -33,7 +42,7 @@ export function InlineEditText({
     if (multiline) {
       return (
         <textarea
-          ref={ref as React.Ref<HTMLTextAreaElement>}
+          ref={inputRef as React.Ref<HTMLTextAreaElement>}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
@@ -44,14 +53,26 @@ export function InlineEditText({
       );
     }
     return (
-      <input
-        ref={ref as React.Ref<HTMLInputElement>}
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(value); onSave(value); } }}
-        className={`font-body font-semibold bg-background border border-primary/60 rounded-md focus:outline-none focus:ring-1 focus:ring-primary ${inputClassName} ${className}`}
-      />
+      <span className="relative inline-flex items-center">
+        {/* Hidden mirror span to measure text width */}
+        <span
+          ref={mirrorRef}
+          aria-hidden
+          className={`invisible absolute whitespace-pre font-body font-semibold ${inputClassName} ${className}`}
+          style={{ pointerEvents: "none" }}
+        >
+          {draft || " "}
+        </span>
+        <input
+          ref={inputRef as React.Ref<HTMLInputElement>}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(value); onSave(value); } }}
+          className={`font-body font-semibold bg-background border border-primary/60 rounded-md focus:outline-none focus:ring-1 focus:ring-primary ${inputClassName} ${className}`}
+          style={{ minWidth: 40 }}
+        />
+      </span>
     );
   }
 

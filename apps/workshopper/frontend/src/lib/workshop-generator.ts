@@ -67,6 +67,28 @@ export interface SlideData {
   bullets?: string[];
   notes?: string;
   fixedInstructionFor?: string;
+  layout?:
+    | "title"
+    | "agenda"
+    | "standard"
+    | "activity_tiled"
+    | "activity_sidebar"
+    | "activity_grid3"
+    | "live_poll"
+    | "concept_map"
+    | "lecture_placeholder"
+    | "debrief";
+  activityInstructions?: string[];
+  activityPrompt?: string;
+  activityOutputExpectation?: string;
+  pollQuestion?: string;
+  pollOptions?: string[];
+  /** Single centred reflective question for debrief slides */
+  debriefQuestion?: string;
+  /** Slide group from the 7-part deck structure */
+  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary";
+  /** Learning goal index (1-based) — present on main_lecture and check_understanding slides */
+  lgIndex?: number;
 }
 
 /** The full generated session returned after step 2 */
@@ -160,8 +182,8 @@ export function generateDefaultSkeleton(goals: LearningGoalPlan[], totalDuration
   const breakTime = totalDuration >= 90 ? Math.round((totalDuration / 90) * 5) : 0;
   // Buffer: 5 min for 90-min session
   const bufferTime = Math.round((totalDuration / 90) * 5);
-  const summaryTime = 10;
-  const globalEvaluateTime = 10;
+  const globalEvaluateTime = Math.max(5, Math.round((totalDuration / 90) * 10));
+  const summaryTime = Math.max(5, Math.round((totalDuration / 90) * 5));
 
   const fixedTime = arriveTime + activateTime + breakTime + bufferTime + summaryTime + globalEvaluateTime;
   const remaining = Math.max(0, totalDuration - fixedTime);

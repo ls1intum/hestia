@@ -85,6 +85,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const [isEditMode, setIsEditMode] = useState(false);
   const [originalBlocks, setOriginalBlocks] = useState<DndActivityBlock[] | null>(null);
   const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
+  const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -270,6 +272,9 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
   const handleDeleteBlock = (dndId: string) => {
     setBlocks(prev => {
+      const index = prev.findIndex(b => b.dndId === dndId);
+      const deleted = prev[index];
+      if (deleted) setLastDeletedBlock({ block: deleted, index });
       const next = prev.filter(b => b.dndId !== dndId);
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
@@ -282,6 +287,16 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       }
       return next;
     });
+  };
+
+  const handleUndoDelete = () => {
+    if (!lastDeletedBlock) return;
+    setBlocks(prev => {
+      const next = [...prev];
+      next.splice(lastDeletedBlock.index, 0, lastDeletedBlock.block);
+      return next;
+    });
+    setLastDeletedBlock(null);
   };
 
   const handleDeleteActivity = (dndId: string, methodToRemove: string) => {
@@ -550,12 +565,12 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="font-display font-semibold text-2xl text-foreground mt-0.5">
+              <h2 className="font-display font-bold text-3xl text-foreground mt-0.5">
                 {isEditMode ? (
                   <Input
                     value={sessionTitle}
                     onChange={(e) => setSessionTitle(e.target.value)}
-                    className="font-display text-2xl font-semibold h-auto py-1 px-2 -ml-2 border-primary/50 focus-visible:ring-1 focus-visible:ring-primary w-[300px]"
+                    className="font-display text-3xl font-bold h-auto py-1 px-2 -ml-2 border-primary/50 focus-visible:ring-1 focus-visible:ring-primary w-[400px]"
                     placeholder="Workshop Title"
                   />
                 ) : (
@@ -569,6 +584,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           </div>
         </CardHeader>
         <CardContent>
+          
+
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={blocks.map(b => b.dndId)} strategy={verticalListSortingStrategy}>
               {blocks.map(block => (
@@ -580,7 +597,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   meta={meta}
                   isRegenerating={regeneratingBlockId === block.dndId}
                   selectedActivities={meta.selectedActivities || []}
-                  isEditMode={isEditMode}
+                  isEditMode={editingBlockId === block.dndId}
+                  onToggleEditMode={() => setEditingBlockId(prev => prev === block.dndId ? null : block.dndId)}
                   onToggleExpand={() => toggleExpand(block.dndId)}
                   onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
                   onSaveTitle={v => handleSaveTitle(block.dndId, v)}
@@ -602,59 +620,58 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               ))}
             </SortableContext>
             
-            {isEditMode && (
-              <div className="mt-4 flex justify-center">
-                <Button
-                  variant="outline"
-                  className="w-full border-dashed border-2 py-6 text-muted-foreground hover:text-foreground hover:border-primary/50"
-                  onClick={() => {
-                    const newId = `custom-${Date.now()}`;
-                    setBlocks(prev => [...prev, {
-                      dndId: newId,
-                      phase: "CUSTOM",
-                      phaseLabel: "Custom Block",
-                      goalTag: "",
-                      objective: "",
-                      description: "",
-                      methods: [],
-                      materials: [],
-                      duration: 10,
-                    }]);
-                    setExpandedBlocks(prev => ({ ...prev, [newId]: true }));
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" /> Add Custom Block
-                </Button>
-              </div>
-            )}
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                className="w-full border-dashed border-2 py-6 text-muted-foreground hover:text-foreground hover:border-primary/50"
+                onClick={() => {
+                  const newId = `custom-${Date.now()}`;
+                  setBlocks(prev => [...prev, {
+                    dndId: newId,
+                    phase: "CUSTOM",
+                    phaseLabel: "Custom Block",
+                    goalTag: "",
+                    objective: "",
+                    description: "",
+                    methods: [],
+                    materials: [],
+                    duration: 10,
+                  }]);
+                  setExpandedBlocks(prev => ({ ...prev, [newId]: true }));
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Custom Block
+              </Button>
+            </div>
           </DndContext>
         </CardContent>
 
         {/* Sticky footer */}
-        <div className="sticky bottom-4 z-20 mx-4 mb-4 rounded-xl border border-border/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">
-          <Button variant="outline" size="sm" onClick={handleBack} className="gap-2 font-body shrink-0">
+        <div className="sticky bottom-4 z-20 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-xl p-3 flex items-center justify-between gap-4 transition-all">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBack}
+            className="gap-2 font-body shrink-0 bg-transparent border-[1.5px] border-primary text-primary hover:bg-primary/5 transition-all duration-150"
+          >
             <ArrowLeft className="h-4 w-4" /> Previous
           </Button>
 
-          <div className="flex-1 flex flex-col gap-1 max-w-sm relative">
-            <div className="flex items-center justify-between text-xs font-medium">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Clock className={`h-3.5 w-3.5 ${totalDuration > targetDuration ? "text-destructive" : "text-primary"}`} />
-                <span className="hidden sm:inline">Time Allocated</span>
-              </div>
-              {/* G-2: show explicit overtime label so status isn't color-only */}
-              {totalDuration > targetDuration ? (
-                <span className="text-destructive font-bold flex items-center gap-1">
-                  ⚠ {totalDuration} / {targetDuration} min
-                  <span className="text-[10px] font-normal opacity-80">(over by {totalDuration - targetDuration} min)</span>
-                </span>
-              ) : (
-                <span className="text-foreground font-bold">
-                  {totalDuration} / {targetDuration} min
-                </span>
-              )}
+          <div className="flex-1 flex items-center justify-center gap-4 text-sm font-medium">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Clock className={`h-4 w-4 ${totalDuration > targetDuration ? "text-destructive" : "text-primary"}`} />
+              <span className="hidden sm:inline">Time Allocated</span>
             </div>
-            <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden shadow-inner">
+            {totalDuration > targetDuration ? (
+              <span className="flex items-center gap-1.5 bg-destructive/15 text-foreground border border-destructive/50 px-2.5 py-0.5 rounded-md font-bold shadow-sm">
+                <span className="text-destructive">⚠</span> {totalDuration} / {targetDuration} min
+              </span>
+            ) : (
+              <span className="text-foreground font-bold">
+                {totalDuration} / {targetDuration} min
+              </span>
+            )}
+            <div className="hidden sm:block h-1 w-[128px] bg-muted/60 rounded-full overflow-hidden shadow-inner">
               <div
                 className={`h-full transition-all duration-500 ease-out ${totalDuration > targetDuration ? "bg-destructive" : "bg-primary"}`}
                 style={{ width: `${timePercentage}%` }}
@@ -662,47 +679,37 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
             </div>
           </div>
 
-          <Button size="sm" onClick={handleNext} className="gap-2 shadow-md hover:shadow-lg transition-shadow shrink-0">
-            Preparation <ArrowRight className="h-3.5 w-3.5" />
+          <Button
+            size="sm"
+            onClick={handleNext}
+            disabled={totalDuration > targetDuration}
+            className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150"
+          >
+            Preparation <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </Card>
 
-      {/* Floating Action Buttons for Edit Mode */}
-      <div className="fixed bottom-24 right-8 z-50 flex flex-col items-end gap-3 pointer-events-none">
-        <div className="pointer-events-auto flex flex-col gap-3">
-          {isEditMode ? (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={cancelEditMode}
-                className="h-12 w-12 rounded-full shadow-lg border-muted bg-white hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200"
-                title="Cancel Changes"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-              <Button
-                size="icon"
-                onClick={saveEditMode}
-                className="h-14 w-14 rounded-full shadow-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 hover:scale-105"
-                title="Save Changes"
-              >
-                <Save className="h-6 w-6" />
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="icon"
-              onClick={enterEditMode}
-              className="h-14 w-14 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-white transition-all duration-200 hover:scale-105"
-              title="Edit Session"
-            >
-              <Pencil className="h-6 w-6" />
-            </Button>
-          )}
+
+
+      {/* Undo delete banner */}
+      {lastDeletedBlock && (
+        <div className="fixed bottom-24 right-4 z-50 flex items-center gap-3 bg-foreground text-background text-sm font-body px-4 py-3 rounded-xl shadow-xl border border-border/10">
+          <span className="opacity-80">Block deleted</span>
+          <button
+            onClick={handleUndoDelete}
+            className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity whitespace-nowrap"
+          >
+            Undo
+          </button>
+          <button
+            onClick={() => setLastDeletedBlock(null)}
+            className="opacity-50 hover:opacity-100 transition-opacity ml-1"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Unsaved Changes Dialog */}
       <AlertDialog open={pendingNavigation !== null} onOpenChange={(open) => {

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Loader2, Moon, Sun, GraduationCap, ArrowLeft } from "lucide-react";
 import WorkshopFormStep1 from "@/components/WorkshopFormStep1";
 import WorkshopFormStep2 from "@/components/WorkshopFormStep2";
+import WorkshopFormStep2b from "@/components/WorkshopFormStep2b";
 import WorkshopGoalEntry from "@/components/WorkshopGoalEntry";
 import WorkshopGeneratedTimetable from "@/components/WorkshopGeneratedTimetable";
 
@@ -25,13 +26,13 @@ import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 import LectureSummary from "@/components/LectureSummary";
 import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 
-type Step = "input-1" | "input-2" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 // Helper: compute the ordered step IDs for a given entity configuration
 function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
-      if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2";
+      if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
       if (!lectureId && s.id === "lecture-summary") return false;
       return true;
     })
@@ -41,6 +42,7 @@ function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string |
 const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
+  { id: "input-2b", label: "Materials" },
   { id: "lecture-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
   { id: "timeline", label: "Timetable" },
@@ -65,7 +67,7 @@ export default function App() {
   const [entityType, setEntityType] = useState<"SESSION" | "LECTURE">("SESSION");
 
   const STEPS = ALL_STEPS.filter(s => {
-    if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2";
+    if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
     if (!currentLectureId && s.id === "lecture-summary") return false;
     return true;
   });
@@ -319,6 +321,12 @@ export default function App() {
     }
   };
 
+  // Called when user confirms activity selections on step 2 and clicks Next
+  const handleStep2Activities = (activities: string[]) => {
+    setWorkshopInput(prev => ({ ...prev, selectedActivities: activities }));
+    setStep("input-2b");
+  };
+
   const handleStep2 = async (input: WorkshopInput) => {
     // B-1: guard against rapid clicks creating duplicate sessions
     if (isLoading) return;
@@ -422,6 +430,7 @@ export default function App() {
   const loadingMessages: Record<Step, { title: string; sub: string }> = {
     "input-1":  { title: "Loading…",                    sub: "" },
     "input-2":  { title: "Loading…",                    sub: "" },
+    "input-2b": { title: "Loading…",                    sub: "" },
     "lecture-summary": { title: "Loading…",             sub: "" },
     "goals":    { title: "Loading…",                    sub: "" },
     "timeline": { title: "Generating your session plan…", sub: "This may take a moment." },
@@ -537,10 +546,26 @@ export default function App() {
         {step === "input-2" && (
           <WorkshopFormStep2
             initialInput={workshopInput}
-            onGenerate={handleStep2}
+            onNext={handleStep2Activities}
             isLoading={isLoading}
             onBack={() => setStep("input-1")}
             // N-1: incrementally save selections so they survive re-mount
+            onSelectionsChange={(activities, materials) => {
+              setWorkshopInput(prev => ({
+                ...prev,
+                selectedActivities: activities,
+                availableMaterials: materials,
+              }));
+            }}
+          />
+        )}
+
+        {step === "input-2b" && (
+          <WorkshopFormStep2b
+            initialInput={workshopInput}
+            onGenerate={handleStep2}
+            isLoading={isLoading}
+            onBack={() => setStep("input-2")}
             onSelectionsChange={(activities, materials) => {
               setWorkshopInput(prev => ({
                 ...prev,
@@ -566,7 +591,7 @@ export default function App() {
         {step === "goals" && (
           <WorkshopGoalEntry
             initialInput={workshopInput}
-            onBack={() => currentLectureId ? setStep("lecture-summary") : setStep("input-2")}
+            onBack={() => currentLectureId ? setStep("lecture-summary") : setStep("input-2b")}
             onContinue={handleGoalsEntered}
             isLoading={isLoading}
             initialGoals={refinedGoals}

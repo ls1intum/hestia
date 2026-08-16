@@ -11,6 +11,84 @@ export const phaseEmojis: Record<string, string> = {
   BUFFER: "⏳",
 };
 
+export type ActivityMode = "setup" | "lecture" | "practice" | "evaluate" | "summary" | "break";
+
+export const MODE_COLORS: Record<ActivityMode, { border: string; dot: string; bgTint: string; badgeBg: string; badgeText: string }> = {
+  setup: {
+    border: "var(--hestia-phase-setup)",
+    dot: "var(--hestia-phase-setup)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-setup) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-setup) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+  lecture: {
+    border: "var(--hestia-phase-lecture)",
+    dot: "var(--hestia-phase-lecture)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-lecture) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-lecture) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+  practice: {
+    border: "var(--hestia-phase-practice)",
+    dot: "var(--hestia-phase-practice)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-practice) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-practice) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+  evaluate: {
+    border: "var(--hestia-phase-evaluate)",
+    dot: "var(--hestia-phase-evaluate)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-evaluate) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-evaluate) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+  summary: {
+    border: "var(--hestia-phase-summary)",
+    dot: "var(--hestia-phase-summary)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-summary) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-summary) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+  break: {
+    border: "var(--hestia-phase-break)",
+    dot: "var(--hestia-phase-break)",
+    bgTint: "color-mix(in srgb, var(--hestia-phase-break) 6%, transparent)",
+    badgeBg: "color-mix(in srgb, var(--hestia-phase-break) 10%, transparent)",
+    badgeText: "var(--hestia-text)",
+  },
+};
+
+export const getPhaseMode = (phase: string): ActivityMode => {
+  const p = phase.toUpperCase();
+  if (p === "ARRIVE") return "setup";
+  if (p === "BREAK" || p === "BUFFER") return "break";
+  if (p === "EVALUATE") return "evaluate";
+  if (p === "SUMMARY") return "summary";
+  if (p === "ACTIVATE" || p === "PROCESS" || p === "LEARNING_CYCLE") return "practice";
+  if (p === "INFORM") return "lecture";
+  return "practice";
+};
+
+export const getStepMode = (text: string, parentMode: ActivityMode): ActivityMode => {
+  const t = text.toLowerCase();
+  if (t.includes("lecture") || t.includes("presentation") || t.includes("explain") || t.includes("concept")) return "lecture";
+  if (t.includes("evaluate") || t.includes("understanding check") || t.includes("assessment") || t.includes("assess")) return "evaluate";
+  if (t.includes("summary") || t.includes("wrap up") || t.includes("conclusion")) return "summary";
+  if (t.includes("prompt") || t.includes("question") || t.includes("q&a") || t.includes("quiz") || t.includes("discuss") || t.includes("share") || t.includes("brainstorm") || t.includes("feedback") || t.includes("activity") || t.includes("exercise") || t.includes("practice") || t.includes("role play") || t.includes("simulate")) return "practice";
+  if (t.includes("welcome") || t.includes("intro")) return "setup";
+  if (t.includes("break") || t.includes("pause")) return "break";
+  return parentMode;
+};
+
+export const getSectionMode = (label: string, defaultMode: ActivityMode): ActivityMode => {
+  const l = label.toLowerCase();
+  if (l.includes("explain") || l.includes("lecture") || l.includes("instructor")) return "lecture";
+  if (l.includes("evaluate") || l.includes("check") || l.includes("assessment")) return "evaluate";
+  if (l.includes("summary") || l.includes("wrap") || l.includes("conclusion")) return "summary";
+  if (l.includes("practice") || l.includes("activity") || l.includes("participant") || l.includes("discuss") || l.includes("share") || l.includes("quiz")) return "practice";
+  return defaultMode;
+};
+
 export const phaseRowColors: Record<string, string> = {
   ARRIVE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary",
   ACTIVATE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent",
@@ -50,6 +128,54 @@ export const DEFAULT_ACTIVITIES = [
   "Group Discussion", "Case Study", "Role Play",
   "Hands-on Practice", "Quiz / Polls", "Q&A Session",
   "Peer Review", "Brainstorming", "Think-Pair-Share",
+];
+
+export interface ActivityInfo {
+  emoji: string;
+  name: string;
+  desc: string;
+}
+
+export interface ActivityGroup {
+  label: string;
+  groupEmoji: string;
+  activities: ActivityInfo[];
+}
+
+export const ACTIVITY_GROUPS: ActivityGroup[] = [
+  {
+    label: "Individual",
+    groupEmoji: "👤",
+    activities: [
+      { emoji: "✅", name: "Quiz / Polls", desc: "Short, structured questions used to check understanding, gather opinions, or gauge the room in real time. Quick to run and useful for engagement or knowledge checks." },
+      { emoji: "🛠️", name: "Hands-on Practice", desc: "A guided, practical exercise where participants directly apply a skill or tool themselves rather than just observing. Reinforces learning through doing and immediate feedback." },
+    ],
+  },
+  {
+    label: "Pair",
+    groupEmoji: "👥",
+    activities: [
+      { emoji: "🧠", name: "Think-Pair-Share", desc: "A three-step structure: individuals first reflect alone, then discuss with a partner, then share with the wider group. Balances independent thinking with collaborative discussion." },
+      { emoji: "🤝", name: "Peer Review", desc: "Participants evaluate and give constructive feedback on each other's work. Builds critical thinking and exposes people to different approaches and standards." },
+    ],
+  },
+  {
+    label: "Small Group",
+    groupEmoji: "👥👥",
+    activities: [
+      { emoji: "🎭", name: "Role Play", desc: "Participants act out defined roles or scenarios to practice skills, explore perspectives, or simulate real-life interactions in a low-stakes environment. Great for building empathy and interpersonal skills." },
+      { emoji: "🕵️‍♂️", name: "Case Study", desc: "An in-depth analysis of a real or realistic scenario, where participants examine context, decisions, and outcomes to extract practical lessons. Ideal for applying theory to real-world situations." },
+      { emoji: "💡", name: "Brainstorming", desc: "A free-flowing idea-generation session where quantity and creativity are prioritized over immediate judgment. Useful for problem-solving and innovation." },
+    ],
+  },
+  {
+    label: "Whole Class",
+    groupEmoji: "🏛️",
+    activities: [
+      { emoji: "🗣️", name: "Group Discussion", desc: "An open conversation among participants to explore a topic collaboratively, share perspectives, and build on each other's ideas. Best for surfacing diverse viewpoints and encouraging active listening." },
+      { emoji: "🙋‍♀️", name: "Q&A Session", desc: "A dedicated segment where participants can ask questions and receive direct answers from a facilitator or expert. Clarifies doubts and encourages open dialogue." },
+    ],
+  },
 ];
 
 export const getMechanicDescription = (mechanic: string) => {

@@ -17,6 +17,15 @@
     --hestia-primary-muted:   color-mix(in srgb, var(--hestia-primary) 12%, var(--hestia-bg));
     --hestia-border:          color-mix(in srgb, var(--hestia-text) 15%, transparent);
     --hestia-text-muted:      color-mix(in srgb, var(--hestia-text) 60%, transparent);
+
+    /* Extended Functional Palette for Activity Blocks */
+    --hestia-phase-setup:       #2563EB;
+    --hestia-phase-lecture:     #6D28D9;
+    --hestia-phase-practice:    #059669;
+    --hestia-phase-evaluate:    #D97706;
+    --hestia-phase-summary:     #E11D48;
+    --hestia-phase-break:       #4B5563;
+
     --hestia-font-display:    'Playfair Display', Georgia, serif;
     --hestia-font-body:       'Inter', system-ui, sans-serif;
     --hestia-font-mono:       'JetBrains Mono', ui-monospace, monospace;
@@ -51,8 +60,20 @@
     --radius: 0.5rem;
   }
 
-  .dark {
+  [data-theme="dark"], .dark {
     /* Dark Mode — HESTIA */
+    --hestia-bg:              #18181b;
+    --hestia-surface:         #27272a;
+    --hestia-text:            #f4f4f5;
+
+    /* Phase colors adapted for dark mode */
+    --hestia-phase-setup:       #60A5FA;
+    --hestia-phase-lecture:     #A78BFA;
+    --hestia-phase-practice:    #34D399;
+    --hestia-phase-evaluate:    #FBBF24;
+    --hestia-phase-summary:     #FB7185;
+    --hestia-phase-break:       #9CA3AF;
+
     --background: 0 0% 7%;
     --foreground: 40 33% 92%;
     --card: 0 0% 12%;
@@ -86,9 +107,9 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Focus ring — WCAG AA */
+  /* Global Focus ring — Enforced */
   *:focus-visible {
-    outline: 2px solid hsl(var(--ring));
+    outline: 2px solid var(--hestia-primary);
     outline-offset: 2px;
   }
 
