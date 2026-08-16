@@ -3,23 +3,27 @@ import { cn } from "@/lib/utils/utils";
 
 type Tone = "primary" | "warning";
 
-const TONE: Record<Tone, { border: string; text: string; hover: string; ring: string }> = {
+const TONE: Record<Tone, { bg: string; border: string; text: string; hover: string; ring: string }> = {
   primary: {
+    bg: "bg-hestia-surface",
     border: "border-hestia-primary/30",
     text: "text-hestia-primary",
     hover: "hover:border-hestia-primary hover:bg-hestia-primary-muted/40",
     ring: "focus-visible:ring-hestia-primary",
   },
+  // Filled rather than outlined: these pills float over white cards in light
+  // mode, where a surface-colored chip reads as part of the page behind it.
   warning: {
-    border: "border-hestia-warning/50",
-    text: "text-hestia-warning",
-    hover: "hover:bg-hestia-warning/10",
+    bg: "bg-hestia-warning",
+    border: "border-hestia-warning",
+    text: "text-hestia-warning-foreground",
+    hover: "hover:bg-hestia-warning/90",
     ring: "focus-visible:ring-hestia-warning",
   },
 };
 
 const BASE =
-  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-hestia-full border bg-hestia-surface px-hestia-3 py-1.5 text-xs font-semibold shadow-hestia-md";
+  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-hestia-full border px-hestia-3 py-1.5 text-xs font-semibold shadow-hestia-md";
 
 interface Props {
   label: string;
@@ -63,6 +67,7 @@ export const WayfindingPill = ({
         onClick={onClick}
         className={cn(
           BASE,
+          t.bg,
           t.border,
           t.text,
           t.hover,
@@ -77,7 +82,7 @@ export const WayfindingPill = ({
   }
 
   return (
-    <span aria-hidden className={cn(BASE, t.border, t.text, className)}>
+    <span aria-hidden className={cn(BASE, t.bg, t.border, t.text, className)}>
       {inner}
     </span>
   );

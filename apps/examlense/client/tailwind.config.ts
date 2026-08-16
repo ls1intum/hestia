@@ -61,6 +61,7 @@ export default {
           "text-muted": "hsl(var(--hestia-text-muted))",
           accent: "hsl(var(--hestia-accent))",
           warning: "hsl(var(--hestia-warning))",
+          "warning-foreground": "hsl(var(--hestia-warning-foreground))",
           danger: "hsl(var(--hestia-danger))",
           success: "hsl(var(--hestia-success))",
           "success-foreground": "hsl(var(--hestia-success-foreground))",

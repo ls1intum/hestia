@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: examlense-backend
+    name: examlense-server
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/examlense}
     username: ${DB_USER:examlense}

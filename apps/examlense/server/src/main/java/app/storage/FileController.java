@@ -95,7 +95,7 @@ public class FileController {
     }
 
     private static boolean isPdf(byte[] b) {
-        // Mirror the frontend precheck (frontend/src/lib/parsing/pdf-precheck.ts):
+        // Mirror the frontend precheck (client/src/lib/parsing/pdf-precheck.ts):
         // accept "%PDF-" anywhere in the first 1 KB, not just at byte 0. The spec
         // tolerates leading bytes (BOM / whitespace) before the header, and real
         // PDFs have them; a strict byte-0 check rejected files the precheck passed.

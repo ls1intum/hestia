@@ -30,8 +30,8 @@ interface ModelListResponse {
 export interface ResolvedModelCatalog {
   models: LlmModel[];
   defaultId: string;
-  /** "backend" = served by Spring Boot, "fallback" = bundled in the frontend. */
-  source: "backend" | "fallback";
+  /** "server" = served by Spring Boot, "fallback" = bundled in the client. */
+  source: "server" | "fallback";
 }
 
 async function fetchCatalog(
@@ -45,14 +45,14 @@ async function fetchCatalog(
   }
   try {
     const resp = await apiRequest<ModelListResponse>(path);
-    const backendModels = resp.models.map((m) => ({
+    const serverModels = resp.models.map((m) => ({
       id: m.id,
       label: m.label,
       description: m.description ?? undefined,
     }));
     const models = preserveFallbackModels
-      ? mergeWithFallbackModels(backendModels, fallback)
-      : backendModels;
+      ? mergeWithFallbackModels(serverModels, fallback)
+      : serverModels;
     const defaultId = preserveFallbackModels
       ? fallbackDefault
       : models.some((m) => m.id === resp.defaultId)
@@ -61,7 +61,7 @@ async function fetchCatalog(
     return {
       models,
       defaultId,
-      source: "backend",
+      source: "server",
     };
   } catch (err) {
     if (err instanceof ApiClientNotConfiguredError) {
@@ -72,14 +72,14 @@ async function fetchCatalog(
 }
 
 function mergeWithFallbackModels(
-  backendModels: LlmModel[],
+  serverModels: LlmModel[],
   fallbackModels: LlmModel[],
 ): LlmModel[] {
-  const backendById = new Map(backendModels.map((m) => [m.id, m]));
-  const merged = fallbackModels.map((fallback) => backendById.get(fallback.id) ?? fallback);
-  for (const backendModel of backendModels) {
-    if (!fallbackModels.some((fallback) => fallback.id === backendModel.id)) {
-      merged.push(backendModel);
+  const serverById = new Map(serverModels.map((m) => [m.id, m]));
+  const merged = fallbackModels.map((fallback) => serverById.get(fallback.id) ?? fallback);
+  for (const serverModel of serverModels) {
+    if (!fallbackModels.some((fallback) => fallback.id === serverModel.id)) {
+      merged.push(serverModel);
     }
   }
   return merged;

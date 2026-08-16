@@ -1,6 +1,6 @@
-# Multi-stage build for the ExamLense Spring Boot backend (JDK 21).
-# The backend is a standalone Gradle project, so the build context is this directory
-# (apps/examlense/backend) — no monorepo root or libs/ dependency.
+# Multi-stage build for the ExamLense Spring Boot server (JDK 21).
+# The server is a standalone Gradle project, so the build context is this directory
+# (apps/examlense/server) — no monorepo root or libs/ dependency.
 
 # ---- build stage ----
 FROM eclipse-temurin:21-jdk AS build
@@ -12,7 +12,7 @@ RUN chmod +x ./gradlew && ./gradlew clean bootJar --no-daemon
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 # The executable boot jar (the -plain.jar is not matched by this pinned name).
-COPY --from=build /app/build/libs/examlense-backend-0.1.0.jar app.jar
+COPY --from=build /app/build/libs/examlense-server-0.1.0.jar app.jar
 # Serves on server.port=${PORT:8081}; the web (nginx) container proxies to server:8081.
 EXPOSE 8081
 # Heap is sized from the container mem_limit (set in compose.prod.yaml). JAVA_OPTS is read
