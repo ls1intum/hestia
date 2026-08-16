@@ -48,7 +48,7 @@ class WorkshopServiceTest {
         @Test
         @DisplayName("prompt includes session duration and participant count")
         void promptContainsDurationAndParticipants() throws Exception {
-            WorkshopInputDto input = new WorkshopInputDto(
+            WorkshopInputDto input = new WorkshopInputDto("Test Title",
                     List.of("Understand regression"), 90, 25,
                     "lecture", null, null, null, null, null, null, null);
 
@@ -71,7 +71,7 @@ class WorkshopServiceTest {
         @Test
         @DisplayName("prompt includes provided learning goals")
         void promptContainsLearningGoals() throws Exception {
-            WorkshopInputDto input = new WorkshopInputDto(
+            WorkshopInputDto input = new WorkshopInputDto("Test Title",
                     List.of("Explain gradient descent", "Apply cross-validation"),
                     60, 20, "workshop", null, null, null, null, null, null, null);
 
@@ -92,7 +92,7 @@ class WorkshopServiceTest {
         @Test
         @DisplayName("prompt includes student background when provided")
         void promptContainsStudentBackground() throws Exception {
-            WorkshopInputDto input = new WorkshopInputDto(
+            WorkshopInputDto input = new WorkshopInputDto("Test Title",
                     List.of("Understand classification"), 45, 30,
                     "exercise", null, "BSc CS students with basic Python knowledge",
                     null, null, null, null, null);
@@ -113,7 +113,7 @@ class WorkshopServiceTest {
         @DisplayName("source document text is included in the prompt (truncated at 8000 chars)")
         void sourceDocumentIncludedAndTruncated() throws Exception {
             String longDoc = "x".repeat(9000);
-            WorkshopInputDto input = new WorkshopInputDto(
+            WorkshopInputDto input = new WorkshopInputDto("Test Title",
                     null, 60, 20, "seminar", null, null, null,
                     longDoc, null, null, null);
 
@@ -140,7 +140,7 @@ class WorkshopServiceTest {
     class SessionTypeLabelTests {
 
         private String callAndCapturePrompt(String type, String other) throws Exception {
-            WorkshopInputDto input = new WorkshopInputDto(
+            WorkshopInputDto input = new WorkshopInputDto("Test Title",
                     List.of("A goal"), 60, 20,
                     type, other, null, null, null, null, null, null);
 
@@ -195,7 +195,7 @@ class WorkshopServiceTest {
                 new com.workshopper.dto.LearningGoalPlanDto(
                         "g1", "original", "Participants will apply X",
                         List.of(), List.of(), List.of(), 0));
-        WorkshopInputDto meta = new WorkshopInputDto(
+        WorkshopInputDto meta = new WorkshopInputDto("Test Title",
                 List.of(), 60, 20, "workshop", null, null, null, null, null, null, null);
 
         var result = service.generateActivities(goals, meta, null);

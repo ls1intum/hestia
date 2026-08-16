@@ -24,7 +24,7 @@ public class TestPptxExportIntegration {
             "id", "user", "My Awesome Presentation", "Goal",
             "1h", List.of(), List.of(), null
         );
-        com.workshopper.dto.WorkshopInputDto meta = new com.workshopper.dto.WorkshopInputDto(
+        com.workshopper.dto.WorkshopInputDto meta = new com.workshopper.dto.WorkshopInputDto("Test Title",
             List.of(), 60, 10, "Target", "Level", "Type", "Materials", "Space", "Methods", List.of(), "Custom"
         );
         
