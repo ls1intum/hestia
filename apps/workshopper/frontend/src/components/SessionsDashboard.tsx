@@ -393,7 +393,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                             >
                               <div className="flex items-center justify-between pl-2">
                                 <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleLecture(lecture.id)}>
-                                  <div className="text-muted-foreground hover:text-foreground transition-colors p-1 -ml-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5">
+                                  <div className="text-muted-foreground hover:text-foreground transition-colors p-1 -ml-1 rounded-md hover:bg-foreground/5">
                                     {collapsedLectures.has(lecture.id) ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                                   </div>
                                   <div>

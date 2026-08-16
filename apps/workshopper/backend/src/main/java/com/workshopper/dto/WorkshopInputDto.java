@@ -5,6 +5,7 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkshopInputDto(
+        String title,
         List<String> learningGoals,
         int duration,
         int participants,

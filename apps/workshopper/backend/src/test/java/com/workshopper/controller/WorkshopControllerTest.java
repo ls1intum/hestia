@@ -74,7 +74,7 @@ class WorkshopControllerTest {
                     List.of(), List.of(), List.of(), 0);
             when(workshopService.generatePlan(any())).thenReturn(List.of(plan));
 
-            WorkshopInputDto body = new WorkshopInputDto(
+            WorkshopInputDto body = new WorkshopInputDto("Test Title",
                     List.of("Understand X"), 60, 20, "workshop",
                     null, null, null, null, null, null, null);
 
@@ -92,7 +92,7 @@ class WorkshopControllerTest {
             when(workshopService.generatePlan(any()))
                     .thenThrow(new RuntimeException("LLM unreachable"));
 
-            WorkshopInputDto body = new WorkshopInputDto(
+            WorkshopInputDto body = new WorkshopInputDto("Test Title",
                     List.of("A goal"), 60, 20, "workshop",
                     null, null, null, null, null, null, null);
 
