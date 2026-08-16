@@ -24,7 +24,7 @@ conventions this app follows.
   `compose.prod.yaml` (not read from the shared `APP_PATH_PREFIX` variable, which belongs to
   learninggoalhub), so ExamLense only needs the `APP_HOST` variable, not `APP_PATH_PREFIX`.
 - **CI deploys automatically.** GitHub Actions (`.github/workflows/examlense-cicd.yml`) runs the
-  backend tests, builds + pushes both images to GHCR, then deploys them to the VM over SSH
+  server tests, builds + pushes both images to GHCR, then deploys them to the VM over SSH
   through the chair's shared deployment gateway. You normally don't SSH in at all.
 - Deploy secrets live in **GitHub environment secrets/variables**; the reusable deploy workflow
   writes them into `/opt/hestia/examlense/.env` on the VM (next to the injected `IMAGE_TAG`)
@@ -48,9 +48,9 @@ your user is in the `docker` group.
 ## CI/CD
 
 Images are `ghcr.io/ls1intum/hestia/examlense/{server,client}:<tag>` (nested under
-`examlense/`, matching the learninggoalhub convention). The `server` (backend) is a
-**standalone Gradle project**, so its image is built from `apps/examlense/backend` (not the
-repo root, and with no dependency on `libs/` or the root Gradle files); the `client` (frontend)
+`examlense/`, matching the learninggoalhub convention). The `server` is a
+**standalone Gradle project**, so its image is built from `apps/examlense/server` (not the
+repo root, and with no dependency on `libs/` or the root Gradle files); the `client`
 is built from its own directory.
 
 | Trigger | Images built | Deploy |
@@ -62,9 +62,9 @@ is built from its own directory.
 
 Job order (all on GitHub-hosted runners):
 
-1. **`test-backend`** — runs the backend suite (unit + Testcontainers-Postgres integration).
+1. **`test-server`** — runs the server suite (unit + Testcontainers-Postgres integration).
    This is a hard gate: a red test never reaches `build`/`deploy`.
-2. **`build-backend` + `build-frontend`** — build and push the two images to GHCR.
+2. **`build-server` + `build-client`** — build and push the two images to GHCR.
 3. **`deploy`** (skipped on PRs) — SSHes to the VM through the chair's shared deployment
    gateway/bastion (`DEPLOYMENT_GATEWAY_*`, org-level config pulled in via `secrets: inherit`),
    writes `.env`, then runs `docker compose pull && up -d`. The reusable workflow applies the
@@ -89,10 +89,11 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
 
 - **Secrets (required):** `VM_HOST`, `VM_USERNAME`, `VM_SSH_PRIVATE_KEY` (SSH access to that
   VM — these stay generic), `EXAMLENSE_POSTGRES_PASSWORD`, `EXAMLENSE_SAIA_API_KEY` (the GWDG
-  key, mapped to `AI_API_KEY`).
+  key, mapped to `AI_API_KEY`), `EXAMLENSE_FILES_SIGNING_SECRET` (dedicated HMAC key for signed
+  file URLs — a fresh random value, unrelated to the auth token; see **Security model** below
+  for why leaving it unset is not safe in production).
 - **Secrets (optional):** `EXAMLENSE_API_AUTH_TOKEN` (must match the token baked into the
-  frontend build, see below), `EXAMLENSE_FILES_SIGNING_SECRET` (dedicated HMAC key for signed
-  file URLs — without it the backend falls back to `API_AUTH_TOKEN` and logs a startup warning),
+  client build, see below),
   and any native-provider keys you want to enable: `EXAMLENSE_OPENAI_API_KEY` (gpt-* strategies),
   `EXAMLENSE_ANTHROPIC_API_KEY` (claude-*), `EXAMLENSE_GEMINI_API_KEY` (gemini-* PDF parsers).
   Omit a provider key to disable its strategies.
@@ -110,10 +111,48 @@ The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config
 here; the two with no default (`EXAMLENSE_POSTGRES_PASSWORD`, `EXAMLENSE_SAIA_API_KEY`) will fail the deploy if
 missing.
 
-> **Auth-token gotcha:** the deployed frontend bakes `VITE_API_AUTH_TOKEN` in at build time from
-> the committed `frontend/.env.production`. The backend's `API_AUTH_TOKEN` (from the GitHub
+> **Auth-token gotcha:** the deployed client bakes `VITE_API_AUTH_TOKEN` in at build time from
+> the committed `client/.env.production`. The server's `API_AUTH_TOKEN` (from the GitHub
 > secret, or its `dev-local-token` default) **must equal that baked value**, or the SPA can't
 > call the API. `VITE_*` values are not secret — they ship inside the bundle.
+
+## Security model
+
+Know what actually protects this deployment before you touch it. ExamLense is a thesis
+prototype; the code says so itself — real per-user auth is deliberately deferred
+(`server/src/main/java/app/config/SecurityConfig.java`). Nothing below is a bug report, but
+none of it should come as a surprise later.
+
+**The API is publicly routable.** Traefik strips the `/examlense` prefix and nginx proxies
+`/api/` to the server, so `https://<APP_HOST>/examlense/api/...` resolves for anyone who can
+reach the VM. The "Verify a deploy" step below uses exactly that path.
+
+**The bearer token is not a secret.** `client/.env.production` is committed and its value is
+compiled into the JavaScript bundle, so any visitor can read it out of DevTools and call the
+API directly with `curl`. Rotating `EXAMLENSE_API_AUTH_TOKEN` also requires rebuilding the
+client, since the two must match.
+
+**There is no per-user identity.** A valid token authenticates you as the single seeded
+principal. Ownership columns (`owner_id`, `graded_by`) are stamped from it, so any token
+holder can read and modify every exam — and can spend AI-provider credit up to the rate
+limit (300 requests / 10 s per IP).
+
+**Endpoints reachable without a token:** `/api/healthz`, `OPTIONS /**`, `/error`, and
+`/api/files/**`. The last one is not open — it is gated by an HMAC signature and expiry
+instead of the bearer token. That signature is keyed by `FILES_SIGNING_SECRET`, and **when
+that is unset the server falls back to the auth token** — the same value that ships in the
+bundle — which would let anyone mint valid file URLs for arbitrary storage paths. That is
+why it is listed as required above.
+
+**The LRZ VPN is the real boundary.** The shared Traefik proxy has no authentication, no IP
+allowlist, and no forward-auth middleware. CORS is correctly scoped to `https://${APP_HOST}`,
+but CORS is a browser control and does nothing against a non-browser client. Per the repo
+[`SECURITY.md`](../../SECURITY.md), these prototypes are for VPN-internal or local academic
+use — do not put this on a public IP without the auth layer first.
+
+**Known caveat:** SSE passes the token as a `?token=` query parameter, because `EventSource`
+cannot set headers. Query strings land in the `examlense-web` nginx access log and in browser
+history in a way an `Authorization` header does not.
 
 ### VM setup (one-time, per VM)
 
@@ -212,14 +251,14 @@ only `server` + `web` (whose images changed); **`postgres` and its data volume a
 
 | Symptom | Cause / fix |
 | --- | --- |
-| Deploy job fails at `test-backend` | A backend test is red — fix it; nothing is built or deployed until it's green. |
+| Deploy job fails at `test-server` | A server test is red — fix it; nothing is built or deployed until it's green. |
 | `Production` deploy stuck "waiting" | The environment's required reviewer hasn't approved yet (by design). |
 | Deploy fails writing `.env` / missing var | A `compose.prod.yaml` value has no GitHub secret/variable. `EXAMLENSE_POSTGRES_PASSWORD` and `EXAMLENSE_SAIA_API_KEY` are mandatory; check `APP_HOST` too. |
 | `permission denied … /var/run/docker.sock` (manual) | Your user isn't in the `docker` group — use `sudo` for **every** docker command (login included; root and your user have separate credential stores). |
 | `pull` says `denied` / `unauthorized` (manual) | GHCR login expired or wrong. `sudo docker login ghcr.io` with a **classic PAT** (scope `read:packages`), and authorize it for the `ls1intum` org if SSO prompts. |
 | `server` restarting after deploy | Almost always a Flyway migration error or a bad `.env` value — `logs server` says which. |
-| SPA loads but every API call 401s | The frontend's baked `VITE_API_AUTH_TOKEN` and the backend's `API_AUTH_TOKEN` don't match. |
-| `/examlense/api/lgh/courses` returns 502 | ExamLense reached its own backend, but the backend could not complete its LGH call. Check `LGH_BASE_URL` first: on the VM it should normally be unset or `http://learninggoalhub-web`. Then smoke-test from the server container with `curl http://learninggoalhub-web/api/courses` and inspect `logs server` for the underlying client error. |
+| SPA loads but every API call 401s | The client's baked `VITE_API_AUTH_TOKEN` and the server's `API_AUTH_TOKEN` don't match. |
+| `/examlense/api/lgh/courses` returns 502 | ExamLense reached its own server, but the server could not complete its LGH call. Check `LGH_BASE_URL` first: on the VM it should normally be unset or `http://learninggoalhub-web`. Then smoke-test from the server container with `curl http://learninggoalhub-web/api/courses` and inspect `logs server` for the underlying client error. |
 | `403` on SSE in `logs server` (stack through `asyncDispatch`) | Cosmetic teardown noise, not user-facing. Harmless. |
 | `parse_metrics …_fkey` FK `WARN` | An exam was deleted/truncated while a parse was still in flight. Best-effort metrics only — harmless. Quiesce the server before truncating/importing to avoid it. |
 

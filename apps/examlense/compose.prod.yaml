@@ -42,7 +42,7 @@ services:
       # AI providers (GWDG OpenAI-compatible). The deploy environment provides the GWDG key
       # under the app-scoped name EXAMLENSE_SAIA_API_KEY (each app namespaces its own secrets
       # so they don't collide in the shared environment); map it to the AI_API_KEY the
-      # ExamLense backend reads. The endpoint has no env var, so it is hardcoded (override by
+      # ExamLense server reads. The endpoint has no env var, so it is hardcoded (override by
       # adding AI_BASE_URL if it ever changes).
       AI_API_KEY: ${EXAMLENSE_SAIA_API_KEY:?set EXAMLENSE_SAIA_API_KEY in .env}
       AI_BASE_URL: ${AI_BASE_URL:-https://chat-ai.academiccloud.de/v1}
@@ -60,12 +60,12 @@ services:
       # On the shared VM, call LGH's nginx container over Docker DNS instead of
       # hairpinning through the public Traefik URL.
       LGH_BASE_URL: ${LGH_BASE_URL:-http://learninggoalhub-web}
-      # Static bearer token — must match the value baked into the frontend build.
+      # Static bearer token — must match the value baked into the client build.
       API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN:-dev-local-token}
-      # Dedicated HMAC key for signed file URLs; falls back to API_AUTH_TOKEN
-      # (with a startup warning) when unset. Set it so token rotation doesn't
-      # invalidate outstanding figure/PDF URLs.
-      FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:-}
+      # Dedicated HMAC key for signed file URLs. Required in production: when unset the
+      # server falls back to API_AUTH_TOKEN, which ships inside the client bundle — so
+      # anyone could mint valid file URLs. Fail the deploy rather than start up forgeable.
+      FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:?set EXAMLENSE_FILES_SIGNING_SECRET in the GitHub environment}
       # Behind Traefik: client IPs arrive via X-Forwarded-For, so let the rate
       # limiter trust it here (never enable without a proxy in front).
       API_RATELIMIT_BEHIND_PROXY: ${API_RATELIMIT_BEHIND_PROXY:-true}
@@ -82,7 +82,7 @@ services:
     networks:
       - default        # private: reach this app's own postgres
       - hestia-edge    # shared: reach learninggoalhub-web by Docker DNS
-    # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see backend Dockerfile).
+    # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see server Dockerfile).
     mem_limit: 1500m
     restart: unless-stopped
 
@@ -104,7 +104,7 @@ services:
       # Route https://${APP_HOST}/examlense/... to this app; Traefik strips the prefix (and
       # sends X-Forwarded-Prefix) so nginx stays prefix-agnostic. The prefix is HARDCODED to
       # /examlense here — NOT read from ${APP_PATH_PREFIX}, which is a shared per-environment
-      # variable owned by another app (=/learninggoalhub). It also matches the frontend build
+      # variable owned by another app (=/learninggoalhub). It also matches the client build
       # (vite `base` + .env.production). Only APP_HOST (the VM FQDN) is a shared variable.
       - "traefik.http.routers.examlense.rule=Host(`${APP_HOST}`) && PathPrefix(`/examlense`)"
       - "traefik.http.routers.examlense.entrypoints=websecure"
