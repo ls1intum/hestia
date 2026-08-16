@@ -1,6 +1,6 @@
-# Local infrastructure: the self-hosted PostgreSQL the backend runs against.
-# Brings up PostgreSQL; run the backend separately with
-# `cd backend && set -a; source .env; set +a; ./gradlew bootRun`
+# Local infrastructure: the self-hosted PostgreSQL the server runs against.
+# Brings up PostgreSQL; run the server separately with
+# `cd server && set -a; source .env; set +a; ./gradlew bootRun`
 # (its application.yml datasource defaults already point at localhost:5433).
 services:
   postgres:
@@ -20,8 +20,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # Backend service is intentionally omitted — run it via Gradle for fast local
-  # iteration. For a containerized deploy, add a `backend` service here (with a
+  # The server service is intentionally omitted — run it via Gradle for fast local
+  # iteration. For a containerized deploy, add a `server` service here (with a
   # Dockerfile) plus a volume for the local-FS file storage.
 
 volumes:

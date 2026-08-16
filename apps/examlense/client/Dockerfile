@@ -1,6 +1,6 @@
-# Multi-stage build for the ExamLense React/Vite frontend.
+# Multi-stage build for the ExamLense React/Vite client.
 # The runtime image is nginx: it serves the static build and proxies /api to the server.
-# Build context is this directory (apps/examlense/frontend).
+# Build context is this directory (apps/examlense/client).
 
 FROM node:22-alpine AS build
 WORKDIR /app

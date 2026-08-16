@@ -2,8 +2,8 @@ name: examlense CI/CD
 
 # Build the two app images and (outside of PRs) deploy them, using the shared ls1intum
 # reusable workflows. Scoped to examlense via paths so other apps in the monorepo are
-# unaffected. Unlike learninggoalhub/workshopper, the examlense backend is a STANDALONE
-# Gradle project, so its build context is apps/examlense/backend (not the repo root) and
+# unaffected. Unlike learninggoalhub/workshopper, the examlense server is a STANDALONE
+# Gradle project, so its build context is apps/examlense/server (not the repo root) and
 # it has no dependency on libs/ or the root Gradle files.
 #
 #   PR                -> build images (pr-<N> tags), no deploy   [validation]
@@ -48,10 +48,10 @@ permissions:
   packages: write
 
 jobs:
-  # Gate: run the backend test suite (unit + Testcontainers-Postgres integration)
+  # Gate: run the server test suite (unit + Testcontainers-Postgres integration)
   # before anything is built or deployed, so a red test never reaches production.
   # GitHub-hosted runners provide the Docker daemon Testcontainers needs.
-  test-backend:
+  test-server:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,31 +59,31 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: Run backend tests
-        working-directory: apps/examlense/backend
+      - name: Run server tests
+        working-directory: apps/examlense/server
         run: ./gradlew test --no-daemon
 
-  build-backend:
-    # Don't build/push a backend image that fails its tests.
-    needs: test-backend
+  build-server:
+    # Don't build/push a server image that fails its tests.
+    needs: test-server
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/examlense/server
-      docker-file: apps/examlense/backend/Dockerfile
-      # Standalone Gradle project: build from the backend directory itself.
-      docker-context: apps/examlense/backend
+      docker-file: apps/examlense/server/Dockerfile
+      # Standalone Gradle project: build from the server directory itself.
+      docker-context: apps/examlense/server
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
-  build-frontend:
+  build-client:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/examlense/client
-      docker-file: apps/examlense/frontend/Dockerfile
-      docker-context: apps/examlense/frontend
+      docker-file: apps/examlense/client/Dockerfile
+      docker-context: apps/examlense/client
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
   deploy:
-    needs: [test-backend, build-backend, build-frontend]
+    needs: [test-server, build-server, build-client]
     # PRs only validate the build; everything else deploys.
     if: github.event_name != 'pull_request'
     # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment

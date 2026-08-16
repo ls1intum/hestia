@@ -2,8 +2,8 @@
  * Client-side mirror of the server LLM strategy registries.
  *
  * The server is authoritative for behavior (provider, model id, capability
- * flags) — see `backend/src/main/java/app/ai/ParserStrategy.java` and
- * `backend/src/main/java/app/ai/SolverStrategy.java`. Unknown ids fall back to
+ * flags) — see `server/src/main/java/app/ai/ParserStrategy.java` and
+ * `server/src/main/java/app/ai/SolverStrategy.java`. Unknown ids fall back to
  * the server default at request time, so drift here is low-risk.
  *
  * If you add or rename a model in either server registry, mirror the

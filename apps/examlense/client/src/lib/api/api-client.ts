@@ -1,5 +1,5 @@
 /**
- * Typed client for the Spring Boot backend (see `backend/`). This is now the
+ * Typed client for the Spring Boot backend (see `server/`). This is now the
  * single transport for all data, storage, and admin operations — Supabase is
  * gone. Auth is a static bearer token (single-user backend); the matching
  * secret is `app.auth.token` on the server.

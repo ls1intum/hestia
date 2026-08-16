@@ -23,8 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Backend secrets (AI keys); the frontend .env holds only non-secret dev defaults.
-backend/.env
+# Server secrets (AI keys); the client .env holds only non-secret dev defaults.
+server/.env
 
 # Tooling caches / local configs
 .vite/

@@ -14,6 +14,7 @@
     --hestia-text: 20 14% 17%; /* #322b26 — slightly softer than pure near-black */
     --hestia-accent: 191 33% 40%; /* #447a86 teal */
     --hestia-warning: 37 92% 40%; /* #c47c08 — darkened from 43% so mid-tier bars/dots clear WCAG 1.4.11 (3:1) on white */
+    --hestia-warning-foreground: 0 0% 100%;
     --hestia-danger: 4 71% 44%; /* #C0281F */
     --hestia-success: 152 50% 30%; /* #26734f — darkened from 32% so success-as-text clears WCAG AA (4.5:1) on the /10 tinted banner over paper */
     --hestia-success-foreground: 0 0% 100%;
@@ -95,6 +96,7 @@
     --hestia-text: 39 27% 92%; /* #f0ece4 */
     --hestia-accent: 162 94% 43%; /* #06D6A0 */
     --hestia-warning: 36 92% 55%; /* #F5A623 */
+    --hestia-warning-foreground: 36 63% 6%; /* dark text on the bright dark warning clears AA */
     --hestia-danger: 349 81% 62%; /* #ed506c — lightened from 53% so danger-as-text clears WCAG AA (4.5:1) on the dark surface */
     --hestia-success: 152 55% 58%; /* slightly brighter for contrast on dark surface */
     --hestia-success-foreground: 36 63% 6%; /* dark text on the brightened dark success clears AA */
@@ -126,6 +128,7 @@
       --hestia-text: 39 27% 92%;
       --hestia-accent: 162 94% 43%;
       --hestia-warning: 36 92% 55%;
+      --hestia-warning-foreground: 36 63% 6%;
       --hestia-danger: 349 81% 62%;
       --hestia-success: 152 55% 58%;
       --hestia-success-foreground: 36 63% 6%;
