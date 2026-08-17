@@ -49,7 +49,7 @@ class TerminalCompetencySynthesizerLiveIT {
                 .build();
         ChatClient.Builder builder = ChatClient.builder(chatModel);
 
-        TerminalCompetencySynthesizer synthesizer = new TerminalCompetencySynthesizer(builder);
+        TerminalCompetencySynthesizer synthesizer = new TerminalCompetencySynthesizer(builder, 0.2);
         List<TerminalCompetency> competencies = synthesizer.synthesize(candidates, null);
 
         // Naming and assignment are separate calls, so the harness runs both: the interesting number
@@ -59,7 +59,7 @@ class TerminalCompetencySynthesizerLiveIT {
                 .map(c -> new CompetencyAssignmentSynthesizer.Candidate(c.text(), c.bloomLevel(), null))
                 .toList();
         Map<Integer, Integer> assignment =
-                new CompetencyAssignmentSynthesizer(builder).assign(competencyTexts, assignmentInput, null);
+                new CompetencyAssignmentSynthesizer(builder, 0.0).assign(competencyTexts, assignmentInput, null);
 
         System.out.println("\n===== TERMINAL COMPETENCIES (" + label + ", " + model + ") =====");
         System.out.println(candidates.size() + " apply+ candidates -> " + competencies.size() + " competencies\n");

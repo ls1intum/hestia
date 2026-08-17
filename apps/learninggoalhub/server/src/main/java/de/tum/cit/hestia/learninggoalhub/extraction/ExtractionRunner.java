@@ -69,7 +69,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
-    private static final String FALLBACK_PROMPT_VERSION = "chunked-v3";
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v4";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -230,8 +230,12 @@ public class ExtractionRunner {
                             try {
                                 documentContentRepository.findById(document.getId())
                                         .map(DocumentContent::getBytes)
-                                        .ifPresent(bytes -> pageDescriptionService.describeEligiblePages(
-                                                document, bytes));
+                                        .ifPresent(bytes -> {
+                                            String languageCode = resolveLanguage(
+                                                    course, document.getLanguage(), dominantLanguage);
+                                            pageDescriptionService.describeEligiblePages(document, bytes,
+                                                    languageCode, LanguageUtils.englishName(languageCode));
+                                        });
                             } catch (RuntimeException e) {
                                 log.warn("Could not prepare figure descriptions for document {}: {}",
                                         document.getId(), e.getMessage());
@@ -413,15 +417,17 @@ public class ExtractionRunner {
         try {
             List<CompletableFuture<SessionExtraction>> futures = sessions.stream()
                     .map(session -> CompletableFuture.supplyAsync(() -> {
-                        String languageName = LanguageUtils.englishName(resolveLanguage(
-                                course, session.document().getLanguage(), dominantLanguage));
+                        String languageCode = resolveLanguage(
+                                course, session.document().getLanguage(), dominantLanguage);
+                        String languageName = LanguageUtils.englishName(languageCode);
                         if (usesDirectPath(session.text())) {
                             List<ExtractedSkill> skills = session.figures().isEmpty()
                                     ? sessionExtractionService.extract(
-                                            session.title(), session.text(), languageName, modelOverride)
+                                            session.title(), session.text(), languageCode, languageName,
+                                            modelOverride)
                                     : sessionExtractionService.extract(
-                                            session.title(), session.text(), languageName, modelOverride,
-                                            session.figures());
+                                            session.title(), session.text(), languageCode, languageName,
+                                            modelOverride, session.figures());
                             if (skills != null && skills.size() > 7) {
                                 log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
                                         session.title(), skills.size());
@@ -489,7 +495,8 @@ public class ExtractionRunner {
                 + ",\"direct-max-chars\":" + directMaxChars
                 + ",\"parallelism\":" + parallelism
                 + ",\"output-language\":\"" + language + "\""
-                + ",\"figures-enabled\":" + figuresEnabled + "}";
+                + ",\"figures-enabled\":" + figuresEnabled
+                + ",\"figure-prompt-version\":\"" + PageDescriptionService.FIGURE_PROMPT_VERSION + "\"}";
     }
 
     static String resolveLanguage(Course course, String documentLanguage, String dominantLanguage) {

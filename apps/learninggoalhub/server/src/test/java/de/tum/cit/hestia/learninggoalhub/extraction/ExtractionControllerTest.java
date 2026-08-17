@@ -205,7 +205,7 @@ class ExtractionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"));
 
-        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), any());
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), anyString(), any());
         assertThat(goalRepository.findById(existing.getId())).isPresent();
     }
 
@@ -225,7 +225,7 @@ class ExtractionControllerTest {
         goalCandidateRepository.save(new GoalCandidate(course, oldSession, "old candidate",
                 GoalKind.EXPLICIT, "old candidate source"));
 
-        when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome"))));
 
         startForcedExtraction(course.getId());
@@ -246,13 +246,13 @@ class ExtractionControllerTest {
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
-        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", "Test-Driven Development", GoalKind.EXPLICIT,
                         "...write a failing test first..."), 99, 99),
                 skill(new ExtractedGoal("Value short feedback loops.", "Feedback Loops", GoalKind.IMPLICIT,
                         "...keep tests fast..."))
         ));
-        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise on refactoring"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise on refactoring"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
                         GoalKind.EXPLICIT, "...extract method..."))
         ));
@@ -356,7 +356,7 @@ class ExtractionControllerTest {
         pageDescriptionRepository.saveAndFlush(
                 new PageDescription(document, 2, "A diagram teaches the process.", "vision-test"));
 
-        when(sessionExtractionService.extract(eq("Section"), eq(rawText), eq("English"), eq(null), anyList()))
+        when(sessionExtractionService.extract(eq("Section"), eq(rawText), eq("en"), eq("English"), eq(null), anyList()))
                 .thenReturn(List.of(
                         new ExtractedSkill("Text outcome", "Text", GoalKind.IMPLICIT,
                                 0, 0, 0, List.of()),
@@ -397,14 +397,14 @@ class ExtractionControllerTest {
 
         startExtraction(course.getId());
 
-        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), anyString(), eq(null));
         List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
         assertThat(candidates)
                 .singleElement()
                 .satisfies(candidate -> assertThat(candidate.getConsolidatedGoal()).isNotNull());
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
-                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v3"));
+                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v4"));
         assertThat(goalSourceRepository.findAll())
                 .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
                 .hasSize(1);
@@ -424,7 +424,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Terminal competency labels"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -454,7 +454,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Unmatched goals"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -497,7 +497,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Empty competency"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -528,7 +528,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Rebuild"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -588,7 +588,7 @@ class ExtractionControllerTest {
         documentRepository.save(new Document(course, "session.pdf", "application/pdf",
                 "Apply the capability.\n\nUnderstand the basics."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(
                         new ExtractedSkill("Apply the capability.", "Capability", GoalKind.EXPLICIT,
                                 0, 0, List.of(new ExtractedSkill.Knowledge(
@@ -668,7 +668,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Rebuild failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -704,7 +704,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Rebuild guard"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -748,7 +748,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Assignment failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
-        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("English"), eq(null)))
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
@@ -773,10 +773,10 @@ class ExtractionControllerTest {
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise body"));
 
-        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...lecture snippet..."))
         ));
-        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet..."))
         ));
         // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
@@ -798,7 +798,7 @@ class ExtractionControllerTest {
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
 
         // A direct response can contain closely related goals; each enriched goal is persisted.
-        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture body"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet...")),
                 skill(new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet..."))
         ));
@@ -833,7 +833,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
 
-        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first..."))
         ));
         stubEmbedAll(Map.of());
@@ -863,11 +863,11 @@ class ExtractionControllerTest {
         documentSectionRepository.save(new DocumentSection(combined, 1, "Exercise 3.2: Kata",
                 sessionText.length(), sessionText.length() + exerciseText.length()));
 
-        when(sessionExtractionService.extract(eq("Lecture 3: Testing"), eq(sessionText), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("Lecture 3: Testing"), eq(sessionText), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...failing test first...")),
                 skill(new ExtractedGoal("Understand SE scope.", GoalKind.IMPLICIT, "...overview..."))
         ));
-        when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq("English"), eq(null))).thenReturn(List.of(
+        when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq("en"), eq("English"), eq(null))).thenReturn(List.of(
                 skill(new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata..."))
         ));
         stubEmbedAll(Map.of(

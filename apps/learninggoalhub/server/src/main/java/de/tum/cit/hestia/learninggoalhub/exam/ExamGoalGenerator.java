@@ -1,8 +1,11 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
+import de.tum.cit.hestia.learninggoalhub.extraction.LanguagePrompt;
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -55,9 +58,12 @@ public class ExamGoalGenerator {
             """;
 
     private final ChatClient chatClient;
+    private final double temperature;
 
-    public ExamGoalGenerator(ChatClient.Builder chatClientBuilder) {
+    public ExamGoalGenerator(ChatClient.Builder chatClientBuilder,
+                             @Value("${hestia.extraction.temperature:0.2}") double temperature) {
         this.chatClient = chatClientBuilder.build();
+        this.temperature = temperature;
     }
 
     /**
@@ -83,14 +89,17 @@ public class ExamGoalGenerator {
                 taskType == null || taskType.isBlank() ? "unspecified" : taskType,
                 taskDescription);
 
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
+                .system(LanguagePrompt.systemInstruction(languageName));
+        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
         List<GeneratedExamGoal> goals = spec
+                .options(options.build())
                 .user(prompt)
                 .call()
-                .entity(new ParameterizedTypeReference<List<GeneratedExamGoal>>() {});
+                .entity(LenientJson.converter(new ParameterizedTypeReference<List<GeneratedExamGoal>>() {}));
         return goals == null ? List.of() : goals;
     }
 }

@@ -63,6 +63,10 @@ hestia:
     # Sessions at or below this length use one full-session extraction call; 0 disables the direct
     # path entirely for shadow-run comparison with the legacy chunked pipeline.
     direct-max-chars: 80000
+    # Keep generation consistent across evaluation runs; temperature 0 can make systematic omissions
+    # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
+    temperature: 0.2
+    assignment-temperature: 0.0
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.

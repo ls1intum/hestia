@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -35,6 +36,7 @@ public class PageDescriptionService {
     // Fixed before any evaluation run; keep these thresholds stable and out of configuration.
     static final int MIN_PAGE_CHARS = 200;
     static final double MIN_ALNUM_RATIO = 0.40;
+    public static final String FIGURE_PROMPT_VERSION = "figure-v2";
     // Fixed before any evaluation run; keep the VLM request shape stable.
     static final int BATCH_SIZE = 8;
     /**
@@ -46,7 +48,7 @@ public class PageDescriptionService {
     static final int RENDER_DPI = 120;
 
     static final String PROMPT = """
-            These images are pages of university course material (lecture slides, an exercise sheet or an exam), and the page numbers are given in the same order as the images. For each page, return 1-3 sentences describing the figure or diagram content and what it teaches — factual, with no meta-commentary.
+            These images are pages of university course material (lecture slides, an exercise sheet or an exam), and the page numbers are given in the same order as the images. For each page, return 1-3 sentences in %s describing the figure or diagram content and what it teaches — factual, with no meta-commentary. The requested language applies to every generated description, regardless of the language visible in the image.
 
             Also set teachesContent for each page. It is false when the page carries no subject matter of its own — a title page, a section header, a page that only announces a topic, a pure summary or agenda, an author/affiliation page, or a blank or answer-box page. It is true when the page shows something a student could learn from, such as a diagram, circuit, table, plot, worked example or task.
 
@@ -75,15 +77,17 @@ public class PageDescriptionService {
      * re-runs free).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void describeEligiblePages(Document document, byte[] pdfBytes) {
+    public void describeEligiblePages(Document document, byte[] pdfBytes,
+                                      String languageCode, String languageName) {
         try {
-            describeEligiblePagesInternal(document, pdfBytes);
+            describeEligiblePagesInternal(document, pdfBytes, languageCode, languageName);
         } catch (RuntimeException e) {
             log.warn("Figure description preparation failed: {}", e.getMessage());
         }
     }
 
-    private void describeEligiblePagesInternal(Document document, byte[] pdfBytes) {
+    private void describeEligiblePagesInternal(Document document, byte[] pdfBytes,
+                                               String languageCode, String languageName) {
         if (document == null || pdfBytes == null || !isPdf(document)
                 || document.getRawText() == null || document.getRawText().isBlank()) {
             return;
@@ -93,8 +97,12 @@ public class PageDescriptionService {
             return;
         }
 
-        Set<Integer> describedPages = new HashSet<>(pageDescriptionRepository.findByDocumentId(document.getId())
-                .stream().map(PageDescription::getPage).toList());
+        Map<Integer, PageDescription> existingByPage = pageDescriptionRepository.findByDocumentId(document.getId())
+                .stream().collect(java.util.stream.Collectors.toMap(PageDescription::getPage, page -> page));
+        Set<Integer> describedPages = new HashSet<>(existingByPage.values().stream()
+                .filter(page -> languageCode != null && languageCode.equalsIgnoreCase(page.getLanguage())
+                        && FIGURE_PROMPT_VERSION.equals(page.getPromptVersion()))
+                .map(PageDescription::getPage).toList());
         List<Integer> eligiblePages = new ArrayList<>();
         String rawText = document.getRawText();
         for (int page = 1; page < pageOffsets.length; page++) {
@@ -119,12 +127,12 @@ public class PageDescriptionService {
                     List<Media> media = renderPages(renderer, batch);
                     List<PageReply> replies = chatClient.prompt()
                             .options(ChatOptions.builder().model(visionModel).build())
-                            .user(u -> u.text(PROMPT.formatted(batch.stream()
+                            .user(u -> u.text(PROMPT.formatted(languageName, batch.stream()
                                     .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
                                     .media(media.toArray(Media[]::new)))
                             .call()
-                            .entity(new ParameterizedTypeReference<List<PageReply>>() {});
-                    persistReplies(document, batch, replies);
+                            .entity(LenientJson.converter(new ParameterizedTypeReference<List<PageReply>>() {}));
+                    persistReplies(document, batch, replies, existingByPage, languageCode);
                 } catch (IOException | RuntimeException e) {
                     log.warn("VLM figure description failed for document {} pages {}-{}: {}",
                             document.getId(), batch.getFirst(), batch.getLast(), e.getMessage());
@@ -170,7 +178,8 @@ public class PageDescriptionService {
         return media;
     }
 
-    private void persistReplies(Document document, List<Integer> batch, List<PageReply> replies) {
+    private void persistReplies(Document document, List<Integer> batch, List<PageReply> replies,
+                                Map<Integer, PageDescription> existingByPage, String languageCode) {
         if (replies == null || replies.isEmpty()) {
             return;
         }
@@ -185,9 +194,16 @@ public class PageDescriptionService {
         }
         for (Map.Entry<Integer, PageReply> entry : accepted.entrySet()) {
             PageReply reply = entry.getValue();
-            pageDescriptionRepository.save(new PageDescription(
-                    document, entry.getKey(), reply.description().strip(), visionModel,
-                    !Boolean.FALSE.equals(reply.teachesContent())));
+            PageDescription page = existingByPage.get(entry.getKey());
+            if (page == null) {
+                page = new PageDescription(document, entry.getKey(), reply.description().strip(), visionModel,
+                        !Boolean.FALSE.equals(reply.teachesContent()), languageCode, FIGURE_PROMPT_VERSION);
+                existingByPage.put(entry.getKey(), page);
+            } else {
+                page.update(reply.description().strip(), visionModel,
+                        !Boolean.FALSE.equals(reply.teachesContent()), languageCode, FIGURE_PROMPT_VERSION);
+            }
+            pageDescriptionRepository.save(page);
         }
     }
 

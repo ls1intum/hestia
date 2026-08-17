@@ -1,10 +1,15 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -14,7 +19,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v8";
+    static final String PROMPT_VERSION = "direct-v10";
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
@@ -99,10 +104,23 @@ public class SessionExtractionService {
             Source selection with figure descriptions: outcomes should cite sourceStartLine/sourceEndLine as before. ONLY when no numbered lines support an outcome taught by a figure may the outcome instead set sourceFigure to the [Fn] index and omit the line fields. Never cite a figure when numbered lines support the outcome, and never invent outcomes the material does not teach.
             """;
 
-    private final ChatClient chatClient;
+    private static final String FINAL_LANGUAGE_RESTATEMENT = """
 
-    public SessionExtractionService(ChatClient.Builder chatClientBuilder) {
+            Final language requirement: every generated text and shortLabel must be in %s. Keep all
+            verbatim source quotes and quoted material in the document's own language.
+            """;
+
+    private static final Logger log = LoggerFactory.getLogger(SessionExtractionService.class);
+    private final ChatClient chatClient;
+    private final LanguageDetectionService languageDetectionService;
+    private final double temperature;
+
+    public SessionExtractionService(ChatClient.Builder chatClientBuilder,
+                                    LanguageDetectionService languageDetectionService,
+                                    @Value("${hestia.extraction.temperature:0.2}") double temperature) {
         this.chatClient = chatClientBuilder.build();
+        this.languageDetectionService = languageDetectionService;
+        this.temperature = temperature;
     }
 
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText) {
@@ -121,17 +139,18 @@ public class SessionExtractionService {
 
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String languageName,
                                         String modelOverride) {
-        return extract(sessionTitle, sessionText, languageName, modelOverride, List.of());
+        return extract(sessionTitle, sessionText, null, languageName, modelOverride, List.of());
     }
 
-    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String languageName,
-                                        String modelOverride,
+    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
+                                        String languageName, String modelOverride) {
+        return extract(sessionTitle, sessionText, expectedLanguageCode, languageName, modelOverride, List.of());
+    }
+
+    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
+                                        String languageName, String modelOverride,
                                         List<PageDescriptionService.FigureDescription> figureDescriptions) {
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
-        }
         String numberedSessionText = NumberedLines.of(sessionText).render();
         String prompt = PROMPT_TEMPLATE.formatted(languageName, title, numberedSessionText);
         if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
@@ -143,10 +162,78 @@ public class SessionExtractionService {
             }
             prompt += FIGURE_PROMPT_SUFFIX.formatted(figures);
         }
+        prompt += FINAL_LANGUAGE_RESTATEMENT.formatted(languageName);
+
+        List<ExtractedSkill> first = call(prompt, languageName, modelOverride, temperature, false);
+        String detectedLanguage = detectGeneratedLanguage(first);
+        if (expectedLanguageCode == null || expectedLanguageCode.isBlank()
+                || detectedLanguage == null
+                || detectedLanguage.equalsIgnoreCase(expectedLanguageCode)) {
+            return first;
+        }
+
+        log.warn("Session extraction language mismatch: expected {}, detected {} for '{}' — retrying once",
+                expectedLanguageCode, detectedLanguage, title);
+        List<ExtractedSkill> retry = call(prompt, languageName, modelOverride, 0.0, true);
+        String retryLanguage = detectGeneratedLanguage(retry);
+        if (retryLanguage != null && retryLanguage.equalsIgnoreCase(expectedLanguageCode)) {
+            log.warn("Session extraction language retry matched expected language {} for '{}'",
+                    expectedLanguageCode, title);
+            return retry;
+        }
+        log.warn("Session extraction language retry did not match expected language {} for '{}': detected {}; "
+                        + "keeping first result",
+                expectedLanguageCode, title, retryLanguage);
+        return first;
+    }
+
+    private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,
+                                      double callTemperature, boolean retry) {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
+                .system(retry
+                        ? LanguagePrompt.retrySystemInstruction(languageName)
+                        : LanguagePrompt.systemInstruction(languageName))
+                .options(options(modelOverride, callTemperature));
         List<ExtractedSkill> skills = spec
                 .user(prompt)
                 .call()
-                .entity(new ParameterizedTypeReference<List<ExtractedSkill>>() {});
+                .entity(LenientJson.converter(new ParameterizedTypeReference<List<ExtractedSkill>>() {}));
         return skills == null ? List.of() : skills;
+    }
+
+    private ChatOptions options(String modelOverride, double callTemperature) {
+        ChatOptions.Builder builder = ChatOptions.builder().temperature(callTemperature);
+        if (modelOverride != null && !modelOverride.isBlank()) {
+            builder.model(modelOverride);
+        }
+        return builder.build();
+    }
+
+    private String detectGeneratedLanguage(List<ExtractedSkill> skills) {
+        StringBuilder generated = new StringBuilder();
+        if (skills != null) {
+            for (ExtractedSkill skill : skills) {
+                append(generated, skill == null ? null : skill.text());
+                append(generated, skill == null ? null : skill.shortLabel());
+                if (skill != null && skill.knowledge() != null) {
+                    for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
+                        if (knowledge != null) {
+                            append(generated, knowledge.text());
+                            append(generated, knowledge.shortLabel());
+                        }
+                    }
+                }
+            }
+        }
+        return languageDetectionService.detect(generated.toString());
+    }
+
+    private static void append(StringBuilder target, String value) {
+        if (value != null && !value.isBlank()) {
+            if (target.length() > 0) {
+                target.append('\n');
+            }
+            target.append(value);
+        }
     }
 }

@@ -1,8 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -109,9 +111,12 @@ public class TerminalCompetencySynthesizer {
             """;
 
     private final ChatClient chatClient;
+    private final double temperature;
 
-    public TerminalCompetencySynthesizer(ChatClient.Builder chatClientBuilder) {
+    public TerminalCompetencySynthesizer(ChatClient.Builder chatClientBuilder,
+                                         @Value("${hestia.extraction.temperature:0.2}") double temperature) {
         this.chatClient = chatClientBuilder.build();
+        this.temperature = temperature;
     }
 
     /**
@@ -132,18 +137,21 @@ public class TerminalCompetencySynthesizer {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        return call(PROMPT.formatted(languageName, numbered(candidates)), modelOverride);
+        return call(PROMPT.formatted(languageName, numbered(candidates)), languageName, modelOverride);
     }
 
-    private List<TerminalCompetency> call(String prompt, String modelOverride) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+    private List<TerminalCompetency> call(String prompt, String languageName, String modelOverride) {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
+                .system(LanguagePrompt.systemInstruction(languageName));
+        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
         return spec
+                .options(options.build())
                 .user(prompt)
                 .call()
-                .entity(new ParameterizedTypeReference<List<TerminalCompetency>>() {});
+                .entity(LenientJson.converter(new ParameterizedTypeReference<List<TerminalCompetency>>() {}));
     }
 
     /** Numbers the candidates and labels each with its Bloom level so the model can cite them back. */
