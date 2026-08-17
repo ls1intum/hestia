@@ -30,6 +30,10 @@ public class Course {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /** When the instructor dismissed the one-time skill review; null while it is still due. */
+    @Column(name = "skills_reviewed_at")
+    private OffsetDateTime skillsReviewedAt;
+
     protected Course() {
     }
 
@@ -67,5 +71,13 @@ public class Course {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public OffsetDateTime getSkillsReviewedAt() {
+        return skillsReviewedAt;
+    }
+
+    public void setSkillsReviewedAt(OffsetDateTime skillsReviewedAt) {
+        this.skillsReviewedAt = skillsReviewedAt;
     }
 }

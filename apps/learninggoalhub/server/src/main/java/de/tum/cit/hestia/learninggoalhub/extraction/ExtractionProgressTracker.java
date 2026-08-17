@@ -1,20 +1,19 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
 /**
- * In-memory progress for the (synchronous) extraction run, keyed by course.
+ * In-memory progress for extraction runs, keyed by course.
  *
- * <p>The {@code POST /extract} call still runs the whole pipeline on the request thread and returns
- * the final {@link ExtractionRunner.ExtractionSummary}. Alongside it, the runner publishes its
- * current phase and per-phase counters here so the client can poll {@code GET /extract/status} and
- * render a real progress bar. Kept in memory on purpose: a single-node MVP, no need for a DB row or
- * a Flyway migration, and no transaction-visibility games (DB writes inside the run's transaction
- * would not be visible to a concurrent poller until commit anyway).
+ * <p>Kept in memory on purpose: a single-node MVP, no need for a DB row or a Flyway migration, and
+ * no transaction-visibility games (DB writes inside the run's transaction would not be visible to a
+ * concurrent poller until commit anyway).
  */
 @Component
 public class ExtractionProgressTracker {
@@ -27,7 +26,8 @@ public class ExtractionProgressTracker {
         EXTRACTING,
         CLASSIFYING,
         EMBEDDING,
-        PERSISTING
+        PERSISTING,
+        SYNTHESIZING
     }
 
     public enum Status {
@@ -37,10 +37,49 @@ public class ExtractionProgressTracker {
     }
 
     private final Map<Long, Run> runs = new ConcurrentHashMap<>();
+    private final AtomicReference<Long> runningCourseId = new AtomicReference<>();
+
+    /** Claims the one global extraction slot and begins tracking the run. */
+    public Optional<Run> tryStart(Long courseId, String model) {
+        if (!runningCourseId.compareAndSet(null, courseId)) {
+            return Optional.empty();
+        }
+        // Releasing the slot as the run turns terminal — rather than only in the caller's finally —
+        // means anyone who can observe SUCCEEDED/FAILED can already claim the slot. Otherwise the
+        // next extraction is rejected with a spurious 409 in the window between the two.
+        Run run = new Run(model, () -> finish(courseId));
+        runs.put(courseId, run);
+        return Optional.of(run);
+    }
+
+    /** Releases the global slot only when it still belongs to {@code courseId}. */
+    public void finish(Long courseId) {
+        for (;;) {
+            Long current = runningCourseId.get();
+            if (!Objects.equals(current, courseId)
+                    || runningCourseId.compareAndSet(current, null)) {
+                return;
+            }
+        }
+    }
+
+    public Optional<Current> current() {
+        Long courseId = runningCourseId.get();
+        if (courseId == null) {
+            return Optional.empty();
+        }
+        Run run = runs.get(courseId);
+        return run == null ? Optional.empty() : Optional.of(new Current(courseId, run.snapshot()));
+    }
 
     /** Begins (or replaces) tracking for a course and returns the handle the runner updates. */
     public Run start(Long courseId, String model) {
-        Run run = new Run(model);
+        // The controller claims the slot before submitting the job. Reuse that handle so the
+        // background runner cannot replace the snapshot that the controller already exposed.
+        if (Objects.equals(runningCourseId.get(), courseId)) {
+            return runs.computeIfAbsent(courseId, ignored -> new Run(model, () -> finish(courseId)));
+        }
+        Run run = new Run(model, () -> finish(courseId));
         runs.put(courseId, run);
         return run;
     }
@@ -53,15 +92,19 @@ public class ExtractionProgressTracker {
     public static final class Run {
 
         private final String model;
-        private volatile Phase phase = Phase.OUTLINING;
+        private volatile Phase phase = Phase.DESCRIBING_FIGURES;
         private final AtomicInteger completed = new AtomicInteger();
         private volatile int total;
         private volatile Status status = Status.RUNNING;
         private volatile String error;
         private volatile ExtractionRunner.ExtractionSummary summary;
+        private final AtomicInteger lastPercent = new AtomicInteger();
+        /** Frees the global slot; run before the terminal status becomes visible. */
+        private final Runnable releaseSlot;
 
-        private Run(String model) {
+        private Run(String model, Runnable releaseSlot) {
             this.model = model;
+            this.releaseSlot = releaseSlot;
         }
 
         /** Moves to a new phase and resets the completed/total counters for it. */
@@ -82,21 +125,47 @@ public class ExtractionProgressTracker {
 
         public void succeed(ExtractionRunner.ExtractionSummary summary) {
             this.summary = summary;
+            releaseSlot.run();
             this.status = Status.SUCCEEDED;
         }
 
         public void fail(String message) {
             this.error = message;
+            releaseSlot.run();
             this.status = Status.FAILED;
         }
 
         private Snapshot snapshot() {
-            return new Snapshot(status, phase, completed.get(), total, model, summary, error);
+            Status currentStatus = status;
+            int percent = currentStatus == Status.SUCCEEDED
+                    ? 100
+                    : Math.min(99, weightedPercent(phase, completed.get(), total));
+            percent = lastPercent.accumulateAndGet(percent, Math::max);
+            return new Snapshot(currentStatus, phase, completed.get(), total, model, summary, error, percent);
         }
+    }
+
+    private static int weightedPercent(Phase phase, int completed, int total) {
+        int[] envelope = switch (phase) {
+            case DESCRIBING_FIGURES -> new int[] {0, 30};
+            case OUTLINING -> new int[] {30, 35};
+            case PARSING -> new int[] {35, 40};
+            case EXTRACTING -> new int[] {40, 70};
+            case CLASSIFYING -> new int[] {70, 80};
+            case EMBEDDING -> new int[] {80, 85};
+            case PERSISTING -> new int[] {85, 90};
+            case SYNTHESIZING -> new int[] {90, 100};
+        };
+        double fraction = total <= 0 ? 0 : Math.min(1, Math.max(0, (double) completed / total));
+        return (int) Math.round(envelope[0] + (envelope[1] - envelope[0]) * fraction);
     }
 
     /** Immutable view returned to pollers. */
     public record Snapshot(Status status, Phase phase, int completed, int total, String model,
-                           ExtractionRunner.ExtractionSummary summary, String error) {
+                           ExtractionRunner.ExtractionSummary summary, String error, int percent) {
+    }
+
+    /** The globally active run and its latest immutable snapshot. */
+    public record Current(Long courseId, Snapshot snapshot) {
     }
 }

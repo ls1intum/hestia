@@ -247,5 +247,6 @@ under your control.
 `POST /api/courses/{courseId}/learning-goals/{goalId}/subtree` and
 `POST /api/courses/{courseId}/learning-goals/{goalId}/children` (instructor review),
 `POST /api/courses/{courseId}/documents` (upload) and `POST /api/courses/{courseId}/extract`
-(pipeline trigger) back the LearningGoalHub UI. They are not access-restricted yet, but
-consumer projects should treat them as off-limits.
+(asynchronous pipeline trigger; returns `202 Accepted` with `{courseId, status}`, or `409 Conflict`
+when another extraction is already running) back the LearningGoalHub UI. They are not
+access-restricted yet, but consumer projects should treat them as off-limits.

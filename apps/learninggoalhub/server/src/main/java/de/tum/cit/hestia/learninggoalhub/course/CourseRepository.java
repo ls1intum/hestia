@@ -13,6 +13,17 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
             + "from LearningGoal g where g.course.id in :courseIds group by g.course.id")
     List<CourseCount> countGoalsByCourseIds(@Param("courseIds") Collection<Long> courseIds);
 
+    /**
+     * Terminal-competency ("skill") count per course — one row per course that has at least one.
+     * Kept separate from the total goal count, which stays the count of every goal regardless of
+     * origin because API consumers already depend on that meaning.
+     */
+    @Query("select g.course.id as courseId, count(g.id) as count "
+            + "from LearningGoal g where g.course.id in :courseIds "
+            + "and g.origin = de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin.TERMINAL "
+            + "group by g.course.id")
+    List<CourseCount> countSkillsByCourseIds(@Param("courseIds") Collection<Long> courseIds);
+
     /** Document count per course for the given ids — one row per course that has at least one document. */
     @Query("select d.course.id as courseId, count(d.id) as count "
             + "from Document d where d.course.id in :courseIds group by d.course.id")

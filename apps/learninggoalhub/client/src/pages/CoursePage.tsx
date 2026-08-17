@@ -6,8 +6,10 @@ import type { LearningGoal } from "../api/client.ts";
 import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { titleCase } from "../lib/goals.ts";
+import { fetchAllGoals } from "../lib/fetchGoals.ts";
 
 // The course page shows the synthesised skills in one of two representations: the filterable
 // tree-grid (`table`) or the focus-and-drill map.
@@ -53,16 +55,25 @@ export default function CoursePage() {
 
   const goalsQuery = useQuery({
     queryKey: ["goals", courseId],
-    queryFn: async () => {
-      const { data, error } = await api.GET(
-        "/api/courses/{courseId}/learning-goals",
-        {
-          params: { path: { courseId }, query: { size: 500 } },
-        },
-      );
-      if (error || !data) throw new Error("Could not load learning goals.");
-      return data;
+    queryFn: () => fetchAllGoals(courseId),
+  });
+
+  // One-time skill review: shown the first time a course is opened after its extraction produced
+  // skills, then recorded server-side so it never reappears. Dismissing it is what marks it done,
+  // so closing the tab instead leaves it due — the instructor cannot silently miss it.
+  const course = courseQuery.data;
+  const reviewDue = course != null
+    && (course.skillCount ?? 0) > 0
+    && course.skillsReviewedAt == null;
+  const [reviewDismissed, setReviewDismissed] = useState(false);
+
+  const markReviewed = useMutation({
+    mutationFn: async () => {
+      await api.POST("/api/courses/{id}/skills-reviewed", {
+        params: { path: { id: courseId } },
+      });
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["course", courseId] }),
   });
 
   const deleteMutation = useMutation({
@@ -133,7 +144,7 @@ export default function CoursePage() {
   // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
   // the pipeline still synthesises and stores them, only the client filters.
   const goals: LearningGoal[] = useMemo(
-    () => (goalsQuery.data?.content ?? []).filter((g) => g.origin !== "GAP"),
+    () => (goalsQuery.data ?? []).filter((g) => g.origin !== "GAP"),
     [goalsQuery.data],
   );
 
@@ -262,6 +273,18 @@ export default function CoursePage() {
             onUpdate={updateGoal}
           />
         </>
+      )}
+
+      {reviewDue && !reviewDismissed && (
+        <ExtractionProgressModal
+          open
+          reviewOnly
+          courseId={courseId}
+          onClose={() => {
+            setReviewDismissed(true);
+            markReviewed.mutate();
+          }}
+        />
       )}
     </div>
   );

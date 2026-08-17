@@ -20,3 +20,4 @@ export type GoalSource = Schemas["GoalSourceResponse"];
 export type GoalRelationship = Schemas["GoalRelationshipResponse"];
 export type ExtractionSummary = Schemas["ExtractionSummary"];
 export type ExtractionStatus = Schemas["Snapshot"];
+export type CurrentExtraction = Schemas["CurrentExtractionResponse"];

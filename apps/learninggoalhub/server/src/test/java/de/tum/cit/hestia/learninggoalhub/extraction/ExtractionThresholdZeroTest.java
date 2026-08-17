@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,6 +31,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -81,7 +83,8 @@ class ExtractionThresholdZeroTest {
         });
 
         mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
+        awaitExtraction(course.getId());
 
         verify(extractionService).extract(eq(text), eq("English"), eq(null));
         verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
@@ -89,5 +92,18 @@ class ExtractionThresholdZeroTest {
                 .singleElement()
                 .extracting(LearningGoal::getRole)
                 .isNull();
+    }
+
+    private void awaitExtraction(Long courseId) throws Exception {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            MvcResult result = mockMvc.perform(get("/api/courses/{id}/extract/status", courseId)).andReturn();
+            String body = result.getResponse().getContentAsString();
+            if (body.contains("\"status\":\"SUCCEEDED\"")
+                    || body.contains("\"status\":\"FAILED\"")) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        throw new AssertionError("Extraction did not finish for course " + courseId);
     }
 }

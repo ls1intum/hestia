@@ -363,15 +363,41 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionStartResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/extractions/current": {
+      "get": {
+        "tags": [
+          "current-extraction-controller"
+        ],
+        "operationId": "current",
+        "responses": {
           "200": {
             "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExtractionSummary"
+                  "$ref": "#/components/schemas/CurrentExtractionResponse"
                 }
               }
             }
+          },
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1044,6 +1070,9 @@
                 }
               }
             }
+          },
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1085,6 +1114,30 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/courses/{id}/skills-reviewed": {
+      "post": {
+        "tags": [
+          "course-controller"
+        ],
+        "operationId": "markSkillsReviewed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1426,6 +1479,60 @@
           }
         }
       },
+      "ExtractionStartResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          }
+        }
+      },
+      "CurrentExtractionResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "courseName": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "DESCRIBING_FIGURES",
+              "OUTLINING",
+              "PARSING",
+              "EXTRACTING",
+              "CLASSIFYING",
+              "EMBEDDING",
+              "PERSISTING",
+              "SYNTHESIZING"
+            ]
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          }
+        }
+      },
       "ExamBlock": {
         "type": "object",
         "properties": {
@@ -1627,6 +1734,14 @@
           "goalCount": {
             "type": "integer",
             "format": "int64"
+          },
+          "skillCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "skillsReviewedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -1727,7 +1842,8 @@
               "EXTRACTING",
               "CLASSIFYING",
               "EMBEDDING",
-              "PERSISTING"
+              "PERSISTING",
+              "SYNTHESIZING"
             ]
           },
           "completed": {
@@ -1735,6 +1851,10 @@
             "format": "int32"
           },
           "total": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "percent": {
             "type": "integer",
             "format": "int32"
           },
