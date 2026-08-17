@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ExtractionStatus, ExtractionSummary, LearningGoal } from "../api/client.ts";
+import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import { api } from "../api/client.ts";
+import { EXTRACTION_PHASES } from "../lib/extraction.ts";
+import { fetchAllGoals } from "../lib/fetchGoals.ts";
 import { buildCompetencyForest, COMPETENCY_ROLE_META } from "../lib/goals.ts";
 import { useTheme } from "../theme/context.ts";
 import iconLight from "../assets/logos/icon-light.svg";
@@ -10,72 +12,57 @@ import Button from "./Button.tsx";
 
 type Props = {
   open: boolean;
-  /** Latest polled snapshot while the run is in flight. */
+  /** Latest polled snapshot for the run. */
   status?: ExtractionStatus;
-  /** Final summary once the POST resolves (authoritative over the polled snapshot). */
-  result?: ExtractionSummary | null;
   /** Set when the run failed. */
   error?: string | null;
   courseId?: number | null;
+  /**
+   * Opens straight into the skill review, ignoring run status entirely. The review reads the
+   * course's goals from its own query, so it stays reachable long after the run — and after a
+   * restart, when the in-memory progress tracker no longer remembers the run at all.
+   */
+  reviewOnly?: boolean;
   onClose: () => void;
 };
-
-type Phase = NonNullable<ExtractionStatus["phase"]>;
 
 type SkillSuggestion = {
   text: string;
   shortLabel?: string | null;
 };
 
-/** Ordered list of phases the backend walks through, with their display labels. */
-const PHASES: { key: Phase; label: string }[] = [
-  { key: "DESCRIBING_FIGURES", label: "Understanding figures" },
-  { key: "OUTLINING", label: "Outlining documents" },
-  { key: "PARSING", label: "Parsing documents" },
-  { key: "EXTRACTING", label: "Extracting learning goals" },
-  { key: "CLASSIFYING", label: "Classifying (Bloom & SOLO)" },
-  { key: "EMBEDDING", label: "Computing embeddings" },
-  { key: "PERSISTING", label: "Saving learning goals" },
-];
-
 /**
- * Screen 3 — "Analyzing course materials" overlay shown while the (synchronous) extraction POST is
- * in flight. It polls {@code GET /extract/status} for the live phase + per-phase counts and renders
- * a real progress bar, then switches to the summary once the run resolves.
+ * "Analyzing course materials" overlay driven by the live status snapshot. Once the run succeeds it
+ * switches to the existing summary and skill-review flow.
  */
 export default function ExtractionProgressModal({
   open,
   status,
-  result,
   error,
   courseId,
+  reviewOnly = false,
   onClose,
 }: Props) {
   const { resolved } = useTheme();
   const flame = resolved === "dark" ? iconDark : iconLight;
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<1 | 2>(1);
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
   const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
   const [suggestionErrors, setSuggestionErrors] = useState<Record<string, string>>({});
 
-  const done = result != null;
+  const done = reviewOnly || status?.status === "SUCCEEDED";
+  // The review is a one-way, deliberate step: no backdrop click, no Escape, no ✕. "Done" is the
+  // only exit, and it is what records the review as taken care of.
+  const reviewLocked = done;
   const goalsQuery = useQuery({
     queryKey: ["goals", courseId],
-    queryFn: async () => {
-      const { data, error: queryError } = await api.GET(
-        "/api/courses/{courseId}/learning-goals",
-        { params: { path: { courseId: courseId as number }, query: { size: 500 } } },
-      );
-      if (queryError || !data) throw new Error("Could not load learning goals.");
-      return data;
-    },
+    queryFn: () => fetchAllGoals(courseId as number),
     enabled: open && done && courseId != null,
   });
 
   const goals: LearningGoal[] = useMemo(
-    () => goalsQuery.data?.content ?? [],
+    () => goalsQuery.data ?? [],
     [goalsQuery.data],
   );
   const terminalSkills = useMemo(
@@ -89,6 +76,17 @@ export default function ExtractionProgressModal({
       setSuggestionErrors({});
     }
   }, [open]);
+
+  // Escape closes while the run is in flight — the extraction is a background job, so dismissing
+  // this view only stops watching it, it never abandons the run. The review step is exempt.
+  useEffect(() => {
+    if (!open || reviewLocked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, reviewLocked, onClose]);
 
   const renameMutation = useMutation({
     mutationFn: async (vars: { goalId: number; text: string }) => {
@@ -195,39 +193,55 @@ export default function ExtractionProgressModal({
 
   if (!open) return null;
 
-  const failed = error != null;
+  const failed = error != null || status?.status === "FAILED";
   const running = !done && !failed;
 
   const total = status?.total ?? 0;
   const completed = status?.completed ?? 0;
-  const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+  const percent = status?.percent ?? 0;
   // Index of the phase the backend currently reports; -1 until the first poll lands ("Starting…").
-  const activeIndex = status?.phase ? PHASES.findIndex((p) => p.key === status.phase) : -1;
+  const activeIndex = status?.phase
+    ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
+    : -1;
 
   return (
     <div
+      onClick={reviewLocked ? undefined : onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="extraction-progress-title"
     >
-      <div className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg sm:p-8">
-        {done && <WizardHeader step={step} />}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg sm:p-8"
+      >
         <div className="flex items-center gap-3">
           <img
             src={flame}
             alt=""
             className={`h-9 w-9 ${running ? "animate-pulse" : ""}`}
           />
-          <h2 id="extraction-progress-title" className="text-xl">
+          <h2 id="extraction-progress-title" className="flex-1 text-xl">
             {done
-              ? step === 1
-                ? "Analysis complete"
-                : "Review your skills"
+              ? "Review your skills"
               : failed
                 ? "Analysis failed"
                 : "Analyzing course materials"}
           </h2>
+          {!reviewLocked && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close"
+              className="shrink-0"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
+                <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+              </svg>
+            </Button>
+          )}
         </div>
 
         {running && (
@@ -246,7 +260,7 @@ export default function ExtractionProgressModal({
               )}
             </div>
             <ol className="mt-6 flex flex-col gap-3">
-              {PHASES.map((phase, i) => {
+              {EXTRACTION_PHASES.map((phase, i) => {
                 const state =
                   activeIndex < 0
                     ? i === 0
@@ -280,31 +294,10 @@ export default function ExtractionProgressModal({
                 );
               })}
             </ol>
-            <p className="mt-6 text-sm text-hestia-text-muted">
-              This can take a while — large courses run many LLM calls. You can keep this open.
-            </p>
           </div>
         )}
 
-        {done && step === 1 && (
-          <>
-            <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Stat label="Documents" value={result?.documentsProcessed} />
-              <Stat label="Goals created" value={result?.goalsCreated} />
-              <Stat label="Terminal competencies" value={result?.terminalCompetencies} />
-              <Stat label="Text sources" value={result?.textSources} />
-              <Stat label="Figure sources" value={result?.figureSources} />
-              <Stat label="Unsupported" value={result?.unsupportedSources} />
-            </dl>
-            <div className="mt-6 flex justify-end">
-              <Button size="lg" onClick={() => setStep(2)}>
-                Review skills →
-              </Button>
-            </div>
-          </>
-        )}
-
-        {done && step === 2 && (
+        {done && (
           <>
             <p className="mt-6 text-sm text-hestia-text-muted">
               Take a quick look at the terminal skills we extracted — rename or remove any that
@@ -511,10 +504,7 @@ export default function ExtractionProgressModal({
                 {(deleteGoalMutation.error as Error).message}
               </p>
             )}
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-hestia-border pt-4">
-              <Button variant="ghost" onClick={() => setStep(1)}>
-                ← Back
-              </Button>
+            <div className="mt-6 flex justify-end border-t border-hestia-border pt-4">
               <Button size="lg" onClick={onClose}>
                 Done
               </Button>
@@ -525,7 +515,7 @@ export default function ExtractionProgressModal({
         {failed && (
           <>
             <p className="mt-6 rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-2 text-sm text-hestia-danger">
-              {error}
+              {error ?? "Extraction failed."}
             </p>
             <div className="mt-6 flex justify-end">
               <Button variant="ghost" size="lg" onClick={onClose}>
@@ -534,26 +524,6 @@ export default function ExtractionProgressModal({
             </div>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function WizardHeader({ step }: { step: 1 | 2 }) {
-  return (
-    <div className="mb-6 flex items-center gap-2.5 border-b border-hestia-border pb-4">
-      <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-        Step {step} of 2
-      </span>
-      <div className="flex items-center gap-1.5" aria-label={`Step ${step} of 2`}>
-        {[1, 2].map((number) => (
-          <span
-            key={number}
-            className={`h-1.5 w-1.5 rounded-full ${
-              number <= step ? "bg-hestia-primary" : "bg-hestia-border"
-            }`}
-          />
-        ))}
       </div>
     </div>
   );
@@ -704,15 +674,3 @@ function PhaseTick({
   );
 }
 
-function Stat({ label, value }: { label: string; value?: number }) {
-  return (
-    <div className="rounded-lg bg-hestia-bg px-3 py-2">
-      <dt className="text-xs font-medium uppercase tracking-wide text-hestia-text-muted">
-        {label}
-      </dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums text-hestia-text">
-        {value ?? 0}
-      </dd>
-    </div>
-  );
-}

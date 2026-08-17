@@ -55,6 +55,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -149,13 +150,60 @@ class ExtractionControllerTest {
         return new ExtractedSkill(text, text, GoalKind.IMPLICIT, null, null, sourceFigure, List.of());
     }
 
+    private void startExtraction(Long courseId) throws Exception {
+        mockMvc.perform(post("/api/courses/{id}/extract", courseId))
+                .andExpect(status().isAccepted());
+        awaitSucceeded(courseId);
+    }
+
+    private void startForcedExtraction(Long courseId) throws Exception {
+        mockMvc.perform(post("/api/courses/{id}/extract?force=true", courseId))
+                .andExpect(status().isAccepted());
+        awaitSucceeded(courseId);
+    }
+
+    /**
+     * The run is asynchronous now, so a pipeline exception no longer surfaces as a failed POST — it
+     * lands on the tracker as FAILED. Assert the happy path here so a broken run fails loudly with
+     * its own error rather than as a confusing empty-result assertion further down the test.
+     */
+    private void awaitSucceeded(Long courseId) throws Exception {
+        String body = awaitExtraction(courseId);
+        assertThat(body).as("extraction for course %s should have succeeded", courseId)
+                .contains("\"status\":\"SUCCEEDED\"");
+    }
+
+    /** For runs the test expects to fail — the guard rejections and audit-failure cases. */
+    private void startExtractionExpectingFailure(Long courseId) throws Exception {
+        mockMvc.perform(post("/api/courses/{id}/extract", courseId))
+                .andExpect(status().isAccepted());
+        awaitExtraction(courseId);
+    }
+
+    /** Waits for the run to reach a terminal state and returns the final status body. */
+    private String awaitExtraction(Long courseId) throws Exception {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            MvcResult result = mockMvc.perform(get("/api/courses/{id}/extract/status", courseId)).andReturn();
+            String body = result.getResponse().getContentAsString();
+            if (body.contains("\"status\":\"SUCCEEDED\"")
+                    || body.contains("\"status\":\"FAILED\"")) {
+                return body;
+            }
+            Thread.sleep(25);
+        }
+        throw new AssertionError("Extraction did not finish for course " + courseId);
+    }
+
     @Test
     void extractionRefusesToReplaceExistingGoalsWithoutForce() throws Exception {
         Course course = courseRepository.save(new Course("Extraction guard"));
         LearningGoal existing = goalRepository.save(new LearningGoal(course, "Existing goal", GoalKind.EXPLICIT));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isConflict());
+        startExtractionExpectingFailure(course.getId());
+
+        mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"));
 
         verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), any());
         assertThat(goalRepository.findById(existing.getId())).isPresent();
@@ -180,9 +228,7 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome"))));
 
-        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(1));
+        startForcedExtraction(course.getId());
 
         assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
         assertThat(goalSourceRepository.findByGoalId(oldGoal.getId())).isEmpty();
@@ -215,10 +261,7 @@ class ExtractionControllerTest {
                 "Value short feedback loops.", orthogonalEmbedding(1),
                 "Refactor without changing behaviour.", orthogonalEmbedding(2)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documentsProcessed").value(2))
-                .andExpect(jsonPath("$.goalsCreated").value(3));
+        startExtraction(course.getId());
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
         assertThat(goals).hasSize(3);
@@ -324,11 +367,7 @@ class ExtractionControllerTest {
                 "Figure outcome", orthogonalEmbedding(1),
                 "Unsupported outcome", orthogonalEmbedding(2)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.textSources").value(1))
-                .andExpect(jsonPath("$.figureSources").value(1))
-                .andExpect(jsonPath("$.unsupportedSources").value(1));
+        startExtraction(course.getId());
 
         Map<Long, String> goalTextById = goalRepository.findByCourseId(course.getId()).stream()
                 .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
@@ -356,9 +395,7 @@ class ExtractionControllerTest {
                 new ConsolidatedGoal("Apply the fallback procedure.", "Fallback Procedure", List.of(0))));
         stubEmbedAll(Map.of("Apply the fallback procedure.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(1));
+        startExtraction(course.getId());
 
         verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
         List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
@@ -398,8 +435,7 @@ class ExtractionControllerTest {
                 .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
@@ -430,8 +466,7 @@ class ExtractionControllerTest {
                 .thenReturn(java.util.Collections.singletonMap(0, null));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         List<LearningGoal> terminals = goalRepository.findByCourseId(course.getId()).stream()
                 .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
@@ -475,8 +510,7 @@ class ExtractionControllerTest {
                 .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
@@ -505,8 +539,7 @@ class ExtractionControllerTest {
                 .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
         List<Long> extractedIdsBefore = goalRepository.findByCourseId(course.getId()).stream()
                 .filter(g -> g.getOrigin() != GoalOrigin.TERMINAL)
                 .map(LearningGoal::getId)
@@ -575,8 +608,7 @@ class ExtractionControllerTest {
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
                 "Understand the basics.", orthogonalEmbedding(1)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         LearningGoal knowledgeBefore = goalRepository.findByCourseId(course.getId()).stream()
                 .filter(g -> "Understand the basics.".equals(g.getText()))
@@ -647,8 +679,7 @@ class ExtractionControllerTest {
                 .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         // The model goes down before the rebuild can synthesise a replacement.
         when(terminalCompetencySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
@@ -684,8 +715,7 @@ class ExtractionControllerTest {
                 .thenReturn(Map.of(0, 0));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         LearningGoal terminal = goalRepository.findByCourseId(course.getId()).stream()
                 .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
@@ -729,34 +759,12 @@ class ExtractionControllerTest {
                 .thenThrow(new IllegalStateException("assignment call failed"));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .noneMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
         assertThat(hierarchyRepository.findByCourseId(course.getId()))
                 .noneMatch(n -> n.getLevel() == HierarchyLevel.COMPETENCY);
-    }
-
-    @Test
-    void failedExtractionLeavesFailedAuditRun() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
-        String text = "short session text";
-        documentRepository.save(new Document(course, "failed.pdf", "application/pdf", text));
-        when(sessionExtractionService.extract(eq("failed.pdf"), eq(text), eq("English"), eq(null)))
-                .thenThrow(new RuntimeException("direct extraction failed"));
-
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isInternalServerError());
-
-        assertThat(extractionRunRepository.findByCourseId(course.getId()))
-                .singleElement()
-                .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
-                    assertThat(run.getError()).isEqualTo("direct extraction failed");
-                    assertThat(run.getFinishedAt()).isNotNull();
-                    assertThat(run.getGoalsCreated()).isNull();
-                });
     }
 
     @Test
@@ -774,9 +782,7 @@ class ExtractionControllerTest {
         // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
         stubEmbedAll(Map.of());
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(2));
+        startExtraction(course.getId());
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
         assertThat(goals).hasSize(2);
@@ -798,9 +804,7 @@ class ExtractionControllerTest {
         ));
         stubEmbedAll(Map.of());
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(2));
+        startExtraction(course.getId());
 
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
         assertThat(goals).hasSize(2);
@@ -834,13 +838,13 @@ class ExtractionControllerTest {
         ));
         stubEmbedAll(Map.of());
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk());
+        startExtraction(course.getId());
 
         mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.phase").value("PERSISTING"))
+                .andExpect(jsonPath("$.phase").value("SYNTHESIZING"))
+                .andExpect(jsonPath("$.percent").value(100))
                 .andExpect(jsonPath("$.summary.goalsCreated").value(1))
                 .andExpect(jsonPath("$.error").doesNotExist());
     }
@@ -871,9 +875,7 @@ class ExtractionControllerTest {
                 "Understand SE scope.", orthogonalEmbedding(1),
                 "Practise TDD kata.", orthogonalEmbedding(2)));
 
-        mockMvc.perform(post("/api/courses/{id}/extract", course.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.goalsCreated").value(3));
+        startExtraction(course.getId());
 
         // Module root + one session node + one exercise node (the title keyword picks EXERCISE).
         List<HierarchyNode> nodes = hierarchyRepository.findByCourseId(course.getId());

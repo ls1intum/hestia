@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
-import ExtractionProgressModal from "./ExtractionProgressModal.tsx";
 import Button from "./Button.tsx";
 
 // The upload endpoint runs everything through Apache Tika, which parses these
@@ -11,12 +9,25 @@ const ACCEPT = ".pdf,.docx,.pptx,.txt";
 const ACCEPT_LABEL = "PDF, DOCX, PPTX, TXT";
 
 /**
- * Create a course, stage + upload its materials, then run the extraction (progress shown in the
- * modal on top). Rendered as a dialog over the courses list; the extraction starts immediately
- * after the upload, which is why the output-language override lives here rather than afterwards.
+ * Steps between hitting "Create course" and the extraction taking over in the courses list. Only
+ * "uploading" has a meaningful percentage — the rest are single server round trips, so they show an
+ * indeterminate bar. "processing" is the tail of the same upload request: once the bytes are on the
+ * wire the server still parses every file through Tika/PDFBox, which is most of the wait.
+ */
+type Step = "creating" | "uploading" | "processing" | "starting";
+
+const STEP_LABEL: Record<Step, string> = {
+  creating: "Creating course…",
+  uploading: "Uploading materials…",
+  processing: "Processing materials…",
+  starting: "Starting analysis…",
+};
+
+/**
+ * Create a course, stage + upload its materials, then start extraction before returning to the
+ * courses list. The list owns live extraction progress and review.
  */
 export default function CreateCourseDialog({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -26,16 +37,19 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
   // "" = detect from the uploaded materials.
   const [outputLanguage, setOutputLanguage] = useState<"" | "de" | "en">("");
   const [figuresEnabled, setFiguresEnabled] = useState(false);
-  const [courseId, setCourseId] = useState<number | null>(null);
-  const [progressOpen, setProgressOpen] = useState(false);
+  const [step, setStep] = useState<Step | null>(null);
+  const [uploadPercent, setUploadPercent] = useState(0);
 
   // Accumulate across drops/picks, skipping files already staged (name + size).
   const addFiles = (incoming: FileList | null) => {
     if (!incoming || incoming.length === 0) return;
+    // Snapshot before updating state: the file input is reset right after this call, which empties
+    // the live FileList before React gets around to running the updater below.
+    const picked = Array.from(incoming);
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
       const next = [...prev];
-      for (const file of Array.from(incoming)) {
+      for (const file of picked) {
         const key = `${file.name}:${file.size}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -51,16 +65,22 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
 
   const extract = useMutation({
     mutationFn: async (id: number) => {
-      const { data, error } = await api.POST("/api/courses/{courseId}/extract", {
+      const result = await api.POST("/api/courses/{courseId}/extract", {
         params: { path: { courseId: id }, query: {} },
       });
-      if (error || !data) throw new Error("Extraction failed.");
-      return data;
+      if (result.error || !result.data) {
+        const message = result.response.status === 409
+          ? "Another extraction is already running. Please wait."
+          : "Could not start extraction.";
+        throw new Error(message);
+      }
+      return result.data;
     },
   });
 
   const create = useMutation({
     mutationFn: async () => {
+      setStep("creating");
       const { data, error } = await api.POST("/api/courses", {
         body: {
           name: name.trim(),
@@ -71,76 +91,48 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
       if (error || !data?.id) throw new Error("Could not create the course.");
 
       if (files.length > 0) {
-        const formData = new FormData();
-        files.forEach((file) => formData.append("files", file));
-        const res = await fetch(`${API_PREFIX}/api/courses/${data.id}/documents`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!res.ok) {
-          throw new Error(`Course created, but the upload failed (HTTP ${res.status}).`);
-        }
+        setUploadPercent(0);
+        setStep("uploading");
+        await uploadDocuments(data.id, files, setUploadPercent, () => setStep("processing"));
       }
       return data.id as number;
     },
     onSuccess: (id) => {
-      setCourseId(id);
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      // No materials → nothing to extract; land on the (empty) course straight away.
+      // No materials → nothing to extract, so hand the list back straight away.
       if (files.length === 0) {
-        navigate(`/courses/${id}`);
+        onClose();
         return;
       }
-      queryClient.setQueryData(["extract-status", id], null);
-      setProgressOpen(true);
-      extract.mutate(id);
-    },
-  });
-
-  // Poll the live extraction progress while the (synchronous) extract POST is in flight.
-  const statusQuery = useQuery({
-    queryKey: ["extract-status", courseId],
-    queryFn: async () => {
-      const { data } = await api.GET("/api/courses/{courseId}/extract/status", {
-        params: { path: { courseId: courseId as number } },
+      setStep("starting");
+      // Closing is the dialog owner's job: the courses list renders this dialog and it is itself
+      // routed at "/", so navigating there would not dismiss anything. The list picks the run up
+      // from its own polling and shows progress inline on the course's row.
+      extract.mutate(id, {
+        onSuccess: () => onClose(),
+        onError: () => setStep(null),
       });
-      return data ?? null;
     },
-    enabled: progressOpen && courseId != null && extract.isPending,
-    refetchInterval: () => (extract.isPending ? 1000 : false),
+    onError: () => setStep(null),
   });
 
   const trimmed = name.trim();
   const busy = create.isPending || extract.isPending;
+  const formError = extract.isError
+    ? extract.error.message
+    : create.isError
+      ? create.error.message
+      : null;
 
   // Escape closes the dialog, but not mid-flight (an in-progress upload/extraction must not be
-  // abandoned by a stray key); the progress modal owns the screen once extraction starts.
+  // abandoned by a stray key).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy && !progressOpen) onClose();
+      if (e.key === "Escape" && !busy) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, progressOpen, onClose]);
-
-  // Once extraction starts, the creation form gives way entirely to the progress/review modal.
-  if (progressOpen) {
-    return (
-      <ExtractionProgressModal
-        open
-        status={statusQuery.data ?? undefined}
-        result={extract.isSuccess ? extract.data : null}
-        error={extract.isError ? extract.error.message : null}
-        courseId={courseId}
-        onClose={() => {
-          setProgressOpen(false);
-          if (courseId != null) {
-            navigate(`/courses/${courseId}`);
-          }
-        }}
-      />
-    );
-  }
+  }, [busy, onClose]);
 
   return (
     <div
@@ -152,7 +144,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-hestia-border bg-hestia-surface shadow-lg"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-hestia-border bg-hestia-surface shadow-lg"
       >
         <div className="flex items-center justify-between gap-4 border-b border-hestia-border px-6 py-4">
           <div>
@@ -181,7 +173,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
             if (trimmed && !busy) create.mutate();
           }}
         >
-          <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
+          <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="course-name" className="text-sm font-medium text-hestia-text">
                 Course title
@@ -218,7 +210,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   setIsDragging(false);
                   addFiles(e.dataTransfer.files);
                 }}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-12 text-center transition ${
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition ${
                   isDragging
                     ? "border-hestia-primary bg-hestia-primary-muted"
                     : "border-hestia-border hover:border-hestia-primary"
@@ -246,22 +238,29 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                 <p className="mt-2 text-xs text-hestia-text-muted">
                   Supported: {ACCEPT_LABEL} · Max 100 MB per file
                 </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={ACCEPT}
-                  className="hidden"
-                  onChange={(e) => {
-                    addFiles(e.target.files);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                />
               </div>
+              {/* Deliberately a sibling of the drop zone, not a child: the zone's onClick calls
+                  click() on this input, and a click dispatched on a descendant bubbles straight
+                  back into that same handler — which re-opens the picker forever and blows the
+                  stack. Keeping it outside breaks the cycle. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+              />
             </div>
 
+            {/* shrink-0 below is load-bearing: overflow-y-auto drops this flex item's automatic
+                min-height to 0, so inside the height-capped dialog it would otherwise be squashed
+                to zero height and the staged files would render invisibly. */}
             {files.length > 0 && (
-              <ul className="flex flex-col gap-2">
+              <ul className="flex max-h-44 shrink-0 flex-col gap-2 overflow-y-auto">
                 {files.map((file, index) => (
                   <li
                     key={`${file.name}:${file.size}`}
@@ -319,23 +318,83 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               </span>
             </label>
 
-            {create.isError && (
-              <p className="text-sm text-hestia-danger">{create.error.message}</p>
-            )}
+            {formError && <p className="text-sm text-hestia-danger">{formError}</p>}
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-hestia-border px-6 py-4">
-            <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="submit" size="lg" disabled={!trimmed || busy}>
-              {create.isPending ? "Creating…" : "Create course →"}
-            </Button>
+          <div className="flex flex-col gap-4 border-t border-hestia-border px-6 py-4">
+            {step && (
+              <div>
+                <div className="flex items-center justify-between gap-3 text-sm text-hestia-text-muted">
+                  <span aria-live="polite">{STEP_LABEL[step]}</span>
+                  {step === "uploading" && (
+                    <span className="tabular-nums">{uploadPercent}%</span>
+                  )}
+                </div>
+                <div
+                  className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted"
+                  role="progressbar"
+                  aria-label={STEP_LABEL[step]}
+                  aria-valuemin={step === "uploading" ? 0 : undefined}
+                  aria-valuemax={step === "uploading" ? 100 : undefined}
+                  aria-valuenow={step === "uploading" ? uploadPercent : undefined}
+                >
+                  {step === "uploading" ? (
+                    <div
+                      className="h-full rounded-full bg-hestia-primary transition-[width] duration-300 ease-out"
+                      style={{ width: `${uploadPercent}%` }}
+                    />
+                  ) : (
+                    <div className="h-full w-1/3 animate-pulse rounded-full bg-hestia-primary" />
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button type="submit" size="lg" disabled={!trimmed || busy}>
+                {busy ? "Creating…" : "Create course →"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
     </div>
   );
+}
+
+/**
+ * Uploads the staged materials in one request. XHR rather than fetch: only XHR reports how many
+ * bytes have gone out, which is the one part of this wait we can measure. `onTransferred` fires when
+ * the last byte is sent — everything after that is the server parsing, with no progress to report.
+ */
+function uploadDocuments(
+  courseId: number,
+  files: File[],
+  onPercent: (percent: number) => void,
+  onTransferred: () => void,
+): Promise<void> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onPercent(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    request.upload.onload = () => onTransferred();
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`Course created, but the upload failed (HTTP ${request.status}).`));
+    };
+    request.onerror = () =>
+      reject(new Error("Course created, but the upload failed. Please check your connection."));
+    request.send(formData);
+  });
 }
 
 function formatSize(bytes: number): string {

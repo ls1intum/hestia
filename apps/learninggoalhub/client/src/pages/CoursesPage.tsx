@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
-import type { CourseSummary } from "../api/client.ts";
+import type { CourseSummary, CurrentExtraction } from "../api/client.ts";
 import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
 import CourseDocuments from "../components/CourseDocuments.tsx";
+import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
+import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
 
   const toggleExpanded = (id?: number) => {
     if (id == null) return;
@@ -48,6 +52,56 @@ export default function CoursesPage() {
     },
   });
 
+  const currentExtractionQuery = useQuery<CurrentExtraction | null>({
+    queryKey: ["extraction-current"],
+    queryFn: async () => {
+      const result = await api.GET("/api/extractions/current");
+      if (result.response.status === 204) return null;
+      if (result.error || !result.data) throw new Error("Could not load extraction progress.");
+      return result.data;
+    },
+    refetchInterval: 1500,
+  });
+
+  const currentExtraction = currentExtractionQuery.data ?? null;
+  const extractionRunning = currentExtraction?.status === "RUNNING";
+  const previousExtraction = useRef<CurrentExtraction | null>(null);
+
+  useEffect(() => {
+    const previous = previousExtraction.current;
+    if (
+      previous != null
+      && (currentExtraction == null
+        || currentExtraction.status !== "RUNNING"
+        || currentExtraction.courseId !== previous.courseId)
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+    }
+    previousExtraction.current = currentExtraction;
+  }, [currentExtraction, queryClient]);
+
+  const extractionStatusQuery = useQuery({
+    queryKey: ["extract-status", reviewCourseId],
+    queryFn: async () => {
+      const result = await api.GET("/api/courses/{courseId}/extract/status", {
+        params: { path: { courseId: reviewCourseId as number } },
+      });
+      return result.data ?? null;
+    },
+    enabled: reviewCourseId != null,
+    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+  });
+
+  // Watching a run to the finish hands straight over to the course itself, where the one-time skill
+  // review is already due and opens on arrival. The list never shows the review of its own.
+  const watchedRunSucceeded = extractionStatusQuery.data?.status === "SUCCEEDED";
+  useEffect(() => {
+    if (reviewCourseId == null || !watchedRunSucceeded) return;
+    const courseId = reviewCourseId;
+    setReviewCourseId(null);
+    navigate(`/courses/${courseId}`);
+  }, [reviewCourseId, watchedRunSucceeded, navigate]);
+
   const courses: CourseSummary[] = coursesQuery.data?.content ?? [];
   // Left out entirely until the list has loaded, so the heading never shows a placeholder "(0)".
   const courseCount = coursesQuery.data
@@ -64,9 +118,20 @@ export default function CoursesPage() {
             <span className="text-hestia-text-muted">({courseCount})</span>
           )}
         </h1>
-        <Button size="lg" onClick={() => setCreateOpen(true)} className="shrink-0">
-          + Add course
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            size="lg"
+            onClick={() => setCreateOpen(true)}
+            className="shrink-0"
+            disabled={extractionRunning}
+            title={extractionRunning ? "Extraction running — one at a time" : undefined}
+          >
+            + Add course
+          </Button>
+          {extractionRunning && (
+            <span className="text-xs text-hestia-text-muted">Extraction running — one at a time</span>
+          )}
+        </div>
       </div>
 
       {deleteMutation.isError && (
@@ -87,9 +152,20 @@ export default function CoursesPage() {
         {!coursesQuery.isLoading && !coursesQuery.isError && courses.length === 0 && (
           <div className="px-6 py-12 text-center">
             <p className="text-sm text-hestia-text-muted">No courses yet.</p>
-            <Button size="lg" onClick={() => setCreateOpen(true)} className="mt-3">
+            <Button
+              size="lg"
+              onClick={() => setCreateOpen(true)}
+              className="mt-3"
+              disabled={extractionRunning}
+              title={extractionRunning ? "Extraction running — one at a time" : undefined}
+            >
               Create your first course
             </Button>
+            {extractionRunning && (
+              <p className="mt-2 text-xs text-hestia-text-muted">
+                Extraction running — one at a time
+              </p>
+            )}
           </div>
         )}
         {courses.length > 0 && (
@@ -99,7 +175,7 @@ export default function CoursesPage() {
               <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] gap-4">
                 <span>Course</span>
                 <span className="text-right">Docs</span>
-                <span className="text-right">Goals</span>
+                <span className="text-right">Skills</span>
                 <span>Status</span>
                 <span className="text-right">Created</span>
                 <span className="sr-only">Actions</span>
@@ -107,6 +183,7 @@ export default function CoursesPage() {
             </li>
             {courses.map((course, index) => {
               const expanded = course.id != null && expandedIds.has(course.id);
+              const isExtracting = extractionRunning && currentExtraction?.courseId === course.id;
               return (
                 <li
                   key={course.id}
@@ -134,6 +211,13 @@ export default function CoursesPage() {
                     </button>
                     <Link
                       to={`/courses/${course.id}`}
+                      onClick={(event) => {
+                        if (isExtracting && course.id != null) {
+                          event.preventDefault();
+                          setReviewCourseId(course.id);
+                        }
+                      }}
+                      aria-haspopup={isExtracting ? "dialog" : undefined}
                       className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 py-4"
                     >
                       <span className="font-medium text-hestia-text">{course.name}</span>
@@ -141,13 +225,42 @@ export default function CoursesPage() {
                         {course.documentCount ?? 0}
                       </span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
-                        {course.goalCount ?? 0}
+                        {course.skillCount ?? 0}
                       </span>
                       <span>
-                        <StatusBadge
-                          documentCount={course.documentCount ?? 0}
-                          goalCount={course.goalCount ?? 0}
-                        />
+                        {isExtracting ? (
+                          <span className="flex min-w-0 flex-col gap-1">
+                            <span
+                              className="flex items-center justify-between gap-1 text-xs font-semibold text-hestia-primary"
+                              title={extractionPhaseLabel(currentExtraction?.phase)}
+                            >
+                              <span className="truncate">
+                                {extractionPhaseShortLabel(currentExtraction?.phase)}
+                              </span>
+                              <span className="shrink-0 tabular-nums">
+                                {currentExtraction?.percent ?? 0}%
+                              </span>
+                            </span>
+                            <span
+                              className="h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted"
+                              role="progressbar"
+                              aria-label="Extraction progress"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={currentExtraction?.percent ?? 0}
+                            >
+                              <span
+                                className="block h-full rounded-full bg-hestia-primary transition-[width] duration-500"
+                                style={{ width: `${currentExtraction?.percent ?? 0}%` }}
+                              />
+                            </span>
+                          </span>
+                        ) : (
+                          <StatusBadge
+                            documentCount={course.documentCount ?? 0}
+                            goalCount={course.goalCount ?? 0}
+                          />
+                        )}
                       </span>
                       <span className="text-right text-sm text-hestia-text-muted">
                         {formatDate(course.createdAt)}
@@ -185,6 +298,19 @@ export default function CoursesPage() {
       </div>
 
       {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
+      {reviewCourseId != null && !watchedRunSucceeded && (
+        <ExtractionProgressModal
+          open
+          status={extractionStatusQuery.data ?? undefined}
+          error={
+            extractionStatusQuery.data?.status === "FAILED"
+              ? extractionStatusQuery.data.error ?? "Extraction failed."
+              : null
+          }
+          courseId={reviewCourseId}
+          onClose={() => setReviewCourseId(null)}
+        />
+      )}
     </div>
   );
 }

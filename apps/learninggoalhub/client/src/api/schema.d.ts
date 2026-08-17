@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extractions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["current"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{courseId}/exam-tasks/learning-goals": {
         parameters: {
             query?: never;
@@ -312,6 +328,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{id}/skills-reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["markSkillsReviewed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -427,6 +459,23 @@ export interface components {
             /** Format: int32 */
             unsupportedSources?: number;
         };
+        ExtractionStartResponse: {
+            /** Format: int64 */
+            courseId?: number;
+            /** @enum {string} */
+            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
+        };
+        CurrentExtractionResponse: {
+            /** Format: int64 */
+            courseId?: number;
+            courseName?: string;
+            /** @enum {string} */
+            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
+            /** Format: int32 */
+            percent?: number;
+            /** @enum {string} */
+            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
+        };
         ExamBlock: {
             blockId?: string;
             /** @enum {string} */
@@ -498,6 +547,10 @@ export interface components {
             documentCount?: number;
             /** Format: int64 */
             goalCount?: number;
+            /** Format: int64 */
+            skillCount?: number;
+            /** Format: date-time */
+            skillsReviewedAt?: string;
         };
         PageMetadata: {
             /** Format: int64 */
@@ -529,11 +582,13 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING";
+            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */
             total?: number;
+            /** Format: int32 */
+            percent?: number;
             model?: string;
             summary?: components["schemas"]["ExtractionSummary"];
             error?: string;
@@ -742,14 +797,48 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ExtractionStartResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    current: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ExtractionSummary"];
+                    "*/*": components["schemas"]["CurrentExtractionResponse"];
                 };
+            };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1124,6 +1213,13 @@ export interface operations {
                     "*/*": components["schemas"]["Snapshot"];
                 };
             };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     content: {
@@ -1146,6 +1242,26 @@ export interface operations {
                 content: {
                     "*/*": string;
                 };
+            };
+        };
+    };
+    markSkillsReviewed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

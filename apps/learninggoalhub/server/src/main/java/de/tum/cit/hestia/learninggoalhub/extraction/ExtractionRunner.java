@@ -197,17 +197,18 @@ public class ExtractionRunner {
         }
         Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
                 runParams(courseLanguage, course.isFiguresEnabled()));
+        // Only the per-phase counters are published from in here. The terminal SUCCEEDED/FAILED
+        // status is set by the caller once this transaction has committed — marking it from inside
+        // would let a poller see "done" while the goals are still invisible to other connections.
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         try {
             ExtractionSummary summary = doRun(course, documents, modelOverride,
                     LanguageUtils.englishName(courseLanguage), dominantLanguage, run);
-            run.succeed(summary);
             extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.SUCCEEDED, null,
                     summary.goalsCreated(), promptVersion);
             return summary;
         } catch (RuntimeException ex) {
             String error = errorMessage(ex);
-            run.fail(error);
             extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.FAILED, error, null, promptVersion);
             throw ex;
         }
@@ -397,6 +398,7 @@ public class ExtractionRunner {
 
         // Top-down competency view: a three-tier tree (terminal competency → sub-skill → knowledge)
         // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
+        run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
         CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride, courseLanguageName);
 
         return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies(),
