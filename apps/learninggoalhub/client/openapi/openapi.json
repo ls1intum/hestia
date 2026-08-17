@@ -1866,6 +1866,10 @@
           },
           "error": {
             "type": "string"
+          },
+          "failedSessions": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       }

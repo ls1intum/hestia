@@ -199,6 +199,9 @@ export default function ExtractionProgressModal({
   const total = status?.total ?? 0;
   const completed = status?.completed ?? 0;
   const percent = status?.percent ?? 0;
+  // Sessions the run dropped. Zero when reopened via reviewOnly: the tracker is in-memory, so the
+  // durable record of a thinned-out run is the extraction_run audit row, not this screen.
+  const failedSessions = status?.failedSessions ?? 0;
   // Index of the phase the backend currently reports; -1 until the first poll lands ("Starting…").
   const activeIndex = status?.phase
     ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
@@ -303,6 +306,15 @@ export default function ExtractionProgressModal({
               Take a quick look at the terminal skills we extracted — rename or remove any that
               are off.
             </p>
+            {failedSessions > 0 && (
+              <p className="mt-4 rounded-md border border-hestia-warning/40 bg-hestia-warning/10 px-3 py-2 text-sm text-hestia-text">
+                <span aria-hidden="true">⚠ </span>
+                {failedSessions === 1
+                  ? "One session could not be analysed and contributed no skills."
+                  : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
+                Add anything that is missing below.
+              </p>
+            )}
             <div className="mt-4 max-h-72 overflow-y-auto rounded-lg border border-hestia-border bg-hestia-bg">
               {goalsQuery.isLoading && (
                 <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">

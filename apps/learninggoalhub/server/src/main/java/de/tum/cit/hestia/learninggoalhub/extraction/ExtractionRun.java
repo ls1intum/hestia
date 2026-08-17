@@ -58,6 +58,14 @@ public class ExtractionRun {
     @Column(name = "goals_created")
     private Integer goalsCreated;
 
+    /**
+     * Sessions the run had to drop, e.g. because the model's reply could not be parsed. A run with
+     * dropped sessions still SUCCEEDS, so this is the only durable record that its tree is thinner
+     * than the material.
+     */
+    @Column(name = "failed_sessions")
+    private Integer failedSessions;
+
     protected ExtractionRun() {
     }
 
@@ -110,10 +118,16 @@ public class ExtractionRun {
         return goalsCreated;
     }
 
-    public void finish(Status status, String error, Integer goalsCreated, String promptVersion) {
+    public Integer getFailedSessions() {
+        return failedSessions;
+    }
+
+    public void finish(Status status, String error, Integer goalsCreated, Integer failedSessions,
+                       String promptVersion) {
         this.status = status;
         this.error = error;
         this.goalsCreated = goalsCreated;
+        this.failedSessions = failedSessions;
         this.promptVersion = promptVersion;
         this.finishedAt = OffsetDateTime.now();
     }
