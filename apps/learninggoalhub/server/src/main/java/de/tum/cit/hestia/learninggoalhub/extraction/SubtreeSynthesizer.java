@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -7,6 +8,7 @@ import java.util.Locale;
 import java.util.Set;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -58,20 +60,26 @@ public class SubtreeSynthesizer {
             """;
 
     private final ChatClient chatClient;
+    private final double temperature;
 
-    public SubtreeSynthesizer(ChatClient.Builder chatClientBuilder) {
+    public SubtreeSynthesizer(ChatClient.Builder chatClientBuilder,
+                              @Value("${hestia.extraction.temperature:0.2}") double temperature) {
         this.chatClient = chatClientBuilder.build();
+        this.temperature = temperature;
     }
 
     public GeneratedSubtree generateSubtree(String terminalText, String languageName, String modelOverride) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
+                .system(LanguagePrompt.systemInstruction(languageName));
+        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
         GeneratedSubtree generated = spec
+                .options(options.build())
                 .user(PROMPT.formatted(languageName, terminalText))
                 .call()
-                .entity(new ParameterizedTypeReference<GeneratedSubtree>() {});
+                .entity(LenientJson.converter(new ParameterizedTypeReference<GeneratedSubtree>() {}));
         return validate(generated);
     }
 

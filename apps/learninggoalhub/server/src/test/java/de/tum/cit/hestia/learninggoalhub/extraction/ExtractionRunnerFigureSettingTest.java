@@ -21,6 +21,7 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
@@ -36,7 +37,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.ai.converter.StructuredOutputConverter;
 
 class ExtractionRunnerFigureSettingTest {
 
@@ -46,7 +47,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any());
+        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString());
         verify(fixture.pageDescriptionRepository(), never()).findByDocumentId(any());
         verifyPromptDoesNotContainFigures(fixture.chatClient());
         verifyRunParams(fixture.auditService(), false);
@@ -58,7 +59,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any());
+        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"));
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(fixture.chatClient().prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
@@ -77,7 +78,9 @@ class ExtractionRunnerFigureSettingTest {
         ArgumentCaptor<String> paramsCaptor = ArgumentCaptor.forClass(String.class);
         verify(auditService).start(eq(1L), isNull(), eq(SessionExtractionService.PROMPT_VERSION),
                 paramsCaptor.capture());
-        assertThat(paramsCaptor.getValue()).contains("\"figures-enabled\":" + figuresEnabled);
+        assertThat(paramsCaptor.getValue())
+                .contains("\"figures-enabled\":" + figuresEnabled)
+                .contains("\"figure-prompt-version\":\"" + PageDescriptionService.FIGURE_PROMPT_VERSION + "\"");
     }
 
     private static Fixture fixture(boolean figuresEnabled) {
@@ -130,10 +133,16 @@ class ExtractionRunnerFigureSettingTest {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        // system() and options() return the spec itself, so the chain is one mock and a verify()
+        // does not have to rebuild it — rebuilding would be recorded as another user() call.
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.system(anyString())).thenReturn(spec);
+        when(spec.options(any())).thenReturn(spec);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
-        clearInvocations(chatClient.prompt());
-        SessionExtractionService sessionExtractionService = new SessionExtractionService(chatClientBuilder);
+        clearInvocations(spec);
+        SessionExtractionService sessionExtractionService = new SessionExtractionService(
+                chatClientBuilder, mock(LanguageDetectionService.class), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);

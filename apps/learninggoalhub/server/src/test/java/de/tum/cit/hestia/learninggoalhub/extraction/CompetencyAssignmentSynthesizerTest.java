@@ -17,9 +17,20 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.ai.converter.StructuredOutputConverter;
 
 class CompetencyAssignmentSynthesizerTest {
+
+    /**
+     * The request spec returns itself from options() so the whole call chain is one mock.
+     * Rebuilding the chain inside a verify() would otherwise be recorded as another invocation
+     * and make every count off by one.
+     */
+    private static ChatClient.ChatClientRequestSpec stubSpec(ChatClient chatClient) {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.options(any(ChatOptions.class))).thenReturn(spec);
+        return spec;
+    }
 
     private static final List<String> TWO_COMPETENCIES =
             List.of("Containerise applications.", "Secure cloud workloads.");
@@ -27,7 +38,7 @@ class CompetencyAssignmentSynthesizerTest {
     private static CompetencyAssignmentSynthesizer synthesizerReturning(ChatClient chatClient) {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        return new CompetencyAssignmentSynthesizer(builder);
+        return new CompetencyAssignmentSynthesizer(builder, 0.0);
     }
 
     private static List<Candidate> twoGoals() {
@@ -38,7 +49,8 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void mapsEachGoalToItsCompetency() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(new CompetencyAssignment(0, 0), new CompetencyAssignment(1, 1)));
 
         Map<Integer, Integer> result =
@@ -55,7 +67,8 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void keepsExplicitNoMatchAsNull() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(new CompetencyAssignment(0, 0), new CompetencyAssignment(1, null)));
 
         Map<Integer, Integer> result =
@@ -73,7 +86,8 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void turnsOutOfRangeCompetencyIndexIntoNoMatch() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(new CompetencyAssignment(0, 99), new CompetencyAssignment(1, -3)));
 
         Map<Integer, Integer> result =
@@ -87,7 +101,8 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void dropsUnknownGoalIndicesAndKeepsTheFirstAnswerForARepeatedGoal() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(new CompetencyAssignment(0, 0),
                         new CompetencyAssignment(0, 1),
                         new CompetencyAssignment(42, 1),
@@ -103,12 +118,13 @@ class CompetencyAssignmentSynthesizerTest {
     void returnsEmptyAndSkipsLlmWithoutCompetenciesOrGoals() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         CompetencyAssignmentSynthesizer synthesizer = synthesizerReturning(chatClient);
-        clearInvocations(chatClient.prompt());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        clearInvocations(spec);
 
         assertThat(synthesizer.assign(List.of(), twoGoals(), null)).isEmpty();
         assertThat(synthesizer.assign(TWO_COMPETENCIES, List.of(), null)).isEmpty();
         assertThat(synthesizer.assign(null, null, null)).isEmpty();
-        verify(chatClient.prompt(), never()).user(anyString());
+        verify(spec, never()).user(anyString());
     }
 
     /**
@@ -129,15 +145,16 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void putsCompetenciesGoalsBloomAndSessionInThePrompt() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
-        clearInvocations(chatClient.prompt());
+        clearInvocations(spec);
 
         synthesizerReturning(chatClient).assign(List.of("UNIQUE-COMPETENCY-7"),
                 List.of(new Candidate("UNIQUE-GOAL-8", "UNDERSTAND", "UNIQUE-SESSION-9")), null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(chatClient.prompt()).user(promptCaptor.capture());
+        verify(spec).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
                 .contains("[0] UNIQUE-COMPETENCY-7")
                 .contains("UNIQUE-GOAL-8")
@@ -148,15 +165,15 @@ class CompetencyAssignmentSynthesizerTest {
     @Test
     void appliesModelOverrideWhenProvided() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().options(any(ChatOptions.class)).user(anyString()).call()
-                .entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
-        clearInvocations(chatClient.prompt());
+        clearInvocations(spec);
 
         synthesizerReturning(chatClient).assign(TWO_COMPETENCIES, twoGoals(), "openai-gpt-oss-120b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
-        verify(chatClient.prompt()).options(optionsCaptor.capture());
+        verify(spec).options(optionsCaptor.capture());
         assertThat(optionsCaptor.getValue().getModel()).isEqualTo("openai-gpt-oss-120b");
     }
 }

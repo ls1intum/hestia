@@ -30,6 +30,12 @@ public class PageDescription {
     @Column(length = 255)
     private String model;
 
+    @Column(length = 16)
+    private String language;
+
+    @Column(name = "prompt_version", length = 32)
+    private String promptVersion;
+
     /** False for title, section-header and summary pages, which are described but teach nothing. */
     @Column(name = "teaches_content", nullable = false)
     private boolean teachesContent = true;
@@ -47,11 +53,18 @@ public class PageDescription {
 
     public PageDescription(Document document, int page, String description, String model,
                            boolean teachesContent) {
+        this(document, page, description, model, teachesContent, null, null);
+    }
+
+    public PageDescription(Document document, int page, String description, String model,
+                           boolean teachesContent, String language, String promptVersion) {
         this.document = document;
         this.id = new PageDescriptionId(document.getId(), page);
         this.description = description;
         this.model = model;
         this.teachesContent = teachesContent;
+        this.language = language;
+        this.promptVersion = promptVersion;
     }
 
     public PageDescriptionId getId() {
@@ -74,8 +87,25 @@ public class PageDescription {
         return model;
     }
 
+    public String getLanguage() {
+        return language;
+    }
+
+    public String getPromptVersion() {
+        return promptVersion;
+    }
+
     public boolean isTeachesContent() {
         return teachesContent;
+    }
+
+    public void update(String description, String model, boolean teachesContent,
+                       String language, String promptVersion) {
+        this.description = description;
+        this.model = model;
+        this.teachesContent = teachesContent;
+        this.language = language;
+        this.promptVersion = promptVersion;
     }
 
     public OffsetDateTime getCreatedAt() {

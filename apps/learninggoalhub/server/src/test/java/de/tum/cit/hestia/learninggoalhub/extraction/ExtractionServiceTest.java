@@ -15,9 +15,21 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.ai.converter.StructuredOutputConverter;
 
 class ExtractionServiceTest {
+
+    /**
+     * The request spec returns itself from system() and options() so the whole call chain is one
+     * mock. Rebuilding the chain inside a verify() would otherwise be recorded as another
+     * invocation and make every count off by one.
+     */
+    private static ChatClient.ChatClientRequestSpec stubSpec(ChatClient chatClient) {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.system(anyString())).thenReturn(spec);
+        when(spec.options(any(ChatOptions.class))).thenReturn(spec);
+        return spec;
+    }
 
     @Test
     void returnsParsedCandidatesFromChatClient() {
@@ -29,10 +41,10 @@ class ExtractionServiceTest {
                 new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...write a failing test first..."),
                 new ExtractedGoal("Recognise the value of refactoring.", GoalKind.IMPLICIT, "...keep the design clean..."));
 
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        when(stubSpec(chatClient).user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(expected);
 
-        ExtractionService service = new ExtractionService(builder);
+        ExtractionService service = new ExtractionService(builder, 0.2);
 
         List<ExtractedGoal> result = service.extract("Lecture 3 covers TDD ...");
 
@@ -55,14 +67,15 @@ class ExtractionServiceTest {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
 
-        clearInvocations(chatClient.prompt());
-        new ExtractionService(builder).extract("UNIQUE-DOCUMENT-MARKER-42");
+        clearInvocations(spec);
+        new ExtractionService(builder, 0.2).extract("UNIQUE-DOCUMENT-MARKER-42");
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(chatClient.prompt()).user(promptCaptor.capture());
+        verify(spec).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue()).contains("UNIQUE-DOCUMENT-MARKER-42");
     }
 
@@ -71,16 +84,17 @@ class ExtractionServiceTest {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        when(chatClient.prompt().options(any(ChatOptions.class)).user(anyString()).call()
-                .entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
 
-        clearInvocations(chatClient.prompt());
-        new ExtractionService(builder).extract("text", "German", "qwen3.6-35b-a3b");
+        clearInvocations(spec);
+        new ExtractionService(builder, 0.2).extract("text", "German", "qwen3.6-35b-a3b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
-        verify(chatClient.prompt()).options(optionsCaptor.capture());
+        verify(spec).options(optionsCaptor.capture());
         assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen3.6-35b-a3b");
+        assertThat(optionsCaptor.getValue().getTemperature()).isEqualTo(0.2);
     }
 
     @Test
@@ -88,14 +102,18 @@ class ExtractionServiceTest {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        when(chatClient.prompt().user(anyString()).call().entity(any(ParameterizedTypeReference.class)))
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of());
 
-        clearInvocations(chatClient.prompt());
-        new ExtractionService(builder).extract("text", "German", null);
+        clearInvocations(spec);
+        new ExtractionService(builder, 0.2).extract("text", "German", null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(chatClient.prompt()).user(promptCaptor.capture());
+        ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
+        verify(spec).system(systemCaptor.capture());
+        verify(spec).user(promptCaptor.capture());
+        assertThat(systemCaptor.getValue()).contains("German");
         assertThat(promptCaptor.getValue())
                 .contains("in German")
                 .contains("never translate")

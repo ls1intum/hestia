@@ -1,9 +1,11 @@
 package de.tum.cit.hestia.learninggoalhub.taxonomy;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -67,9 +69,12 @@ public class TaxonomyService {
             """;
 
     private final ChatClient chatClient;
+    private final double assignmentTemperature;
 
-    public TaxonomyService(ChatClient.Builder chatClientBuilder) {
+    public TaxonomyService(ChatClient.Builder chatClientBuilder,
+                           @Value("${hestia.extraction.assignment-temperature:0.0}") double assignmentTemperature) {
         this.chatClient = chatClientBuilder.build();
+        this.assignmentTemperature = assignmentTemperature;
     }
 
     public TaxonomyClassification classify(String goalText) {
@@ -78,13 +83,15 @@ public class TaxonomyService {
 
     public TaxonomyClassification classify(String goalText, String modelOverride) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        ChatOptions.Builder options = ChatOptions.builder().temperature(assignmentTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
         return spec
+                .options(options.build())
                 .user(PROMPT_TEMPLATE.formatted(goalText))
                 .call()
-                .entity(TaxonomyClassification.class);
+                .entity(LenientJson.converter(TaxonomyClassification.class));
     }
 
     /**
@@ -107,13 +114,15 @@ public class TaxonomyService {
             numbered.append(i + 1).append(". ").append(goalTexts.get(i)).append('\n');
         }
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        ChatOptions.Builder options = ChatOptions.builder().temperature(assignmentTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
         List<BatchTaxonomyItem> items = spec
+                .options(options.build())
                 .user(BATCH_PROMPT_TEMPLATE.formatted(numbered.toString()))
                 .call()
-                .entity(new ParameterizedTypeReference<List<BatchTaxonomyItem>>() {});
+                .entity(LenientJson.converter(new ParameterizedTypeReference<List<BatchTaxonomyItem>>() {}));
 
         TaxonomyClassification[] aligned = new TaxonomyClassification[goalTexts.size()];
         if (items != null) {

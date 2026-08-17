@@ -1,11 +1,13 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
@@ -68,9 +70,13 @@ public class CompetencyAssignmentSynthesizer {
             """;
 
     private final ChatClient chatClient;
+    private final double assignmentTemperature;
 
-    public CompetencyAssignmentSynthesizer(ChatClient.Builder chatClientBuilder) {
+    public CompetencyAssignmentSynthesizer(ChatClient.Builder chatClientBuilder,
+                                           @Value("${hestia.extraction.assignment-temperature:0.0}")
+                                           double assignmentTemperature) {
         this.chatClient = chatClientBuilder.build();
+        this.assignmentTemperature = assignmentTemperature;
     }
 
     /**
@@ -116,10 +122,11 @@ public class CompetencyAssignmentSynthesizer {
 
     private <T> T chat(String prompt, String modelOverride, ParameterizedTypeReference<T> type) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        ChatOptions.Builder options = ChatOptions.builder().temperature(assignmentTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
-            spec = spec.options(ChatOptions.builder().model(modelOverride).build());
+            options.model(modelOverride);
         }
-        return spec.user(prompt).call().entity(type);
+        return spec.options(options.build()).user(prompt).call().entity(LenientJson.converter(type));
     }
 
     private static String numberedCompetencies(List<String> competencies) {

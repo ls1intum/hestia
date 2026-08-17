@@ -87,7 +87,7 @@ class ExtractionThresholdZeroTest {
         awaitExtraction(course.getId());
 
         verify(extractionService).extract(eq(text), eq("English"), eq(null));
-        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), eq(null));
+        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), anyString(), eq(null));
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .extracting(LearningGoal::getRole)
