@@ -205,11 +205,12 @@ public class ExtractionRunner {
             ExtractionSummary summary = doRun(course, documents, modelOverride,
                     LanguageUtils.englishName(courseLanguage), dominantLanguage, run);
             extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.SUCCEEDED, null,
-                    summary.goalsCreated(), promptVersion);
+                    summary.goalsCreated(), run.failedSessions(), promptVersion);
             return summary;
         } catch (RuntimeException ex) {
             String error = errorMessage(ex);
-            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.FAILED, error, null, promptVersion);
+            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.FAILED, error, null,
+                    run.failedSessions(), promptVersion);
             throw ex;
         }
     }
@@ -417,48 +418,63 @@ public class ExtractionRunner {
         try {
             List<CompletableFuture<SessionExtraction>> futures = sessions.stream()
                     .map(session -> CompletableFuture.supplyAsync(() -> {
-                        String languageCode = resolveLanguage(
-                                course, session.document().getLanguage(), dominantLanguage);
-                        String languageName = LanguageUtils.englishName(languageCode);
-                        if (usesDirectPath(session.text())) {
-                            List<ExtractedSkill> skills = session.figures().isEmpty()
-                                    ? sessionExtractionService.extract(
-                                            session.title(), session.text(), languageCode, languageName,
-                                            modelOverride)
-                                    : sessionExtractionService.extract(
-                                            session.title(), session.text(), languageCode, languageName,
-                                            modelOverride, session.figures());
-                            if (skills != null && skills.size() > 7) {
-                                log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
-                                        session.title(), skills.size());
-                            }
+                        try {
+                            return extractSession(course, session, dominantLanguage, modelOverride);
+                        } catch (RuntimeException ex) {
+                            // One unusable model reply costs its own session, not the run: the course
+                            // keeps the outcomes of every other session and the empty unit is pruned.
+                            // The count is carried to the review screen and the audit row, so a
+                            // silently thinner tree is never mistaken for a complete one.
+                            log.warn("Session extraction failed for '{}'; the session yields no outcomes",
+                                    session.title(), ex);
+                            run.sessionFailed();
+                            return SessionExtraction.empty(session);
+                        } finally {
                             run.increment();
-                            return SessionExtraction.direct(session, skills == null ? List.of() : skills);
                         }
-
-                        // Oversized-session fallback intentionally remains flat and role-null; it keeps
-                        // the existing Bloom-based split for pre-V24 and threshold-routed sessions.
-                        List<ExtractedGoal> candidates = new ArrayList<>();
-                        for (String chunk : documentChunker.chunk(session.text())) {
-                            List<ExtractedGoal> extracted = extractionService.extract(
-                                    chunk, languageName, modelOverride);
-                            if (extracted != null) {
-                                candidates.addAll(extracted);
-                            }
-                        }
-                        List<ConsolidatedGoal> consolidated = candidates.isEmpty()
-                                ? List.of()
-                                : safeConsolidate(session.title(),
-                                        candidates.stream().map(ExtractedGoal::text).toList(),
-                                        languageName, modelOverride);
-                        run.increment();
-                        return SessionExtraction.fallback(session, candidates, consolidated);
                     }, executor))
                     .toList();
             return futures.stream().map(CompletableFuture::join).toList();
         } finally {
             executor.shutdown();
         }
+    }
+
+    private SessionExtraction extractSession(Course course, SessionUnit session, String dominantLanguage,
+                                             String modelOverride) {
+        String languageCode = resolveLanguage(course, session.document().getLanguage(), dominantLanguage);
+        String languageName = LanguageUtils.englishName(languageCode);
+        if (usesDirectPath(session.text())) {
+            List<ExtractedSkill> skills = session.figures().isEmpty()
+                    ? sessionExtractionService.extract(
+                            session.title(), session.text(), languageCode, languageName,
+                            modelOverride)
+                    : sessionExtractionService.extract(
+                            session.title(), session.text(), languageCode, languageName,
+                            modelOverride, session.figures());
+            if (skills != null && skills.size() > 7) {
+                log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
+                        session.title(), skills.size());
+            }
+            return SessionExtraction.direct(session, skills == null ? List.of() : skills);
+        }
+
+        // Oversized-session fallback intentionally remains flat and role-null; it keeps
+        // the existing Bloom-based split for pre-V24 and threshold-routed sessions.
+        List<ExtractedGoal> candidates = new ArrayList<>();
+        for (String chunk : documentChunker.chunk(session.text())) {
+            List<ExtractedGoal> extracted = extractionService.extract(
+                    chunk, languageName, modelOverride);
+            if (extracted != null) {
+                candidates.addAll(extracted);
+            }
+        }
+        List<ConsolidatedGoal> consolidated = candidates.isEmpty()
+                ? List.of()
+                : safeConsolidate(session.title(),
+                        candidates.stream().map(ExtractedGoal::text).toList(),
+                        languageName, modelOverride);
+        return SessionExtraction.fallback(session, candidates, consolidated);
     }
 
     private boolean usesDirectPath(String text) {
@@ -659,6 +675,12 @@ public class ExtractionRunner {
                                                   List<ConsolidatedGoal> consolidated) {
             return new SessionExtraction(session.document(), session.node(), false, List.of(), candidates,
                     consolidated, List.of());
+        }
+
+        /** A session whose extraction failed: it contributes nothing and its unit is pruned. */
+        private static SessionExtraction empty(SessionUnit session) {
+            return new SessionExtraction(session.document(), session.node(), true, List.of(), List.of(),
+                    List.of(), List.of());
         }
     }
 

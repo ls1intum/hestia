@@ -94,6 +94,8 @@ public class ExtractionProgressTracker {
         private final String model;
         private volatile Phase phase = Phase.DESCRIBING_FIGURES;
         private final AtomicInteger completed = new AtomicInteger();
+        /** Sessions the pipeline had to drop. A run stays SUCCEEDED with these missing. */
+        private final AtomicInteger failedSessions = new AtomicInteger();
         private volatile int total;
         private volatile Status status = Status.RUNNING;
         private volatile String error;
@@ -123,6 +125,15 @@ public class ExtractionProgressTracker {
             completed.addAndGet(delta);
         }
 
+        /** Records a session the pipeline could not analyse, so the review can say what is missing. */
+        public void sessionFailed() {
+            failedSessions.incrementAndGet();
+        }
+
+        public int failedSessions() {
+            return failedSessions.get();
+        }
+
         public void succeed(ExtractionRunner.ExtractionSummary summary) {
             this.summary = summary;
             releaseSlot.run();
@@ -141,7 +152,8 @@ public class ExtractionProgressTracker {
                     ? 100
                     : Math.min(99, weightedPercent(phase, completed.get(), total));
             percent = lastPercent.accumulateAndGet(percent, Math::max);
-            return new Snapshot(currentStatus, phase, completed.get(), total, model, summary, error, percent);
+            return new Snapshot(currentStatus, phase, completed.get(), total, model, summary, error, percent,
+                    failedSessions.get());
         }
     }
 
@@ -160,9 +172,15 @@ public class ExtractionProgressTracker {
         return (int) Math.round(envelope[0] + (envelope[1] - envelope[0]) * fraction);
     }
 
-    /** Immutable view returned to pollers. */
+    /**
+     * Immutable view returned to pollers.
+     *
+     * @param failedSessions sessions dropped by the run. Deliberately its own field rather than part
+     *                       of {@code summary}: it is a warning about what is missing, not a result.
+     */
     public record Snapshot(Status status, Phase phase, int completed, int total, String model,
-                           ExtractionRunner.ExtractionSummary summary, String error, int percent) {
+                           ExtractionRunner.ExtractionSummary summary, String error, int percent,
+                           int failedSessions) {
     }
 
     /** The globally active run and its latest immutable snapshot. */

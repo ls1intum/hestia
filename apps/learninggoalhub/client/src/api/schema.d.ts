@@ -592,6 +592,8 @@ export interface components {
             model?: string;
             summary?: components["schemas"]["ExtractionSummary"];
             error?: string;
+            /** Format: int32 */
+            failedSessions?: number;
         };
     };
     responses: never;

@@ -27,9 +27,9 @@ public class ExtractionRunAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void finish(Long runId, ExtractionRun.Status status, String error, Integer goalsCreated,
-                       String promptVersion) {
+                       Integer failedSessions, String promptVersion) {
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        run.finish(status, error, goalsCreated, promptVersion);
+        run.finish(status, error, goalsCreated, failedSessions, promptVersion);
         extractionRunRepository.saveAndFlush(run);
     }
 }

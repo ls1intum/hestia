@@ -332,11 +332,12 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
                 .isEqualTo(ExtractionRun.Status.RUNNING);
 
-        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, "direct-v1");
+        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, "direct-v1");
 
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
         assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
         assertThat(run.getGoalsCreated()).isEqualTo(4);
+        assertThat(run.getFailedSessions()).isEqualTo(1);
         assertThat(run.getFinishedAt()).isNotNull();
     }
 
@@ -765,6 +766,42 @@ class ExtractionControllerTest {
                 .noneMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
         assertThat(hierarchyRepository.findByCourseId(course.getId()))
                 .noneMatch(n -> n.getLevel() == HierarchyLevel.COMPETENCY);
+    }
+
+    /**
+     * A model reply the parser rejects used to abort the course. The failure is now contained: the
+     * failing session simply contributes nothing and every other session keeps its goals.
+     */
+    @Test
+    void failedSessionKeepsTheRunAndTheOtherSessionsGoals() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        String failing = "short session text";
+        String healthy = "healthy session text";
+        documentRepository.save(new Document(course, "failed.pdf", "application/pdf", failing));
+        documentRepository.save(new Document(course, "healthy.pdf", "application/pdf", healthy));
+        when(sessionExtractionService.extract(eq("failed.pdf"), eq(failing), eq("en"), eq("English"), eq(null)))
+                .thenThrow(new RuntimeException("direct extraction failed"));
+        when(sessionExtractionService.extract(eq("healthy.pdf"), eq(healthy), eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal(
+                        "Apply test-driven development.", GoalKind.EXPLICIT, "...healthy snippet..."))));
+
+        startExtraction(course.getId());
+
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .extracting(LearningGoal::getText)
+                .contains("Apply test-driven development.");
+        // The review screen polls this, and shows the count as a warning above the skill list.
+        assertThat(awaitExtraction(course.getId())).contains("\"failedSessions\":1");
+        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .satisfies(run -> {
+                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+                    assertThat(run.getError()).isNull();
+                    assertThat(run.getFinishedAt()).isNotNull();
+                    assertThat(run.getGoalsCreated()).isPositive();
+                    // Durable record: the in-memory tracker forgets, this row does not.
+                    assertThat(run.getFailedSessions()).isEqualTo(1);
+                });
     }
 
     @Test
