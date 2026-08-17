@@ -38,6 +38,12 @@ services:
       # Always redirect plain HTTP to HTTPS.
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Traefik's default readTimeout (60s) caps how long a client may take to send a
+      # request BODY, not just its headers — so any file upload slower than a minute is
+      # killed mid-body and answered with Traefik's own 502. Apps here ingest lecture
+      # material in the hundreds of megabytes, which exceeds a minute on a normal uplink.
+      # Match the 600s the apps' own nginx already allows for these requests.
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s"
     ports:
       - "80:80"
       - "443:443"
