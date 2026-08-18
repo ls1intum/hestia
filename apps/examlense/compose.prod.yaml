@@ -74,8 +74,11 @@ services:
       # Uploaded files live on a named volume (survives redeploys).
       STORAGE_LOCAL_BASE_PATH: /app/data/storage
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+      SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
+      SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
     volumes:
       - examlense-storage:/app/data
+      - /opt/hestia/secrets/saml:/app/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
