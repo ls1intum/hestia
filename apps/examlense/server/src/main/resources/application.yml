@@ -1,9 +1,22 @@
 server:
   port: ${PORT:8081}
+  forward-headers-strategy: framework
 
 spring:
   application:
     name: examlense-server
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          tum:
+            signing:
+              credentials:
+                - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
+                  certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
+            assertingparty:
+              entity-id: https://tumidp.lrz.de/idp/shibboleth
+              metadata-uri: https://login.tum.de/idp/shibboleth
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/examlense}
     username: ${DB_USER:examlense}

@@ -17,6 +17,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 /**
  * Stateless API security. Real user authentication is deferred to a later phase;
  * for now the API is gated by a single static bearer token plus a coarse per-IP
@@ -57,6 +59,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/healthz").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/files/**").permitAll() // signed-URL file content (validated by HMAC in 2b)
+                .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
                 // Container-generated error dispatch. An SSE stream that ends
                 // abnormally (client disconnect) is re-dispatched to /error after
                 // the response is already committed; without permitting it here the
@@ -66,6 +69,8 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             )
+            .saml2Login(withDefaults())
+            .saml2Metadata(withDefaults())
             // 401 (not the default 403) when no/invalid token is presented.
             .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
                 res.setStatus(401);

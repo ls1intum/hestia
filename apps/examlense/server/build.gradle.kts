@@ -15,12 +15,14 @@ java {
 
 repositories {
     mavenCentral()
+    maven { url = uri("https://build.shibboleth.net/nexus/content/repositories/releases/") }
 }
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.security:spring-security-saml2-service-provider")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Persistence: JPA + Postgres + Flyway (migration off Supabase PostgREST → local Postgres)
