@@ -193,8 +193,8 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           {/* What the course IS on the left, what it is MADE OF on the right. The staged files are
               the part that grows, so keeping them in their own column stops them from pushing the
               settings out of view. Below `lg` everything stacks. */}
-          <div className="flex w-full flex-col gap-3.5 lg:max-h-[min(80vh,34rem)] lg:flex-row lg:items-stretch">
-            <div className="flex w-full min-w-0 flex-col gap-3.5 lg:max-w-md lg:shrink-0 lg:justify-between">
+          <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-stretch">
+            <div className="flex w-full min-w-0 flex-col gap-3.5 lg:max-w-md lg:shrink-0">
               <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
                 <label
                   htmlFor="course-name"
@@ -297,7 +297,11 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               </div>
             </div>
 
-            <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:min-h-0">
+            {/* Taken out of flow at `lg`: the staged files then cannot stretch the panel, so it is
+                the same size with thirteen files as with none. The wrapper carries the width and
+                takes its height from the settings column; the card fills it and the list scrolls. */}
+            <div className="w-full min-w-0 lg:relative lg:flex-1">
+              <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:absolute lg:inset-0 lg:min-h-0">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                   Course materials
@@ -405,6 +409,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   ))}
                 </ul>
               )}
+              </div>
             </div>
           </div>
         </form>
