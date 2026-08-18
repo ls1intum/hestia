@@ -61,8 +61,10 @@ public class SessionGoalConsolidator {
 
             For each consolidated outcome return:
               - text: the outcome as a single concise sentence, starting with a verb.
-              - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
-                do not start it with a verb or end it with a period.
+              - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
+                verb of the text above, such as "Analyse the bias-variance tradeoff". Phrase it in the
+                natural word order of the output language (German puts the infinitive last:
+                "Bias-Varianz-Abwägung analysieren") and do not end it with a period.
               - supporting: the indices (the numbers in square brackets) of the candidate goals that
                 this outcome was merged from. List every candidate the outcome genuinely covers, so
                 each candidate maps to the outcome(s) it belongs to.

@@ -83,7 +83,7 @@ class TerminalCompetencySynthesizerTest {
                 .contains("ADD a competency for it")
                 .contains("SINGLE leading action verb")
                 .contains("shortLabel")
-                .contains("2-5 word noun phrase")
+                .contains("2-6 word label naming the action and its topic")
                 .contains("ERR ON THE SIDE OF FEWER")
                 .contains("not target or pad to a number");
     }

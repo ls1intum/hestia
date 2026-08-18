@@ -1083,7 +1083,7 @@ function Box({
       <p
         className={`text-sm font-medium leading-snug ${
           isGap ? "text-hestia-danger" : "text-hestia-text"
-        } ${!node.goal.shortLabel && clampText ? "line-clamp-3" : ""}`}
+        } ${clampText ? "line-clamp-3" : ""}`}
       >
         {node.goal.shortLabel ?? node.goal.text}
       </p>

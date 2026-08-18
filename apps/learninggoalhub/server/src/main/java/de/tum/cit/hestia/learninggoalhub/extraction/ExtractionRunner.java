@@ -69,7 +69,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
-    private static final String FALLBACK_PROMPT_VERSION = "chunked-v4";
+    private static final String FALLBACK_PROMPT_VERSION = "chunked-v5";
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -1050,7 +1050,7 @@ public class ExtractionRunner {
      * One terminal competency with everything that hangs beneath it.
      *
      * @param text           the competency sentence.
-     * @param shortLabel     its compact noun phrase, or {@code null}.
+     * @param shortLabel     its compact verb phrase, or {@code null}.
      * @param classification its Bloom/SOLO levels, or {@code null} to persist it unclassified. The
      *                       catch-all is a container, not a capability, so it stays unclassified
      *                       rather than carrying a meaningless Bloom level.

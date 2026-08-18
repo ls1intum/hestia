@@ -83,7 +83,7 @@ class SessionExtractionServiceTest {
                 .contains("Choose each outcome's verb by what the STUDENT")
                 .contains("Do not invent outcomes")
                 .contains("shortLabel")
-                .contains("2-5 word noun phrase")
+                .contains("2-6 word label naming the action and its topic")
                 .contains("sourceStartLine")
                 .contains("sourceEndLine")
                 .doesNotContain("sourceSnippet");

@@ -14,7 +14,7 @@ import java.util.List;
  * {@link ExtractionRunner} derives the goal's kind and source snippet from those candidates.
  *
  * @param text       the consolidated outcome as a single concise sentence, starting with a verb.
- * @param shortLabel the compact noun phrase naming the outcome's topic.
+ * @param shortLabel the compact verb phrase naming what the outcome does with its topic.
  * @param supporting the zero-based indices of the input candidate goals that this outcome was merged
  *                   from. Drives both the candidate→goal provenance and the inherited source snippet.
  */
