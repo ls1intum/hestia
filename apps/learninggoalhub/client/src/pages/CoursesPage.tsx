@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { CourseSummary, CurrentExtraction } from "../api/client.ts";
 import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
@@ -8,6 +8,9 @@ import CourseDocuments from "../components/CourseDocuments.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
+
+/** Courses per page. Small enough that the whole list stays on screen without scrolling. */
+const PAGE_SIZE = 10;
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
@@ -17,6 +20,14 @@ export default function CoursesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+
+  // A row menu belongs to the row it was opened on, so it must not survive that row scrolling
+  // out of the page.
+  const goToPage = (next: number) => {
+    setOpenMenuId(null);
+    setPage(next);
+  };
 
   const toggleExpanded = (id?: number) => {
     if (id == null) return;
@@ -40,16 +51,19 @@ export default function CoursesPage() {
   });
 
   const coursesQuery = useQuery({
-    queryKey: ["courses"],
+    queryKey: ["courses", page],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/courses", {
-        params: { query: { size: 100 } },
+        params: { query: { page, size: PAGE_SIZE } },
       });
       if (error || !data) {
         throw new Error("Could not load courses.");
       }
       return data;
     },
+    // Hold the previous page's rows while the next one loads, so paging doesn't flash the
+    // "Loading courses…" placeholder and collapse the card to a single line.
+    placeholderData: keepPreviousData,
   });
 
   const currentExtractionQuery = useQuery<CurrentExtraction | null>({
@@ -107,6 +121,13 @@ export default function CoursesPage() {
   const courseCount = coursesQuery.data
     ? (coursesQuery.data.page?.totalElements ?? courses.length)
     : null;
+  const totalPages = coursesQuery.data?.page?.totalPages ?? 1;
+
+  // Deleting the last course on the final page would otherwise strand the list on a page that
+  // no longer exists, so step back whenever the page count shrinks past the current index.
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages - 1) setPage(totalPages - 1);
+  }, [page, totalPages]);
 
   // Same column width as the course page, so the two don't reflow against each other.
   return (
@@ -297,6 +318,49 @@ export default function CoursesPage() {
         )}
       </div>
 
+      {totalPages > 1 && (
+        <nav className="flex items-center justify-between gap-4" aria-label="Course list pages">
+          <Button
+            variant="neutral"
+            size="md"
+            onClick={() => goToPage(page - 1)}
+            disabled={page === 0}
+          >
+            ← Previous
+          </Button>
+          <ul className="flex items-center gap-1">
+            {pageItems(page, totalPages).map((item, index) => (
+              <li key={item ?? `gap-${index}`}>
+                {item == null ? (
+                  <span className="px-1 text-sm text-hestia-text-muted" aria-hidden>
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    variant={item === page ? "primary" : "ghost"}
+                    size="sm"
+                    className="min-w-8 tabular-nums"
+                    aria-label={`Page ${item + 1}`}
+                    aria-current={item === page ? "page" : undefined}
+                    onClick={() => goToPage(item)}
+                  >
+                    {item + 1}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <Button
+            variant="neutral"
+            size="md"
+            onClick={() => goToPage(page + 1)}
+            disabled={page >= totalPages - 1}
+          >
+            Next →
+          </Button>
+        </nav>
+      )}
+
       {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
       {reviewCourseId != null && !watchedRunSucceeded && (
         <ExtractionProgressModal
@@ -313,6 +377,32 @@ export default function CoursesPage() {
       )}
     </div>
   );
+}
+
+/** Up to this many pages every number is listed; beyond it the middle is elided. */
+const MAX_PAGE_BUTTONS = 7;
+
+/**
+ * The page numbers to offer: the first, the last, and a window around the current one, with
+ * `null` marking each elided stretch. Keeps the pager a fixed width however many pages there are.
+ */
+function pageItems(current: number, total: number): (number | null)[] {
+  if (total <= MAX_PAGE_BUTTONS) {
+    return Array.from({ length: total }, (_, index) => index);
+  }
+  const wanted = [0, current - 1, current, current + 1, total - 1]
+    .filter((page) => page >= 0 && page < total)
+    .sort((a, b) => a - b);
+  const items: (number | null)[] = [];
+  for (const page of wanted) {
+    const previous = items[items.length - 1];
+    if (typeof previous === "number") {
+      if (page === previous) continue;
+      if (page - previous > 1) items.push(null);
+    }
+    items.push(page);
+  }
+  return items;
 }
 
 /**
