@@ -193,8 +193,8 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           {/* What the course IS on the left, what it is MADE OF on the right. The staged files are
               the part that grows, so keeping them in their own column stops them from pushing the
               settings out of view. Below `lg` everything stacks. */}
-          <div className="flex w-full flex-col gap-3.5 lg:h-[min(72vh,40rem)] lg:flex-row lg:items-stretch">
-            <div className="flex w-full min-w-0 flex-col gap-3.5 lg:h-full lg:max-w-md lg:shrink-0">
+          <div className="flex w-full flex-col gap-3.5 lg:max-h-[min(80vh,34rem)] lg:flex-row lg:items-stretch">
+            <div className="flex w-full min-w-0 flex-col gap-3.5 lg:max-w-md lg:shrink-0 lg:justify-between">
               <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
                 <label
                   htmlFor="course-name"
@@ -257,7 +257,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                 </label>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:mt-auto">
+              <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
                 {step && (
                   <div>
                     <div className="flex items-center justify-between gap-3 text-sm text-hestia-text-muted">
@@ -297,7 +297,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               </div>
             </div>
 
-            <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:h-full">
+            <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:min-h-0">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                   Course materials
@@ -328,7 +328,10 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   setIsDragging(false);
                   addFiles(e.dataTransfer.files);
                 }}
-                className={`flex shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition ${
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition ${
+                  // Nothing staged yet: the zone fills the column instead of leaving it empty.
+                  files.length > 0 ? "shrink-0" : "lg:flex-1"
+                } ${
                   isDragging
                     ? "border-hestia-primary bg-hestia-primary-muted"
                     : "border-hestia-border hover:border-hestia-primary"
