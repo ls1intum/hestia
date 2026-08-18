@@ -39,6 +39,10 @@ services:
       POSTGRES_PASSWORD: ${LEARNINGGOALHUB_POSTGRES_PASSWORD:?set LEARNINGGOALHUB_POSTGRES_PASSWORD in .env}
       SAIA_API_KEY: ${LEARNINGGOALHUB_SAIA_API_KEY:?set LEARNINGGOALHUB_SAIA_API_KEY in .env}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+      SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
+      SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
+    volumes:
+      - /opt/hestia/secrets/saml:/app/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
