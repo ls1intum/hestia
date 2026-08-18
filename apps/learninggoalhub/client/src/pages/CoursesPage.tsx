@@ -328,9 +328,28 @@ export default function CoursesPage() {
           >
             ← Previous
           </Button>
-          <span className="text-sm text-hestia-text-muted">
-            Page {page + 1} of {totalPages}
-          </span>
+          <ul className="flex items-center gap-1">
+            {pageItems(page, totalPages).map((item, index) => (
+              <li key={item ?? `gap-${index}`}>
+                {item == null ? (
+                  <span className="px-1 text-sm text-hestia-text-muted" aria-hidden>
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    variant={item === page ? "primary" : "ghost"}
+                    size="sm"
+                    className="min-w-8 tabular-nums"
+                    aria-label={`Page ${item + 1}`}
+                    aria-current={item === page ? "page" : undefined}
+                    onClick={() => goToPage(item)}
+                  >
+                    {item + 1}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
           <Button
             variant="neutral"
             size="md"
@@ -358,6 +377,32 @@ export default function CoursesPage() {
       )}
     </div>
   );
+}
+
+/** Up to this many pages every number is listed; beyond it the middle is elided. */
+const MAX_PAGE_BUTTONS = 7;
+
+/**
+ * The page numbers to offer: the first, the last, and a window around the current one, with
+ * `null` marking each elided stretch. Keeps the pager a fixed width however many pages there are.
+ */
+function pageItems(current: number, total: number): (number | null)[] {
+  if (total <= MAX_PAGE_BUTTONS) {
+    return Array.from({ length: total }, (_, index) => index);
+  }
+  const wanted = [0, current - 1, current, current + 1, total - 1]
+    .filter((page) => page >= 0 && page < total)
+    .sort((a, b) => a - b);
+  const items: (number | null)[] = [];
+  for (const page of wanted) {
+    const previous = items[items.length - 1];
+    if (typeof previous === "number") {
+      if (page === previous) continue;
+      if (page - previous > 1) items.push(null);
+    }
+    items.push(page);
+  }
+  return items;
 }
 
 /**
