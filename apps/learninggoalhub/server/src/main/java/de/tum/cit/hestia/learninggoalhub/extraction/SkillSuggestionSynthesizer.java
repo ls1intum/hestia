@@ -26,8 +26,10 @@ public class SkillSuggestionSynthesizer {
             with one concrete action verb. Suggest only capabilities genuinely supported by the evidence.
 
             Write every generated text and shortLabel in %s. Return a JSON array with 2 to 4 objects,
-            using exactly the properties text and shortLabel. The shortLabel is a concise 2-5 word noun
-            phrase naming the topic, without a leading verb or final period.
+            using exactly the properties text and shortLabel. The shortLabel is a compact 2-6 word label
+            naming the action and its topic, reusing the text's action verb (e.g. "Analyse the
+            bias-variance tradeoff"; German puts the infinitive last: "Bias-Varianz-Abwägung
+            analysieren"), without a final period.
 
             Existing terminal skills are already covered. Do NOT repeat them, paraphrase them, or suggest
             a narrower version of one of them:

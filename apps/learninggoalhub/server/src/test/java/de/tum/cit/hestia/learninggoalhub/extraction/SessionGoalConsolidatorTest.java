@@ -79,7 +79,7 @@ class SessionGoalConsolidatorTest {
                 .contains("cognitive level")
                 .contains("text")
                 .contains("shortLabel")
-                .contains("2-5 word noun phrase")
+                .contains("2-6 word label naming the action and its topic")
                 .contains("supporting");
     }
 

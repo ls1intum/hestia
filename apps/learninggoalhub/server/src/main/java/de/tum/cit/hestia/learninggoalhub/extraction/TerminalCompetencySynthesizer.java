@@ -101,8 +101,10 @@ public class TerminalCompetencySynthesizer {
 
             For each terminal competency return:
               - text: the competency as a single concise sentence built around ONE action verb.
-              - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
-                do not start it with a verb or end it with a period.
+              - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
+                competency's own action verb, such as "Analyse the bias-variance tradeoff". Phrase it
+                in the natural word order of the output language (German puts the infinitive last:
+                "Bias-Varianz-Abwägung analysieren") and do not end it with a period.
 
             Candidate goals:
             ---

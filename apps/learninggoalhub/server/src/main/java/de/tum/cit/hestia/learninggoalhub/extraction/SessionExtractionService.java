@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v10";
+    static final String PROMPT_VERSION = "direct-v11";
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
@@ -67,8 +67,10 @@ public class SessionExtractionService {
 
             Return the list of skills, each with:
               - text: the skill as a single concise sentence, starting with a verb.
-              - shortLabel: a 2-5 word noun phrase naming the topic, such as "Bias-Variance Tradeoff";
-                do not start it with a verb or end it with a period.
+              - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
+                verb of the text above, such as "Analyse the bias-variance tradeoff". Phrase it in the
+                natural word order of the output language (German puts the infinitive last:
+                "Bias-Varianz-Abwägung analysieren") and do not end it with a period.
               - kind: EXPLICIT or IMPLICIT.
               - sourceStartLine and sourceEndLine: the inclusive zero-based index range of the numbered
                 lines shown below that best supports the outcome, selected from ONE contiguous place

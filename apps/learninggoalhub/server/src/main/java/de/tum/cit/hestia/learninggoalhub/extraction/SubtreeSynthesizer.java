@@ -28,7 +28,7 @@ public class SubtreeSynthesizer {
         }
     }
 
-    /** One knowledge leaf: its full text plus a compact noun-phrase label, mirroring pipeline goals. */
+    /** One knowledge leaf: its full text plus a compact verb-phrase label, mirroring pipeline goals. */
     public record GeneratedKnowledge(String text, String shortLabel) {}
 
     static final String PROMPT = """
@@ -38,8 +38,9 @@ public class SubtreeSynthesizer {
             applied sub-skill, a shortLabel naming it, and a non-empty knowledge array containing the
             declarative knowledge that supports that sub-skill.
 
-            Every text is a full sentence-style outcome; every shortLabel is a compact 2-5 word noun
-            phrase naming the topic (e.g. "Bias-Variance Tradeoff"), not starting with a verb and not
+            Every text is a full sentence-style outcome; every shortLabel is a compact 2-6 word label
+            naming the action and its topic, reusing that text's verb (e.g. "Analyse the bias-variance
+            tradeoff"; German puts the infinitive last: "Bias-Varianz-Abwägung analysieren"), not
             ending with a period.
 
             The shape is:

@@ -18,7 +18,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
  * fits it had been named.
  *
  * @param text       the competency as a single concise sentence built around ONE action verb.
- * @param shortLabel the compact noun phrase naming the competency's topic.
+ * @param shortLabel the compact verb phrase naming what the competency does with its topic.
  */
 public record TerminalCompetency(String text, String shortLabel) {
 

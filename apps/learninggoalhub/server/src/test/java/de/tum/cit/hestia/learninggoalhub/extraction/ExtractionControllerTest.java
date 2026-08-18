@@ -405,7 +405,7 @@ class ExtractionControllerTest {
                 .satisfies(candidate -> assertThat(candidate.getConsolidatedGoal()).isNotNull());
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
-                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v4"));
+                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v5"));
         assertThat(goalSourceRepository.findAll())
                 .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
                 .hasSize(1);
