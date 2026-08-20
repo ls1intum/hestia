@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import { api } from "../api/client.ts";
@@ -50,6 +50,24 @@ export default function ExtractionProgressModal({
   const [newSkill, setNewSkill] = useState("");
   const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
   const [suggestionErrors, setSuggestionErrors] = useState<Record<string, string>>({});
+  // The AI suggestions live in a side panel the instructor opens deliberately: asking the model is
+  // a round trip, and the review reads as a finished list until they do.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+
+  // The skill that was just added by hand or accepted from a suggestion. The list is alphabetical,
+  // so a new skill lands anywhere in it — the row scrolls itself into view and stays lit for a beat
+  // so the addition is visibly the same list, not a silent write.
+  const [justAddedId, setJustAddedId] = useState<number | null>(null);
+  const justAddedTimer = useRef<number | null>(null);
+  const flashAdded = (goalId?: number) => {
+    if (goalId == null) return;
+    if (justAddedTimer.current != null) window.clearTimeout(justAddedTimer.current);
+    setJustAddedId(goalId);
+    justAddedTimer.current = window.setTimeout(() => setJustAddedId(null), 6000);
+  };
+  useEffect(() => () => {
+    if (justAddedTimer.current != null) window.clearTimeout(justAddedTimer.current);
+  }, []);
 
   const done = reviewOnly || status?.status === "SUCCEEDED";
   // The review is a one-way, deliberate step: no backdrop click, no Escape, no ✕. "Done" is the
@@ -74,6 +92,8 @@ export default function ExtractionProgressModal({
     if (!open) {
       setSuggestions([]);
       setSuggestionErrors({});
+      setJustAddedId(null);
+      setSuggestOpen(false);
     }
   }, [open]);
 
@@ -147,11 +167,17 @@ export default function ExtractionProgressModal({
             : "Could not add the skill.",
         );
       }
+      return result.data;
     },
-    onSuccess: async () => {
+    onSuccess: async (created) => {
+      // Adding is done: fold the field away rather than leaving an empty one sitting open, so the
+      // two entry points are what remains on screen.
+      setAdding(false);
+      setNewSkill("");
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      flashAdded(created.id);
     },
   });
 
@@ -188,8 +214,9 @@ export default function ExtractionProgressModal({
             : "Could not add the AI skill.",
         );
       }
+      return result.data;
     },
-    onSuccess: async (_createdGoal, candidate) => {
+    onSuccess: async (created, candidate) => {
       setSuggestions((current) => current.filter((item) => item.text !== candidate.text));
       setSuggestionErrors((current) => {
         const next = { ...current };
@@ -199,6 +226,7 @@ export default function ExtractionProgressModal({
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      flashAdded(created.id);
     },
     onError: (mutationError, candidate) => {
       setSuggestionErrors((current) => ({
@@ -260,7 +288,7 @@ export default function ExtractionProgressModal({
       aria-labelledby="extraction-progress-title"
     >
       {/* An opaque scrim rather than a backdrop-blur, matching the create-course and goal dialogs:
-          blurring the courses list through this layer repaints the whole table every frame. */}
+          blurring the page through this layer repaints all of it every frame. */}
       <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
       <div
         onClick={reviewLocked ? undefined : onClose}
@@ -269,9 +297,11 @@ export default function ExtractionProgressModal({
         {/* One animation for the whole panel rather than per card, as in the other two dialogs. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="comp-unfold flex w-full max-w-2xl flex-col gap-3.5 sm:mt-[6vh]"
+          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${
+            done && suggestOpen ? "max-w-5xl" : "max-w-2xl"
+          }`}
         >
-          {/* The header rides above the cards, so the close button never sits inside one. */}
+          {/* The header spans both columns, so the close button never rides on one of them. */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2.5">
               <img
@@ -301,7 +331,7 @@ export default function ExtractionProgressModal({
                     style={{ width: `${percent}%` }}
                   />
                 ) : (
-                  <div className="h-full w-1/3 animate-pulse rounded-full bg-hestia-primary" />
+                  <div className="progress-sweep h-full rounded-full bg-hestia-primary" />
                 )}
               </div>
               <ol className="flex flex-col gap-3">
@@ -342,172 +372,245 @@ export default function ExtractionProgressModal({
             </div>
           )}
 
+          {/* The course's own skills on the left, what the AI proposes adding to them on the right —
+              the same "what it is / what goes into it" split the create-course dialog uses. The
+              suggestions column can grow long without pushing the review actions out of view. */}
           {done && (
-            <>
-              {failedSessions > 0 && (
-                <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
-                  <span aria-hidden="true">⚠ </span>
-                  {failedSessions === 1
-                    ? "One session could not be analysed and contributed no skills."
-                    : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
-                  Add anything that is missing below.
-                </p>
-              )}
+            <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-start">
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
+                {failedSessions > 0 && (
+                  <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
+                    <span aria-hidden="true">⚠ </span>
+                    {failedSessions === 1
+                      ? "One session could not be analysed and contributed no skills."
+                      : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
+                    Add anything that is missing below.
+                  </p>
+                )}
 
-              <div className="flex flex-col rounded-lg border border-hestia-border bg-hestia-surface shadow-lg">
-                <div className="flex items-center justify-between gap-3 border-b border-hestia-border px-4 py-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-                    Skills
-                  </span>
-                  {skills.length > 0 && (
-                    <span className="tabular-nums text-xs text-hestia-text-muted">
-                      {accepted} of {skills.length} accepted
+                <div className="flex flex-col rounded-lg border border-hestia-border bg-hestia-surface shadow-lg">
+                  <div className="flex items-center justify-between gap-3 border-b border-hestia-border px-4 py-3">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                      Skills
                     </span>
-                  )}
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {goalsQuery.isLoading && (
-                    <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
-                      Loading skills…
-                    </p>
-                  )}
-                  {goalsQuery.isError && (
-                    <p className="px-4 py-6 text-center text-sm text-hestia-danger">
-                      {(goalsQuery.error as Error).message}
-                    </p>
-                  )}
-                  {!goalsQuery.isLoading && !goalsQuery.isError && skills.length === 0 && (
-                    <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
-                      No skills were extracted for this course.
-                    </p>
-                  )}
-                  {skills.length > 0 && (
-                    <ul className="divide-y divide-hestia-border">
-                      {skills.map((skill) => (
-                        <SkillRow
-                          key={skill.goal.id ?? skill.goal.text}
-                          skill={skill}
-                          renaming={renameMutation.isPending}
-                          accepting={
-                            approveMutation.isPending
-                            && approveMutation.variables?.goalId === skill.goal.id
-                          }
-                          dismissing={
-                            deleteGoalMutation.isPending
-                            && deleteGoalMutation.variables === skill.goal.id
-                          }
-                          onRename={(goalId, text) => renameMutation.mutate({ goalId, text })}
-                          onAccept={(approved) => {
-                            if (skill.goal.id != null) {
-                              approveMutation.mutate({ goalId: skill.goal.id, approved });
-                            }
-                          }}
-                          onDismiss={() => {
-                            if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
-                          }}
-                        />
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-                {adding ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const trimmed = newSkill.trim();
-                      if (trimmed === "" || addSkillMutation.isPending) return;
-                      addSkillMutation.mutate(trimmed, {
-                        onSuccess: () => setNewSkill(""),
-                      });
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <input
-                      value={newSkill}
-                      onChange={(event) => setNewSkill(event.target.value)}
-                      autoFocus
-                      disabled={addSkillMutation.isPending}
-                      placeholder="Describe a skill students should master…"
-                      className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:outline-none"
-                    />
-                    <Button
-                      variant="neutral"
-                      onClick={() => {
-                        setAdding(false);
-                        setNewSkill("");
-                        addSkillMutation.reset();
-                      }}
-                      disabled={addSkillMutation.isPending}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={newSkill.trim() === "" || addSkillMutation.isPending}
-                    >
-                      {addSkillMutation.isPending ? (
-                        <span className="flex items-center gap-1.5">
-                          <span
-                            aria-hidden="true"
-                            className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
-                          />
-                          Adding…
-                        </span>
-                      ) : (
-                        "Add"
-                      )}
-                    </Button>
-                  </form>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="neutral"
-                      onClick={() => setAdding(true)}
-                      className="text-hestia-primary"
-                    >
-                      <span aria-hidden="true" className="text-base leading-none">
-                        +
-                      </span>
-                      Add a skill
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      disabled={suggestSkillsMutation.isPending}
-                      onClick={() => suggestSkillsMutation.mutate()}
-                    >
-                      {suggestSkillsMutation.isPending
-                        ? "Finding suggestions…"
-                        : "Suggest skills with AI"}
-                    </Button>
-                    {suggestions.length > 0 && (
-                      <span className="text-xs text-hestia-text-muted">
-                        Review each suggestion before adding it.
+                    {skills.length > 0 && (
+                      <span className="tabular-nums text-xs text-hestia-text-muted">
+                        {accepted} of {skills.length} accepted
                       </span>
                     )}
                   </div>
-                )}
+                  <div className="max-h-96 overflow-y-auto">
+                    {goalsQuery.isLoading && (
+                      <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
+                        Loading skills…
+                      </p>
+                    )}
+                    {goalsQuery.isError && (
+                      <p className="px-4 py-6 text-center text-sm text-hestia-danger">
+                        {(goalsQuery.error as Error).message}
+                      </p>
+                    )}
+                    {!goalsQuery.isLoading && !goalsQuery.isError && skills.length === 0 && (
+                      <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
+                        No skills were extracted for this course.
+                      </p>
+                    )}
+                    {skills.length > 0 && (
+                      <ul className="divide-y divide-hestia-border">
+                        {skills.map((skill) => (
+                          <SkillRow
+                            key={skill.goal.id ?? skill.goal.text}
+                            skill={skill}
+                            highlight={skill.goal.id != null && skill.goal.id === justAddedId}
+                            renaming={renameMutation.isPending}
+                            accepting={
+                              approveMutation.isPending
+                              && approveMutation.variables?.goalId === skill.goal.id
+                            }
+                            dismissing={
+                              deleteGoalMutation.isPending
+                              && deleteGoalMutation.variables === skill.goal.id
+                            }
+                            onRename={(goalId, text) => renameMutation.mutate({ goalId, text })}
+                            onAccept={(approved) => {
+                              if (skill.goal.id != null) {
+                                approveMutation.mutate({ goalId: skill.goal.id, approved });
+                              }
+                            }}
+                            onDismiss={() => {
+                              if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
+                            }}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
 
-                {addSkillMutation.isPending && (
-                  <p className="text-sm text-hestia-text-muted" aria-live="polite">
-                    Generating the skill’s sub-skills and knowledge…
-                  </p>
-                )}
-                {addSkillMutation.isError && (
-                  <p className="text-sm text-hestia-danger">
-                    {(addSkillMutation.error as Error).message}
-                  </p>
+                {/* Everything that acts on the list sits in one bar: the two ways to add a skill on
+                    the left, the exit on the right. */}
+                <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+                  {adding && (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const trimmed = newSkill.trim();
+                        if (trimmed === "" || addSkillMutation.isPending) return;
+                        addSkillMutation.mutate(trimmed);
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <input
+                        value={newSkill}
+                        onChange={(event) => setNewSkill(event.target.value)}
+                        autoFocus
+                        disabled={addSkillMutation.isPending}
+                        placeholder="Describe a skill students should master…"
+                        className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:outline-none"
+                      />
+                      <Button
+                        variant="neutral"
+                        onClick={() => {
+                          setAdding(false);
+                          setNewSkill("");
+                          addSkillMutation.reset();
+                        }}
+                        disabled={addSkillMutation.isPending}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={newSkill.trim() === "" || addSkillMutation.isPending}
+                      >
+                        Add
+                      </Button>
+                    </form>
+                  )}
+                  {addSkillMutation.isPending && (
+                    <IndeterminateProgress label="Generating the skill’s sub-skills and knowledge…" />
+                  )}
+                  {addSkillMutation.isError && (
+                    <p className="text-sm text-hestia-danger">
+                      {(addSkillMutation.error as Error).message}
+                    </p>
+                  )}
+                  {renameMutation.isError && (
+                    <p className="text-sm text-hestia-danger">
+                      {(renameMutation.error as Error).message}
+                    </p>
+                  )}
+                  {approveMutation.isError && (
+                    <p className="text-sm text-hestia-danger">
+                      {(approveMutation.error as Error).message}
+                    </p>
+                  )}
+                  {deleteGoalMutation.isError && (
+                    <p className="text-sm text-hestia-danger">
+                      {(deleteGoalMutation.error as Error).message}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!adding && (
+                        <Button
+                          variant="neutral"
+                          onClick={() => setAdding(true)}
+                          className="text-hestia-primary"
+                        >
+                          <span aria-hidden="true" className="text-base leading-none">
+                            +
+                          </span>
+                          Add a skill
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        aria-expanded={suggestOpen}
+                        onClick={() => {
+                          const opening = !suggestOpen;
+                          setSuggestOpen(opening);
+                          // Opening it is the request: nobody wants to press a second button to
+                          // see the thing they just asked for. Re-opening keeps what came back.
+                          if (
+                            opening
+                            && suggestions.length === 0
+                            && !suggestSkillsMutation.isPending
+                            && !suggestSkillsMutation.isSuccess
+                          ) {
+                            suggestSkillsMutation.mutate();
+                          }
+                        }}
+                      >
+                        AI suggestions
+                      </Button>
+                    </div>
+                    <Button size="lg" onClick={onClose}>
+                      Done
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {suggestOpen && (
+              <div className="flex w-full flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:max-w-sm lg:shrink-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                      AI suggestions
+                    </span>
+                    <p className="text-xs text-hestia-text-muted">
+                      Skills your materials cover that your list is missing. Accepting one adds it
+                      to the list.
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setSuggestOpen(false)}
+                    aria-label="Hide AI suggestions"
+                  >
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      className="h-4 w-4"
+                    >
+                      <path d="M5 5l10 10M15 5L5 15" />
+                    </svg>
+                  </Button>
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={suggestSkillsMutation.isPending}
+                  onClick={() => suggestSkillsMutation.mutate()}
+                  className="self-start"
+                >
+                  {suggestSkillsMutation.isPending
+                    ? "Finding suggestions…"
+                    : suggestSkillsMutation.isSuccess
+                      ? "Suggest again"
+                      : "Suggest skills"}
+                </Button>
+                {suggestSkillsMutation.isPending && (
+                  <IndeterminateProgress label="Reading the course materials…" />
                 )}
                 {suggestSkillsMutation.isError && (
                   <p className="text-sm text-hestia-danger">
                     {(suggestSkillsMutation.error as Error).message}
                   </p>
                 )}
-
+                {!suggestSkillsMutation.isPending
+                  && suggestSkillsMutation.isSuccess
+                  && suggestions.length === 0 && (
+                  <p className="text-xs text-hestia-text-muted">
+                    Nothing left to suggest — every proposal has been accepted or dismissed.
+                  </p>
+                )}
                 {suggestions.length > 0 && (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
                     {suggestions.map((suggestion) => {
                       const accepting =
                         generateSkillMutation.isPending
@@ -517,54 +620,43 @@ export default function ExtractionProgressModal({
                           key={suggestion.text}
                           className="rounded-lg border border-hestia-primary/40 bg-hestia-primary-muted/30 px-3 py-3"
                         >
-                          <div className="flex items-start gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium leading-relaxed text-hestia-text">
-                                {suggestion.text}
-                              </p>
-                              {suggestion.shortLabel && (
-                                <p className="mt-1 text-xs text-hestia-text-muted">
-                                  {suggestion.shortLabel}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              <Button
-                                size="sm"
-                                disabled={generateSkillMutation.isPending}
-                                onClick={() => generateSkillMutation.mutate(suggestion)}
-                              >
-                                {accepting ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <span
-                                      aria-hidden="true"
-                                      className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
-                                    />
-                                    Adding…
-                                  </span>
-                                ) : (
-                                  "Accept"
-                                )}
-                              </Button>
-                              <Button
-                                variant="neutral"
-                                size="sm"
-                                disabled={accepting}
-                                onClick={() => {
-                                  setSuggestions((current) =>
-                                    current.filter((item) => item.text !== suggestion.text),
-                                  );
-                                  setSuggestionErrors((current) => {
-                                    const next = { ...current };
-                                    delete next[suggestion.text];
-                                    return next;
-                                  });
-                                }}
-                              >
-                                Dismiss
-                              </Button>
-                            </div>
+                          <p className="text-sm font-medium leading-relaxed text-hestia-text">
+                            {suggestion.text}
+                          </p>
+                          {suggestion.shortLabel && (
+                            <p className="mt-1 text-xs text-hestia-text-muted">
+                              {suggestion.shortLabel}
+                            </p>
+                          )}
+                          <div className="mt-2 flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              disabled={generateSkillMutation.isPending}
+                              onClick={() => generateSkillMutation.mutate(suggestion)}
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              variant="neutral"
+                              size="sm"
+                              disabled={accepting}
+                              onClick={() => {
+                                setSuggestions((current) =>
+                                  current.filter((item) => item.text !== suggestion.text),
+                                );
+                                setSuggestionErrors((current) => {
+                                  const next = { ...current };
+                                  delete next[suggestion.text];
+                                  return next;
+                                });
+                              }}
+                            >
+                              Dismiss
+                            </Button>
                           </div>
+                          {accepting && (
+                            <IndeterminateProgress label="Adding it to your skills…" />
+                          )}
                           {suggestionErrors[suggestion.text] && (
                             <p className="mt-2 text-xs text-hestia-danger">
                               {suggestionErrors[suggestion.text]}
@@ -576,30 +668,8 @@ export default function ExtractionProgressModal({
                   </div>
                 )}
               </div>
-
-              <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-                {renameMutation.isError && (
-                  <p className="text-sm text-hestia-danger">
-                    {(renameMutation.error as Error).message}
-                  </p>
-                )}
-                {approveMutation.isError && (
-                  <p className="text-sm text-hestia-danger">
-                    {(approveMutation.error as Error).message}
-                  </p>
-                )}
-                {deleteGoalMutation.isError && (
-                  <p className="text-sm text-hestia-danger">
-                    {(deleteGoalMutation.error as Error).message}
-                  </p>
-                )}
-                <div className="flex justify-end">
-                  <Button size="lg" onClick={onClose}>
-                    Done
-                  </Button>
-                </div>
-              </div>
-            </>
+              )}
+            </div>
           )}
 
           {failed && (
@@ -621,11 +691,33 @@ export default function ExtractionProgressModal({
 }
 
 /**
+ * A server round trip with no percentage to report — adding a skill generates its whole sub-skill
+ * and knowledge subtree — so the bar sweeps instead of pretending to fill.
+ */
+function IndeterminateProgress({ label }: { label: string }) {
+  return (
+    <div className="mt-2">
+      <span className="text-xs text-hestia-text-muted" aria-live="polite">
+        {label}
+      </span>
+      <div
+        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted"
+        role="progressbar"
+        aria-label={label}
+      >
+        <div className="progress-sweep h-full rounded-full bg-hestia-primary" />
+      </div>
+    </div>
+  );
+}
+
+/**
  * One extracted skill. The three review actions sit side by side: rename fixes the wording, Accept
  * marks it reviewed, Dismiss deletes it — the same accept/dismiss pair the AI suggestions carry.
  */
 function SkillRow({
   skill,
+  highlight,
   renaming,
   accepting,
   dismissing,
@@ -634,6 +726,7 @@ function SkillRow({
   onDismiss,
 }: {
   skill: ReturnType<typeof buildCompetencyForest>[number];
+  highlight: boolean;
   renaming: boolean;
   accepting: boolean;
   dismissing: boolean;
@@ -643,12 +736,26 @@ function SkillRow({
 }) {
   const current = skill.goal.text ?? "";
   const approved = skill.goal.status === "APPROVED";
+  // Extraction leaves this null, so a tag here means the skill did not come out of the materials.
+  const provenance = skill.goal.creationProvenance;
+  const provenanceLabel = provenance === "USER_CREATED"
+    ? "Added by you"
+    : provenance === "WIZARD_AI_SUBTREE"
+      ? "AI added"
+      : null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current);
+  const row = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (editing) setDraft(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset the draft only when editing starts
   }, [editing]);
+
+  // The list is alphabetical and scrolls, so a skill added at the bottom of the dialog can land
+  // out of sight. Bring it to the reader rather than making them hunt for it.
+  useEffect(() => {
+    if (highlight) row.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlight]);
 
   const trimmed = draft.trim();
   const canSave = trimmed !== "" && trimmed !== current && !renaming;
@@ -685,8 +792,13 @@ function SkillRow({
 
   return (
     <li
-      className={`flex items-start gap-3 px-4 py-3 ${
-        approved ? "bg-hestia-primary-muted/20" : ""
+      ref={row}
+      className={`flex items-start gap-3 px-4 py-3 transition-colors duration-700 ${
+        highlight
+          ? "bg-hestia-primary-muted"
+          : approved
+            ? "bg-hestia-primary-muted/20"
+            : ""
       }`}
     >
       <span
@@ -696,6 +808,16 @@ function SkillRow({
       />
       <span className="min-w-0 flex-1 text-sm leading-relaxed text-hestia-text">
         {current}
+        {provenanceLabel && (
+          <span className="ml-2 whitespace-nowrap rounded-full border border-hestia-border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+            {provenanceLabel}
+          </span>
+        )}
+        {highlight && (
+          <span className="ml-2 whitespace-nowrap rounded-full bg-hestia-primary px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-on-primary">
+            Just added
+          </span>
+        )}
       </span>
       <div className="flex shrink-0 items-center gap-1">
         <Button
