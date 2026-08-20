@@ -376,7 +376,7 @@ export default function ExtractionProgressModal({
               the same "what it is / what goes into it" split the create-course dialog uses. The
               suggestions column can grow long without pushing the review actions out of view. */}
           {done && (
-            <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-start">
+            <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-stretch">
               <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
                 {failedSessions > 0 && (
                   <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
@@ -530,19 +530,15 @@ export default function ExtractionProgressModal({
                         onClick={() => {
                           const opening = !suggestOpen;
                           setSuggestOpen(opening);
-                          // Opening it is the request: nobody wants to press a second button to
-                          // see the thing they just asked for. Re-opening keeps what came back.
-                          if (
-                            opening
-                            && suggestions.length === 0
-                            && !suggestSkillsMutation.isPending
-                            && !suggestSkillsMutation.isSuccess
-                          ) {
+                          // Opening it is the request — this button is the only way to ask. It
+                          // keeps suggestions nobody has acted on yet and asks again once the
+                          // panel would otherwise open empty.
+                          if (opening && suggestions.length === 0 && !suggestSkillsMutation.isPending) {
                             suggestSkillsMutation.mutate();
                           }
                         }}
                       >
-                        AI suggestions
+                        Suggest new skills using AI
                       </Button>
                     </div>
                     <Button size="lg" onClick={onClose}>
@@ -553,15 +549,19 @@ export default function ExtractionProgressModal({
               </div>
 
               {suggestOpen && (
-              <div className="flex w-full flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:max-w-sm lg:shrink-0">
+              /* Taken out of flow at `lg`, like the create-course dialog's file column: a long list
+                 of suggestions then cannot outgrow the review beside it. The wrapper carries the
+                 width and takes its height from the skills column; the list inside scrolls. */
+              <div className="w-full min-w-0 lg:relative lg:w-96 lg:shrink-0">
+              <div className="flex w-full flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:absolute lg:inset-0 lg:min-h-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                       AI suggestions
                     </span>
                     <p className="text-xs text-hestia-text-muted">
-                      Skills your materials cover that your list is missing. Accepting one adds it
-                      to the list.
+                      Broad skills the session goals already extracted from your materials point
+                      to, but the list beside this does not cover yet. Accepting one adds it.
                     </p>
                   </div>
                   <Button
@@ -582,18 +582,6 @@ export default function ExtractionProgressModal({
                     </svg>
                   </Button>
                 </div>
-                <Button
-                  variant="secondary"
-                  disabled={suggestSkillsMutation.isPending}
-                  onClick={() => suggestSkillsMutation.mutate()}
-                  className="self-start"
-                >
-                  {suggestSkillsMutation.isPending
-                    ? "Finding suggestions…"
-                    : suggestSkillsMutation.isSuccess
-                      ? "Suggest again"
-                      : "Suggest skills"}
-                </Button>
                 {suggestSkillsMutation.isPending && (
                   <IndeterminateProgress label="Reading the course materials…" />
                 )}
@@ -606,11 +594,11 @@ export default function ExtractionProgressModal({
                   && suggestSkillsMutation.isSuccess
                   && suggestions.length === 0 && (
                   <p className="text-xs text-hestia-text-muted">
-                    Nothing left to suggest — every proposal has been accepted or dismissed.
+                    Nothing left to suggest. Close this panel and open it again to ask once more.
                   </p>
                 )}
                 {suggestions.length > 0 && (
-                  <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+                  <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
                     {suggestions.map((suggestion) => {
                       const accepting =
                         generateSkillMutation.isPending
@@ -667,6 +655,7 @@ export default function ExtractionProgressModal({
                     })}
                   </div>
                 )}
+              </div>
               </div>
               )}
             </div>
