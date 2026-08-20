@@ -560,8 +560,8 @@ export default function ExtractionProgressModal({
                       AI suggestions
                     </span>
                     <p className="text-xs text-hestia-text-muted">
-                      Broad skills the session goals already extracted from your materials point
-                      to, but the list beside this does not cover yet. Accepting one adds it.
+                      Skills your list may be missing, suggested from the goals already extracted
+                      from your materials.
                     </p>
                   </div>
                   <Button
@@ -583,7 +583,7 @@ export default function ExtractionProgressModal({
                   </Button>
                 </div>
                 {suggestSkillsMutation.isPending && (
-                  <IndeterminateProgress label="Reading the course materials…" />
+                  <IndeterminateProgress label="Looking for skills your list is missing…" />
                 )}
                 {suggestSkillsMutation.isError && (
                   <p className="text-sm text-hestia-danger">
