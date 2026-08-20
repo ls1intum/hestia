@@ -171,6 +171,21 @@
   animation: comp-draw 240ms ease-out 140ms forwards;
 }
 
+/* Indeterminate progress. Adding a skill runs a whole sub-skill/knowledge generation server-side
+   with no percentage to report, so the bar sweeps rather than pretending to fill. */
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+.progress-sweep {
+  width: 30%;
+  animation: progress-sweep 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
 /* Competency tree-grid (CompetencyTree). A newly revealed branch cascades its rows in with a
    light overshoot while the rows below glide down (FLIP, in the component); a collapsing branch
    fades its rows out before the survivors slide up. Kept separate from the FLIP so the two never

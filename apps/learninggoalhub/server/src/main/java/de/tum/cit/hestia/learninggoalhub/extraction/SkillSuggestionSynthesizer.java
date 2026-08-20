@@ -25,6 +25,10 @@ public class SkillSuggestionSynthesizer {
             applied capability a student should be able to perform after completing the course, stated
             with one concrete action verb. Suggest only capabilities genuinely supported by the evidence.
 
+            Word each text as ONE concise sentence that BEGINS with its action verb, matching the voice of
+            the existing terminal skills listed below. Never open with a subject clause such as "Der
+            Studierende kann" or "Students can", and do not chain verbs with "and" or commas.
+
             Write every generated text and shortLabel in %s. Return a JSON array with 2 to 4 objects,
             using exactly the properties text and shortLabel. The shortLabel is a compact 2-6 word label
             naming the action and its topic, reusing the text's action verb (e.g. "Analyse the

@@ -10,7 +10,7 @@ import Button from "../components/Button.tsx";
 import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
 
 /** Courses per page. Small enough that the whole list stays on screen without scrolling. */
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 8;
 
 /** Screen 1 — overview of every course with document/goal counts, status and creation date. */
 export default function CoursesPage() {
