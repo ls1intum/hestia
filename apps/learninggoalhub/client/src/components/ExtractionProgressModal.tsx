@@ -65,7 +65,7 @@ export default function ExtractionProgressModal({
     () => goalsQuery.data ?? [],
     [goalsQuery.data],
   );
-  const terminalSkills = useMemo(
+  const skills = useMemo(
     () => buildCompetencyForest(goals),
     [goals],
   );
@@ -98,6 +98,23 @@ export default function ExtractionProgressModal({
         },
       );
       if (updateError) throw new Error("Could not rename the skill.");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+  });
+
+  // Accepting is the review's positive half: it flips the goal out of PENDING so the rest of the
+  // app can tell a reviewed skill from an untouched one. Dismissing has no state of its own — a
+  // skill the instructor does not want is deleted, exactly like a rejected AI suggestion.
+  const approveMutation = useMutation({
+    mutationFn: async (vars: { goalId: number; approved: boolean }) => {
+      const { error: updateError } = await api.PATCH(
+        "/api/courses/{courseId}/learning-goals/{goalId}",
+        {
+          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
+          body: { status: vars.approved ? "APPROVED" : "PENDING" },
+        },
+      );
+      if (updateError) throw new Error("Could not update the skill.");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
   });
@@ -207,354 +224,425 @@ export default function ExtractionProgressModal({
     ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
     : -1;
 
+  const accepted = skills.filter((skill) => skill.goal.status === "APPROVED").length;
+
+  const title = done
+    ? "Review your skills"
+    : failed
+      ? "Analysis failed"
+      : "Analyzing course materials";
+  const subtitle = done
+    ? "Accept, dismiss or rename each skill we extracted."
+    : failed
+      ? null
+      : "This runs once per upload. You can review and adjust everything afterwards.";
+
+  const closeButton = (
+    <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="h-4 w-4"
+      >
+        <path d="M5 5l10 10M15 5L5 15" />
+      </svg>
+    </Button>
+  );
+
   return (
     <div
-      onClick={reviewLocked ? undefined : onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="extraction-progress-title"
     >
+      {/* An opaque scrim rather than a backdrop-blur, matching the create-course and goal dialogs:
+          blurring the courses list through this layer repaints the whole table every frame. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg sm:p-8"
+        onClick={reviewLocked ? undefined : onClose}
+        className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       >
-        <div className="flex items-center gap-3">
-          <img
-            src={flame}
-            alt=""
-            className={`h-9 w-9 ${running ? "animate-pulse" : ""}`}
-          />
-          <h2 id="extraction-progress-title" className="flex-1 text-xl">
-            {done
-              ? "Review your skills"
-              : failed
-                ? "Analysis failed"
-                : "Analyzing course materials"}
-          </h2>
-          {!reviewLocked && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onClose}
-              aria-label="Close"
-              className="shrink-0"
-            >
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
-                <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
-              </svg>
-            </Button>
-          )}
-        </div>
-
-        {running && (
-          <div className="mt-6">
-            <p className="text-sm text-hestia-text-muted">
-              This runs once per upload. You can review and adjust everything afterwards.
-            </p>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted">
-              {total > 0 ? (
-                <div
-                  className="h-full rounded-full bg-hestia-primary transition-[width] duration-500 ease-out"
-                  style={{ width: `${percent}%` }}
-                />
-              ) : (
-                <div className="h-full w-1/3 animate-pulse rounded-full bg-hestia-primary" />
-              )}
+        {/* One animation for the whole panel rather than per card, as in the other two dialogs. */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="comp-unfold flex w-full max-w-2xl flex-col gap-3.5 sm:mt-[6vh]"
+        >
+          {/* The header rides above the cards, so the close button never sits inside one. */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img
+                src={flame}
+                alt=""
+                className={`h-6 w-6 shrink-0 ${running ? "animate-pulse" : ""}`}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <span
+                  id="extraction-progress-title"
+                  className="text-xs font-semibold uppercase tracking-wider text-hestia-text"
+                >
+                  {title}
+                </span>
+                {subtitle && <p className="text-xs text-hestia-text-muted">{subtitle}</p>}
+              </div>
             </div>
-            <ol className="mt-6 flex flex-col gap-3">
-              {EXTRACTION_PHASES.map((phase, i) => {
-                const state =
-                  activeIndex < 0
-                    ? i === 0
-                      ? "active"
-                      : "pending"
-                    : i < activeIndex
-                      ? "done"
-                      : i === activeIndex
+            {!reviewLocked && closeButton}
+          </div>
+
+          {running && (
+            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted">
+                {total > 0 ? (
+                  <div
+                    className="h-full rounded-full bg-hestia-primary transition-[width] duration-500 ease-out"
+                    style={{ width: `${percent}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-hestia-primary" />
+                )}
+              </div>
+              <ol className="flex flex-col gap-3">
+                {EXTRACTION_PHASES.map((phase, i) => {
+                  const state =
+                    activeIndex < 0
+                      ? i === 0
                         ? "active"
-                        : "pending";
-                return (
-                  <li key={phase.key} className="flex items-center gap-3">
-                    <PhaseTick state={state} index={i} />
-                    <span
-                      className={`text-sm ${
-                        state === "active"
-                          ? "font-medium text-hestia-text"
-                          : state === "done"
-                            ? "text-hestia-text-muted"
-                            : "text-hestia-text-muted/60"
-                      }`}
-                    >
-                      {phase.label}
+                        : "pending"
+                      : i < activeIndex
+                        ? "done"
+                        : i === activeIndex
+                          ? "active"
+                          : "pending";
+                  return (
+                    <li key={phase.key} className="flex items-center gap-3">
+                      <PhaseTick state={state} index={i} />
+                      <span
+                        className={`text-sm ${
+                          state === "active"
+                            ? "font-medium text-hestia-text"
+                            : state === "done"
+                              ? "text-hestia-text-muted"
+                              : "text-hestia-text-muted/60"
+                        }`}
+                      >
+                        {phase.label}
+                      </span>
+                      {state === "active" && total > 0 && (
+                        <span className="ml-auto tabular-nums text-xs text-hestia-text-muted">
+                          {completed}/{total}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
+
+          {done && (
+            <>
+              {failedSessions > 0 && (
+                <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
+                  <span aria-hidden="true">⚠ </span>
+                  {failedSessions === 1
+                    ? "One session could not be analysed and contributed no skills."
+                    : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
+                  Add anything that is missing below.
+                </p>
+              )}
+
+              <div className="flex flex-col rounded-lg border border-hestia-border bg-hestia-surface shadow-lg">
+                <div className="flex items-center justify-between gap-3 border-b border-hestia-border px-4 py-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                    Skills
+                  </span>
+                  {skills.length > 0 && (
+                    <span className="tabular-nums text-xs text-hestia-text-muted">
+                      {accepted} of {skills.length} accepted
                     </span>
-                    {state === "active" && total > 0 && (
-                      <span className="ml-auto tabular-nums text-xs text-hestia-text-muted">
-                        {completed}/{total}
+                  )}
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {goalsQuery.isLoading && (
+                    <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
+                      Loading skills…
+                    </p>
+                  )}
+                  {goalsQuery.isError && (
+                    <p className="px-4 py-6 text-center text-sm text-hestia-danger">
+                      {(goalsQuery.error as Error).message}
+                    </p>
+                  )}
+                  {!goalsQuery.isLoading && !goalsQuery.isError && skills.length === 0 && (
+                    <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
+                      No skills were extracted for this course.
+                    </p>
+                  )}
+                  {skills.length > 0 && (
+                    <ul className="divide-y divide-hestia-border">
+                      {skills.map((skill) => (
+                        <SkillRow
+                          key={skill.goal.id ?? skill.goal.text}
+                          skill={skill}
+                          renaming={renameMutation.isPending}
+                          accepting={
+                            approveMutation.isPending
+                            && approveMutation.variables?.goalId === skill.goal.id
+                          }
+                          dismissing={
+                            deleteGoalMutation.isPending
+                            && deleteGoalMutation.variables === skill.goal.id
+                          }
+                          onRename={(goalId, text) => renameMutation.mutate({ goalId, text })}
+                          onAccept={(approved) => {
+                            if (skill.goal.id != null) {
+                              approveMutation.mutate({ goalId: skill.goal.id, approved });
+                            }
+                          }}
+                          onDismiss={() => {
+                            if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+                {adding ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const trimmed = newSkill.trim();
+                      if (trimmed === "" || addSkillMutation.isPending) return;
+                      addSkillMutation.mutate(trimmed, {
+                        onSuccess: () => setNewSkill(""),
+                      });
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      value={newSkill}
+                      onChange={(event) => setNewSkill(event.target.value)}
+                      autoFocus
+                      disabled={addSkillMutation.isPending}
+                      placeholder="Describe a skill students should master…"
+                      className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:outline-none"
+                    />
+                    <Button
+                      variant="neutral"
+                      onClick={() => {
+                        setAdding(false);
+                        setNewSkill("");
+                        addSkillMutation.reset();
+                      }}
+                      disabled={addSkillMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={newSkill.trim() === "" || addSkillMutation.isPending}
+                    >
+                      {addSkillMutation.isPending ? (
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
+                          />
+                          Adding…
+                        </span>
+                      ) : (
+                        "Add"
+                      )}
+                    </Button>
+                  </form>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="neutral"
+                      onClick={() => setAdding(true)}
+                      className="text-hestia-primary"
+                    >
+                      <span aria-hidden="true" className="text-base leading-none">
+                        +
+                      </span>
+                      Add a skill
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={suggestSkillsMutation.isPending}
+                      onClick={() => suggestSkillsMutation.mutate()}
+                    >
+                      {suggestSkillsMutation.isPending
+                        ? "Finding suggestions…"
+                        : "Suggest skills with AI"}
+                    </Button>
+                    {suggestions.length > 0 && (
+                      <span className="text-xs text-hestia-text-muted">
+                        Review each suggestion before adding it.
                       </span>
                     )}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        )}
+                  </div>
+                )}
 
-        {done && (
-          <>
-            <p className="mt-6 text-sm text-hestia-text-muted">
-              Take a quick look at the terminal skills we extracted — rename or remove any that
-              are off.
-            </p>
-            {failedSessions > 0 && (
-              <p className="mt-4 rounded-md border border-hestia-warning/40 bg-hestia-warning/10 px-3 py-2 text-sm text-hestia-text">
-                <span aria-hidden="true">⚠ </span>
-                {failedSessions === 1
-                  ? "One session could not be analysed and contributed no skills."
-                  : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
-                Add anything that is missing below.
-              </p>
-            )}
-            <div className="mt-4 max-h-72 overflow-y-auto rounded-lg border border-hestia-border bg-hestia-bg">
-              {goalsQuery.isLoading && (
-                <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
-                  Loading skills…
-                </p>
-              )}
-              {goalsQuery.isError && (
-                <p className="px-4 py-6 text-center text-sm text-hestia-danger">
-                  {(goalsQuery.error as Error).message}
-                </p>
-              )}
-              {!goalsQuery.isLoading && !goalsQuery.isError && terminalSkills.length === 0 && (
-                <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
-                  No terminal skills were extracted for this course.
-                </p>
-              )}
-              {terminalSkills.length > 0 && (
-                <ul className="divide-y divide-hestia-border">
-                  {terminalSkills.map((skill) => (
-                    <SkillRow
-                      key={skill.goal.id ?? skill.goal.text}
-                      skill={skill}
-                      renaming={renameMutation.isPending}
-                      deleting={deleteGoalMutation.isPending}
-                      onRename={(goalId, text) => renameMutation.mutate({ goalId, text })}
-                      onDelete={() => {
-                        if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <Button
-                variant="secondary"
-                disabled={suggestSkillsMutation.isPending}
-                onClick={() => suggestSkillsMutation.mutate()}
-              >
-                {suggestSkillsMutation.isPending ? "Finding suggestions…" : "Suggest skills with AI"}
-              </Button>
-              {suggestions.length > 0 && (
-                <span className="text-xs text-hestia-text-muted">
-                  Review each suggestion before adding it.
-                </span>
-              )}
-            </div>
-            {suggestSkillsMutation.isError && (
-              <p className="mt-3 text-sm text-hestia-danger">
-                {(suggestSkillsMutation.error as Error).message}
-              </p>
-            )}
-            {suggestions.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {suggestions.map((suggestion) => {
-                  const accepting =
-                    generateSkillMutation.isPending
-                    && generateSkillMutation.variables?.text === suggestion.text;
-                  return (
-                    <div
-                      key={suggestion.text}
-                      className="rounded-lg border border-hestia-primary/40 bg-hestia-primary-muted/30 px-3 py-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium leading-relaxed text-hestia-text">
-                            {suggestion.text}
-                          </p>
-                          {suggestion.shortLabel && (
-                            <p className="mt-1 text-xs text-hestia-text-muted">
-                              {suggestion.shortLabel}
+                {addSkillMutation.isPending && (
+                  <p className="text-sm text-hestia-text-muted" aria-live="polite">
+                    Generating the skill’s sub-skills and knowledge…
+                  </p>
+                )}
+                {addSkillMutation.isError && (
+                  <p className="text-sm text-hestia-danger">
+                    {(addSkillMutation.error as Error).message}
+                  </p>
+                )}
+                {suggestSkillsMutation.isError && (
+                  <p className="text-sm text-hestia-danger">
+                    {(suggestSkillsMutation.error as Error).message}
+                  </p>
+                )}
+
+                {suggestions.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {suggestions.map((suggestion) => {
+                      const accepting =
+                        generateSkillMutation.isPending
+                        && generateSkillMutation.variables?.text === suggestion.text;
+                      return (
+                        <div
+                          key={suggestion.text}
+                          className="rounded-lg border border-hestia-primary/40 bg-hestia-primary-muted/30 px-3 py-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium leading-relaxed text-hestia-text">
+                                {suggestion.text}
+                              </p>
+                              {suggestion.shortLabel && (
+                                <p className="mt-1 text-xs text-hestia-text-muted">
+                                  {suggestion.shortLabel}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button
+                                size="sm"
+                                disabled={generateSkillMutation.isPending}
+                                onClick={() => generateSkillMutation.mutate(suggestion)}
+                              >
+                                {accepting ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <span
+                                      aria-hidden="true"
+                                      className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
+                                    />
+                                    Adding…
+                                  </span>
+                                ) : (
+                                  "Accept"
+                                )}
+                              </Button>
+                              <Button
+                                variant="neutral"
+                                size="sm"
+                                disabled={accepting}
+                                onClick={() => {
+                                  setSuggestions((current) =>
+                                    current.filter((item) => item.text !== suggestion.text),
+                                  );
+                                  setSuggestionErrors((current) => {
+                                    const next = { ...current };
+                                    delete next[suggestion.text];
+                                    return next;
+                                  });
+                                }}
+                              >
+                                Dismiss
+                              </Button>
+                            </div>
+                          </div>
+                          {suggestionErrors[suggestion.text] && (
+                            <p className="mt-2 text-xs text-hestia-danger">
+                              {suggestionErrors[suggestion.text]}
                             </p>
                           )}
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            size="sm"
-                            disabled={generateSkillMutation.isPending}
-                            onClick={() => generateSkillMutation.mutate(suggestion)}
-                          >
-                            {accepting ? (
-                              <span className="flex items-center gap-1.5">
-                                <span
-                                  aria-hidden="true"
-                                  className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
-                                />
-                                Adding…
-                              </span>
-                            ) : (
-                              "Accept"
-                            )}
-                          </Button>
-                          <Button
-                            variant="neutral"
-                            size="sm"
-                            disabled={accepting}
-                            onClick={() => {
-                              setSuggestions((current) =>
-                                current.filter((item) => item.text !== suggestion.text),
-                              );
-                              setSuggestionErrors((current) => {
-                                const next = { ...current };
-                                delete next[suggestion.text];
-                                return next;
-                              });
-                            }}
-                          >
-                            Dismiss
-                          </Button>
-                        </div>
-                      </div>
-                      {suggestionErrors[suggestion.text] && (
-                        <p className="mt-2 text-xs text-hestia-danger">
-                          {suggestionErrors[suggestion.text]}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-            {adding ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const trimmed = newSkill.trim();
-                  if (trimmed === "" || addSkillMutation.isPending) return;
-                  addSkillMutation.mutate(trimmed, {
-                    onSuccess: () => setNewSkill(""),
-                  });
-                }}
-                className="mt-3 flex items-center gap-2"
-              >
-                <input
-                  value={newSkill}
-                  onChange={(event) => setNewSkill(event.target.value)}
-                  autoFocus
-                  disabled={addSkillMutation.isPending}
-                  placeholder="Describe a skill students should master…"
-                  className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-                />
-                <Button
-                  variant="neutral"
-                  onClick={() => {
-                    setAdding(false);
-                    setNewSkill("");
-                    addSkillMutation.reset();
-                  }}
-                  disabled={addSkillMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={newSkill.trim() === "" || addSkillMutation.isPending}
-                >
-                  {addSkillMutation.isPending ? (
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        aria-hidden="true"
-                        className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
-                      />
-                      Adding…
-                    </span>
-                  ) : (
-                    "Add"
-                  )}
-                </Button>
-              </form>
-            ) : (
-              <Button
-                variant="ghost"
-                onClick={() => setAdding(true)}
-                className="mt-3 text-hestia-primary hover:text-hestia-primary-hover"
-              >
-                <span aria-hidden="true" className="text-base leading-none">
-                  +
-                </span>
-                Add a skill
-              </Button>
-            )}
-            {addSkillMutation.isError && (
-              <p className="mt-3 text-sm text-hestia-danger">
-                {(addSkillMutation.error as Error).message}
-              </p>
-            )}
-            {addSkillMutation.isPending && (
-              <p className="mt-3 text-sm text-hestia-text-muted" aria-live="polite">
-                Generating the skill’s sub-skills and knowledge…
-              </p>
-            )}
-            {renameMutation.isError && (
-              <p className="mt-3 text-sm text-hestia-danger">
-                {(renameMutation.error as Error).message}
-              </p>
-            )}
-            {deleteGoalMutation.isError && (
-              <p className="mt-3 text-sm text-hestia-danger">
-                {(deleteGoalMutation.error as Error).message}
-              </p>
-            )}
-            <div className="mt-6 flex justify-end border-t border-hestia-border pt-4">
-              <Button size="lg" onClick={onClose}>
-                Done
-              </Button>
-            </div>
-          </>
-        )}
 
-        {failed && (
-          <>
-            <p className="mt-6 rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-2 text-sm text-hestia-danger">
-              {error ?? "Extraction failed."}
-            </p>
-            <div className="mt-6 flex justify-end">
-              <Button variant="ghost" size="lg" onClick={onClose}>
-                Close
-              </Button>
+              <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+                {renameMutation.isError && (
+                  <p className="text-sm text-hestia-danger">
+                    {(renameMutation.error as Error).message}
+                  </p>
+                )}
+                {approveMutation.isError && (
+                  <p className="text-sm text-hestia-danger">
+                    {(approveMutation.error as Error).message}
+                  </p>
+                )}
+                {deleteGoalMutation.isError && (
+                  <p className="text-sm text-hestia-danger">
+                    {(deleteGoalMutation.error as Error).message}
+                  </p>
+                )}
+                <div className="flex justify-end">
+                  <Button size="lg" onClick={onClose}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {failed && (
+            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+              <p className="rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-2 text-sm text-hestia-danger">
+                {error ?? "Extraction failed."}
+              </p>
+              <div className="flex justify-end">
+                <Button variant="ghost" size="lg" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+/**
+ * One extracted skill. The three review actions sit side by side: rename fixes the wording, Accept
+ * marks it reviewed, Dismiss deletes it — the same accept/dismiss pair the AI suggestions carry.
+ */
 function SkillRow({
   skill,
   renaming,
-  deleting,
+  accepting,
+  dismissing,
   onRename,
-  onDelete,
+  onAccept,
+  onDismiss,
 }: {
   skill: ReturnType<typeof buildCompetencyForest>[number];
   renaming: boolean;
-  deleting: boolean;
+  accepting: boolean;
+  dismissing: boolean;
   onRename: (goalId: number, text: string) => void;
-  onDelete: () => void;
+  onAccept: (approved: boolean) => void;
+  onDismiss: () => void;
 }) {
   const current = skill.goal.text ?? "";
+  const approved = skill.goal.status === "APPROVED";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current);
   useEffect(() => {
@@ -582,7 +670,7 @@ function SkillRow({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             autoFocus
-            className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
+            className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
           />
           <Button variant="neutral" onClick={() => setEditing(false)}>
             Cancel
@@ -596,10 +684,14 @@ function SkillRow({
   }
 
   return (
-    <li className="group flex items-center gap-3 px-4 py-3">
+    <li
+      className={`flex items-start gap-3 px-4 py-3 ${
+        approved ? "bg-hestia-primary-muted/20" : ""
+      }`}
+    >
       <span
         aria-hidden="true"
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
       />
       <span className="min-w-0 flex-1 text-sm leading-relaxed text-hestia-text">
@@ -612,7 +704,6 @@ function SkillRow({
           title="Rename skill"
           aria-label="Rename skill"
           onClick={() => setEditing(true)}
-          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
         >
           <svg
             viewBox="0 0 20 20"
@@ -626,26 +717,38 @@ function SkillRow({
             <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
           </svg>
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Delete skill"
-          aria-label="Delete skill"
-          disabled={deleting}
-          onClick={onDelete}
-          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100 hover:bg-hestia-danger hover:text-hestia-on-danger"
-        >
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4 w-4"
+        {approved ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={accepting}
+            title="Accepted — click to undo"
+            aria-label="Undo accept"
+            onClick={() => onAccept(false)}
+            className="text-hestia-primary"
           >
-            <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
-          </svg>
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
+              <path
+                fillRule="evenodd"
+                d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Accepted
+          </Button>
+        ) : (
+          <Button size="sm" disabled={accepting} onClick={() => onAccept(true)}>
+            {accepting ? "Accepting…" : "Accept"}
+          </Button>
+        )}
+        <Button
+          variant="neutral"
+          size="sm"
+          title="Remove this skill from the course"
+          disabled={dismissing}
+          onClick={onDismiss}
+        >
+          {dismissing ? "Dismissing…" : "Dismiss"}
         </Button>
       </div>
     </li>
