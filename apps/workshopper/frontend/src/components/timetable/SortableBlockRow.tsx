@@ -415,7 +415,7 @@ export function SortableBlockRow({
                             return (
                               <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
                                 style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                <span className="shrink-0 mt-0.5">☐</span>
+                                <span className="shrink-0 mt-0.5 text-muted-foreground font-mono">{i + 1}.</span>
                                 {renderEditable(s, clean, "leading-relaxed w-full")}
                               </div>
                             );
