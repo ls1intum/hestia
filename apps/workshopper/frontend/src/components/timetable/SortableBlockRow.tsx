@@ -144,7 +144,7 @@ export function SortableBlockRow({
               {/* Activity tags (Methods) */}
               {(allMethods.length > 0) && (
                 <div className="flex items-center gap-1 mr-1">
-                  {allMethods.map((m, j) => isEditMode ? (
+                  {allMethods.map((m, j) => (isEditMode && block.phase !== "EVALUATE") ? (
                     <DropdownMenu key={j}>
                       <DropdownMenuTrigger asChild>
                         <div
@@ -393,9 +393,8 @@ export function SortableBlockRow({
 
               // ── LEARNING_CYCLE: content checklist + activity prompt ───────────
               if (phase === "LEARNING_CYCLE") {
-                const contentSteps = allSteps.filter((s: string) =>
-                  !/^(\d+\s*(?:min|m)[\s—:-]*)?(activity|prompt|debrief|reflect|summarize)/i.test(s)
-                );
+                const sections = block.sections || [];
+                const contentSteps = sections.length > 0 ? (sections[0].steps || []) : [];
                 const activityStep = allSteps.find(s =>
                   /prompt|activity|task|scenario|discuss|question/i.test(s)
                 );
@@ -411,7 +410,7 @@ export function SortableBlockRow({
                         <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
                         <div className="space-y-1">
                           {contentSteps.map((s, i) => {
-                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
                             return (
                               <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
                                 style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
@@ -458,7 +457,7 @@ export function SortableBlockRow({
                         <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
                         <div className="space-y-1">
                           {takeawaySteps.map((s, i) => {
-                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
                             return (
                               <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
                                 style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
