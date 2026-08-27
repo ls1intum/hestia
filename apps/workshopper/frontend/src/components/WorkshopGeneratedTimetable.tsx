@@ -481,12 +481,21 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     }
   };
 
-  const switchActivity = async (dndId: string, newActivity: string) => {
+  const switchActivity = async (dndId: string, oldActivity: string, newActivity: string) => {
     setRegeneratingBlockId(dndId);
     try {
       const block = blocks.find(b => b.dndId === dndId);
       if (!block) return;
       const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
+
+      const currentMethods = block.methods || [];
+      const newMethods = [...currentMethods];
+      const methodIndex = newMethods.indexOf(oldActivity);
+      if (methodIndex !== -1) {
+        newMethods[methodIndex] = newActivity;
+      } else {
+        newMethods.push(newActivity);
+      }
 
       const singleBlockSkeleton = {
         learningGoal: initialSession.learningGoal,
@@ -506,7 +515,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           goals,
-          meta: { ...meta, selectedActivities: [newActivity] },
+          meta: { ...meta, selectedActivities: newMethods },
           skeleton: singleBlockSkeleton,
         }),
       });
@@ -528,7 +537,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               ...b,
               ...updatedBlock,
               phaseLabel: finalPhaseLabel,
-              methods: Array.from(new Set([...(updatedBlock.methods || []), newActivity])),
+              methods: updatedBlock.methods || newMethods,
               dndId,
               lgIndex,
               blockId: block.blockId,
@@ -550,6 +559,97 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       }
     } catch (e) {
       toast({ title: "Generation failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+
+  const switchEvaluateActivity = async (dndId: string, targetLgNum: number, newActivity: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      
+      const exactMappings: string[] = [];
+      const section = (block.sections || [])[0];
+      if (section && section.steps) {
+        section.steps.forEach((s: string) => {
+          const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+          const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•\-]\s*([^:]+):\s*(.*)/i);
+          const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
+          
+          const lgNumStr = lgMatch ? lgMatch[1] : (lgFallback ? lgFallback[1] : null);
+          const currentAct = lgMatch ? lgMatch[2].trim() : null;
+
+          if (lgNumStr) {
+            const num = parseInt(lgNumStr);
+            if (num === targetLgNum) {
+              exactMappings.push(`LG${num}:${newActivity}`);
+            } else if (currentAct) {
+              exactMappings.push(`LG${num}:${currentAct}`);
+            }
+          }
+        });
+      }
+      
+      // If the LLM failed to include methods correctly, we force our exactMappings as the block methods fallback
+      const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
+
+      const singleBlockSkeleton = {
+        learningGoal: initialSession.learningGoal,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex: block.lgIndex ?? 0,
+          duration: block.duration,
+          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goals,
+          meta: { ...meta, selectedActivities: exactMappings },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to regenerate evaluate activity");
+      const newSession = await res.json();
+      if (newSession.blocks?.[0]) {
+        const updatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            return {
+              ...b,
+              ...updatedBlock,
+              phaseLabel: b.phaseLabel || b.phase,
+              methods: (updatedBlock.methods && updatedBlock.methods.length > 0) ? updatedBlock.methods : derivedMethods,
+              dndId,
+              lgIndex: b.lgIndex,
+              blockId: b.blockId,
+            };
+          });
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSession({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
+      }
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
     } finally {
       setRegeneratingBlockId(null);
     }
@@ -611,7 +711,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   onEditSectionDuration={(sIdx) => setEditing({ type: "sectionDuration", blockId: block.dndId, sectionIdx: sIdx })}
                   onSaveSectionDuration={(sIdx, v) => handleSaveSectionDuration(block.dndId, sIdx, v)}
                   onDeleteBlock={() => handleDeleteBlock(block.dndId)}
-                  onSwitchActivity={act => switchActivity(block.dndId, act)}
+                  onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
+                  onSwitchEvaluateActivity={(lgNum, newAct) => switchEvaluateActivity(block.dndId, lgNum, newAct)}
                   onDeleteActivity={method => handleDeleteActivity(block.dndId, method)}
                   onAddActivity={method => handleAddActivity(block.dndId, method)}
                   onAddStep={text => handleAddStep(block.dndId, text)}
