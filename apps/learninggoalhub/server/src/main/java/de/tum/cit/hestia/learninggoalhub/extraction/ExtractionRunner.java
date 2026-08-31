@@ -1089,9 +1089,14 @@ public class ExtractionRunner {
                         candidates.get(compactSubSkill.representative()),
                         compactSubSkill.supporting().stream().map(candidates::get).toList()));
             }
+            List<BloomLevel> subSkillLevels = subSkills.stream()
+                    .map(PlannedSubSkill::representative)
+                    .map(LearningGoal::getBloomLevel)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
             planned.add(new PlannedCompetency(
                     compactSkill.text(), compactSkill.shortLabel(),
-                    classifications.get(skillIndex), subSkills));
+                    atLeastSubSkillBloom(classifications.get(skillIndex), subSkillLevels), subSkills));
         }
         planned.sort(Comparator.comparingInt(ExtractionRunner::medianLectureOrder));
         long assignedGoals = compactSkills.stream()
@@ -1148,6 +1153,30 @@ public class ExtractionRunner {
      * every outcome in its group. The representative is itself a member of {@code supportingGoals}.
      */
     private record PlannedSubSkill(LearningGoal representative, List<LearningGoal> supportingGoals) {}
+
+    /**
+     * A terminal competency never sits below the sub-skills beneath it.
+     *
+     * <p>Its Bloom level is classified from generated text, and that text is the least reliable
+     * thing in the tree to read a level off: one run stored a terminal reading "Understanding
+     * definition and basic properties ... and evaluating neighbourhood preservation" as EVALUATE,
+     * picked off the clause at the tail, while its own label said "Understanding space-filling
+     * curves". Terminals also came back at UNDERSTAND over children at ANALYZE, which inverts the
+     * tier the tree is built on. The children's levels are the trustworthy half — each one was
+     * classified during extraction with a source passage behind it — so the classified SOLO level is
+     * kept and Bloom is raised to the highest level among the direct sub-skills.
+     */
+    static TaxonomyClassification atLeastSubSkillBloom(TaxonomyClassification classified,
+                                                       List<BloomLevel> subSkillLevels) {
+        BloomLevel floor = subSkillLevels.stream().max(Comparator.naturalOrder()).orElse(null);
+        if (floor == null) {
+            return classified;
+        }
+        if (classified != null && classified.bloom() != null && classified.bloom().compareTo(floor) >= 0) {
+            return classified;
+        }
+        return new TaxonomyClassification(floor, classified == null ? null : classified.solo());
+    }
 
     /**
      * Where a terminal skill sits in the course. The MEDIAN of every source outcome beneath it, not

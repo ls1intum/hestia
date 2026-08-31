@@ -420,6 +420,40 @@ class CompactTaxonomySynthesizerTest {
                 .hasMessageContaining("no term from the outcomes it covers");
     }
 
+    /**
+     * The failure this cap was built for: a name that restates its whole group instead of naming it.
+     * Measured on a real course, terminal text ran to 39 words on average over sub-skills of 11, and
+     * one of them repeated its members' verb once per member.
+     */
+    @Test
+    void rejectsATerminalNameThatSummarisesItsGroupInsteadOfNamingIt() {
+        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateTerminalNames(
+                naming(name("Analysing the radius of convergence of power series, analysing the "
+                                + "classification of isolated singularities, and analysing the "
+                                + "behaviour of complex functions near those singularities in detail",
+                                "Analysing power series"),
+                        name("Applying residue methods to evaluate contour integrals",
+                                "Applying residue methods")),
+                NAMED_GROUPS, NAMED_SUB_SKILLS, NAMED_CANDIDATES, "English"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("summarises its group instead of naming it");
+    }
+
+    /** A name may spend every word the cap allows. */
+    @Test
+    void acceptsATerminalNameOfExactlyTheLongestPermittedLength() {
+        String text = "Analysing power series"
+                + " word".repeat(CompactTaxonomySynthesizer.MAX_TERMINAL_TEXT_WORDS - 3);
+        assertThat(text.split("\\s+")).hasSize(CompactTaxonomySynthesizer.MAX_TERMINAL_TEXT_WORDS);
+
+        assertThat(CompactTaxonomySynthesizer.validateTerminalNames(
+                naming(name(text, "Analysing power series"),
+                        name("Applying residue methods to evaluate contour integrals",
+                                "Applying residue methods")),
+                NAMED_GROUPS, NAMED_SUB_SKILLS, NAMED_CANDIDATES, "English"))
+                .hasSize(2);
+    }
+
     /** An action with nothing to act on is not a name. */
     @Test
     void rejectsALabelThatCarriesOnlyItsAction() {
