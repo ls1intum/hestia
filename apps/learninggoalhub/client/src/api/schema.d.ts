@@ -362,7 +362,7 @@ export interface components {
         };
         GoalRelationshipResponse: {
             /** @enum {string} */
-            type?: "CONTRIBUTES_TO" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
+            type?: "CONTRIBUTES_TO" | "SUPPORTS" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
             /** Format: int64 */
             targetGoalId?: number;
             targetText?: string;

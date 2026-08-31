@@ -96,8 +96,6 @@ class ExtractionRunnerFigureSettingTest {
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         GoalCandidateRepository goalCandidateRepository = mock(GoalCandidateRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
-        TerminalCompetencySynthesizer terminalCompetencySynthesizer = mock(TerminalCompetencySynthesizer.class);
-        CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer = mock(CompetencyAssignmentSynthesizer.class);
         DocumentChunker documentChunker = mock(DocumentChunker.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
@@ -169,8 +167,7 @@ class ExtractionRunnerFigureSettingTest {
                 auditService,
                 goalCandidateRepository,
                 documentSectionRepository,
-                terminalCompetencySynthesizer,
-                competencyAssignmentSynthesizer,
+                mock(CompactTaxonomySynthesizer.class),
                 documentChunker,
                 hierarchyNodeRepository,
                 taxonomyService,

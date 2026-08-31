@@ -20,6 +20,7 @@ import {
   buildCompetencyForest,
   childGoalsOf,
   generatedChildCount,
+  supportingOutcomesOf,
   type CompetencyNode,
 } from "../lib/goals.ts";
 
@@ -410,7 +411,7 @@ export default function CompetencyGraph({
             />
           </div>
         </div>
-        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
+        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
       </div>
     );
   }
@@ -754,7 +755,7 @@ export default function CompetencyGraph({
           </div>
         )}
       </div>
-      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
+      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
     </div>
   );
 }

@@ -1188,6 +1188,7 @@
             "type": "string",
             "enum": [
               "CONTRIBUTES_TO",
+              "SUPPORTS",
               "PREREQUISITE_OF",
               "OVERLAPS_WITH"
             ]

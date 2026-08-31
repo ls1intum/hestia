@@ -168,6 +168,22 @@ export function childGoalsOf(
   return find(forest)?.children.map((child) => child.goal) ?? [];
 }
 
+/** Source-backed lecture outcomes that justify a synthesized sub-skill without becoming tree nodes. */
+export function supportingOutcomesOf(
+  goals: LearningGoal[],
+  goalId: number | null | undefined,
+): LearningGoal[] {
+  if (goalId == null) return [];
+  return goals
+    .filter((goal) =>
+      goal.relationships?.some(
+        (relationship) =>
+          relationship.type === "SUPPORTS" && relationship.targetGoalId === goalId,
+      ),
+    )
+    .sort(compareLectureOrder);
+}
+
 /**
  * How many wizard-generated sub-skills hang under the terminal skill `goalId` — the nodes a
  * regeneration would replace. `undefined` means the goal is not a terminal skill at all, which is

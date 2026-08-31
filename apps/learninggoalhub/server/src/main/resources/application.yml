@@ -86,6 +86,18 @@ hestia:
     # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
     temperature: 0.2
     assignment-temperature: 0.0
+    # The competency tree is two validated partitions: outcomes into sub-skills, sub-skills into
+    # terminal skills. Both stages measured as an exact 86/86 partition on a real course, but only
+    # GPT-OSS honoured the requested sub-skill count (DeepSeek returned 38 against a range of 18-24,
+    # which the validator can only reject), so both stages default to it. Split them to A/B a model.
+    taxonomy-planner-model: openai-gpt-oss-120b
+    taxonomy-partition-model: openai-gpt-oss-120b
+    # Whether stage one may leave outcomes out of the tree as supporting detail. Off, because it is
+    # the least reproducible decision in the pipeline: over five runs of one course it set aside
+    # between 1 and 17 of 34 outcomes (3%-50%), while extraction varied by ~6% and the set of
+    # terminal themes not at all. With it off every outcome is grouped, so two runs of a course can
+    # be compared. The exact-partition accounting is enforced either way.
+    set-aside-outcomes: false
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.

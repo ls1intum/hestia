@@ -50,6 +50,7 @@ export default function CompetencyGoalModal({
   goal: freshGoal,
   role,
   knowledge,
+  supportingOutcomes,
   generatedChildCount,
   onClose,
   onUpdate,
@@ -63,6 +64,8 @@ export default function CompetencyGoalModal({
   role?: CompetencyRole;
   /** Immediate knowledge goals under a sub-skill, shown as read-only evidence rows. */
   knowledge?: LearningGoal[];
+  /** Source-backed lecture outcomes used to synthesize this sub-skill. */
+  supportingOutcomes?: LearningGoal[];
   /**
    * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
    * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
@@ -281,7 +284,8 @@ export default function CompetencyGoalModal({
           : null;
   const session = goal.hierarchy?.session ?? goal.hierarchy?.exercise;
   const sessionId = goal.hierarchy?.sessionId;
-  const knowledgeSources = knowledge?.map((item) => item.sources?.[0]);
+  const knowledgeGoals = knowledge ?? [];
+  const knowledgeSources = knowledgeGoals.map((item) => item.sources?.[0]);
   const knowledgePages = knowledgeSources
     ?.map((source) => source?.page)
     .filter((page): page is number => page != null);
@@ -297,7 +301,9 @@ export default function CompetencyGoalModal({
     (source) => !source || source.grounded === false,
   ).length;
   // Only a sub-skill has an evidence column; every other role keeps the original single column.
-  const showEvidence = role === "sub-skill" && knowledge !== undefined;
+  const showEvidence =
+    role === "sub-skill" &&
+    (knowledge !== undefined || supportingOutcomes !== undefined);
 
   // A terminal skill the pipeline clustered has no wizard subtree to replace — the server refuses
   // it, so the action never appears for one (its creation provenance is null).
@@ -885,26 +891,71 @@ export default function CompetencyGoalModal({
                 openSource && sourceOrigin === "attributes" ? "lg:hidden" : ""
               }`}
             >
+            {supportingOutcomes && supportingOutcomes.length > 0 && (
+              <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                    Supporting source outcomes
+                  </span>
+                  <span className="text-xs tabular-nums text-hestia-text-muted">
+                    {supportingOutcomes.length} outcomes
+                  </span>
+                </div>
+                <ul className="mt-2">
+                  {supportingOutcomes.map((outcome, index) => {
+                    const source = outcome.sources?.[0];
+                    const label = outcome.text ?? outcome.shortLabel;
+                    return (
+                      <li
+                        key={outcome.id ?? index}
+                        className={`flex items-start gap-1 text-xs text-hestia-text ${index > 0 ? "border-t border-hestia-border/60" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            source && showSource(source, event.currentTarget, "evidence")
+                          }
+                          className="min-w-0 flex-1 rounded-md px-1.5 py-2 text-left font-medium transition hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]"
+                        >
+                          {label}
+                        </button>
+                        {onOpenGoal && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Open ${label}`}
+                            title="Open this source outcome"
+                            onClick={() => onOpenGoal(outcome)}
+                          >
+                            <span aria-hidden="true">↗</span>
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
             <div className="rounded-lg border border-hestia-border bg-hestia-surface p-3.5 shadow-lg">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                   Knowledge
                 </span>
                 <span className="text-right text-xs tabular-nums text-hestia-text-muted">
-                  {knowledge.length} items
+                  {knowledgeGoals.length} items
                   {knowledgePageSummary}
                   {unsupportedKnowledgeCount
                     ? ` · ${unsupportedKnowledgeCount} unsupported`
                     : ""}
                 </span>
               </div>
-              {knowledge.length === 0 ? (
+              {knowledgeGoals.length === 0 ? (
                 <p className="mt-2 text-xs text-hestia-text-muted">
-                  No knowledge is attached to this sub-skill.
+                  No supporting material is attached to this sub-skill.
                 </p>
               ) : (
                 <ul className="mt-2">
-                  {knowledge.map((knowledgeGoal, i) => {
+                  {knowledgeGoals.map((knowledgeGoal, i) => {
                     const source = knowledgeGoal.sources?.[0];
                     // The full wording, not the short label: the evidence list is where the goal is
                     // actually read and judged, and the tree already carries the abbreviated form.
@@ -934,6 +985,12 @@ export default function CompetencyGoalModal({
                                   <EvidencePill
                                     label={titleCase(knowledgeGoal.kind)}
                                     color="var(--hestia-text-muted)"
+                                  />
+                                )}
+                                {knowledgeGoal.role === "SKILL" && (
+                                  <EvidencePill
+                                    label="Outcome"
+                                    color="var(--hestia-accent)"
                                   />
                                 )}
                                 {source?.evidenceKind === "FIGURE" && (

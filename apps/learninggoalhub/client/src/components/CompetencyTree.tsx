@@ -19,6 +19,7 @@ import {
   buildCompetencyForest,
   childGoalsOf,
   generatedChildCount,
+  supportingOutcomesOf,
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
@@ -817,6 +818,7 @@ export default function CompetencyTree({
         goal={detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null}
         role={detail?.role}
         knowledge={childGoalsOf(forest, detail?.goal.id)}
+        supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)}
         generatedChildCount={generatedChildCount(forest, detail?.goal.id)}
         onClose={closeDetail}
         onUpdate={onUpdate}
