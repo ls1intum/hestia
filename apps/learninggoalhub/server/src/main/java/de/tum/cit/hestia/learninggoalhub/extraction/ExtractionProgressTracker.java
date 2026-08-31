@@ -164,8 +164,9 @@ public class ExtractionProgressTracker {
             case PARSING -> new int[] {35, 40};
             case EXTRACTING -> new int[] {40, 70};
             case CLASSIFYING -> new int[] {70, 80};
-            case EMBEDDING -> new int[] {80, 85};
-            case PERSISTING -> new int[] {85, 90};
+            // Retained for backward-compatible API deserialization; new runs skip this phase.
+            case EMBEDDING -> new int[] {80, 90};
+            case PERSISTING -> new int[] {80, 90};
             case SYNTHESIZING -> new int[] {90, 100};
         };
         double fraction = total <= 0 ? 0 : Math.min(1, Math.max(0, (double) completed / total));

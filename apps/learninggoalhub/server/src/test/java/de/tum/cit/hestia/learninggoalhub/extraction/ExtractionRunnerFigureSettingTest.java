@@ -25,7 +25,6 @@ import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
@@ -102,7 +101,6 @@ class ExtractionRunnerFigureSettingTest {
         DocumentChunker documentChunker = mock(DocumentChunker.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        EmbeddingService embeddingService = mock(EmbeddingService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
 
@@ -176,14 +174,12 @@ class ExtractionRunnerFigureSettingTest {
                 documentChunker,
                 hierarchyNodeRepository,
                 taxonomyService,
-                embeddingService,
                 progressTracker,
                 1,
                 1,
                 80_000,
                 null,
                 20,
-                64,
                 highlightGeometryService);
         return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
     }

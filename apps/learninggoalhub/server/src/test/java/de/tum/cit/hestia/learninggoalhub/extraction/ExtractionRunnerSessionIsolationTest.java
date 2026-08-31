@@ -25,7 +25,6 @@ import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
@@ -126,7 +125,6 @@ class ExtractionRunnerSessionIsolationTest {
                 documentChunker,
                 hierarchyNodeRepository,
                 mock(TaxonomyService.class),
-                mock(EmbeddingService.class),
                 progressTracker,
                 // Single-threaded, so the failing session is deterministically the first one.
                 1,
@@ -134,7 +132,6 @@ class ExtractionRunnerSessionIsolationTest {
                 80_000,
                 null,
                 20,
-                64,
                 mock(HighlightGeometryService.class));
     }
 

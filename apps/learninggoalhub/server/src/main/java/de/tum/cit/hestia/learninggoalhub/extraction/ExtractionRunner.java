@@ -14,7 +14,6 @@ import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
@@ -90,14 +89,12 @@ public class ExtractionRunner {
     private final DocumentChunker documentChunker;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
-    private final EmbeddingService embeddingService;
     private final ExtractionProgressTracker progressTracker;
     private final int parallelism;
     private final int figureParallelism;
     private final int directMaxChars;
     private final String configuredDefaultModel;
     private final int taxonomyBatchSize;
-    private final int embeddingBatchSize;
     private final HighlightGeometryService highlightGeometryService;
 
     public ExtractionRunner(CourseRepository courseRepository,
@@ -119,14 +116,12 @@ public class ExtractionRunner {
                             DocumentChunker documentChunker,
                             HierarchyNodeRepository hierarchyNodeRepository,
                             TaxonomyService taxonomyService,
-                            EmbeddingService embeddingService,
                             ExtractionProgressTracker progressTracker,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
-                            @Value("${hestia.embedding.batch-size:64}") int embeddingBatchSize,
                             HighlightGeometryService highlightGeometryService) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
@@ -147,14 +142,12 @@ public class ExtractionRunner {
         this.documentChunker = documentChunker;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
-        this.embeddingService = embeddingService;
         this.progressTracker = progressTracker;
         this.parallelism = parallelism;
         this.figureParallelism = figureParallelism;
         this.directMaxChars = directMaxChars;
         this.configuredDefaultModel = configuredDefaultModel;
         this.taxonomyBatchSize = taxonomyBatchSize;
-        this.embeddingBatchSize = embeddingBatchSize;
         this.highlightGeometryService = highlightGeometryService;
     }
 
@@ -305,9 +298,8 @@ public class ExtractionRunner {
         SessionAssembly assembly = assembleSessions(course, extractedSessions);
 
         List<ClassifiedGoal> classified = classifyInParallel(assembly.sessionGoals(), modelOverride, run);
-        List<EnrichedGoal> enriched = embedInParallel(classified, run);
 
-        run.phase(ExtractionProgressTracker.Phase.PERSISTING, enriched.size());
+        run.phase(ExtractionProgressTracker.Phase.PERSISTING, classified.size());
         int goalsCreated = 0;
         int textSources = 0;
         int figureSources = 0;
@@ -316,23 +308,20 @@ public class ExtractionRunner {
         Map<Long, PDDocument> pdfDocuments = new HashMap<>();
         Set<Long> attemptedPdfDocuments = new HashSet<>();
         try {
-            for (EnrichedGoal eg : enriched) {
-                ExtractedGoal e = eg.classified().extracted();
-                Document document = eg.classified().document();
+            for (ClassifiedGoal classifiedGoal : classified) {
+                ExtractedGoal e = classifiedGoal.extracted();
+                Document document = classifiedGoal.document();
 
                 LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
                 goal.setShortLabel(e.shortLabel());
-                goal.setRole(eg.classified().role());
-                HierarchyNode node = eg.classified().node();
+                goal.setRole(classifiedGoal.role());
+                HierarchyNode node = classifiedGoal.node();
                 if (node != null) {
                     goal.setHierarchyNode(node);
                 }
-                if (eg.classified().classification() != null) {
-                    goal.setBloomLevel(eg.classified().classification().bloom());
-                    goal.setSoloLevel(eg.classified().classification().solo());
-                }
-                if (eg.embedding() != null) {
-                    goal.setEmbedding(eg.embedding());
+                if (classifiedGoal.classification() != null) {
+                    goal.setBloomLevel(classifiedGoal.classification().bloom());
+                    goal.setSoloLevel(classifiedGoal.classification().solo());
                 }
                 LearningGoal target = goalRepository.saveAndFlush(goal);
                 persistedGoals.put(e, target);
@@ -340,14 +329,14 @@ public class ExtractionRunner {
 
                 GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
                 if (!goalSourceRepository.existsById(sourceId)) {
-                    HierarchyNode sourceNode = eg.classified().node();
+                    HierarchyNode sourceNode = classifiedGoal.node();
                     Unit unit = sourceNode == null ? null : unitsByNode.get(sourceNode.getId());
                     SourcePageResolver.Resolution resolution;
                     EvidenceKind evidenceKind;
                     String modelSnippet;
-                    if (eg.classified().sourceLineSelection() != null) {
+                    if (classifiedGoal.sourceLineSelection() != null) {
                         DirectSourceResolution direct = resolveDirectSource(document, unit,
-                                eg.classified().sourceLineSelection(), eg.classified().figures());
+                                classifiedGoal.sourceLineSelection(), classifiedGoal.figures());
                         resolution = direct.resolution();
                         evidenceKind = direct.evidenceKind();
                         modelSnippet = "";
@@ -385,8 +374,7 @@ public class ExtractionRunner {
             closePdfDocuments(pdfDocuments);
         }
 
-        for (EnrichedGoal eg : enriched) {
-            ClassifiedGoal classifiedGoal = eg.classified();
+        for (ClassifiedGoal classifiedGoal : classified) {
             if (classifiedGoal.role() != GoalRole.KNOWLEDGE || classifiedGoal.parentSkill() == null) {
                 continue;
             }
@@ -1238,76 +1226,6 @@ public class ExtractionRunner {
         return new ArrayList<>(Collections.nCopies(texts.size(), null));
     }
 
-    /**
-     * Embeds every goal, batched ({@code hestia.embedding.batch-size}) so the embedding endpoint
-     * receives many texts per request instead of one HTTP round trip per goal; batches run in
-     * parallel. The result is aligned back to {@code classified}.
-     */
-    private List<EnrichedGoal> embedInParallel(List<ClassifiedGoal> classified, ExtractionProgressTracker.Run run) {
-        run.phase(ExtractionProgressTracker.Phase.EMBEDDING, classified.size());
-        if (classified.isEmpty()) {
-            return List.of();
-        }
-        int size = Math.max(1, embeddingBatchSize);
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
-        try {
-            List<CompletableFuture<List<float[]>>> futures = new ArrayList<>();
-            for (int start = 0; start < classified.size(); start += size) {
-                int from = start;
-                int to = Math.min(start + size, classified.size());
-                List<String> texts = classified.subList(from, to).stream()
-                        .map(cg -> cg.extracted().text())
-                        .toList();
-                futures.add(CompletableFuture.supplyAsync(
-                        () -> {
-                            List<float[]> result = safeEmbedBatch(texts);
-                            run.increment(to - from);
-                            return result;
-                        },
-                        executor));
-            }
-            List<EnrichedGoal> enriched = new ArrayList<>(classified.size());
-            int i = 0;
-            for (CompletableFuture<List<float[]>> future : futures) {
-                for (float[] embedding : future.join()) {
-                    enriched.add(new EnrichedGoal(classified.get(i), embedding));
-                    i++;
-                }
-            }
-            return enriched;
-        } finally {
-            executor.shutdown();
-        }
-    }
-
-    /**
-     * Embeds one batch, returning a list aligned to {@code texts} (null entries on failure so the
-     * goals still persist without a vector, matching the per-goal behaviour).
-     */
-    private List<float[]> safeEmbedBatch(List<String> texts) {
-        try {
-            List<float[]> result = embeddingService.embedAll(texts);
-            if (result.size() == texts.size()) {
-                return result;
-            }
-            log.warn("Embedding batch returned {} vectors for {} texts, persisting batch without vectors",
-                    result.size(), texts.size());
-        } catch (RuntimeException ex) {
-            log.warn("Embedding failed for batch of {} texts, persisting without vectors: {}",
-                    texts.size(), ex.getMessage());
-        }
-        return new ArrayList<>(Collections.nCopies(texts.size(), null));
-    }
-
-    private float[] safeEmbed(String text) {
-        try {
-            return embeddingService.embed(text);
-        } catch (RuntimeException ex) {
-            log.warn("Embedding failed for goal, persisting without vector: {}", ex.getMessage());
-            return null;
-        }
-    }
-
     private DirectSourceResolution resolveDirectSource(
             Document document, Unit unit, SourceLineSelection selection,
             List<PageDescriptionService.FigureDescription> figures) {
@@ -1547,9 +1465,6 @@ public class ExtractionRunner {
 
     private record DirectSourceResolution(SourcePageResolver.Resolution resolution,
                                           EvidenceKind evidenceKind) {
-    }
-
-    private record EnrichedGoal(ClassifiedGoal classified, float[] embedding) {
     }
 
     public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies,

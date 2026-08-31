@@ -12,7 +12,6 @@ export const EXTRACTION_PHASES: { key: ExtractionPhase; label: string; short: st
   { key: "PARSING", label: "Parsing documents", short: "Parsing" },
   { key: "EXTRACTING", label: "Extracting learning goals", short: "Extracting" },
   { key: "CLASSIFYING", label: "Classifying (Bloom & SOLO)", short: "Classifying" },
-  { key: "EMBEDDING", label: "Computing embeddings", short: "Embedding" },
   { key: "PERSISTING", label: "Saving learning goals", short: "Saving" },
   { key: "SYNTHESIZING", label: "Building competency tree", short: "Tree" },
 ];
