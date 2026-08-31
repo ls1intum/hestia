@@ -38,6 +38,7 @@ class DocumentStructureServiceTest {
         List<SectionSpan> sections = parsed.sections();
 
         assertThat(sections).hasSize(2);
+        assertThat(parsed.hadBookmarkOutline()).isTrue();
         assertThat(sections).extracting(SectionSpan::title)
                 .containsExactly("Chapter One", "Chapter Two");
         // Contiguous, gap-free cover of the whole text starting at 0.
@@ -70,6 +71,7 @@ class DocumentStructureServiceTest {
         ParsedDocument parsed = service.parse(pdf, "application/pdf", "W06 Continuous Delivery.pdf");
 
         assertThat(parsed.sections()).isEmpty();
+        assertThat(parsed.hadBookmarkOutline()).isTrue();
         assertThat(parsed.rawText()).contains("alpha", "bravo", "charlie");
         assertThat(parsed.pageOffsets()).hasSize(4);
     }
@@ -81,6 +83,7 @@ class DocumentStructureServiceTest {
         ParsedDocument parsed = service.parse(pdf, "application/pdf", "lecture.pdf");
 
         assertThat(parsed.sections()).isEmpty();
+        assertThat(parsed.hadBookmarkOutline()).isFalse();
         assertThat(parsed.rawText()).contains("solo lecture content");
         assertThat(parsed.pageOffsets()).hasSize(2);
     }
