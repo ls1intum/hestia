@@ -32,6 +32,7 @@ const DRILL_W = 320; // drill-path boxes
 const KNOWLEDGE_W = 240; // knowledge boxes under a focused sub-skill
 const GAP = 12;
 const CONNECTOR_H = 40;
+const MAX_SUB_SKILLS = 5;
 type CreationTier = 1 | 2 | 3;
 type CreationState = {
   key: string;
@@ -417,6 +418,7 @@ export default function CompetencyGraph({
   const skillColor = COMPETENCY_ROLE_META.competency.color;
   const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
   const competencyNumber = forest.findIndex((node) => node.goal.id === competency.goal.id) + 1;
+  const canAddSubSkill = competency.children.length < MAX_SUB_SKILLS;
   const focusedSubIndex = subSkill
     ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
     : -1;
@@ -426,7 +428,7 @@ export default function CompetencyGraph({
     ...competency.children.map((child) =>
       subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
     ),
-    BOX_W,
+    ...(canAddSubSkill ? [BOX_W] : []),
   ];
   const siblingRowWidth = rowWidth(siblingWidths);
   const siblingCentres = childCentres(siblingWidths);
@@ -529,24 +531,26 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
-                <CreationGhost
-                  label="New sub-skill"
-                  color={subColor}
-                  widthClass="w-56 shrink-0"
-                  active={creation?.key === `2:${competency.goal.id}`}
-                  value={creation?.text ?? ""}
-                  pending={createMutation.isPending}
-                  error={
-                    creation?.key === `2:${competency.goal.id}` &&
-                    createMutation.isError
-                      ? (createMutation.error as Error).message
-                      : undefined
-                  }
-                  onStart={() => beginCreation(2, competency.goal.id!)}
-                  onChange={updateCreationText}
-                  onSubmit={submitCreation}
-                  onCancel={cancelCreation}
-                />
+                {canAddSubSkill && (
+                  <CreationGhost
+                    label="New sub-skill"
+                    color={subColor}
+                    widthClass="w-56 shrink-0"
+                    active={creation?.key === `2:${competency.goal.id}`}
+                    value={creation?.text ?? ""}
+                    pending={createMutation.isPending}
+                    error={
+                      creation?.key === `2:${competency.goal.id}` &&
+                      createMutation.isError
+                        ? (createMutation.error as Error).message
+                        : undefined
+                    }
+                    onStart={() => beginCreation(2, competency.goal.id!)}
+                    onChange={updateCreationText}
+                    onSubmit={submitCreation}
+                    onCancel={cancelCreation}
+                  />
+                )}
               </div>
             </>
           ) : (
@@ -604,24 +608,26 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
-                <CreationGhost
-                  label="New sub-skill"
-                  color={subColor}
-                  widthClass="w-56 shrink-0"
-                  active={creation?.key === `2:${competency.goal.id}`}
-                  value={creation?.text ?? ""}
-                  pending={createMutation.isPending}
-                  error={
-                    creation?.key === `2:${competency.goal.id}` &&
-                    createMutation.isError
-                      ? (createMutation.error as Error).message
-                      : undefined
-                  }
-                  onStart={() => beginCreation(2, competency.goal.id!)}
-                  onChange={updateCreationText}
-                  onSubmit={submitCreation}
-                  onCancel={cancelCreation}
-                />
+                {canAddSubSkill && (
+                  <CreationGhost
+                    label="New sub-skill"
+                    color={subColor}
+                    widthClass="w-56 shrink-0"
+                    active={creation?.key === `2:${competency.goal.id}`}
+                    value={creation?.text ?? ""}
+                    pending={createMutation.isPending}
+                    error={
+                      creation?.key === `2:${competency.goal.id}` &&
+                      createMutation.isError
+                        ? (createMutation.error as Error).message
+                        : undefined
+                    }
+                    onStart={() => beginCreation(2, competency.goal.id!)}
+                    onChange={updateCreationText}
+                    onSubmit={submitCreation}
+                    onCancel={cancelCreation}
+                  />
+                )}
               </div>
               {/* The active sub-skill sits at a known fixed position in the sibling row. Moving
                   this whole knowledge branch by that same offset makes its connector originate

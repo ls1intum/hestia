@@ -16,11 +16,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class SubtreeSynthesizer {
 
+    public static final int MAX_SUB_SKILLS = 5;
+
     private static final String CORRECTION_RETRY = """
 
-            Your previous response violated the outcome-wording invariant. Regenerate the complete
-            subtree. Make every text an expanded action-noun phrase and every shortLabel a distinct
-            compact action label.
+            Your previous response violated the subtree shape or outcome-wording invariant.
+            Regenerate the complete subtree with at most five broader sub-skills. Preserve every
+            narrower concept in the appropriate knowledge array. Make every text an expanded
+            action-noun phrase and every shortLabel a distinct compact action label.
             """;
 
     public record GeneratedSubtree(List<GeneratedSubSkill> subSkills) {
@@ -54,7 +57,10 @@ public class SubtreeSynthesizer {
             {"subSkills":[{"text":"...","shortLabel":"...","knowledge":[{"text":"...","shortLabel":"..."}]}]}
 
             Rules:
-              - Create several meaningful sub-skills that together cover the terminal competency.
+              - Create between one and five meaningful, broad sub-skills that together cover the
+                terminal competency. This is a hard maximum: never return more than five.
+              - Do not omit narrower concepts to meet the limit. Merge related concepts into a
+                broader sub-skill and retain every narrower concept as a knowledge item beneath it.
               - Every sub-skill must have at least one knowledge item.
               - Keep sub-skill and knowledge texts concise, distinct, and grounded in the terminal
                 competency. Do not add unrelated topics or duplicate wording.
@@ -106,6 +112,9 @@ public class SubtreeSynthesizer {
     public static GeneratedSubtree validate(GeneratedSubtree generated) {
         if (generated == null || generated.subSkills().isEmpty()) {
             throw new IllegalArgumentException("Generated subtree must contain at least one sub-skill");
+        }
+        if (generated.subSkills().size() > MAX_SUB_SKILLS) {
+            throw new IllegalArgumentException("Generated subtree must not contain more than five sub-skills");
         }
 
         Set<String> nodeTexts = new HashSet<>();

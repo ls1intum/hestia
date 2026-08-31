@@ -400,6 +400,15 @@ public class LearningGoalController {
         Course course = terminal.getCourse();
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
                 subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), model));
+        long retainedChildren = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
+                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
+                .filter(relationship -> relationship.getSource().getCreationProvenance()
+                        != GoalCreationProvenance.WIZARD_AI_SUBTREE)
+                .count();
+        if (retainedChildren + generated.subSkills().size() > SubtreeSynthesizer.MAX_SUB_SKILLS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The generated subtree and existing children would exceed five sub-skills");
+        }
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         applyClassifications(generatedNodes.nodes(), model);
 
@@ -429,6 +438,11 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
         }
         rejectIfKnowledgeTier(parent);
+        if (parent.getOrigin() == GoalOrigin.TERMINAL
+                && directChildCount(parent) >= SubtreeSynthesizer.MAX_SUB_SKILLS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A terminal skill cannot have more than five sub-skills");
+        }
 
         Course course = parent.getCourse();
         LearningGoal child = newUserCreatedChild(course, text);
@@ -512,6 +526,12 @@ public class LearningGoalController {
     private record GeneratedNodes(List<LearningGoal> subSkills,
                                   List<List<LearningGoal>> knowledgeBySubSkill,
                                   List<LearningGoal> nodes) {
+    }
+
+    private long directChildCount(LearningGoal parent) {
+        return goalRelationshipRepository.findByTargetId(parent.getId()).stream()
+                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
+                .count();
     }
 
     private int nextLectureOrder(Course course) {

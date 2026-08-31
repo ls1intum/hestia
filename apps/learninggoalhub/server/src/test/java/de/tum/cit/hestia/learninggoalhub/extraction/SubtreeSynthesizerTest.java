@@ -39,6 +39,19 @@ class SubtreeSynthesizerTest {
     }
 
     @Test
+    void rejectsMoreThanFiveSubSkillsWithoutTruncatingTheResponse() {
+        List<GeneratedSubSkill> subSkills = java.util.stream.IntStream.rangeClosed(1, 6)
+                .mapToObj(index -> new GeneratedSubSkill(
+                        "Apply capability " + index + ".", "Capability " + index,
+                        List.of(knowledge("Explain concept " + index + "."))))
+                .toList();
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(subSkills)))
+                .withMessageContaining("more than five sub-skills");
+    }
+
+    @Test
     void rejectsDuplicateNodeText() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(

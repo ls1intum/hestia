@@ -601,10 +601,11 @@ export default function CompetencyTree({
     }
     // Only two tiers are addable here — knowledge is added from its sub-skill's evidence list.
     if (!filtering && depth < 2) {
+      const visibleSiblingCount = siblings.filter((row) => !hiddenIds.has(row.id)).length;
       const append =
         depth === 0
           ? { tier: 1 as const, label: "Add skill", color: "var(--hestia-primary)" }
-          : depth === 1 && parentRole === "competency"
+          : depth === 1 && parentRole === "competency" && visibleSiblingCount < 5
             ? {
                 tier: 2 as const,
                 label: "Add sub-skill",
