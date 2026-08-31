@@ -60,7 +60,7 @@ public class SessionGoalConsolidator {
               - Do NOT simply copy every candidate through — collapse the redundant restatements.
 
             For each consolidated outcome return:
-              - text: the outcome as a single concise sentence, starting with a verb.
+              - text: an expanded action-noun outcome following the wording invariant.
               - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
                 verb of the text above, such as "Analyse the bias-variance tradeoff". Phrase it in the
                 natural word order of the output language (German puts the infinitive last:
@@ -73,6 +73,13 @@ public class SessionGoalConsolidator {
             ---
             %s
             ---
+            """;
+
+    private static final String WORDING_RETRY = """
+
+            Your previous response violated the outcome-wording invariant. Regenerate the COMPLETE
+            response with distinct text and shortLabel values. Make every text an expanded action-noun
+            phrase in the requested language and every shortLabel a compact action label.
             """;
 
     private final ChatClient chatClient;
@@ -111,16 +118,40 @@ public class SessionGoalConsolidator {
             sb.append('[').append(i).append("] ").append(candidates.get(i)).append('\n');
         }
         String title = (sessionTitle == null || sessionTitle.isBlank()) ? "(untitled session)" : sessionTitle;
+        String prompt = PROMPT_TEMPLATE.formatted(languageName, title, sb.toString());
+        try {
+            return validate(call(prompt, languageName, modelOverride, temperature), languageName);
+        } catch (IllegalArgumentException invalidResponse) {
+            return validate(call(prompt + WORDING_RETRY, languageName, modelOverride, 0.0), languageName);
+        }
+    }
+
+    private List<ConsolidatedGoal> call(String prompt, String languageName, String modelOverride,
+                                        double callTemperature) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
                 .system(LanguagePrompt.systemInstruction(languageName));
-        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
+        ChatOptions.Builder options = ChatOptions.builder().temperature(callTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
             options.model(modelOverride);
         }
         return spec
                 .options(options.build())
-                .user(PROMPT_TEMPLATE.formatted(languageName, title, sb.toString()))
+                .user(prompt)
                 .call()
                 .entity(LenientJson.converter(new ParameterizedTypeReference<List<ConsolidatedGoal>>() {}));
+    }
+
+    private static List<ConsolidatedGoal> validate(List<ConsolidatedGoal> goals, String languageName) {
+        if (goals == null) {
+            return List.of();
+        }
+        return goals.stream().map(goal -> {
+            if (goal == null) {
+                throw new IllegalArgumentException("Every consolidated outcome must be present");
+            }
+            OutcomeWording.validate(goal.text(), goal.shortLabel(), languageName,
+                    "Every consolidated outcome");
+            return new ConsolidatedGoal(goal.text().strip(), goal.shortLabel().strip(), goal.supporting());
+        }).toList();
     }
 }

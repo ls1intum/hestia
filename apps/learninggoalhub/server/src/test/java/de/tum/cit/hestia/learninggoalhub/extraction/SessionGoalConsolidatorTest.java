@@ -38,7 +38,8 @@ class SessionGoalConsolidatorTest {
         when(builder.build()).thenReturn(chatClient);
 
         List<ConsolidatedGoal> expected = List.of(
-                new ConsolidatedGoal("Explain how gradient descent minimises a loss function.", "Gradient Descent",
+                new ConsolidatedGoal("Explaining how gradient descent minimises a loss function.",
+                        "Explain Gradient Descent",
                         List.of(0, 2)));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))

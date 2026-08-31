@@ -16,6 +16,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class SubtreeSynthesizer {
 
+    private static final String CORRECTION_RETRY = """
+
+            Your previous response violated the outcome-wording invariant. Regenerate the complete
+            subtree. Make every text an expanded action-noun phrase and every shortLabel a distinct
+            compact action label.
+            """;
+
     public record GeneratedSubtree(List<GeneratedSubSkill> subSkills) {
         public GeneratedSubtree {
             subSkills = subSkills == null ? List.of() : List.copyOf(subSkills);
@@ -38,7 +45,7 @@ public class SubtreeSynthesizer {
             applied sub-skill, a shortLabel naming it, and a non-empty knowledge array containing the
             declarative knowledge that supports that sub-skill.
 
-            Every text is a full sentence-style outcome; every shortLabel is a compact 2-6 word label
+            Every text is an expanded action-noun outcome; every shortLabel is a compact 2-6 word label
             naming the action and its topic, reusing that text's verb (e.g. "Analyse the bias-variance
             tradeoff"; German puts the infinitive last: "Bias-Varianz-Abwägung analysieren"), not
             ending with a period.
@@ -70,18 +77,29 @@ public class SubtreeSynthesizer {
     }
 
     public GeneratedSubtree generateSubtree(String terminalText, String languageName, String modelOverride) {
+        String prompt = PROMPT.formatted(languageName, terminalText);
+        GeneratedSubtree generated = call(prompt, languageName, modelOverride, temperature);
+        try {
+            return validate(generated, languageName);
+        } catch (IllegalArgumentException invalidResponse) {
+            generated = call(prompt + CORRECTION_RETRY, languageName, modelOverride, 0.0);
+            return validate(generated, languageName);
+        }
+    }
+
+    private GeneratedSubtree call(String prompt, String languageName, String modelOverride, double callTemperature) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
                 .system(LanguagePrompt.systemInstruction(languageName));
-        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
+        ChatOptions.Builder options = ChatOptions.builder().temperature(callTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
             options.model(modelOverride);
         }
         GeneratedSubtree generated = spec
                 .options(options.build())
-                .user(PROMPT.formatted(languageName, terminalText))
+                .user(prompt)
                 .call()
                 .entity(LenientJson.converter(new ParameterizedTypeReference<GeneratedSubtree>() {}));
-        return validate(generated);
+        return generated;
     }
 
     /** Validates a model response before any database node is created. */
@@ -115,6 +133,19 @@ public class SubtreeSynthesizer {
             validSubSkills.add(new GeneratedSubSkill(subSkill.text().strip(), blankToNull(subSkill.shortLabel()), knowledge));
         }
         return new GeneratedSubtree(validSubSkills);
+    }
+
+    static GeneratedSubtree validate(GeneratedSubtree generated, String languageName) {
+        GeneratedSubtree valid = validate(generated);
+        for (GeneratedSubSkill subSkill : valid.subSkills()) {
+            OutcomeWording.validate(subSkill.text(), subSkill.shortLabel(), languageName,
+                    "Every generated sub-skill");
+            for (GeneratedKnowledge knowledge : subSkill.knowledge()) {
+                OutcomeWording.validate(knowledge.text(), knowledge.shortLabel(), languageName,
+                        "Every generated knowledge item");
+            }
+        }
+        return valid;
     }
 
     private static String normalized(String text) {
