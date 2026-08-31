@@ -5,6 +5,7 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentOrder;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
@@ -179,7 +180,9 @@ public class ExtractionRunner {
             clearExtractionArtifacts(course);
         }
 
-        List<Document> documents = documentRepository.findByCourseId(courseId);
+        List<Document> documents = documentRepository.findByCourseId(courseId).stream()
+                .sorted(DocumentOrder.comparator())
+                .toList();
         String dominantLanguage = dominantLanguage(documents);
         String courseLanguage = resolveLanguage(course, null, dominantLanguage);
         String promptVersion = promptVersionFor(documents);
@@ -315,6 +318,7 @@ public class ExtractionRunner {
                 LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
                 goal.setShortLabel(e.shortLabel());
                 goal.setRole(classifiedGoal.role());
+                goal.setLectureOrder(goalsCreated);
                 HierarchyNode node = classifiedGoal.node();
                 if (node != null) {
                     goal.setHierarchyNode(node);
@@ -557,14 +561,24 @@ public class ExtractionRunner {
         for (SessionExtraction extraction : extractedSessions) {
             if (extraction.direct()) {
                 List<SessionGoal> goals = new ArrayList<>();
-                for (ExtractedSkill skill : extraction.skills()) {
+                List<ExtractedSkill> orderedSkills = extraction.skills().stream()
+                        .sorted(Comparator.comparing(
+                                ExtractedSkill::sourceStartLine,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                        .toList();
+                for (ExtractedSkill skill : orderedSkills) {
                     ExtractedGoal skillGoal = new ExtractedGoal(
                             skill.text(), skill.shortLabel(), skill.kind(),
                             "");
                     goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
                             new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine(),
                                     skill.sourceFigure())));
-                    for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
+                    List<ExtractedSkill.Knowledge> orderedKnowledge = skill.knowledge().stream()
+                            .sorted(Comparator.comparing(
+                                    ExtractedSkill.Knowledge::sourceStartLine,
+                                    Comparator.nullsLast(Comparator.naturalOrder())))
+                            .toList();
+                    for (ExtractedSkill.Knowledge knowledge : orderedKnowledge) {
                         ExtractedGoal knowledgeGoal = new ExtractedGoal(
                                 knowledge.text(), knowledge.shortLabel(), knowledge.kind(),
                                 "");
@@ -959,6 +973,10 @@ public class ExtractionRunner {
                 .filter(g -> g.getHierarchyNode().getLevel() != HierarchyLevel.MODULE
                         && g.getHierarchyNode().getLevel() != HierarchyLevel.COMPETENCY)
                 .filter(ExtractionRunner::isSkillTier)
+                .sorted(Comparator.comparing(
+                                LearningGoal::getLectureOrder,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(LearningGoal::getId))
                 .toList();
         // The skill tier IS the seed set. Bloom must not narrow it any further: extraction now
         // decides the tier, and the session prompt deliberately keeps verbs low ("when in doubt,

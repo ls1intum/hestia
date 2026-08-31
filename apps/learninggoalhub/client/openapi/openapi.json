@@ -1406,6 +1406,10 @@
             "items": {
               "$ref": "#/components/schemas/GoalRelationshipResponse"
             }
+          },
+          "lectureOrder": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

@@ -356,7 +356,7 @@ export default function CompetencyGraph({
         className="mx-auto flex w-full max-w-5xl flex-col gap-3 pt-1"
       >
         <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {forest.map((node) => {
+          {forest.map((node, index) => {
             const expandable = node.children.length > 0;
             const deep = countGrandchildren(node);
             return (
@@ -376,6 +376,7 @@ export default function CompetencyGraph({
                   actions={actions}
                   fluid
                   deepKnowledge={deep}
+                  sequenceLabel={`${index + 1}.`}
                 />
                 {expandable && (
                   <div className="justify-self-center">
@@ -415,6 +416,7 @@ export default function CompetencyGraph({
 
   const skillColor = COMPETENCY_ROLE_META.competency.color;
   const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
+  const competencyNumber = forest.findIndex((node) => node.goal.id === competency.goal.id) + 1;
   const focusedSubIndex = subSkill
     ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
     : -1;
@@ -487,6 +489,7 @@ export default function CompetencyGraph({
                 onClick={() => onOpenDetail(competency)}
                 actions={actions}
                 wide
+                sequenceLabel={`${competencyNumber}.`}
               />
               <Connector
                 childWidths={siblingWidths}
@@ -517,6 +520,7 @@ export default function CompetencyGraph({
                             : onOpenDetail(child)
                         }
                         actions={actions}
+                        sequenceLabel={`${competencyNumber}.${i + 1}`}
                         title={isSubSkill ? "Focus this sub-skill" : undefined}
                       />
                       {expandable && (
@@ -558,6 +562,7 @@ export default function CompetencyGraph({
                   actions={actions}
                   subdued
                   wide
+                  sequenceLabel={`${competencyNumber}.`}
                 />
               </div>
               <Connector
@@ -589,6 +594,7 @@ export default function CompetencyGraph({
                         dimmed={!isFocused}
                         compact={!isFocused}
                         clampText={!isFocused}
+                        sequenceLabel={`${competencyNumber}.${i + 1}`}
                         title={
                           focusable
                             ? "Focus this sub-skill"
@@ -955,6 +961,7 @@ function Box({
   clampText = false,
   title,
   deepKnowledge = null,
+  sequenceLabel,
 }: {
   node: CompetencyNode;
   active: boolean;
@@ -983,6 +990,8 @@ function Box({
   title?: string;
   /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
   deepKnowledge?: number | null;
+  /** Hierarchical lecture-order label, e.g. "2." or "2.3". */
+  sequenceLabel?: string;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
@@ -1085,6 +1094,7 @@ function Box({
           isGap ? "text-hestia-danger" : "text-hestia-text"
         } ${clampText ? "line-clamp-3" : ""}`}
       >
+        {sequenceLabel != null && <span className="tabular-nums">{sequenceLabel} </span>}
         {node.goal.shortLabel ?? node.goal.text}
       </p>
       <div className="mt-auto flex items-center gap-1 pt-1">

@@ -284,6 +284,7 @@ public class LearningGoalController {
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal.setHierarchyNode(competencyRoot(course));
+        goal.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(goal);
         String languageName = courseLanguageName(course);
         GeneratedSubtree generated = null;
@@ -432,6 +433,7 @@ public class LearningGoalController {
         Course course = parent.getCourse();
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
+        child.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(child);
         goalRepository.flush();
         linkContributors(List.of(child), parent);
@@ -486,6 +488,15 @@ public class LearningGoalController {
     }
 
     private void persistGeneratedNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
+        int nextOrder = nextLectureOrder(terminal.getCourse());
+        if (terminal.getLectureOrder() == null) {
+            terminal.setLectureOrder(nextOrder++);
+        }
+        for (LearningGoal node : generatedNodes.nodes()) {
+            if (node.getLectureOrder() == null) {
+                node.setLectureOrder(nextOrder++);
+            }
+        }
         goalRepository.saveAll(allNodes(terminal, generatedNodes));
         goalRepository.flush();
         for (int i = 0; i < generatedNodes.subSkills().size(); i++) {
@@ -501,6 +512,15 @@ public class LearningGoalController {
     private record GeneratedNodes(List<LearningGoal> subSkills,
                                   List<List<LearningGoal>> knowledgeBySubSkill,
                                   List<LearningGoal> nodes) {
+    }
+
+    private int nextLectureOrder(Course course) {
+        return goalRepository.findByCourseId(course.getId()).stream()
+                .map(LearningGoal::getLectureOrder)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(-1) + 1;
     }
 
     private LearningGoal newGeneratedGoal(Course course, String text, GoalOrigin origin) {
@@ -789,6 +809,7 @@ public class LearningGoalController {
                                        HierarchyPath hierarchy,
                                        BloomLevel bloomLevel,
                                        SoloLevel soloLevel,
+                                       Integer lectureOrder,
                                        OffsetDateTime createdAt,
                                        List<GoalSourceResponse> sources,
                                        List<GoalRelationshipResponse> relationships) {
@@ -810,6 +831,7 @@ public class LearningGoalController {
                     hierarchy,
                     g.getBloomLevel(),
                     g.getSoloLevel(),
+                    g.getLectureOrder(),
                     g.getCreatedAt(),
                     sources,
                     relationships);

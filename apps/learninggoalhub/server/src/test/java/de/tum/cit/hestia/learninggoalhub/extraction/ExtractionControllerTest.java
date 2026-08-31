@@ -324,6 +324,31 @@ class ExtractionControllerTest {
     }
 
     @Test
+    void multiPdfExtractionUsesNaturalLectureOrderInsteadOfUploadOrder() throws Exception {
+        Course course = courseRepository.save(new Course("Naturally ordered lectures"));
+        documentRepository.save(new Document(course, "Lecture 10.pdf", "application/pdf", "later material"));
+        documentRepository.save(new Document(course, "Lecture 2.pdf", "application/pdf", "earlier material"));
+        when(sessionExtractionService.extract(eq("Lecture 10.pdf"), eq("later material"),
+                eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal(
+                        "Applying the later method in representative contexts.", "Apply Later Method",
+                        GoalKind.IMPLICIT, "later material"))));
+        when(sessionExtractionService.extract(eq("Lecture 2.pdf"), eq("earlier material"),
+                eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal(
+                        "Applying the earlier method in representative contexts.", "Apply Earlier Method",
+                        GoalKind.IMPLICIT, "earlier material"))));
+
+        startExtraction(course.getId());
+
+        Map<String, Integer> orderByLabel = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .collect(Collectors.toMap(LearningGoal::getShortLabel, LearningGoal::getLectureOrder));
+        assertThat(orderByLabel.get("Apply Earlier Method"))
+                .isLessThan(orderByLabel.get("Apply Later Method"));
+    }
+
+    @Test
     void auditServicePersistsRunningThenSucceededInSeparateTransactions() {
         Course course = courseRepository.save(new Course("Audit lifecycle"));
 
@@ -936,6 +961,13 @@ class ExtractionControllerTest {
                 .singleElement()
                 .satisfies(g -> assertThat(labelsByNodeId.get(g.getHierarchyNode().getId()))
                         .isEqualTo("Lecture 3: Testing"));
+        LearningGoal lectureGoal = goals.stream()
+                .filter(g -> g.getText().equals("Apply TDD."))
+                .findFirst().orElseThrow();
+        LearningGoal exerciseGoal = goals.stream()
+                .filter(g -> g.getText().equals("Practise TDD kata."))
+                .findFirst().orElseThrow();
+        assertThat(lectureGoal.getLectureOrder()).isLessThan(exerciseGoal.getLectureOrder());
     }
 
     private static float[] orthogonalEmbedding(int slot) {

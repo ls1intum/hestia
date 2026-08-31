@@ -68,6 +68,10 @@ public class LearningGoal {
     @Column(name = "solo_level", length = 32)
     private SoloLevel soloLevel;
 
+    /** Stable course-wide order derived from the goal's first appearance in the lecture material. */
+    @Column(name = "lecture_order")
+    private Integer lectureOrder;
+
     @JdbcTypeCode(SqlTypes.VECTOR)
     @Column(name = "embedding", columnDefinition = "vector(4096)")
     private float[] embedding;
@@ -167,6 +171,14 @@ public class LearningGoal {
 
     public void setSoloLevel(SoloLevel soloLevel) {
         this.soloLevel = soloLevel;
+    }
+
+    public Integer getLectureOrder() {
+        return lectureOrder;
+    }
+
+    public void setLectureOrder(Integer lectureOrder) {
+        this.lectureOrder = lectureOrder;
     }
 
     public float[] getEmbedding() {

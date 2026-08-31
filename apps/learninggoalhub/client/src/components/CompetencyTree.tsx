@@ -49,6 +49,7 @@ import {
 type Row = {
   id: number;
   parent: number | null;
+  number: string;
   goal: LearningGoal;
   role: CompetencyRole;
   childCount: number;
@@ -684,6 +685,17 @@ export default function CompetencyTree({
           />
         </label>
         <span className="flex-1" />
+        {sort ? (
+          <button
+            type="button"
+            onClick={() => setSort(null)}
+            className="text-xs font-medium text-hestia-primary underline transition hover:text-hestia-text"
+          >
+            Restore lecture order
+          </button>
+        ) : (
+          <span className="text-xs font-medium text-hestia-text-muted">Lecture order</span>
+        )}
         {!filtering && (
           <Button
             onClick={() => {
@@ -830,11 +842,12 @@ export default function CompetencyTree({
  */
 function flattenForest(forest: CompetencyNode[]): Row[] {
   const rows: Row[] = [];
-  const walk = (node: CompetencyNode, parent: number | null): string[] => {
+  const walk = (node: CompetencyNode, parent: number | null, number: string): string[] => {
     if (node.goal.id == null) return [];
     const row: Row = {
       id: node.goal.id,
       parent,
+      number,
       goal: node.goal,
       role: node.role,
       childCount: node.children.length,
@@ -844,12 +857,18 @@ function flattenForest(forest: CompetencyNode[]): Row[] {
     const sessions = new Set<string>();
     const own = sessionTitleOf(node.goal);
     if (own) sessions.add(own);
-    for (const child of node.children)
-      for (const session of walk(child, node.goal.id)) sessions.add(session);
+    for (let index = 0; index < node.children.length; index++) {
+      const child = node.children[index];
+      for (const session of walk(child, node.goal.id, `${number}.${index + 1}`)) {
+        sessions.add(session);
+      }
+    }
     row.sessions = [...sessions].sort((a, b) => a.localeCompare(b));
     return row.sessions;
   };
-  for (const node of forest) walk(node, null);
+  for (let index = 0; index < forest.length; index++) {
+    walk(forest[index], null, `${index + 1}`);
+  }
   return rows;
 }
 
@@ -1105,6 +1124,7 @@ function GridRow({
               row.role === "competency" ? "font-semibold" : ""
             }`}
           >
+            <span className="mr-1 tabular-nums text-hestia-text-muted">{row.number}.</span>
             {displayedGoalLabel(row.goal)}
             {evidenceMatch && (
               <span className="ml-2 whitespace-nowrap text-xs text-hestia-text-muted">

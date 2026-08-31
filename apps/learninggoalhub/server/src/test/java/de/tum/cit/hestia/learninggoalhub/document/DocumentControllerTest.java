@@ -79,7 +79,7 @@ class DocumentControllerTest {
     }
 
     @Test
-    void listsCourseDocumentsInUploadOrder() throws Exception {
+    void listsCourseDocumentsInNaturalLectureOrder() throws Exception {
         MvcResult courseResult = mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Databases\"}"))
@@ -90,7 +90,7 @@ class DocumentControllerTest {
 
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
-                        .file(new MockMultipartFile("files", "lecture-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                        .file(new MockMultipartFile("files", "lecture-10.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
                 .andExpect(status().isCreated());
         mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
                         .file(new MockMultipartFile("files", "lecture-02.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
@@ -99,8 +99,8 @@ class DocumentControllerTest {
         mockMvc.perform(get("/api/courses/{id}/documents", courseId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].filename").value("lecture-01.pdf"))
-                .andExpect(jsonPath("$[1].filename").value("lecture-02.pdf"));
+                .andExpect(jsonPath("$[0].filename").value("lecture-02.pdf"))
+                .andExpect(jsonPath("$[1].filename").value("lecture-10.pdf"));
     }
 
     @Test

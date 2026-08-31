@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.http.HttpHeaders;
@@ -53,7 +52,7 @@ public class DocumentController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
         }
         return documentRepository.findByCourseId(courseId).stream()
-                .sorted(Comparator.comparing(Document::getId))
+                .sorted(DocumentOrder.comparator())
                 .map(DocumentResponse::from)
                 .toList();
     }

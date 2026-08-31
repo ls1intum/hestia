@@ -429,6 +429,8 @@ export interface components {
             createdAt?: string;
             sources?: components["schemas"]["GoalSourceResponse"][];
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
+            /** Format: int32 */
+            lectureOrder?: number;
         };
         AddChildRequest: {
             text?: string;
