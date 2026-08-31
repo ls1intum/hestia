@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
@@ -41,11 +42,15 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
 
         List<ExtractedSkill> expected = List.of(
-                new ExtractedSkill("Apply the testing strategy.", "Testing Strategy", GoalKind.EXPLICIT,
+                new ExtractedSkill("Applying the testing strategy in representative projects.",
+                        "Apply Testing Strategy", GoalKind.EXPLICIT,
                         0, 0,
-                        List.of(new ExtractedSkill.Knowledge("Explain the testing strategy.", "Testing Strategy",
+                        List.of(new ExtractedSkill.Knowledge(
+                                "Explaining the principles behind the testing strategy.",
+                                "Explain Testing Strategy",
                                 GoalKind.EXPLICIT, 0, 0))),
-                new ExtractedSkill("Apply the strategy to a small project.", "Testing Practice", GoalKind.IMPLICIT,
+                new ExtractedSkill("Applying the strategy to a small project.", "Apply Testing Practice",
+                        GoalKind.IMPLICIT,
                         0, 0, List.of()));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
@@ -62,8 +67,9 @@ class SessionExtractionServiceTest {
                 .contains("Session 4: Testing")
                 .contains("[0] FULL-SESSION-MARKER-42")
                 // Asserted in fragments: the template wraps both sentences across two lines.
-                .contains("HARD CAP")
-                .contains("more than seven skills")
+                .contains("return TWO OR THREE, and")
+                .contains("never more than 4")
+                .contains("Reaching the maximum is a signal that you have not merged enough")
                 .contains("If you are unsure whether something")
                 .contains("is a skill or knowledge, make it knowledge")
                 .contains("knowledge children")
@@ -71,11 +77,11 @@ class SessionExtractionServiceTest {
                 // Knowledge must be demanded as an OUTCOME, not as a bare fact: the word
                 // "declarative" used to licence propositions and produced 55% bare statements.
                 .doesNotContain("declarative")
-                .contains("start with a verb naming what the student does with it")
+                .contains("expanded action-noun form naming what the student does with it")
                 .contains("Never state a bare fact")
                 .contains("WRONG:")
                 .contains("RIGHT:")
-                .contains("The verb-initial rule and every")
+                .contains("The wording invariant and every")
                 .contains("source-line rule")
                 // Guards the recomposed-quote failure: heading + its bullets read as one block.
                 .contains("are SEPARATE")
@@ -87,6 +93,214 @@ class SessionExtractionServiceTest {
                 .contains("sourceStartLine")
                 .contains("sourceEndLine")
                 .doesNotContain("sourceSnippet");
+    }
+
+    @Test
+    void retriesCompleteSessionWhenARequiredTextFieldIsMissing() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill malformed = new ExtractedSkill(null, "Diskrete Teilmengen charakterisieren",
+                GoalKind.IMPLICIT, 0, 0, List.of());
+        ExtractedSkill corrected = new ExtractedSkill(
+                "Charakterisieren diskreter Teilmengen anhand ihrer Häufungspunkte.",
+                "Diskrete Teilmengen charakterisieren", GoalKind.IMPLICIT, 0, 0, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(malformed), List.of(corrected));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Vorlesung 1", "text", null, "German", null, List.of());
+
+        assertThat(result).containsExactly(corrected);
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(spec, times(2)).user(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues().get(1))
+                .contains("previous response violated")
+                .contains("Regenerate the")
+                .contains("COMPLETE response")
+                .contains("distinct text")
+                .contains("action-noun wording");
+    }
+
+    @Test
+    void rejectsSessionWhenCorrectionRetryStillHasMissingText() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill malformed = new ExtractedSkill(null, "Missing text",
+                GoalKind.IMPLICIT, 0, 0, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(malformed));
+        clearInvocations(spec);
+
+        SessionExtractionService service = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2);
+
+        assertThatThrownBy(() -> service.extract(
+                "Vorlesung 1", "text", null, "German", null, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-blank text");
+        verify(spec, times(2)).user(anyString());
+    }
+
+    @Test
+    void rejectsMoreBroadSkillsThanOneSessionMayTeach() {
+        List<ExtractedSkill> overfull = java.util.stream.IntStream.rangeClosed(
+                        1, SessionExtractionService.MAX_SKILLS_PER_SESSION + 1)
+                .mapToObj(index -> new ExtractedSkill(
+                        "Applying method " + index + " in representative contexts.",
+                        "Apply Method " + index, GoalKind.IMPLICIT, 0, 0, List.of()))
+                .toList();
+
+        assertThatThrownBy(() -> SessionExtractionService.validate(overfull, "English"))
+                .hasMessageContaining("more than 4 broad skills");
+    }
+
+    @Test
+    void retriesCompleteSessionWhenSourceRangeIsOutsideNumberedText() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill invalid = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, 8, 9, List.of());
+        ExtractedSkill corrected = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, 0, 1, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(invalid), List.of(corrected));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Lecture", "first line\nsecond line", null, "English", null, List.of());
+
+        assertThat(result).containsExactly(corrected);
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(spec, times(2)).user(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues().get(1))
+                .contains("Specific validation failure")
+                .contains("invalid source range [8..9]")
+                .contains("only the structured JSON");
+    }
+
+    @Test
+    void rejectsMissingPartialAndAmbiguousEvidenceAfterRetry() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill missing = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, null, null, List.of());
+        ExtractedSkill partial = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, 0, null, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(missing), List.of(partial));
+        clearInvocations(spec);
+
+        SessionExtractionService service = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2);
+
+        assertThatThrownBy(() -> service.extract(
+                "Lecture", "one line", null, "English", null, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("both sourceStartLine and sourceEndLine");
+        verify(spec, times(2)).user(anyString());
+    }
+
+    @Test
+    void salvagesIndividuallyGroundedOutcomesAfterInvalidCorrectionRetry() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill invalidFirst = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, null, null, List.of());
+        ExtractedSkill validSkill = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, 0, 0, List.of(
+                        new ExtractedSkill.Knowledge(
+                                "Explaining the method's central assumption in context.",
+                                "Explain Central Assumption", GoalKind.IMPLICIT, 1, 1),
+                        new ExtractedSkill.Knowledge(
+                                "Identifying an unsupported detail in the example.",
+                                "Identify Unsupported Detail", GoalKind.IMPLICIT, null, null)));
+        ExtractedSkill invalidSkill = new ExtractedSkill(
+                "Applying an unsupported procedure to examples.", "Apply Unsupported Procedure",
+                GoalKind.IMPLICIT, 9, 9, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(invalidFirst), List.of(validSkill, invalidSkill));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Lecture", "method\nassumption", null, "English", null, List.of());
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().text()).isEqualTo(validSkill.text());
+        assertThat(result.getFirst().knowledge())
+                .extracting(ExtractedSkill.Knowledge::text)
+                .containsExactly("Explaining the method's central assumption in context.");
+        verify(spec, times(2)).user(anyString());
+    }
+
+    @Test
+    void acceptsFigureOnlyEvidenceAndRejectsLinesCombinedWithFigure() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill both = new ExtractedSkill(
+                "Applying a visual method to representative examples.", "Apply Visual Method",
+                GoalKind.IMPLICIT, 0, 0, 0, List.of());
+        ExtractedSkill figureOnly = new ExtractedSkill(
+                "Applying a visual method to representative examples.", "Apply Visual Method",
+                GoalKind.IMPLICIT, null, null, 0, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(both), List.of(figureOnly));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Lecture", "one line", null, "English", null,
+                        List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
+
+        assertThat(result).containsExactly(figureOnly);
+        verify(spec, times(2)).user(anyString());
+    }
+
+    @Test
+    void ignoresStructuredOutputFigurePlaceholderWhenNoFiguresWereOffered() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill modelResponse = new ExtractedSkill(
+                "Applying a textual method to representative examples.", "Apply Textual Method",
+                GoalKind.IMPLICIT, 0, 0, 0, List.of(
+                        new ExtractedSkill.Knowledge(
+                                "Explaining the textual method's central assumption.",
+                                "Explain Central Assumption", GoalKind.IMPLICIT, 1, 1, 0)));
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(modelResponse));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Lecture", "method\nassumption", null, "English", null, List.of());
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().sourceFigure()).isNull();
+        assertThat(result.getFirst().knowledge().getFirst().sourceFigure()).isNull();
+        verify(spec).user(anyString());
     }
 
     @Test
@@ -189,9 +403,11 @@ class SessionExtractionServiceTest {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        List<ExtractedSkill> first = List.of(new ExtractedSkill("English outcome", "English label",
+        List<ExtractedSkill> first = List.of(new ExtractedSkill(
+                "Anwenden einer englischen Methode in repräsentativen Kontexten.", "Englische Methode anwenden",
                 GoalKind.EXPLICIT, 0, 0, List.of()));
-        List<ExtractedSkill> retry = List.of(new ExtractedSkill("Deutsches Ergebnis", "Deutsche Bezeichnung",
+        List<ExtractedSkill> retry = List.of(new ExtractedSkill(
+                "Anwenden einer deutschen Methode in repräsentativen Kontexten.", "Deutsche Methode anwenden",
                 GoalKind.EXPLICIT, 0, 0, List.of()));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))

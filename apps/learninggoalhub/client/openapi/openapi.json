@@ -1188,6 +1188,7 @@
             "type": "string",
             "enum": [
               "CONTRIBUTES_TO",
+              "SUPPORTS",
               "PREREQUISITE_OF",
               "OVERLAPS_WITH"
             ]
@@ -1406,6 +1407,10 @@
             "items": {
               "$ref": "#/components/schemas/GoalRelationshipResponse"
             }
+          },
+          "lectureOrder": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1742,6 +1747,14 @@
           "skillsReviewedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
           }
         }
       },
@@ -1870,6 +1883,12 @@
           "failedSessions": {
             "type": "integer",
             "format": "int32"
+          },
+          "failedSessionNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

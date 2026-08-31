@@ -37,7 +37,9 @@ spring:
     # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
     # so the hundreds of classify/embed/synthesis calls in one run spread out under the limit.
     retry:
-      on-http-codes: [429]
+      # 5xx responses are transient provider failures. Retry them alongside rate limiting; the
+      # application supplies randomized exponential backoff so concurrent workers do not retry in lockstep.
+      on-http-codes: [429, 500, 502, 503, 504]
       max-attempts: 6
       backoff:
         initial-interval: 1s
@@ -67,11 +69,16 @@ hestia:
     # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
     # any failure the document is split, the original bookmark behaviour.
     judge-model: openai-gpt-oss-120b
+  document-outline:
+    # Large bookmarkless PDFs may contain an entire course. Inspect compact per-page previews to
+    # recover lecture/chapter boundaries; smaller files remain one session without an extra call.
+    model: openai-gpt-oss-120b
+    min-pages: 8
   extraction:
-    # Larger chunks + more parallelism: fewer, wider extraction calls run concurrently without
-    # tripping SAIA's rate limit (see tuning notes), which dominates wall-clock time on big PDFs.
+    # Large session prompts are provider-intensive. Four concurrent calls keep useful throughput
+    # without sending an entire medium-sized course as one burst.
     chunk-size: 16000
-    parallelism: 16
+    parallelism: 4
     # Sessions at or below this length use one full-session extraction call; 0 disables the direct
     # path entirely for shadow-run comparison with the legacy chunked pipeline.
     direct-max-chars: 80000
@@ -79,6 +86,18 @@ hestia:
     # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
     temperature: 0.2
     assignment-temperature: 0.0
+    # The competency tree is two validated partitions: outcomes into sub-skills, sub-skills into
+    # terminal skills. Both stages measured as an exact 86/86 partition on a real course, but only
+    # GPT-OSS honoured the requested sub-skill count (DeepSeek returned 38 against a range of 18-24,
+    # which the validator can only reject), so both stages default to it. Split them to A/B a model.
+    taxonomy-planner-model: openai-gpt-oss-120b
+    taxonomy-partition-model: openai-gpt-oss-120b
+    # Whether stage one may leave outcomes out of the tree as supporting detail. Off, because it is
+    # the least reproducible decision in the pipeline: over five runs of one course it set aside
+    # between 1 and 17 of 34 outcomes (3%-50%), while extraction varied by ~6% and the set of
+    # terminal themes not at all. With it off every outcome is grouped, so two runs of a course can
+    # be compared. The exact-partition accounting is enforced either way.
+    set-aside-outcomes: false
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.

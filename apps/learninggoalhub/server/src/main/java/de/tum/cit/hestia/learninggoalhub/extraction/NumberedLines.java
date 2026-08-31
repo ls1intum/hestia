@@ -10,7 +10,8 @@ import java.util.stream.Collectors;
  */
 final class NumberedLines {
 
-    private static final int MAX_LINE_DISTANCE = 10;
+    /** The prompt permits one contiguous source passage of at most five numbered lines. */
+    private static final int MAX_LINE_DISTANCE = 4;
 
     private final List<Line> lines;
 
@@ -49,7 +50,7 @@ final class NumberedLines {
             return "beyond the " + lines.size() + " numbered lines";
         }
         if (lastLine - firstLine > MAX_LINE_DISTANCE) {
-            return "spans more than " + MAX_LINE_DISTANCE + " numbered lines";
+            return "spans more than " + (MAX_LINE_DISTANCE + 1) + " numbered lines";
         }
         return "accepted";
     }

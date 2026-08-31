@@ -20,6 +20,7 @@ import {
   buildCompetencyForest,
   childGoalsOf,
   generatedChildCount,
+  supportingOutcomesOf,
   type CompetencyNode,
 } from "../lib/goals.ts";
 
@@ -32,6 +33,7 @@ const DRILL_W = 320; // drill-path boxes
 const KNOWLEDGE_W = 240; // knowledge boxes under a focused sub-skill
 const GAP = 12;
 const CONNECTOR_H = 40;
+const MAX_SUB_SKILLS = 5;
 type CreationTier = 1 | 2 | 3;
 type CreationState = {
   key: string;
@@ -356,7 +358,7 @@ export default function CompetencyGraph({
         className="mx-auto flex w-full max-w-5xl flex-col gap-3 pt-1"
       >
         <div className="grid gap-3 px-1 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {forest.map((node) => {
+          {forest.map((node, index) => {
             const expandable = node.children.length > 0;
             const deep = countGrandchildren(node);
             return (
@@ -376,6 +378,7 @@ export default function CompetencyGraph({
                   actions={actions}
                   fluid
                   deepKnowledge={deep}
+                  sequenceLabel={`${index + 1}.`}
                 />
                 {expandable && (
                   <div className="justify-self-center">
@@ -408,13 +411,15 @@ export default function CompetencyGraph({
             />
           </div>
         </div>
-        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
+        <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
       </div>
     );
   }
 
   const skillColor = COMPETENCY_ROLE_META.competency.color;
   const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
+  const competencyNumber = forest.findIndex((node) => node.goal.id === competency.goal.id) + 1;
+  const canAddSubSkill = competency.children.length < MAX_SUB_SKILLS;
   const focusedSubIndex = subSkill
     ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
     : -1;
@@ -424,7 +429,7 @@ export default function CompetencyGraph({
     ...competency.children.map((child) =>
       subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
     ),
-    BOX_W,
+    ...(canAddSubSkill ? [BOX_W] : []),
   ];
   const siblingRowWidth = rowWidth(siblingWidths);
   const siblingCentres = childCentres(siblingWidths);
@@ -487,6 +492,7 @@ export default function CompetencyGraph({
                 onClick={() => onOpenDetail(competency)}
                 actions={actions}
                 wide
+                sequenceLabel={`${competencyNumber}.`}
               />
               <Connector
                 childWidths={siblingWidths}
@@ -517,6 +523,7 @@ export default function CompetencyGraph({
                             : onOpenDetail(child)
                         }
                         actions={actions}
+                        sequenceLabel={`${competencyNumber}.${i + 1}`}
                         title={isSubSkill ? "Focus this sub-skill" : undefined}
                       />
                       {expandable && (
@@ -525,24 +532,26 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
-                <CreationGhost
-                  label="New sub-skill"
-                  color={subColor}
-                  widthClass="w-56 shrink-0"
-                  active={creation?.key === `2:${competency.goal.id}`}
-                  value={creation?.text ?? ""}
-                  pending={createMutation.isPending}
-                  error={
-                    creation?.key === `2:${competency.goal.id}` &&
-                    createMutation.isError
-                      ? (createMutation.error as Error).message
-                      : undefined
-                  }
-                  onStart={() => beginCreation(2, competency.goal.id!)}
-                  onChange={updateCreationText}
-                  onSubmit={submitCreation}
-                  onCancel={cancelCreation}
-                />
+                {canAddSubSkill && (
+                  <CreationGhost
+                    label="New sub-skill"
+                    color={subColor}
+                    widthClass="w-56 shrink-0"
+                    active={creation?.key === `2:${competency.goal.id}`}
+                    value={creation?.text ?? ""}
+                    pending={createMutation.isPending}
+                    error={
+                      creation?.key === `2:${competency.goal.id}` &&
+                      createMutation.isError
+                        ? (createMutation.error as Error).message
+                        : undefined
+                    }
+                    onStart={() => beginCreation(2, competency.goal.id!)}
+                    onChange={updateCreationText}
+                    onSubmit={submitCreation}
+                    onCancel={cancelCreation}
+                  />
+                )}
               </div>
             </>
           ) : (
@@ -558,6 +567,7 @@ export default function CompetencyGraph({
                   actions={actions}
                   subdued
                   wide
+                  sequenceLabel={`${competencyNumber}.`}
                 />
               </div>
               <Connector
@@ -589,6 +599,7 @@ export default function CompetencyGraph({
                         dimmed={!isFocused}
                         compact={!isFocused}
                         clampText={!isFocused}
+                        sequenceLabel={`${competencyNumber}.${i + 1}`}
                         title={
                           focusable
                             ? "Focus this sub-skill"
@@ -598,24 +609,26 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
-                <CreationGhost
-                  label="New sub-skill"
-                  color={subColor}
-                  widthClass="w-56 shrink-0"
-                  active={creation?.key === `2:${competency.goal.id}`}
-                  value={creation?.text ?? ""}
-                  pending={createMutation.isPending}
-                  error={
-                    creation?.key === `2:${competency.goal.id}` &&
-                    createMutation.isError
-                      ? (createMutation.error as Error).message
-                      : undefined
-                  }
-                  onStart={() => beginCreation(2, competency.goal.id!)}
-                  onChange={updateCreationText}
-                  onSubmit={submitCreation}
-                  onCancel={cancelCreation}
-                />
+                {canAddSubSkill && (
+                  <CreationGhost
+                    label="New sub-skill"
+                    color={subColor}
+                    widthClass="w-56 shrink-0"
+                    active={creation?.key === `2:${competency.goal.id}`}
+                    value={creation?.text ?? ""}
+                    pending={createMutation.isPending}
+                    error={
+                      creation?.key === `2:${competency.goal.id}` &&
+                      createMutation.isError
+                        ? (createMutation.error as Error).message
+                        : undefined
+                    }
+                    onStart={() => beginCreation(2, competency.goal.id!)}
+                    onChange={updateCreationText}
+                    onSubmit={submitCreation}
+                    onCancel={cancelCreation}
+                  />
+                )}
               </div>
               {/* The active sub-skill sits at a known fixed position in the sibling row. Moving
                   this whole knowledge branch by that same offset makes its connector originate
@@ -742,7 +755,7 @@ export default function CompetencyGraph({
           </div>
         )}
       </div>
-      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
+      <CompetencyGoalModal goal={detail ? (goalById.get(detail.goal.id) ?? detail.goal) : null} role={detail?.role} knowledge={childGoalsOf(forest, detail?.goal.id)} supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)} generatedChildCount={generatedChildCount(forest, detail?.goal.id)} onClose={closeDetail} onUpdate={onUpdate} onDelete={onDelete} onOpenGoal={onOpenGoal} {...backProps} />
     </div>
   );
 }
@@ -955,6 +968,7 @@ function Box({
   clampText = false,
   title,
   deepKnowledge = null,
+  sequenceLabel,
 }: {
   node: CompetencyNode;
   active: boolean;
@@ -983,6 +997,8 @@ function Box({
   title?: string;
   /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
   deepKnowledge?: number | null;
+  /** Hierarchical lecture-order label, e.g. "2." or "2.3". */
+  sequenceLabel?: string;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
@@ -1085,6 +1101,7 @@ function Box({
           isGap ? "text-hestia-danger" : "text-hestia-text"
         } ${clampText ? "line-clamp-3" : ""}`}
       >
+        {sequenceLabel != null && <span className="tabular-nums">{sequenceLabel} </span>}
         {node.goal.shortLabel ?? node.goal.text}
       </p>
       <div className="mt-auto flex items-center gap-1 pt-1">

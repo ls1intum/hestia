@@ -284,6 +284,7 @@ public class LearningGoalController {
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal.setHierarchyNode(competencyRoot(course));
+        goal.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(goal);
         String languageName = courseLanguageName(course);
         GeneratedSubtree generated = null;
@@ -399,6 +400,15 @@ public class LearningGoalController {
         Course course = terminal.getCourse();
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
                 subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), model));
+        long retainedChildren = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
+                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
+                .filter(relationship -> relationship.getSource().getCreationProvenance()
+                        != GoalCreationProvenance.WIZARD_AI_SUBTREE)
+                .count();
+        if (retainedChildren + generated.subSkills().size() > SubtreeSynthesizer.MAX_SUB_SKILLS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The generated subtree and existing children would exceed five sub-skills");
+        }
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         applyClassifications(generatedNodes.nodes(), model);
 
@@ -428,10 +438,16 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
         }
         rejectIfKnowledgeTier(parent);
+        if (parent.getOrigin() == GoalOrigin.TERMINAL
+                && directChildCount(parent) >= SubtreeSynthesizer.MAX_SUB_SKILLS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A terminal skill cannot have more than five sub-skills");
+        }
 
         Course course = parent.getCourse();
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
+        child.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(child);
         goalRepository.flush();
         linkContributors(List.of(child), parent);
@@ -486,6 +502,15 @@ public class LearningGoalController {
     }
 
     private void persistGeneratedNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
+        int nextOrder = nextLectureOrder(terminal.getCourse());
+        if (terminal.getLectureOrder() == null) {
+            terminal.setLectureOrder(nextOrder++);
+        }
+        for (LearningGoal node : generatedNodes.nodes()) {
+            if (node.getLectureOrder() == null) {
+                node.setLectureOrder(nextOrder++);
+            }
+        }
         goalRepository.saveAll(allNodes(terminal, generatedNodes));
         goalRepository.flush();
         for (int i = 0; i < generatedNodes.subSkills().size(); i++) {
@@ -501,6 +526,21 @@ public class LearningGoalController {
     private record GeneratedNodes(List<LearningGoal> subSkills,
                                   List<List<LearningGoal>> knowledgeBySubSkill,
                                   List<LearningGoal> nodes) {
+    }
+
+    private long directChildCount(LearningGoal parent) {
+        return goalRelationshipRepository.findByTargetId(parent.getId()).stream()
+                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
+                .count();
+    }
+
+    private int nextLectureOrder(Course course) {
+        return goalRepository.findByCourseId(course.getId()).stream()
+                .map(LearningGoal::getLectureOrder)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(-1) + 1;
     }
 
     private LearningGoal newGeneratedGoal(Course course, String text, GoalOrigin origin) {
@@ -789,6 +829,7 @@ public class LearningGoalController {
                                        HierarchyPath hierarchy,
                                        BloomLevel bloomLevel,
                                        SoloLevel soloLevel,
+                                       Integer lectureOrder,
                                        OffsetDateTime createdAt,
                                        List<GoalSourceResponse> sources,
                                        List<GoalRelationshipResponse> relationships) {
@@ -810,6 +851,7 @@ public class LearningGoalController {
                     hierarchy,
                     g.getBloomLevel(),
                     g.getSoloLevel(),
+                    g.getLectureOrder(),
                     g.getCreatedAt(),
                     sources,
                     relationships);

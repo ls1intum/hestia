@@ -1,8 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -94,8 +96,9 @@ public class ExtractionProgressTracker {
         private final String model;
         private volatile Phase phase = Phase.DESCRIBING_FIGURES;
         private final AtomicInteger completed = new AtomicInteger();
-        /** Sessions the pipeline had to drop. A run stays SUCCEEDED with these missing. */
+        /** Sessions the pipeline could not analyse. Any entry makes the run fail atomically. */
         private final AtomicInteger failedSessions = new AtomicInteger();
+        private final ConcurrentLinkedQueue<String> failedSessionNames = new ConcurrentLinkedQueue<>();
         private volatile int total;
         private volatile Status status = Status.RUNNING;
         private volatile String error;
@@ -126,12 +129,19 @@ public class ExtractionProgressTracker {
         }
 
         /** Records a session the pipeline could not analyse, so the review can say what is missing. */
-        public void sessionFailed() {
+        public void sessionFailed(String sessionName) {
             failedSessions.incrementAndGet();
+            failedSessionNames.add(sessionName == null || sessionName.isBlank()
+                    ? "Untitled session"
+                    : sessionName.strip());
         }
 
         public int failedSessions() {
             return failedSessions.get();
+        }
+
+        public List<String> failedSessionNames() {
+            return List.copyOf(failedSessionNames);
         }
 
         public void succeed(ExtractionRunner.ExtractionSummary summary) {
@@ -146,6 +156,11 @@ public class ExtractionProgressTracker {
             this.status = Status.FAILED;
         }
 
+        /** Publishes the committed extraction counts before the separately transactional tree stage. */
+        public void checkpoint(ExtractionRunner.ExtractionSummary committedSummary) {
+            this.summary = committedSummary;
+        }
+
         private Snapshot snapshot() {
             Status currentStatus = status;
             int percent = currentStatus == Status.SUCCEEDED
@@ -153,7 +168,7 @@ public class ExtractionProgressTracker {
                     : Math.min(99, weightedPercent(phase, completed.get(), total));
             percent = lastPercent.accumulateAndGet(percent, Math::max);
             return new Snapshot(currentStatus, phase, completed.get(), total, model, summary, error, percent,
-                    failedSessions.get());
+                    failedSessions.get(), List.copyOf(failedSessionNames));
         }
     }
 
@@ -164,8 +179,9 @@ public class ExtractionProgressTracker {
             case PARSING -> new int[] {35, 40};
             case EXTRACTING -> new int[] {40, 70};
             case CLASSIFYING -> new int[] {70, 80};
-            case EMBEDDING -> new int[] {80, 85};
-            case PERSISTING -> new int[] {85, 90};
+            // Retained for backward-compatible API deserialization; new runs skip this phase.
+            case EMBEDDING -> new int[] {80, 90};
+            case PERSISTING -> new int[] {80, 90};
             case SYNTHESIZING -> new int[] {90, 100};
         };
         double fraction = total <= 0 ? 0 : Math.min(1, Math.max(0, (double) completed / total));
@@ -175,12 +191,12 @@ public class ExtractionProgressTracker {
     /**
      * Immutable view returned to pollers.
      *
-     * @param failedSessions sessions dropped by the run. Deliberately its own field rather than part
-     *                       of {@code summary}: it is a warning about what is missing, not a result.
+     * @param failedSessions sessions the run could not analyse.
+     * @param failedSessionNames their visible lecture/session names, in completion order.
      */
     public record Snapshot(Status status, Phase phase, int completed, int total, String model,
                            ExtractionRunner.ExtractionSummary summary, String error, int percent,
-                           int failedSessions) {
+                           int failedSessions, List<String> failedSessionNames) {
     }
 
     /** The globally active run and its latest immutable snapshot. */

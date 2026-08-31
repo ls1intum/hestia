@@ -53,6 +53,17 @@ export type CompetencyNode = {
   children: CompetencyNode[];
 };
 
+/** Lecture order first; legacy/unpositioned goals remain stable by database id and then text. */
+function compareLectureOrder(a: LearningGoal, b: LearningGoal): number {
+  const aOrder = a.lectureOrder ?? Number.MAX_SAFE_INTEGER;
+  const bOrder = b.lectureOrder ?? Number.MAX_SAFE_INTEGER;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  const aId = a.id ?? Number.MAX_SAFE_INTEGER;
+  const bId = b.id ?? Number.MAX_SAFE_INTEGER;
+  if (aId !== bId) return aId - bId;
+  return (a.text ?? "").localeCompare(b.text ?? "");
+}
+
 // Role colours are drawn from the HESTIA styleguide's text-safe palette (primary / accent /
 // text-muted); warning is deliberately avoided (never a standalone text colour) and danger is
 // reserved for gaps. Skill takes gold (the sparing main accent, few top-level nodes), sub-skill
@@ -117,6 +128,7 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     const nextPath = goal.id != null ? new Set(onPath).add(goal.id) : onPath;
     const children = rawChildren
       .filter((c) => c.id != null && !onPath.has(c.id))
+      .sort(compareLectureOrder)
       .map((c) => build(c, depth + 1, nextPath));
 
     const role: CompetencyRole =
@@ -136,7 +148,7 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
   return goals
     .filter((g) => g.origin === "TERMINAL")
     .map((g) => build(g, 0, new Set()))
-    .sort((a, b) => (a.goal.text ?? "").localeCompare(b.goal.text ?? ""));
+    .sort((a, b) => compareLectureOrder(a.goal, b.goal));
 }
 
 /** Finds a node in the competency forest and returns the immediate child goals attached to it. */
@@ -154,6 +166,22 @@ export function childGoalsOf(
     return undefined;
   };
   return find(forest)?.children.map((child) => child.goal) ?? [];
+}
+
+/** Source-backed lecture outcomes that justify a synthesized sub-skill without becoming tree nodes. */
+export function supportingOutcomesOf(
+  goals: LearningGoal[],
+  goalId: number | null | undefined,
+): LearningGoal[] {
+  if (goalId == null) return [];
+  return goals
+    .filter((goal) =>
+      goal.relationships?.some(
+        (relationship) =>
+          relationship.type === "SUPPORTS" && relationship.targetGoalId === goalId,
+      ),
+    )
+    .sort(compareLectureOrder);
 }
 
 /**

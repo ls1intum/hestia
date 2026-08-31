@@ -19,6 +19,7 @@ import {
   buildCompetencyForest,
   childGoalsOf,
   generatedChildCount,
+  supportingOutcomesOf,
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
@@ -49,6 +50,7 @@ import {
 type Row = {
   id: number;
   parent: number | null;
+  number: string;
   goal: LearningGoal;
   role: CompetencyRole;
   childCount: number;
@@ -600,10 +602,11 @@ export default function CompetencyTree({
     }
     // Only two tiers are addable here — knowledge is added from its sub-skill's evidence list.
     if (!filtering && depth < 2) {
+      const visibleSiblingCount = siblings.filter((row) => !hiddenIds.has(row.id)).length;
       const append =
         depth === 0
           ? { tier: 1 as const, label: "Add skill", color: "var(--hestia-primary)" }
-          : depth === 1 && parentRole === "competency"
+          : depth === 1 && parentRole === "competency" && visibleSiblingCount < 5
             ? {
                 tier: 2 as const,
                 label: "Add sub-skill",
@@ -684,6 +687,17 @@ export default function CompetencyTree({
           />
         </label>
         <span className="flex-1" />
+        {sort ? (
+          <button
+            type="button"
+            onClick={() => setSort(null)}
+            className="text-xs font-medium text-hestia-primary underline transition hover:text-hestia-text"
+          >
+            Restore lecture order
+          </button>
+        ) : (
+          <span className="text-xs font-medium text-hestia-text-muted">Lecture order</span>
+        )}
         {!filtering && (
           <Button
             onClick={() => {
@@ -804,6 +818,7 @@ export default function CompetencyTree({
         goal={detail ? (byId.get(detail.goal.id!)?.goal ?? detail.goal) : null}
         role={detail?.role}
         knowledge={childGoalsOf(forest, detail?.goal.id)}
+        supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)}
         generatedChildCount={generatedChildCount(forest, detail?.goal.id)}
         onClose={closeDetail}
         onUpdate={onUpdate}
@@ -830,11 +845,12 @@ export default function CompetencyTree({
  */
 function flattenForest(forest: CompetencyNode[]): Row[] {
   const rows: Row[] = [];
-  const walk = (node: CompetencyNode, parent: number | null): string[] => {
+  const walk = (node: CompetencyNode, parent: number | null, number: string): string[] => {
     if (node.goal.id == null) return [];
     const row: Row = {
       id: node.goal.id,
       parent,
+      number,
       goal: node.goal,
       role: node.role,
       childCount: node.children.length,
@@ -844,12 +860,18 @@ function flattenForest(forest: CompetencyNode[]): Row[] {
     const sessions = new Set<string>();
     const own = sessionTitleOf(node.goal);
     if (own) sessions.add(own);
-    for (const child of node.children)
-      for (const session of walk(child, node.goal.id)) sessions.add(session);
+    for (let index = 0; index < node.children.length; index++) {
+      const child = node.children[index];
+      for (const session of walk(child, node.goal.id, `${number}.${index + 1}`)) {
+        sessions.add(session);
+      }
+    }
     row.sessions = [...sessions].sort((a, b) => a.localeCompare(b));
     return row.sessions;
   };
-  for (const node of forest) walk(node, null);
+  for (let index = 0; index < forest.length; index++) {
+    walk(forest[index], null, `${index + 1}`);
+  }
   return rows;
 }
 
@@ -1105,6 +1127,7 @@ function GridRow({
               row.role === "competency" ? "font-semibold" : ""
             }`}
           >
+            <span className="mr-1 tabular-nums text-hestia-text-muted">{row.number}.</span>
             {displayedGoalLabel(row.goal)}
             {evidenceMatch && (
               <span className="ml-2 whitespace-nowrap text-xs text-hestia-text-muted">

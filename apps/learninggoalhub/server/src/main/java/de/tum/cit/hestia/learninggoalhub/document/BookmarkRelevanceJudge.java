@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>The split boundaries themselves stay deterministic (from the bookmarks); only this keep/discard
  * verdict is judged. The decision runs in two stages: a cheap mechanical pre-filter catches the
- * unambiguous PowerPoint-export shapes without any model call, and only the genuine grey zone (≥3
+ * unambiguous PowerPoint-export shapes without any model call, and only the genuine grey zone (at least two
  * custom-named sections over many pages — a combined script vs. a deck with renamed sections) is sent
  * to a text model that weighs the filename and titles. On model failure it falls back to splitting,
  * which is the original behaviour and keeps a real combined script working when the LLM is down.
@@ -29,9 +29,9 @@ public class BookmarkRelevanceJudge {
 
     private static final Logger log = LoggerFactory.getLogger(BookmarkRelevanceJudge.class);
 
-    /** Fewer than this many top-level bookmarks is never a multi-lecture script (e.g. a guest talk
-     * with a 2-entry agenda) — treat as one session. */
-    private static final int MIN_SECTIONS_TO_SPLIT = 3;
+    /** One bookmark cannot form multiple units. Two is a genuine grey zone for the model: it may be
+     * a two-lecture script or merely a two-item agenda. */
+    private static final int MIN_SECTIONS_TO_JUDGE = 2;
     /** "Slide 7: …"/"Folie 7: …" — PowerPoint exports one bookmark per slide. */
     private static final Pattern PER_SLIDE = Pattern.compile("^(slide|folie)\\s*\\d+\\b.*",
             Pattern.CASE_INSENSITIVE);
@@ -87,7 +87,7 @@ public class BookmarkRelevanceJudge {
      * {@code null} for the grey zone that warrants a model call.
      */
     private Boolean mechanicalVerdict(int pageCount, List<String> titles) {
-        if (titles.size() < MIN_SECTIONS_TO_SPLIT) {
+        if (titles.size() < MIN_SECTIONS_TO_JUDGE) {
             return false;
         }
         if (titles.stream().anyMatch(t -> DEFAULT_SECTION_NAMES.contains(t.strip().toLowerCase()))) {

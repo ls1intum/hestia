@@ -1041,6 +1041,28 @@ class LearningGoalControllerTest {
     }
 
     @Test
+    void rejectsSixthManualSubSkillUnderTerminal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+                course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
+        for (int index = 1; index <= 5; index++) {
+            LearningGoal child = goalRepository.saveAndFlush(
+                    generatedGoal(course, "Sub-skill " + index + ".", GoalOrigin.SYNTHESIZED));
+            goalRelationshipRepository.save(new GoalRelationship(
+                    child, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        }
+        goalRelationshipRepository.flush();
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+                        course.getId(), terminal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"A sixth sub-skill.\"}"))
+                .andExpect(status().isConflict());
+
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(6);
+    }
+
+    @Test
     void addsManualChildToExtractedGoal() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(

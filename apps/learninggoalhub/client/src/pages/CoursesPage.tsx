@@ -205,6 +205,8 @@ export default function CoursesPage() {
             {courses.map((course, index) => {
               const expanded = course.id != null && expandedIds.has(course.id);
               const isExtracting = extractionRunning && currentExtraction?.courseId === course.id;
+              const extractionProblem = course.extractionStatus === "FAILED"
+                || (course.extractionStatus === "RUNNING" && !isExtracting);
               return (
                 <li
                   key={course.id}
@@ -233,12 +235,12 @@ export default function CoursesPage() {
                     <Link
                       to={`/courses/${course.id}`}
                       onClick={(event) => {
-                        if (isExtracting && course.id != null) {
+                        if ((isExtracting || extractionProblem) && course.id != null) {
                           event.preventDefault();
                           setReviewCourseId(course.id);
                         }
                       }}
-                      aria-haspopup={isExtracting ? "dialog" : undefined}
+                      aria-haspopup={isExtracting || extractionProblem ? "dialog" : undefined}
                       className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_2.5rem] items-center gap-4 py-4"
                     >
                       <span className="font-medium text-hestia-text">{course.name}</span>
@@ -280,6 +282,7 @@ export default function CoursesPage() {
                           <StatusBadge
                             documentCount={course.documentCount ?? 0}
                             goalCount={course.goalCount ?? 0}
+                            extractionStatus={course.extractionStatus}
                           />
                         )}
                       </span>
@@ -508,13 +511,18 @@ function RowMenu({
 function StatusBadge({
   documentCount,
   goalCount,
+  extractionStatus,
 }: {
   documentCount: number;
   goalCount: number;
+  extractionStatus?: CourseSummary["extractionStatus"];
 }) {
   let label: string;
   let className: string;
-  if (goalCount > 0) {
+  if (extractionStatus === "FAILED" || extractionStatus === "RUNNING") {
+    label = extractionStatus === "FAILED" ? "Failed" : "Interrupted";
+    className = "bg-hestia-danger/10 text-hestia-danger";
+  } else if (goalCount > 0) {
     label = "Analyzed";
     className = "bg-hestia-primary-muted text-hestia-primary";
   } else if (documentCount > 0) {

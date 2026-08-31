@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
-import type { LearningGoal } from "../api/client.ts";
+import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import CompetencyTree from "../components/CompetencyTree.tsx";
 import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
@@ -41,6 +41,7 @@ export default function CoursePage() {
   const [goalsView, setGoalsView] = useState<GoalsView>("table");
   const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
+  const [extractionModalOpen, setExtractionModalOpen] = useState(false);
 
   const courseQuery = useQuery({
     queryKey: ["course", courseId],
@@ -62,6 +63,25 @@ export default function CoursePage() {
   // skills, then recorded server-side so it never reappears. Dismissing it is what marks it done,
   // so closing the tab instead leaves it due — the instructor cannot silently miss it.
   const course = courseQuery.data;
+  const extractionProblem = course?.extractionStatus === "FAILED"
+    || course?.extractionStatus === "RUNNING";
+  const extractionStatusQuery = useQuery<ExtractionStatus | null>({
+    queryKey: ["extract-status", courseId],
+    queryFn: async () => {
+      const result = await api.GET("/api/courses/{courseId}/extract/status", {
+        params: { path: { courseId } },
+      });
+      return result.data ?? null;
+    },
+    enabled: extractionModalOpen,
+    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+  });
+  useEffect(() => {
+    if (extractionStatusQuery.data?.status !== "SUCCEEDED") return;
+    queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["courses"] });
+    queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+  }, [courseId, extractionStatusQuery.data?.status, queryClient]);
   const reviewDue = course != null
     && (course.skillCount ?? 0) > 0
     && course.skillsReviewedAt == null;
@@ -164,6 +184,30 @@ export default function CoursePage() {
           <p className="text-sm text-hestia-danger">
             {(deleteMutation.error as Error).message}
           </p>
+        )}
+        {extractionProblem && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-danger/40 bg-hestia-danger/10 px-4 py-3 text-sm text-hestia-text">
+            <span>
+              The latest extraction did not finish, so this course may not contain a complete skill tree.
+            </span>
+            <Button size="sm" onClick={() => setExtractionModalOpen(true)}>
+              View error and retry
+            </Button>
+          </div>
+        )}
+
+        {extractionModalOpen && (
+          <ExtractionProgressModal
+            open
+            status={extractionStatusQuery.data ?? undefined}
+            error={
+              extractionStatusQuery.data?.status === "FAILED"
+                ? extractionStatusQuery.data.error ?? "Extraction failed."
+                : null
+            }
+            courseId={courseId}
+            onClose={() => setExtractionModalOpen(false)}
+          />
         )}
         {/* In-modal edits (text, Bloom/SOLO dots) save without a dialog of their own, so their
             failures surface here. */}

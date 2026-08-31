@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -10,6 +11,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,15 +28,21 @@ public class ExtractionController {
 
     private final ExtractionRunner runner;
     private final ExtractionProgressTracker progressTracker;
+    private final ExtractionRunRepository extractionRunRepository;
+    private final ExtractionRunAuditService extractionRunAuditService;
     private final CourseRepository courseRepository;
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
                                 ExtractionProgressTracker progressTracker,
+                                ExtractionRunRepository extractionRunRepository,
+                                ExtractionRunAuditService extractionRunAuditService,
                                 CourseRepository courseRepository,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
         this.progressTracker = progressTracker;
+        this.extractionRunRepository = extractionRunRepository;
+        this.extractionRunAuditService = extractionRunAuditService;
         this.courseRepository = courseRepository;
         this.extractionExecutor = extractionExecutor;
     }
@@ -80,7 +90,8 @@ public class ExtractionController {
 
     /**
      * Rebuilds only the competency tree from the goals this course already has — no documents are
-     * re-read, so this costs the three tree synthesis calls instead of a full extraction.
+     * re-read, so this runs only the taxonomy planning, assignment/review, and classification calls
+     * instead of a full extraction.
      *
      * <p>Returns 409 when the tree holds instructor work (a hand-added skill or child, a generated
      * subtree, an approved terminal), since a rebuild replaces exactly those. {@code force=true}
@@ -91,7 +102,25 @@ public class ExtractionController {
             @PathVariable Long courseId,
             @RequestParam(name = "model", required = false) String model,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
-        return runner.rebuildCompetencyTree(courseId, model, force);
+        Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, model);
+        if (claimed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Another extraction or competency-tree rebuild is already running.");
+        }
+        ExtractionProgressTracker.Run run = claimed.get();
+        run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
+        try {
+            ExtractionRunner.CompetencyTreeResult result = runner.rebuildCompetencyTree(courseId, model, force);
+            run.increment();
+            extractionRunAuditService.finishTreeRetry(courseId);
+            run.succeed(new ExtractionRunner.ExtractionSummary(0, 0, result.competencies()));
+            return result;
+        } catch (RuntimeException | Error ex) {
+            run.fail(errorMessage(ex));
+            throw ex;
+        } finally {
+            progressTracker.finish(courseId);
+        }
     }
 
     /**
@@ -100,9 +129,39 @@ public class ExtractionController {
      */
     @GetMapping("/extract/status")
     public ResponseEntity<ExtractionProgressTracker.Snapshot> extractStatus(@PathVariable Long courseId) {
-        return progressTracker.snapshot(courseId)
+        Optional<ExtractionProgressTracker.Snapshot> live = progressTracker.snapshot(courseId);
+        if (live.isPresent()) {
+            return ResponseEntity.ok(live.get());
+        }
+        return extractionRunRepository.findFirstByCourseIdOrderByStartedAtDesc(courseId)
+                .map(ExtractionController::durableSnapshot)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    private static ExtractionProgressTracker.Snapshot durableSnapshot(ExtractionRun extractionRun) {
+        boolean succeeded = extractionRun.getStatus() == ExtractionRun.Status.SUCCEEDED;
+        ExtractionProgressTracker.Status status = succeeded
+                ? ExtractionProgressTracker.Status.SUCCEEDED
+                : ExtractionProgressTracker.Status.FAILED;
+        String error = extractionRun.getError();
+        if (extractionRun.getStatus() == ExtractionRun.Status.RUNNING) {
+            error = "The extraction was interrupted before it finished. Retry the extraction.";
+        }
+        ExtractionRunner.ExtractionSummary summary = extractionRun.getGoalsCreated() == null
+                ? null
+                : new ExtractionRunner.ExtractionSummary(0, extractionRun.getGoalsCreated(), 0);
+        return new ExtractionProgressTracker.Snapshot(
+                status,
+                ExtractionProgressTracker.Phase.SYNTHESIZING,
+                0,
+                0,
+                extractionRun.getModel(),
+                summary,
+                error,
+                succeeded ? 100 : 99,
+                extractionRun.getFailedSessions() == null ? 0 : extractionRun.getFailedSessions(),
+                List.of());
     }
 
     private static String errorMessage(Throwable error) {
@@ -117,6 +176,11 @@ public class ExtractionController {
 
 @Configuration(proxyBeanMethods = false)
 class ExtractionExecutorConfiguration {
+
+    @Bean
+    TransactionOperations extractionTransactions(PlatformTransactionManager transactionManager) {
+        return new TransactionTemplate(transactionManager);
+    }
 
     @Bean(name = "extractionExecutor", destroyMethod = "shutdownNow")
     ExecutorService extractionExecutor() {

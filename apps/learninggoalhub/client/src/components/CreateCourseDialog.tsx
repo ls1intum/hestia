@@ -9,10 +9,9 @@ const ACCEPT = ".pdf,.docx,.pptx,.txt";
 const ACCEPT_LABEL = "PDF, DOCX, PPTX, TXT";
 
 /**
- * Steps between hitting "Create course" and the extraction taking over in the courses list. Only
- * "uploading" has a meaningful percentage — the rest are single server round trips, so they show an
- * indeterminate bar. "processing" is the tail of the same upload request: once the bytes are on the
- * wire the server still parses every file through Tika/PDFBox, which is most of the wait.
+ * Steps between hitting "Create course" and extraction taking over in the courses list. Upload byte
+ * progress is mapped into the middle of one course-creation bar; the surrounding server-only phases
+ * use fixed milestones so the bar always moves forward instead of reaching 100% and restarting.
  */
 type Step = "creating" | "uploading" | "processing" | "starting";
 
@@ -124,6 +123,15 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
     : create.isError
       ? create.error.message
       : null;
+  const progressPercent = step == null
+    ? 0
+    : step === "creating"
+      ? 5
+      : step === "uploading"
+        ? 10 + Math.round(uploadPercent * 0.6)
+        : step === "processing"
+          ? 85
+          : 95;
 
   // Escape closes the dialog, but not mid-flight (an in-progress upload/extraction must not be
   // abandoned by a stray key).
@@ -262,26 +270,20 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   <div>
                     <div className="flex items-center justify-between gap-3 text-sm text-hestia-text-muted">
                       <span aria-live="polite">{STEP_LABEL[step]}</span>
-                      {step === "uploading" && (
-                        <span className="tabular-nums">{uploadPercent}%</span>
-                      )}
+                      <span className="tabular-nums">{progressPercent}%</span>
                     </div>
                     <div
                       className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted"
                       role="progressbar"
                       aria-label={STEP_LABEL[step]}
-                      aria-valuemin={step === "uploading" ? 0 : undefined}
-                      aria-valuemax={step === "uploading" ? 100 : undefined}
-                      aria-valuenow={step === "uploading" ? uploadPercent : undefined}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={progressPercent}
                     >
-                      {step === "uploading" ? (
-                        <div
-                          className="h-full rounded-full bg-hestia-primary transition-[width] duration-300 ease-out"
-                          style={{ width: `${uploadPercent}%` }}
-                        />
-                      ) : (
-                        <div className="h-full w-1/3 animate-pulse rounded-full bg-hestia-primary" />
-                      )}
+                      <div
+                        className="h-full rounded-full bg-hestia-primary transition-[width] duration-500 ease-out"
+                        style={{ width: `${progressPercent}%` }}
+                      />
                     </div>
                   </div>
                 )}

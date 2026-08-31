@@ -362,7 +362,7 @@ export interface components {
         };
         GoalRelationshipResponse: {
             /** @enum {string} */
-            type?: "CONTRIBUTES_TO" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
+            type?: "CONTRIBUTES_TO" | "SUPPORTS" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
             /** Format: int64 */
             targetGoalId?: number;
             targetText?: string;
@@ -429,6 +429,8 @@ export interface components {
             createdAt?: string;
             sources?: components["schemas"]["GoalSourceResponse"][];
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
+            /** Format: int32 */
+            lectureOrder?: number;
         };
         AddChildRequest: {
             text?: string;
@@ -551,6 +553,8 @@ export interface components {
             skillCount?: number;
             /** Format: date-time */
             skillsReviewedAt?: string;
+            /** @enum {string} */
+            extractionStatus?: "RUNNING" | "SUCCEEDED" | "FAILED";
         };
         PageMetadata: {
             /** Format: int64 */
@@ -594,6 +598,7 @@ export interface components {
             error?: string;
             /** Format: int32 */
             failedSessions?: number;
+            failedSessionNames?: string[];
         };
     };
     responses: never;

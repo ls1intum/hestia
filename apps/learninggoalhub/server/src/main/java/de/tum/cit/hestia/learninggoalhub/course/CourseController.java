@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
+import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
+import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.net.URI;
@@ -30,9 +32,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class CourseController {
 
     private final CourseRepository courseRepository;
+    private final ExtractionRunRepository extractionRunRepository;
 
-    public CourseController(CourseRepository courseRepository) {
+    public CourseController(CourseRepository courseRepository,
+                            ExtractionRunRepository extractionRunRepository) {
         this.courseRepository = courseRepository;
+        this.extractionRunRepository = extractionRunRepository;
     }
 
     @PostMapping
@@ -65,6 +70,7 @@ public class CourseController {
         Map<Long, Long> documentCounts = ids.isEmpty()
                 ? Map.of()
                 : toCountMap(courseRepository.countDocumentsByCourseIds(ids));
+        Map<Long, ExtractionRun.Status> extractionStatuses = latestExtractionStatuses(ids);
         // PagedModel serializes a stable {content, page} JSON shape, unlike PageImpl whose format
         // is an implementation detail that has changed across Spring Data versions.
         return new PagedModel<>(page.map(course -> new CourseSummaryResponse(
@@ -76,7 +82,8 @@ public class CourseController {
                 documentCounts.getOrDefault(course.getId(), 0L),
                 goalCounts.getOrDefault(course.getId(), 0L),
                 skillCounts.getOrDefault(course.getId(), 0L),
-                course.getSkillsReviewedAt())));
+                course.getSkillsReviewedAt(),
+                extractionStatuses.get(course.getId()))));
     }
 
     @GetMapping("/{id}")
@@ -87,10 +94,14 @@ public class CourseController {
         long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
         long skillCount = toCountMap(courseRepository.countSkillsByCourseIds(ids)).getOrDefault(id, 0L);
         long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
+        ExtractionRun.Status extractionStatus = extractionRunRepository
+                .findFirstByCourseIdOrderByStartedAtDesc(id)
+                .map(ExtractionRun::getStatus)
+                .orElse(null);
         return new CourseSummaryResponse(
                 course.getId(), course.getName(), course.getOutputLanguage(), course.isFiguresEnabled(),
                 course.getCreatedAt(),
-                documentCount, goalCount, skillCount, course.getSkillsReviewedAt());
+                documentCount, goalCount, skillCount, course.getSkillsReviewedAt(), extractionStatus);
     }
 
     /**
@@ -153,6 +164,17 @@ public class CourseController {
                 CourseRepository.CourseCount::getCount));
     }
 
+    private Map<Long, ExtractionRun.Status> latestExtractionStatuses(List<Long> courseIds) {
+        Map<Long, ExtractionRun.Status> statuses = new java.util.LinkedHashMap<>();
+        if (courseIds.isEmpty()) {
+            return statuses;
+        }
+        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
+            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
+        }
+        return statuses;
+    }
+
     public record CreateCourseRequest(@NotBlank String name, String outputLanguage, Boolean figuresEnabled) {
     }
 
@@ -165,7 +187,8 @@ public class CourseController {
 
     public record CourseSummaryResponse(
             Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
-            long documentCount, long goalCount, long skillCount, OffsetDateTime skillsReviewedAt) {
+            long documentCount, long goalCount, long skillCount, OffsetDateTime skillsReviewedAt,
+            ExtractionRun.Status extractionStatus) {
     }
 
     public record UpdateCourseRequest(String outputLanguage, Boolean figuresEnabled) {

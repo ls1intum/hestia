@@ -25,7 +25,6 @@ import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
@@ -97,12 +96,9 @@ class ExtractionRunnerFigureSettingTest {
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         GoalCandidateRepository goalCandidateRepository = mock(GoalCandidateRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
-        TerminalCompetencySynthesizer terminalCompetencySynthesizer = mock(TerminalCompetencySynthesizer.class);
-        CompetencyAssignmentSynthesizer competencyAssignmentSynthesizer = mock(CompetencyAssignmentSynthesizer.class);
         DocumentChunker documentChunker = mock(DocumentChunker.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        EmbeddingService embeddingService = mock(EmbeddingService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
 
@@ -171,19 +167,17 @@ class ExtractionRunnerFigureSettingTest {
                 auditService,
                 goalCandidateRepository,
                 documentSectionRepository,
-                terminalCompetencySynthesizer,
-                competencyAssignmentSynthesizer,
+                mock(CompactTaxonomySynthesizer.class),
                 documentChunker,
                 hierarchyNodeRepository,
                 taxonomyService,
-                embeddingService,
                 progressTracker,
+                org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,
                 1,
                 80_000,
                 null,
                 20,
-                64,
                 highlightGeometryService);
         return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
     }

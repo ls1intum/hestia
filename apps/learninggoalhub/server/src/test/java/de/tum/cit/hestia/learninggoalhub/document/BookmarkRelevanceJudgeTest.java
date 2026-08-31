@@ -22,10 +22,9 @@ class BookmarkRelevanceJudgeTest {
     }
 
     @Test
-    void singleWhenFewerThanThreeBookmarks() {
-        // A guest talk with a 2-entry agenda is one session, not two lectures (Cloud Computing 9.pdf).
+    void singleWhenFewerThanTwoBookmarks() {
         assertThat(judge.shouldSplit("9.pdf", 63,
-                List.of("Shared Responsibility Model", "Identity and Workload Orchestration"))).isFalse();
+                List.of("Shared Responsibility Model"))).isFalse();
     }
 
     @Test

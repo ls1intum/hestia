@@ -32,4 +32,17 @@ public class ExtractionRunAuditService {
         run.finish(status, error, goalsCreated, failedSessions, promptVersion);
         extractionRunRepository.saveAndFlush(run);
     }
+
+    /** Marks a failed extraction complete after its already-committed goals gained a tree on retry. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void finishTreeRetry(Long courseId) {
+        extractionRunRepository.findFirstByCourseIdOrderByStartedAtDesc(courseId)
+                .filter(run -> run.getStatus() == ExtractionRun.Status.FAILED)
+                .filter(run -> run.getGoalsCreated() != null)
+                .ifPresent(run -> {
+                    run.finish(ExtractionRun.Status.SUCCEEDED, null, run.getGoalsCreated(),
+                            run.getFailedSessions(), run.getPromptVersion());
+                    extractionRunRepository.saveAndFlush(run);
+                });
+    }
 }

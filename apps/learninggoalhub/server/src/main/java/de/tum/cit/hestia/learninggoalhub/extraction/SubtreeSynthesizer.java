@@ -16,6 +16,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class SubtreeSynthesizer {
 
+    public static final int MAX_SUB_SKILLS = 5;
+
+    private static final String CORRECTION_RETRY = """
+
+            Your previous response violated the subtree shape or outcome-wording invariant.
+            Regenerate the complete subtree with at most five broader sub-skills. Preserve every
+            narrower concept in the appropriate knowledge array. Make every text an expanded
+            action-noun phrase and every shortLabel a distinct compact action label.
+            """;
+
     public record GeneratedSubtree(List<GeneratedSubSkill> subSkills) {
         public GeneratedSubtree {
             subSkills = subSkills == null ? List.of() : List.copyOf(subSkills);
@@ -38,7 +48,7 @@ public class SubtreeSynthesizer {
             applied sub-skill, a shortLabel naming it, and a non-empty knowledge array containing the
             declarative knowledge that supports that sub-skill.
 
-            Every text is a full sentence-style outcome; every shortLabel is a compact 2-6 word label
+            Every text is an expanded action-noun outcome; every shortLabel is a compact 2-6 word label
             naming the action and its topic, reusing that text's verb (e.g. "Analyse the bias-variance
             tradeoff"; German puts the infinitive last: "Bias-Varianz-Abwägung analysieren"), not
             ending with a period.
@@ -47,7 +57,10 @@ public class SubtreeSynthesizer {
             {"subSkills":[{"text":"...","shortLabel":"...","knowledge":[{"text":"...","shortLabel":"..."}]}]}
 
             Rules:
-              - Create several meaningful sub-skills that together cover the terminal competency.
+              - Create between one and five meaningful, broad sub-skills that together cover the
+                terminal competency. This is a hard maximum: never return more than five.
+              - Do not omit narrower concepts to meet the limit. Merge related concepts into a
+                broader sub-skill and retain every narrower concept as a knowledge item beneath it.
               - Every sub-skill must have at least one knowledge item.
               - Keep sub-skill and knowledge texts concise, distinct, and grounded in the terminal
                 competency. Do not add unrelated topics or duplicate wording.
@@ -70,24 +83,38 @@ public class SubtreeSynthesizer {
     }
 
     public GeneratedSubtree generateSubtree(String terminalText, String languageName, String modelOverride) {
+        String prompt = PROMPT.formatted(languageName, terminalText);
+        GeneratedSubtree generated = call(prompt, languageName, modelOverride, temperature);
+        try {
+            return validate(generated, languageName);
+        } catch (IllegalArgumentException invalidResponse) {
+            generated = call(prompt + CORRECTION_RETRY, languageName, modelOverride, 0.0);
+            return validate(generated, languageName);
+        }
+    }
+
+    private GeneratedSubtree call(String prompt, String languageName, String modelOverride, double callTemperature) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
                 .system(LanguagePrompt.systemInstruction(languageName));
-        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
+        ChatOptions.Builder options = ChatOptions.builder().temperature(callTemperature);
         if (modelOverride != null && !modelOverride.isBlank()) {
             options.model(modelOverride);
         }
         GeneratedSubtree generated = spec
                 .options(options.build())
-                .user(PROMPT.formatted(languageName, terminalText))
+                .user(prompt)
                 .call()
                 .entity(LenientJson.converter(new ParameterizedTypeReference<GeneratedSubtree>() {}));
-        return validate(generated);
+        return generated;
     }
 
     /** Validates a model response before any database node is created. */
     public static GeneratedSubtree validate(GeneratedSubtree generated) {
         if (generated == null || generated.subSkills().isEmpty()) {
             throw new IllegalArgumentException("Generated subtree must contain at least one sub-skill");
+        }
+        if (generated.subSkills().size() > MAX_SUB_SKILLS) {
+            throw new IllegalArgumentException("Generated subtree must not contain more than five sub-skills");
         }
 
         Set<String> nodeTexts = new HashSet<>();
@@ -115,6 +142,19 @@ public class SubtreeSynthesizer {
             validSubSkills.add(new GeneratedSubSkill(subSkill.text().strip(), blankToNull(subSkill.shortLabel()), knowledge));
         }
         return new GeneratedSubtree(validSubSkills);
+    }
+
+    static GeneratedSubtree validate(GeneratedSubtree generated, String languageName) {
+        GeneratedSubtree valid = validate(generated);
+        for (GeneratedSubSkill subSkill : valid.subSkills()) {
+            OutcomeWording.validate(subSkill.text(), subSkill.shortLabel(), languageName,
+                    "Every generated sub-skill");
+            for (GeneratedKnowledge knowledge : subSkill.knowledge()) {
+                OutcomeWording.validate(knowledge.text(), knowledge.shortLabel(), languageName,
+                        "Every generated knowledge item");
+            }
+        }
+        return valid;
     }
 
     private static String normalized(String text) {

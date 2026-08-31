@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,7 +25,6 @@ import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
@@ -39,13 +38,13 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.StructuredOutputConverter;
 
 /**
- * A model reply that cannot be parsed used to abort the whole course. Each session now absorbs its
- * own failure so the rest of the run still produces outcomes.
+ * A model reply that cannot be parsed must abort the transaction after the other session workers
+ * finish, so the application never publishes a plausible-looking partial course.
  */
 class ExtractionRunnerSessionIsolationTest {
 
     @Test
-    void oneFailedSessionLeavesTheRestOfTheRunIntact() {
+    void oneFailedSessionFailsTheRunAndNamesTheMissingSession() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
         when(spec.system(anyString())).thenReturn(spec);
@@ -60,14 +59,17 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
 
-        assertThatCode(() -> runner.runForCourse(1L)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> runner.runForCourse(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("41.pdf")
+                .hasMessageContaining("Retry the extraction");
 
         verify(spec, times(2)).user(anyString());
-        // Both places the drop has to show up: the review screen polls the snapshot, the audit row
-        // is what still says so after the tracker has forgotten the run.
-        assertThat(progressTracker.snapshot(1L).orElseThrow().failedSessions()).isEqualTo(1);
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.SUCCEEDED), isNull(), any(),
-                eq(1), anyString());
+        ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
+        assertThat(snapshot.failedSessions()).isEqualTo(1);
+        assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
+        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+                org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), anyString());
     }
 
     private static ExtractionRunner runner(ChatClient chatClient, ExtractionRunAuditService auditService,
@@ -121,20 +123,18 @@ class ExtractionRunnerSessionIsolationTest {
                 auditService,
                 mock(GoalCandidateRepository.class),
                 documentSectionRepository,
-                mock(TerminalCompetencySynthesizer.class),
-                mock(CompetencyAssignmentSynthesizer.class),
+                mock(CompactTaxonomySynthesizer.class),
                 documentChunker,
                 hierarchyNodeRepository,
                 mock(TaxonomyService.class),
-                mock(EmbeddingService.class),
                 progressTracker,
+                org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 // Single-threaded, so the failing session is deterministically the first one.
                 1,
                 1,
                 80_000,
                 null,
                 20,
-                64,
                 mock(HighlightGeometryService.class));
     }
 
