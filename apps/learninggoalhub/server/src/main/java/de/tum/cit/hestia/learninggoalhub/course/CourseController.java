@@ -121,6 +121,11 @@ public class CourseController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Updates a course. {@code name} is left alone when omitted — a rename must not have to know
+     * about the course's other settings — whereas {@code outputLanguage} is replaced by whatever the
+     * body carries, so an omitted language still means "back to auto-detect".
+     */
     @PatchMapping("/{id}")
     public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
         Course course = courseRepository.findById(id)
@@ -129,6 +134,13 @@ public class CourseController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
         }
         validateOutputLanguage(request.outputLanguage());
+        if (request.name() != null) {
+            String name = request.name().trim();
+            if (name.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name must not be blank");
+            }
+            course.setName(name);
+        }
         course.setOutputLanguage(request.outputLanguage());
         if (request.figuresEnabled() != null) {
             course.setFiguresEnabled(request.figuresEnabled());
@@ -191,6 +203,6 @@ public class CourseController {
             ExtractionRun.Status extractionStatus) {
     }
 
-    public record UpdateCourseRequest(String outputLanguage, Boolean figuresEnabled) {
+    public record UpdateCourseRequest(String name, String outputLanguage, Boolean figuresEnabled) {
     }
 }
