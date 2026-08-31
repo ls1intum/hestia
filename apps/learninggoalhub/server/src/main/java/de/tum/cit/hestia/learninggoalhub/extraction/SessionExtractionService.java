@@ -3,6 +3,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -19,7 +20,31 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v11";
+    static final String PROMPT_VERSION = "direct-v17";
+
+    /**
+     * How many broad skills one session may yield.
+     *
+     * <p>At seven this was not a ceiling but a target: measured on a real thirteen-lecture course,
+     * ten sessions returned exactly seven and none returned fewer than five. A lecture does not
+     * teach seven separate capabilities — the model was filling the allowance with narrow facets of
+     * the same competency, and the course-level tree then had to compress 86 near-duplicate outcomes
+     * into six, which is where its run-to-run instability came from. Asking each session for the two
+     * or three outcomes an instructor would actually put on an objectives slide moves that merging
+     * to where the material is still visible. Nothing is lost by it: a facet that stops being its
+     * own skill becomes knowledge under the skill it serves.
+     */
+    static final int MAX_SKILLS_PER_SESSION = 4;
+
+    private static final String REQUIRED_FIELDS_RETRY = """
+
+            Your previous response violated a required field or outcome-wording rule. Regenerate the
+            COMPLETE response. Every skill and knowledge item must contain non-blank, distinct text
+            and shortLabel values plus kind EXPLICIT or IMPLICIT. Follow the action-noun wording
+            invariant exactly. Every outcome must cite either one valid 1-5-line source range from
+            the numbered session text or one offered figure, never both. Do not omit valid outcomes.
+            Return only the structured JSON result.
+            """;
 
     static final String PROMPT_TEMPLATE = """
             You analyse the complete educational material of one session (a lecture, chapter or
@@ -30,24 +55,44 @@ public class SessionExtractionService {
             and keep kind values exactly EXPLICIT or IMPLICIT. The source line indices refer to the
             numbered non-blank lines shown below; never translate the source text.
 
-            Extract the session's BROAD instructor-level learning outcomes — the handful of objectives
+            Extract the session's BROAD instructor-level learning outcomes — the two or three objectives
             an instructor would put on a "learning objectives" slide for this session, not a line-by-line
-            inventory of every fact, step or example. SKILLS stay FEW and broad: HARD CAP — never return
-            more than seven skills. Report as many as the material genuinely needs, but lean firmly
-            towards FEW broad skills rather than many narrow ones. If you are unsure whether something
-            is a skill or knowledge, make it knowledge. Merge related facets, steps, methods and examples
-            into the larger competency they support as that skill's knowledge children; do not delete
-            those facets. For contrast: "Apply Bayes' theorem" is a skill, while "Explain Bayes' theorem"
-            is a knowledge item underpinning it.
+            inventory of every fact, step or example. SKILLS stay FEW and broad: return TWO OR THREE, and
+            never more than %d. Reaching the maximum is a signal that you have not merged enough: go back
+            and fold the narrower candidates into the broader capability they serve. A single lecture
+            rarely teaches more than three genuinely separate capabilities, however much material it
+            covers — a long lecture means MORE KNOWLEDGE under each skill, not more skills.
+
+            If you are unsure whether something is a skill or knowledge, make it knowledge. Merge related
+            facets, steps, methods and examples into the larger competency they support as that skill's
+            knowledge children; do not delete those facets — nothing is lost by demoting them, because
+            knowledge is where the detail of this session is supposed to live.
+            For contrast: "Apply Bayes' theorem" is a skill, while "Explain Bayes' theorem" is a
+            knowledge item underpinning it, and so are the individual steps of applying it.
+
+            MERGING MUST NOT REDUCE DETAIL. When two candidate skills become one, the specifics of
+            BOTH survive as separate knowledge items beneath it. Merging changes which tier a point
+            sits in; it never removes the point. Reporting fewer skills than the material suggests
+            while ALSO reporting little knowledge means you have summarised the session instead of
+            inventorying what it teaches, and that is the one clearly wrong answer here.
 
             KNOWLEDGE covers what a student must know to reach the skill above it: every fact,
             definition, method, step or distinction the session teaches that the skill genuinely rests
             on, each as its own item. Include what is independently assessable; leave out incidental
-            examples, asides and repetition. Every knowledge item is itself a learning outcome and MUST
-            start with a verb naming what the student does with it — "Explain", "Describe", "Identify",
-            "Distinguish", "Name", "Recall". Never state a bare fact.
+            examples, asides and repetition.
+
+            Knowledge is where this session's substance lives, so there is far MORE of it than there
+            are skills: expect roughly five to ten knowledge items under each skill. Then check your
+            coverage before answering — read the numbered lines from first to last and confirm that
+            every substantive passage (each definition, theorem, rule, method, distinction or worked
+            technique) is cited by at least one outcome, in almost every case a knowledge item. A
+            passage that no outcome cites is material you have silently dropped.
+
+            Every knowledge item is itself a learning outcome and MUST
+            use the expanded action-noun form naming what the student does with it — "Explaining",
+            "Describing", "Identifying", "Distinguishing", "Naming", "Recalling". Never state a bare fact.
               WRONG: "The optimal variable ordering problem is NP-complete"
-              RIGHT: "Explain why finding the optimal variable ordering is NP-complete"
+              RIGHT: "Explaining why finding the optimal variable ordering is NP-complete"
             Skills are what the student can DO; knowledge is what the student must know to do it.
 
             Choose each outcome's verb by what the STUDENT is expected to be able to do or know
@@ -66,7 +111,7 @@ public class SessionExtractionService {
               - IMPLICIT: an outcome clearly taught by the content but not phrased as a goal.
 
             Return the list of skills, each with:
-              - text: the skill as a single concise sentence, starting with a verb.
+              - text: an expanded action-noun outcome following the wording invariant.
               - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
                 verb of the text above, such as "Analyse the bias-variance tradeoff". Phrase it in the
                 natural word order of the output language (German puts the infinitive last:
@@ -79,12 +124,13 @@ public class SessionExtractionService {
                 even when they sit together on one slide: pick one, never combine them. The indices
                 MUST come from the numbered lines shown below.
               - knowledge: every knowledge item underpinning this skill, each with its own text,
-                shortLabel, kind, sourceStartLine and sourceEndLine. The verb-initial rule and every
+                shortLabel, kind, sourceStartLine and sourceEndLine. The wording invariant and every
                 source-line rule above apply to knowledge items exactly as they do to skills.
 
             Do not invent outcomes that are not supported by the text. Do not promote a demonstrated
             derivation, proof or construction into an expected student action unless the text explicitly
-            requires students to perform it.
+            requires students to perform it. Return skills in the order in which their supporting
+            material first appears in the session; order each skill's knowledge the same way.
 
             Session title:
             ---
@@ -153,8 +199,10 @@ public class SessionExtractionService {
                                         String languageName, String modelOverride,
                                         List<PageDescriptionService.FigureDescription> figureDescriptions) {
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
-        String numberedSessionText = NumberedLines.of(sessionText).render();
-        String prompt = PROMPT_TEMPLATE.formatted(languageName, title, numberedSessionText);
+        NumberedLines numberedLines = NumberedLines.of(sessionText);
+        String numberedSessionText = numberedLines.render();
+        String prompt = PROMPT_TEMPLATE.formatted(
+                languageName, MAX_SKILLS_PER_SESSION, title, numberedSessionText);
         if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
             StringBuilder figures = new StringBuilder();
             for (int i = 0; i < figureDescriptions.size(); i++) {
@@ -166,7 +214,30 @@ public class SessionExtractionService {
         }
         prompt += FINAL_LANGUAGE_RESTATEMENT.formatted(languageName);
 
-        List<ExtractedSkill> first = call(prompt, languageName, modelOverride, temperature, false);
+        List<ExtractedSkill> first;
+        try {
+            first = validate(call(prompt, languageName, modelOverride, temperature, false), languageName,
+                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size());
+        } catch (IllegalArgumentException invalidResponse) {
+            log.warn("Session extraction returned invalid fields, wording or evidence for '{}'; retrying once: {}",
+                    title, invalidResponse.getMessage());
+            String retryPrompt = prompt + REQUIRED_FIELDS_RETRY
+                    + "\nSpecific validation failure: " + invalidResponse.getMessage();
+            List<ExtractedSkill> retryResponse = call(retryPrompt, languageName, modelOverride, 0.0, false);
+            try {
+                first = validate(retryResponse, languageName, numberedLines,
+                        figureDescriptions == null ? 0 : figureDescriptions.size());
+            } catch (IllegalArgumentException invalidRetry) {
+                first = salvageValidOutcomes(retryResponse, languageName, numberedLines,
+                        figureDescriptions == null ? 0 : figureDescriptions.size());
+                if (first.isEmpty()) {
+                    throw invalidRetry;
+                }
+                log.warn("Session extraction retry for '{}' still contained invalid outcomes; "
+                                + "keeping {} individually validated skills",
+                        title, first.size());
+            }
+        }
         String detectedLanguage = detectGeneratedLanguage(first);
         if (expectedLanguageCode == null || expectedLanguageCode.isBlank()
                 || detectedLanguage == null
@@ -176,7 +247,15 @@ public class SessionExtractionService {
 
         log.warn("Session extraction language mismatch: expected {}, detected {} for '{}' — retrying once",
                 expectedLanguageCode, detectedLanguage, title);
-        List<ExtractedSkill> retry = call(prompt, languageName, modelOverride, 0.0, true);
+        List<ExtractedSkill> retry;
+        try {
+            retry = validate(call(prompt, languageName, modelOverride, 0.0, true), languageName,
+                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size());
+        } catch (IllegalArgumentException invalidResponse) {
+            log.warn("Language retry for '{}' returned invalid fields or wording; keeping the valid first response: {}",
+                    title, invalidResponse.getMessage());
+            return first;
+        }
         String retryLanguage = detectGeneratedLanguage(retry);
         if (retryLanguage != null && retryLanguage.equalsIgnoreCase(expectedLanguageCode)) {
             log.warn("Session extraction language retry matched expected language {} for '{}'",
@@ -187,6 +266,164 @@ public class SessionExtractionService {
                         + "keeping first result",
                 expectedLanguageCode, title, retryLanguage);
         return first;
+    }
+
+    /** Rejects malformed structured output before taxonomy, embedding, or database persistence. */
+    static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName) {
+        return validate(extracted, languageName, null, 0);
+    }
+
+    private static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName,
+                                                 NumberedLines numberedLines, int figureCount) {
+        if (extracted == null || extracted.isEmpty()) {
+            return List.of();
+        }
+        if (extracted.size() > MAX_SKILLS_PER_SESSION) {
+            throw new IllegalArgumentException("A session must not contain more than "
+                    + MAX_SKILLS_PER_SESSION + " broad skills");
+        }
+        List<ExtractedSkill> valid = new ArrayList<>(extracted.size());
+        for (ExtractedSkill skill : extracted) {
+            if (skill == null) {
+                throw new IllegalArgumentException("Every skill must have non-blank text");
+            }
+            OutcomeWording.validate(skill.text(), skill.shortLabel(), languageName, "Every skill");
+            if (skill.kind() == null) {
+                throw new IllegalArgumentException("Every skill must have a kind");
+            }
+            Integer skillFigure = offeredFigure(skill.sourceFigure(), figureCount);
+            validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(), skillFigure,
+                    numberedLines, figureCount, "Every skill");
+            List<ExtractedSkill.Knowledge> knowledgeItems = new ArrayList<>(skill.knowledge().size());
+            for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
+                if (knowledge == null) {
+                    throw new IllegalArgumentException("Every knowledge item must have non-blank text");
+                }
+                OutcomeWording.validate(knowledge.text(), knowledge.shortLabel(), languageName,
+                        "Every knowledge item");
+                if (knowledge.kind() == null) {
+                    throw new IllegalArgumentException("Every knowledge item must have a kind");
+                }
+                Integer knowledgeFigure = offeredFigure(knowledge.sourceFigure(), figureCount);
+                validateEvidence(knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure,
+                        numberedLines, figureCount, "Every knowledge item");
+                knowledgeItems.add(new ExtractedSkill.Knowledge(
+                        knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                        knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure));
+            }
+            valid.add(new ExtractedSkill(
+                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.sourceStartLine(), skill.sourceEndLine(), skillFigure, knowledgeItems));
+        }
+        return List.copyOf(valid);
+    }
+
+    private static void validateEvidence(Integer startLine, Integer endLine, Integer figure,
+                                         NumberedLines numberedLines, int figureCount, String subject) {
+        // The package-level validation overload is retained for focused wording tests whose fixtures
+        // predate source fields. Production extraction always supplies NumberedLines here.
+        if (numberedLines == null) {
+            return;
+        }
+        boolean hasAnyLine = startLine != null || endLine != null;
+        boolean hasCompleteLineRange = startLine != null && endLine != null;
+        boolean hasFigure = figure != null;
+        if (hasCompleteLineRange && hasFigure) {
+            throw new IllegalArgumentException(subject + " must cite lines or a figure, never both");
+        }
+        if (hasAnyLine && !hasCompleteLineRange) {
+            throw new IllegalArgumentException(subject + " must provide both sourceStartLine and sourceEndLine");
+        }
+        if (hasCompleteLineRange) {
+            if (numberedLines.span(startLine, endLine).isEmpty()) {
+                throw new IllegalArgumentException(subject + " has an invalid source range ["
+                        + startLine + ".." + endLine + "]: "
+                        + numberedLines.rejectionReason(startLine, endLine));
+            }
+            return;
+        }
+        if (hasFigure) {
+            if (figure < 0 || figure >= figureCount) {
+                throw new IllegalArgumentException(subject + " cites figure " + figure
+                        + " but only " + figureCount + " figures were offered");
+            }
+            return;
+        }
+        throw new IllegalArgumentException(subject + " must cite a source line range or an offered figure");
+    }
+
+    private static Integer offeredFigure(Integer figure, int figureCount) {
+        // Some structured-output models fill nullable integer fields with zero. When the request did
+        // not offer any figures, that placeholder carries no evidence and must not invalidate a valid
+        // line citation or leak into persistence.
+        return figureCount > 0 ? figure : null;
+    }
+
+    /**
+     * A complete structured response should normally validate atomically. After the correction retry,
+     * however, one malformed child must not discard every other grounded outcome in the lecture. Keep
+     * only skills and knowledge items that independently satisfy the same strict contract; if no skill
+     * survives, the caller still fails the session.
+     */
+    private static List<ExtractedSkill> salvageValidOutcomes(List<ExtractedSkill> extracted,
+                                                             String languageName,
+                                                             NumberedLines numberedLines,
+                                                             int figureCount) {
+        if (extracted == null || extracted.isEmpty()) {
+            return List.of();
+        }
+        List<ExtractedSkill> valid = new ArrayList<>();
+        for (ExtractedSkill skill : extracted) {
+            if (valid.size() == 7) {
+                break;
+            }
+            if (skill == null) {
+                continue;
+            }
+            try {
+                OutcomeWording.validate(skill.text(), skill.shortLabel(), languageName, "Every skill");
+                if (skill.kind() == null) {
+                    throw new IllegalArgumentException("Every skill must have a kind");
+                }
+                Integer skillFigure = offeredFigure(skill.sourceFigure(), figureCount);
+                validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(), skillFigure,
+                        numberedLines, figureCount, "Every skill");
+            } catch (IllegalArgumentException invalidSkill) {
+                continue;
+            }
+
+            Integer skillFigure = offeredFigure(skill.sourceFigure(), figureCount);
+
+            List<ExtractedSkill.Knowledge> validKnowledge = new ArrayList<>();
+            for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
+                if (knowledge == null) {
+                    continue;
+                }
+                try {
+                    OutcomeWording.validate(knowledge.text(), knowledge.shortLabel(), languageName,
+                            "Every knowledge item");
+                    if (knowledge.kind() == null) {
+                        throw new IllegalArgumentException("Every knowledge item must have a kind");
+                    }
+                    Integer knowledgeFigure = offeredFigure(knowledge.sourceFigure(), figureCount);
+                    validateEvidence(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
+                            knowledgeFigure, numberedLines, figureCount, "Every knowledge item");
+                    validKnowledge.add(new ExtractedSkill.Knowledge(
+                            knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                            knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure));
+                } catch (IllegalArgumentException invalidKnowledge) {
+                    // Retain the grounded parent and its other valid knowledge rather than the bad child.
+                }
+            }
+            valid.add(new ExtractedSkill(
+                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.sourceStartLine(), skill.sourceEndLine(), skillFigure, validKnowledge));
+        }
+        return List.copyOf(valid);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,

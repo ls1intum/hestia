@@ -38,4 +38,13 @@ class NumberedLinesTest {
         assertThat(lines.span(2, 1)).isEmpty();
         assertThat(NumberedLines.of("line\n".repeat(12)).span(0, 11)).isEmpty();
     }
+
+    @Test
+    void acceptsFiveSourceLinesButRejectsSix() {
+        NumberedLines lines = NumberedLines.of("line\n".repeat(6));
+
+        assertThat(lines.span(0, 4)).isPresent();
+        assertThat(lines.span(0, 5)).isEmpty();
+        assertThat(lines.rejectionReason(0, 5)).contains("more than 5 numbered lines");
+    }
 }
