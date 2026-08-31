@@ -50,7 +50,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
   const documents = documentsQuery.data ?? [];
 
   return (
-    <div className="border-t border-hestia-border bg-hestia-bg/40 px-6 py-4 pl-14">
+    <div className="border-t border-hestia-border bg-hestia-bg/40 px-6 py-3 pl-14">
       {documentsQuery.isLoading && (
         <p className="text-sm text-hestia-text-muted">Loading…</p>
       )}
@@ -65,7 +65,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
         </p>
       )}
       {documents.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-1.5">
           {documents.map((doc) => (
             <DocumentRow
               key={doc.id}
@@ -128,7 +128,13 @@ function DocumentRow({
   const canSave = trimmed !== "" && trimmed !== shown && !busy;
 
   return (
-    <li className="rounded-lg border border-hestia-border bg-hestia-surface p-3">
+    // Unless it is being renamed, a document is one line: the columns line the upload date and the
+    // pencil up with the course row's "Created" column and its ⋮ menu.
+    <li
+      className={`rounded-lg border border-hestia-border bg-hestia-surface ${
+        editing ? "p-3" : "py-1.5 pl-3 pr-2"
+      }`}
+    >
       {editing ? (
         <form
           onSubmit={(e) => {
@@ -168,25 +174,30 @@ function DocumentRow({
           </div>
         </form>
       ) : (
-        <div className="group flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm text-hestia-text" title={shown}>
+        <div className="grid grid-cols-[1fr_7rem_2rem] items-center gap-4">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate text-sm text-hestia-text" title={shown}>
               {shown}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-hestia-text-muted">
-              {/* The filename stays visible as provenance once a display name covers it. */}
-              {document.displayName ? document.filename : null}
-              {document.displayName && uploaded ? " · " : null}
-              {uploaded ? `Uploaded ${uploaded}` : null}
-            </p>
+            </span>
+            {/* The filename stays visible as provenance once a display name covers it. */}
+            {document.displayName && (
+              <span
+                className="truncate text-xs text-hestia-text-muted"
+                title={document.filename}
+              >
+                {document.filename}
+              </span>
+            )}
           </div>
+          <span className="whitespace-nowrap text-right text-xs text-hestia-text-muted">
+            {uploaded ? `Uploaded ${uploaded}` : null}
+          </span>
           <Button
             variant="ghost"
             size="icon-sm"
             title="Rename document"
             aria-label={`Rename ${shown}`}
             onClick={onEdit}
-            className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
           >
             <svg
               viewBox="0 0 20 20"

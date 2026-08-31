@@ -510,6 +510,7 @@ export interface components {
             unmatchedGoals?: number;
         };
         UpdateCourseRequest: {
+            name?: string;
             outputLanguage?: string;
             figuresEnabled?: boolean;
         };

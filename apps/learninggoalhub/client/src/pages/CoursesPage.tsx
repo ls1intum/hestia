@@ -5,6 +5,7 @@ import { api } from "../api/client.ts";
 import type { CourseSummary, CurrentExtraction } from "../api/client.ts";
 import CreateCourseDialog from "../components/CreateCourseDialog.tsx";
 import CourseDocuments from "../components/CourseDocuments.tsx";
+import RenameCourseDialog from "../components/RenameCourseDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
@@ -20,6 +21,7 @@ export default function CoursesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
+  const [renameCourse, setRenameCourse] = useState<CourseSummary | null>(null);
   const [page, setPage] = useState(0);
 
   // A row menu belongs to the row it was opened on, so it must not survive that row scrolling
@@ -300,6 +302,10 @@ export default function CoursesPage() {
                           )
                         }
                         onClose={() => setOpenMenuId(null)}
+                        onRename={() => {
+                          setOpenMenuId(null);
+                          setRenameCourse(course);
+                        }}
                         onDelete={() => deleteMutation.mutate(course.id as number)}
                         deleting={
                           deleteMutation.isPending &&
@@ -365,6 +371,9 @@ export default function CoursesPage() {
       )}
 
       {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
+      {renameCourse && (
+        <RenameCourseDialog course={renameCourse} onClose={() => setRenameCourse(null)} />
+      )}
       {reviewCourseId != null && !watchedRunSucceeded && (
         <ExtractionProgressModal
           open
@@ -409,13 +418,14 @@ function pageItems(current: number, total: number): (number | null)[] {
 }
 
 /**
- * Per-row kebab (⋮) menu. Built to grow into a generic "edit" menu; for now it only offers
- * deletion, gated behind an inline confirm step so a stray click can't drop a course.
+ * Per-row kebab (⋮) menu: renaming the course, and deleting it behind an inline confirm step so a
+ * stray click can't drop a course.
  */
 function RowMenu({
   open,
   onToggle,
   onClose,
+  onRename,
   onDelete,
   deleting,
   openUp,
@@ -423,6 +433,7 @@ function RowMenu({
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onRename: () => void;
   onDelete: () => void;
   deleting: boolean;
   openUp: boolean;
@@ -494,13 +505,22 @@ function RowMenu({
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirm(true)}
-              className="block w-full px-3 py-2 text-left text-sm text-hestia-danger transition hover:bg-hestia-primary-muted"
-            >
-              Delete
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onRename}
+                className="block w-full px-3 py-2 text-left text-sm text-hestia-text transition hover:bg-hestia-primary-muted"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm(true)}
+                className="block w-full px-3 py-2 text-left text-sm text-hestia-danger transition hover:bg-hestia-primary-muted"
+              >
+                Delete
+              </button>
+            </>
           )}
         </div>
       )}

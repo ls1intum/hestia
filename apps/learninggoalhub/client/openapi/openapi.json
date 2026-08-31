@@ -1626,6 +1626,9 @@
       "UpdateCourseRequest": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string"
+          },
           "outputLanguage": {
             "type": "string"
           },

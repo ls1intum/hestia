@@ -163,6 +163,38 @@ class CourseControllerTest {
     }
 
     @Test
+    void renamesCourseAndLeavesTheNameAloneWhenOmitted() throws Exception {
+        Course course = courseRepository.save(new Course("Old Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  New Name  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("New Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("New Name"));
+    }
+
+    @Test
+    void rejectsBlankCourseName() throws Exception {
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Keeps Its Name"));
+    }
+
+    @Test
     void rejectsUnknownOutputLanguage() throws Exception {
         Course course = courseRepository.save(new Course("Language Course"));
 
