@@ -892,7 +892,47 @@ class ExtractionControllerTest {
      * worse than no tree. Nothing may be persisted in that case — not even the competency root.
      */
     @Test
-    void failedAssignmentLeavesNoCompetencyTree() throws Exception {
+    void failedTerminalSynthesisKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
+        Course course = courseRepository.save(new Course("Terminal synthesis failure"));
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
+
+        when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."),
+                eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal(
+                        "Apply the capability.", "Source Capability", GoalKind.EXPLICIT,
+                        "...capability..."))));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        when(compactTaxonomySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+                .thenThrow(new IllegalStateException("HTTP 500 - No response body available"));
+        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
+
+        startExtractionExpectingFailure(course.getId());
+
+        String status = awaitExtraction(course.getId());
+        assertThat(status)
+                .contains("\"status\":\"FAILED\"")
+                .contains("The learning goals were saved")
+                .contains("Compact competency taxonomy synthesis failed")
+                .contains("HTTP 500");
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .satisfies(goal -> assertThat(goal.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED));
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.MODULE)).isTrue();
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
+
+        stubCompactPlan("Apply Course Capability", List.of(List.of(0)));
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(awaitExtraction(course.getId())).contains("\"status\":\"SUCCEEDED\"");
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isTrue();
+        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXTRACTED)))
+                .hasSize(1);
+    }
+
+    @Test
+    void failedAssignmentKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
         Course course = courseRepository.save(new Course("Assignment failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
@@ -905,20 +945,29 @@ class ExtractionControllerTest {
                 .thenThrow(new IllegalStateException("assignment call failed"));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
-        startExtraction(course.getId());
+        startExtractionExpectingFailure(course.getId());
 
+        String status = awaitExtraction(course.getId());
+        assertThat(status)
+                .contains("\"status\":\"FAILED\"")
+                .contains("Compact competency taxonomy synthesis failed")
+                .contains("assignment call failed");
         assertThat(goalRepository.findByCourseId(course.getId()))
-                .noneMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
-        assertThat(hierarchyRepository.findByCourseId(course.getId()))
-                .noneMatch(n -> n.getLevel() == HierarchyLevel.COMPETENCY);
+                .singleElement()
+                .satisfies(goal -> assertThat(goal.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED));
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.MODULE)).isTrue();
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
+        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+                .singleElement()
+                .satisfies(run -> {
+                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getError()).contains("Compact competency taxonomy synthesis failed");
+                    assertThat(run.getGoalsCreated()).isEqualTo(1);
+                });
     }
 
-    /**
-     * A model reply the parser rejects used to abort the course. The failure is now contained: the
-     * failing session simply contributes nothing and every other session keeps its goals.
-     */
     @Test
-    void failedSessionKeepsTheRunAndTheOtherSessionsGoals() throws Exception {
+    void failedSessionFailsTheRunWithoutPublishingPartialGoals() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         String failing = "short session text";
         String healthy = "healthy session text";
@@ -930,21 +979,24 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(skill(new ExtractedGoal(
                         "Apply test-driven development.", GoalKind.EXPLICIT, "...healthy snippet..."))));
 
-        startExtraction(course.getId());
+        startExtractionExpectingFailure(course.getId());
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .extracting(LearningGoal::getText)
-                .contains("Apply test-driven development.");
-        // The review screen polls this, and shows the count as a warning above the skill list.
-        assertThat(awaitExtraction(course.getId())).contains("\"failedSessions\":1");
+        String status = awaitExtraction(course.getId());
+        assertThat(status)
+                .contains("\"status\":\"FAILED\"")
+                .contains("\"failedSessions\":1")
+                .contains("\"failedSessionNames\":[\"failed.pdf\"]");
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.extractionStatus").value("FAILED"));
+        assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
-                    assertThat(run.getError()).isNull();
+                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getError()).contains("failed.pdf");
                     assertThat(run.getFinishedAt()).isNotNull();
-                    assertThat(run.getGoalsCreated()).isPositive();
-                    // Durable record: the in-memory tracker forgets, this row does not.
+                    assertThat(run.getGoalsCreated()).isNull();
                     assertThat(run.getFailedSessions()).isEqualTo(1);
                 });
     }

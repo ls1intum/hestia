@@ -172,6 +172,7 @@ class ExtractionRunnerFigureSettingTest {
                 hierarchyNodeRepository,
                 taxonomyService,
                 progressTracker,
+                org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,
                 1,
                 80_000,

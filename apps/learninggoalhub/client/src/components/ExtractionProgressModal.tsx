@@ -53,6 +53,39 @@ export default function ExtractionProgressModal({
   // The AI suggestions live in a side panel the instructor opens deliberately: asking the model is
   // a round trip, and the review reads as a finished list until they do.
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const treeOnlyRetry = status?.status === "FAILED"
+    && status.phase === "SYNTHESIZING"
+    && (status.summary?.goalsCreated ?? 0) > 0
+    && (status.failedSessions ?? 0) === 0;
+
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      if (courseId == null) throw new Error("Course is unavailable.");
+      const result = treeOnlyRetry
+        ? await api.POST("/api/courses/{courseId}/competency-tree", {
+            params: { path: { courseId }, query: { force: false } },
+          })
+        : await api.POST("/api/courses/{courseId}/extract", {
+            params: { path: { courseId }, query: { force: true } },
+          });
+      if (result.error || !result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Another extraction or tree rebuild is already running. Please wait."
+            : treeOnlyRetry
+              ? "Could not rebuild the competency tree. The extracted goals are still saved."
+              : "Could not restart the extraction.",
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["extract-status", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+    },
+  });
 
   // The skill that was just added by hand or accepted from a suggestion. The list is alphabetical,
   // so a new skill lands anywhere in it — the row scrolls itself into view and stays lit for a beat
@@ -94,8 +127,9 @@ export default function ExtractionProgressModal({
       setSuggestionErrors({});
       setJustAddedId(null);
       setSuggestOpen(false);
+      retryMutation.reset();
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- reset modal-local mutations on close
 
   // Escape closes while the run is in flight — the extraction is a background job, so dismissing
   // this view only stops watching it, it never abandons the run. The review step is exempt.
@@ -247,6 +281,7 @@ export default function ExtractionProgressModal({
   // Sessions the run dropped. Zero when reopened via reviewOnly: the tracker is in-memory, so the
   // durable record of a thinned-out run is the extraction_run audit row, not this screen.
   const failedSessions = status?.failedSessions ?? 0;
+  const failedSessionNames = status?.failedSessionNames ?? [];
   // Index of the phase the backend currently reports; -1 until the first poll lands ("Starting…").
   const activeIndex = status?.phase
     ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
@@ -663,12 +698,37 @@ export default function ExtractionProgressModal({
 
           {failed && (
             <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-              <p className="rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-2 text-sm text-hestia-danger">
-                {error ?? "Extraction failed."}
-              </p>
-              <div className="flex justify-end">
+              <div className="rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-3 text-sm text-hestia-danger">
+                <p className="font-medium">
+                  {failedSessions > 0
+                    ? failedSessions === 1
+                      ? "One session could not be analysed. No partial skill tree was saved."
+                      : `${failedSessions} sessions could not be analysed. No partial skill tree was saved.`
+                    : error ?? "Extraction failed."}
+                </p>
+                {failedSessionNames.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                    {failedSessionNames.map((name) => <li key={name}>{name}</li>)}
+                  </ul>
+                )}
+              </div>
+              {retryMutation.isError && (
+                <p className="text-sm text-hestia-danger">
+                  {(retryMutation.error as Error).message}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="lg" onClick={onClose}>
                   Close
+                </Button>
+                <Button
+                  size="lg"
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending || courseId == null}
+                >
+                  {retryMutation.isPending
+                    ? treeOnlyRetry ? "Rebuilding tree…" : "Retrying…"
+                    : treeOnlyRetry ? "Retry competency tree" : "Retry extraction"}
                 </Button>
               </div>
             </div>
@@ -899,4 +959,3 @@ function PhaseTick({
     </span>
   );
 }
-

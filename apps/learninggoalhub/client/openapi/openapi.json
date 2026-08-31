@@ -1747,6 +1747,14 @@
           "skillsReviewedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
           }
         }
       },
@@ -1875,6 +1883,12 @@
           "failedSessions": {
             "type": "integer",
             "format": "int32"
+          },
+          "failedSessionNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

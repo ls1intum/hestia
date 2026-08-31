@@ -54,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.HashSet;
 import org.apache.pdfbox.Loader;
@@ -64,6 +65,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -91,6 +93,7 @@ public class ExtractionRunner {
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
     private final ExtractionProgressTracker progressTracker;
+    private final TransactionOperations extractionTransactions;
     private final int parallelism;
     private final int figureParallelism;
     private final int directMaxChars;
@@ -117,6 +120,7 @@ public class ExtractionRunner {
                             HierarchyNodeRepository hierarchyNodeRepository,
                             TaxonomyService taxonomyService,
                             ExtractionProgressTracker progressTracker,
+                            TransactionOperations extractionTransactions,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
@@ -142,6 +146,7 @@ public class ExtractionRunner {
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
         this.progressTracker = progressTracker;
+        this.extractionTransactions = extractionTransactions;
         this.parallelism = parallelism;
         this.figureParallelism = figureParallelism;
         this.directMaxChars = directMaxChars;
@@ -150,68 +155,98 @@ public class ExtractionRunner {
         this.highlightGeometryService = highlightGeometryService;
     }
 
-    @Transactional
     public ExtractionSummary runForCourse(Long courseId) {
         return runForCourse(courseId, null, false);
     }
 
-    @Transactional
     public ExtractionSummary runForCourse(Long courseId, String modelOverride) {
         return runForCourse(courseId, modelOverride, false);
     }
 
-    @Transactional
     public ExtractionSummary runForCourse(Long courseId, String modelOverride, boolean force) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
-
-        boolean hasExtractedGoals = !goalRepository.findByCourseIdAndOriginIn(
-                courseId, List.of(GoalOrigin.EXTRACTED)).isEmpty();
-        boolean hasExtractionHierarchy = hierarchyNodeRepository.existsByCourseIdAndLevel(
-                courseId, HierarchyLevel.MODULE)
-                || hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY);
-        if ((hasExtractedGoals || hasExtractionHierarchy) && !force) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A re-extraction replaces the existing extraction artefacts; pass force=true to discard them.");
-        }
-        if (force) {
-            clearExtractionArtifacts(course);
-        }
-
-        List<Document> documents = documentRepository.findByCourseId(courseId).stream()
-                .sorted(DocumentOrder.comparator())
-                .toList();
-        String dominantLanguage = dominantLanguage(documents);
-        String courseLanguage = resolveLanguage(course, null, dominantLanguage);
-        String promptVersion = promptVersionFor(documents);
-        String effectiveModel = modelOverride == null || modelOverride.isBlank()
-                ? configuredDefaultModel : modelOverride;
-        if (effectiveModel != null && effectiveModel.isBlank()) {
-            effectiveModel = null;
-        }
-        Long auditRunId = extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
-                runParams(courseLanguage, course.isFiguresEnabled()));
-        // Only the per-phase counters are published from in here. The terminal SUCCEEDED/FAILED
-        // status is set by the caller once this transaction has committed — marking it from inside
-        // would let a poller see "done" while the goals are still invisible to other connections.
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
+        AtomicReference<Long> auditRunId = new AtomicReference<>();
+        ExtractionStageSummary[] persistedStage = new ExtractionStageSummary[1];
         try {
-            ExtractionSummary summary = doRun(course, documents, modelOverride,
-                    LanguageUtils.englishName(courseLanguage), dominantLanguage, run);
-            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.SUCCEEDED, null,
-                    summary.goalsCreated(), run.failedSessions(), promptVersion);
+            ExtractionStageSummary stage = extractionTransactions.execute(status -> {
+                Course course = courseRepository.findById(courseId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+                boolean hasExtractedGoals = !goalRepository.findByCourseIdAndOriginIn(
+                        courseId, List.of(GoalOrigin.EXTRACTED)).isEmpty();
+                boolean hasExtractionHierarchy = hierarchyNodeRepository.existsByCourseIdAndLevel(
+                        courseId, HierarchyLevel.MODULE)
+                        || hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY);
+                if ((hasExtractedGoals || hasExtractionHierarchy) && !force) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "A re-extraction replaces the existing extraction artefacts; pass force=true to discard them.");
+                }
+                if (force) {
+                    clearExtractionArtifacts(course);
+                }
+
+                List<Document> documents = documentRepository.findByCourseId(courseId).stream()
+                        .sorted(DocumentOrder.comparator())
+                        .toList();
+                String dominantLanguage = dominantLanguage(documents);
+                String courseLanguage = resolveLanguage(course, null, dominantLanguage);
+                String promptVersion = promptVersionFor(documents);
+                String effectiveModel = modelOverride == null || modelOverride.isBlank()
+                        ? configuredDefaultModel : modelOverride;
+                if (effectiveModel != null && effectiveModel.isBlank()) {
+                    effectiveModel = null;
+                }
+                auditRunId.set(extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
+                        runParams(courseLanguage, course.isFiguresEnabled())));
+                return extractAndPersist(course, documents, modelOverride,
+                        LanguageUtils.englishName(courseLanguage), dominantLanguage, promptVersion, run);
+            });
+            if (stage == null) {
+                throw new IllegalStateException("Extraction transaction completed without a result.");
+            }
+            persistedStage[0] = stage;
+            run.checkpoint(new ExtractionSummary(stage.documentsProcessed(), stage.goalsCreated(), 0,
+                    stage.textSources(), stage.figureSources(), stage.unsupportedSources()));
+
+            run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
+            CompetencyTreeResult competencyTree = extractionTransactions.execute(status -> {
+                Course course = courseRepository.findById(courseId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+                return buildCompetencyTree(course, modelOverride, stage.courseLanguageName());
+            });
+            if (competencyTree == null) {
+                throw new IllegalStateException("Competency tree transaction completed without a result.");
+            }
+            run.increment();
+            ExtractionSummary summary = new ExtractionSummary(stage.documentsProcessed(), stage.goalsCreated(),
+                    competencyTree.competencies(), stage.textSources(), stage.figureSources(),
+                    stage.unsupportedSources());
+            extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.SUCCEEDED, null,
+                    summary.goalsCreated(), run.failedSessions(), stage.promptVersion());
             return summary;
         } catch (RuntimeException ex) {
-            String error = errorMessage(ex);
-            extractionRunAuditService.finish(auditRunId, ExtractionRun.Status.FAILED, error, null,
-                    run.failedSessions(), promptVersion);
+            ExtractionStageSummary stage = persistedStage[0];
+            String error = stage == null
+                    ? errorMessage(ex)
+                    : "The learning goals were saved, but the competency tree could not be built. "
+                            + "Retry only the competency tree. Details: " + errorMessage(ex);
+            if (auditRunId.get() != null) {
+                extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.FAILED, error,
+                        stage == null ? null : stage.goalsCreated(), run.failedSessions(),
+                        stage == null ? FALLBACK_PROMPT_VERSION : stage.promptVersion());
+            }
+            if (stage != null) {
+                throw new IllegalStateException(error, ex);
+            }
             throw ex;
         }
     }
 
-    private ExtractionSummary doRun(Course course, List<Document> documents, String modelOverride,
-                                    String courseLanguageName, String dominantLanguage,
-                                    ExtractionProgressTracker.Run run) {
+    private ExtractionStageSummary extractAndPersist(Course course, List<Document> documents,
+                                                     String modelOverride, String courseLanguageName,
+                                                     String dominantLanguage, String promptVersion,
+                                                     ExtractionProgressTracker.Run run) {
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
         if (course.isFiguresEnabled()) {
             // Documents are described concurrently, but at a much lower width than the text phases: each
@@ -296,6 +331,9 @@ public class ExtractionRunner {
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, sessions.size());
         List<SessionExtraction> extractedSessions = extractSessions(
                 course, sessions, dominantLanguage, modelOverride, run);
+        if (run.failedSessions() > 0) {
+            throw new IllegalStateException(incompleteExtractionMessage(run.failedSessionNames()));
+        }
         SessionAssembly assembly = assembleSessions(course, extractedSessions);
 
         List<ClassifiedGoal> classified = classifyInParallel(assembly.sessionGoals(), modelOverride, run);
@@ -391,13 +429,8 @@ public class ExtractionRunner {
         // no extractable outcomes). Without this the tree carries empty phantom sections.
         pruneEmptyUnits(course);
 
-        // Top-down competency view: a three-tier tree (terminal competency → sub-skill → knowledge)
-        // under its own COMPETENCY root, with CONTRIBUTES_TO edges threading the tiers.
-        run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
-        CompetencyTreeResult competencyTree = buildCompetencyTree(course, modelOverride, courseLanguageName);
-
-        return new ExtractionSummary(documents.size(), goalsCreated, competencyTree.competencies(),
-                textSources, figureSources, unsupportedSources);
+        return new ExtractionStageSummary(documents.size(), goalsCreated, textSources, figureSources,
+                unsupportedSources, courseLanguageName, promptVersion);
     }
 
     /** Runs one direct call per small session, or the complete legacy pipeline for oversized sessions. */
@@ -411,13 +444,11 @@ public class ExtractionRunner {
                         try {
                             return extractSession(course, session, dominantLanguage, modelOverride);
                         } catch (RuntimeException ex) {
-                            // One unusable model reply costs its own session, not the run: the course
-                            // keeps the outcomes of every other session and the empty unit is pruned.
-                            // The count is carried to the review screen and the audit row, so a
-                            // silently thinner tree is never mistaken for a complete one.
-                            log.warn("Session extraction failed for '{}'; the session yields no outcomes",
+                            // Keep collecting every failed name while the other workers finish. The
+                            // caller then aborts the transaction, so no partial course tree is exposed.
+                            log.warn("Session extraction failed for '{}'; the extraction will be aborted",
                                     session.title(), ex);
-                            run.sessionFailed();
+                            run.sessionFailed(session.title());
                             return SessionExtraction.empty(session);
                         } finally {
                             run.increment();
@@ -428,6 +459,14 @@ public class ExtractionRunner {
         } finally {
             executor.shutdown();
         }
+    }
+
+    private static String incompleteExtractionMessage(List<String> failedSessionNames) {
+        int count = failedSessionNames.size();
+        String sessions = failedSessionNames.stream().sorted().collect(Collectors.joining(", "));
+        return count == 1
+                ? "One session could not be analysed: " + sessions + ". Retry the extraction."
+                : count + " sessions could not be analysed: " + sessions + ". Retry the extraction.";
     }
 
     private SessionExtraction extractSession(Course course, SessionUnit session, String dominantLanguage,
@@ -1032,9 +1071,8 @@ public class ExtractionRunner {
                     .toList();
             plan = compactTaxonomySynthesizer.synthesize(input, languageName, modelOverride);
         } catch (RuntimeException ex) {
-            log.warn("Compact taxonomy synthesis failed, continuing without a competency tree: {}",
-                    ex.getMessage());
-            return null;
+            throw new IllegalStateException("Compact competency taxonomy synthesis failed: "
+                    + errorMessage(ex), ex);
         }
         List<CompactTaxonomySynthesizer.PlannedSkill> compactSkills = plan.skills();
         // Only the terminal skills carry generated text, so only they need classifying. Every
@@ -1504,6 +1542,12 @@ public class ExtractionRunner {
 
     private record DirectSourceResolution(SourcePageResolver.Resolution resolution,
                                           EvidenceKind evidenceKind) {
+    }
+
+    /** Counts and language committed before the separately transactional competency-tree stage. */
+    private record ExtractionStageSummary(int documentsProcessed, int goalsCreated, int textSources,
+                                          int figureSources, int unsupportedSources,
+                                          String courseLanguageName, String promptVersion) {
     }
 
     public record ExtractionSummary(int documentsProcessed, int goalsCreated, int terminalCompetencies,

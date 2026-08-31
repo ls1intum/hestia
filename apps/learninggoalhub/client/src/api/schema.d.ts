@@ -553,6 +553,8 @@ export interface components {
             skillCount?: number;
             /** Format: date-time */
             skillsReviewedAt?: string;
+            /** @enum {string} */
+            extractionStatus?: "RUNNING" | "SUCCEEDED" | "FAILED";
         };
         PageMetadata: {
             /** Format: int64 */
@@ -596,6 +598,7 @@ export interface components {
             error?: string;
             /** Format: int32 */
             failedSessions?: number;
+            failedSessionNames?: string[];
         };
     };
     responses: never;
