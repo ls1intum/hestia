@@ -53,6 +53,20 @@ public class CompactTaxonomySynthesizer {
     static final int MAX_SUB_SKILLS = 24;
     static final int MAX_SUB_SKILLS_PER_SKILL = 5;
     /**
+     * The longest a terminal skill's text may be.
+     *
+     * <p>Nothing used to bound it — {@link OutcomeWording} enforces only a MINIMUM, that text says
+     * more than its own shortLabel — and asking for an outcome "covering the whole group" against no
+     * upper bound produced summaries rather than names: measured on a nineteen-lecture course,
+     * terminal text averaged 39 words over sub-skills of 11, the most abstract tier running 3.5x
+     * longer than its own children. One of them concatenated its members verb and all
+     * ("Understanding hierarchical decomposition ..., understanding hierarchical Archimedes
+     * quadrature ..., and understanding application of tree-based data structures"). Twenty words is
+     * room for a capability and too little for a list.
+     */
+    static final int MAX_TERMINAL_TEXT_WORDS = 20;
+
+    /**
      * Every terminal skill needs at least this many sub-skills.
      *
      * <p>This replaces the two constants that used to set the terminal count directly — a preferred
@@ -305,9 +319,14 @@ public class CompactTaxonomySynthesizer {
             as written.
 
             Rules:
-              - text is the expanded action-noun outcome covering the whole group; shortLabel is a
+              - text names the ONE capability the group builds, in at most %d words; shortLabel is a
                 distinct compact 2-6 word action label reusing that same action. A topic-only
                 shortLabel is invalid — it must carry the action too.
+              - DO NOT ENUMERATE THE GROUP. Its outcomes are listed beneath the name already, so they
+                do not need restating: text says what they build toward, not what they contain.
+                Stringing topics together with commas or a repeated "and" returns a summary instead
+                of a name, and repeating the members' own verb once per member — "understanding X,
+                understanding Y, and understanding Z" — is the same mistake.
               - NAME THE GROUP FROM ITS OWN CONTENTS. Every name must reuse the terminology of the
                 outcomes listed under it: the objects, methods and topics they actually mention,
                 spelled as they spell them. A name a reader could not trace back to the outcomes
@@ -458,7 +477,8 @@ public class CompactTaxonomySynthesizer {
                                               List<Candidate> candidates, String languageName,
                                               String modelOverride) {
         String prompt = TERMINAL_NAMING_PROMPT.formatted(
-                languageName, grouping.size(), renderGroups(grouping, subSkills, candidates));
+                languageName, grouping.size(), MAX_TERMINAL_TEXT_WORDS,
+                renderGroups(grouping, subSkills, candidates));
         String model = effectiveModel(modelOverride, plannerModel);
         String failure = null;
         for (int attempt = 0; attempt < NAMING_ATTEMPTS; attempt++) {
@@ -723,6 +743,13 @@ public class CompactTaxonomySynthesizer {
                 throw new IllegalArgumentException("Every terminal skill must have non-blank text");
             }
             OutcomeWording.validate(name.text(), name.shortLabel(), languageName, "Every terminal skill");
+            int words = name.text().strip().split("\\s+").length;
+            if (words > MAX_TERMINAL_TEXT_WORDS) {
+                throw new IllegalArgumentException("The terminal skill \"" + name.shortLabel() + "\" is "
+                        + words + " words long, so it summarises its group instead of naming it; state the "
+                        + "one capability the group builds in at most " + MAX_TERMINAL_TEXT_WORDS
+                        + " words and leave the detail to the sub-skills listed beneath it");
+            }
             Set<String> object = objectTokens(name.shortLabel(), name.text());
             if (object.isEmpty()) {
                 throw new IllegalArgumentException("The shortLabel \"" + name.shortLabel() + "\" names only "
