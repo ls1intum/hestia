@@ -143,4 +143,23 @@ class TaxonomyServiceTest {
                 .contains("1. first goal")
                 .contains("2. second goal");
     }
+
+    /**
+     * Bloom belongs to the verb and SOLO to the whole statement. Left to "best describe it", the
+     * classifier read the level off a goal's tail clause instead — goals came back at ANALYZE while
+     * their own verb said "Understanding", overriding a verb that extraction had chosen with the
+     * source material in view and an explicit rule against escalating.
+     */
+    @Test
+    void promptTakesBloomFromTheVerbAndSoloFromTheWholeStatement() {
+        for (String prompt : List.of(TaxonomyService.PROMPT_TEMPLATE, TaxonomyService.BATCH_PROMPT_TEMPLATE)) {
+            assertThat(prompt)
+                    .contains("Bloom is carried by the goal's VERB, and only by the verb.")
+                    .contains("NOT re-derive the level from the rest of the sentence")
+                    .contains("a long goal is not a higher one")
+                    // SOLO must keep reading everything, or the two taxonomies collapse into one.
+                    .contains("it describes how the whole statement is structured, so read all of")
+                    .contains("RELATIONAL on SOLO");
+        }
+    }
 }

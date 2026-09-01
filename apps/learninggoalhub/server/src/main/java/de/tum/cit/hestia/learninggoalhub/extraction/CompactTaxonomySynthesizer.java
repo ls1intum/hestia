@@ -479,8 +479,8 @@ public class CompactTaxonomySynthesizer {
                                         String languageName) {
         SubSkillSelection selection = validateSubSkillPartition(
                 partition, presented.size(), languageName, setAsideOutcomes);
-        validateRepresentativeBloom(selection.groups(), presented);
-        return selection;
+        return new SubSkillSelection(
+                electHighestBloom(selection.groups(), presented), selection.setAside());
     }
 
     /** Stage 2a: structure only, over a short list, so it runs on the planner model. */
@@ -945,35 +945,47 @@ public class CompactTaxonomySynthesizer {
     }
 
     /**
-     * The elected representative must sit at its group's highest Bloom level.
+     * Re-elects each group's representative to a member at its highest Bloom level.
      *
      * <p>Election only ever required that the representative "read well as the name of every
      * member", which says nothing about level, so a doing-goal could be elected away by an
-     * understanding-goal that merely reads more smoothly. The whole branch then drops a tier: the
+     * understanding-goal that merely read more smoothly. The whole branch then drops a tier: the
      * sub-skill goes APPLY to UNDERSTAND, and because a terminal takes the highest level among its
      * sub-skills, the terminal follows it down. Measured on a nineteen-lecture course, nine outcomes
      * ended up supporting an elector of lower Bloom than their own — "Implementing classification
      * with sparse grids" among them, filed under an UNDERSTAND node.
      *
-     * <p>Checked separately from the partition because it is the one rule here that needs to read
-     * the candidates rather than just count them. Candidates whose level is missing or unrecognised
-     * are not ranked: an unclassified outcome cannot lose an election it was never in.
+     * <p>Corrected here rather than rejected and retried. Rejecting was tried first and is the wrong
+     * shape for this rule: a retry is a shared budget spent on whichever rule the model happens to
+     * break, and on a second course the first attempt failed on an unaccounted outcome, the one
+     * retry failed on this rule, and the whole stage died — a course lost to a rule about naming.
+     * Nothing here needs the model's judgement anyway. Any member of a group is a structurally valid
+     * representative, so the highest-level one can simply be chosen, at no cost and with no way to
+     * fail. The model's own pick is kept whenever it already sits at the top level, which is what
+     * preserves the "reads well as the name of every member" judgement the prompt still asks for.
+     *
+     * <p>Candidates whose level is missing or unrecognised are not ranked: an unclassified outcome
+     * cannot win an election it was never in, and a group of only those keeps the pick it came with.
      */
-    static void validateRepresentativeBloom(List<SubSkillGroup> groups, List<Candidate> candidates) {
+    static List<SubSkillGroup> electHighestBloom(List<SubSkillGroup> groups, List<Candidate> candidates) {
+        List<SubSkillGroup> elected = new ArrayList<>(groups.size());
         for (SubSkillGroup group : groups) {
-            int elected = bloomRank(candidates.get(group.representative()));
-            for (Integer member : group.supporting()) {
-                int rank = bloomRank(candidates.get(member));
-                if (rank > elected) {
-                    throw new IllegalArgumentException("The elected representative ["
-                            + group.representative() + "] sits below its own group member [" + member
-                            + "] on Bloom (" + candidates.get(group.representative()).bloomLevel()
-                            + " under " + candidates.get(member).bloomLevel() + "). Elect a member at"
-                            + " the group's highest level, so the node names the performance rather"
-                            + " than the knowledge that serves it");
-                }
+            int highest = group.supporting().stream()
+                    .mapToInt(member -> bloomRank(candidates.get(member)))
+                    .max().orElse(-1);
+            if (bloomRank(candidates.get(group.representative())) >= highest) {
+                elected.add(group);
+                continue;
             }
+            int promoted = group.supporting().stream()
+                    .filter(member -> bloomRank(candidates.get(member)) == highest)
+                    .findFirst().orElseThrow();
+            log.info("Re-elected sub-skill representative [{}] to [{}]: {} outranks {}",
+                    group.representative(), promoted, candidates.get(promoted).bloomLevel(),
+                    candidates.get(group.representative()).bloomLevel());
+            elected.add(new SubSkillGroup(promoted, group.supporting()));
         }
+        return List.copyOf(elected);
     }
 
     static int minSubSkills(int candidateCount) {
