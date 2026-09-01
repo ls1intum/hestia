@@ -30,7 +30,21 @@ public class TaxonomyService {
               - RELATIONAL: integrates aspects into a coherent whole.
               - EXTENDED_ABSTRACT: generalises beyond the given context.
 
-            Pick exactly one Bloom level and one SOLO level that best describe the goal.
+            Bloom is carried by the goal's VERB, and only by the verb. Every goal here is written in
+            the action-noun form that names what the student does with the material — "Understanding
+            ...", "Applying ...", "Analysing ..." — and that verb was chosen while the source material
+            was in view, under an explicit instruction not to escalate. Read it and classify it. Do
+            NOT re-derive the level from the rest of the sentence: a goal that names several facets,
+            or ends on a clause about comparing, deriving or evaluating something, is still an
+            UNDERSTAND goal when its verb is "Understanding". The topic a goal covers is not its
+            cognitive level, and a long goal is not a higher one.
+
+            SOLO is the opposite: it describes how the whole statement is structured, so read all of
+            it. One aspect is UNISTRUCTURAL, several unintegrated aspects MULTISTRUCTURAL, aspects
+            tied into a coherent whole RELATIONAL. A goal may sit at UNDERSTAND on Bloom and
+            RELATIONAL on SOLO; that pairing is normal and is not a contradiction to resolve.
+
+            Pick exactly one Bloom level and one SOLO level for the goal on those terms.
             Return them as the JSON fields `bloom` and `solo`, using the enum names above.
 
             Learning goal:
@@ -57,8 +71,22 @@ public class TaxonomyService {
               - RELATIONAL: integrates aspects into a coherent whole.
               - EXTENDED_ABSTRACT: generalises beyond the given context.
 
+            Bloom is carried by the goal's VERB, and only by the verb. Every goal here is written in
+            the action-noun form that names what the student does with the material — "Understanding
+            ...", "Applying ...", "Analysing ..." — and that verb was chosen while the source material
+            was in view, under an explicit instruction not to escalate. Read it and classify it. Do
+            NOT re-derive the level from the rest of the sentence: a goal that names several facets,
+            or ends on a clause about comparing, deriving or evaluating something, is still an
+            UNDERSTAND goal when its verb is "Understanding". The topic a goal covers is not its
+            cognitive level, and a long goal is not a higher one.
+
+            SOLO is the opposite: it describes how the whole statement is structured, so read all of
+            it. One aspect is UNISTRUCTURAL, several unintegrated aspects MULTISTRUCTURAL, aspects
+            tied into a coherent whole RELATIONAL. A goal may sit at UNDERSTAND on Bloom and
+            RELATIONAL on SOLO; that pairing is normal and is not a contradiction to resolve.
+
             For EACH numbered learning goal below, pick exactly one Bloom level and one SOLO level
-            that best describe it, using the enum names above. Return one JSON object per goal with
+            on those terms, using the enum names above. Return one JSON object per goal with
             the fields `index` (the goal's number, copied from the list), `bloom` and `solo`. Return
             exactly one object for every goal in the list and keep its number in `index`.
 
