@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -269,7 +270,10 @@ public class CompactTaxonomySynthesizer {
                 because they share a lecture or a chapter, that is the error this rule exists to
                 prevent: %s
               - representative must be one of that group's own supporting indices, and must read
-                well as the name of every member.
+                well as the name of every member. Where the members sit at different levels, it must
+                be one of those at the HIGHEST level shown in brackets: the group is named by what a
+                student does with it, so electing "understanding X" over "applying X" hides the
+                performance behind the knowledge that serves it.
               - %s
               - The outcomes below are listed in NO meaningful order: neighbouring entries have
                 nothing to do with each other, and an outcome's position carries no information.
@@ -358,6 +362,11 @@ public class CompactTaxonomySynthesizer {
               - DO NOT NAME THE COURSE. A label that restates the subject of the whole course —
                 "analysing complex functions" in a course on complex analysis — carries no
                 information. Name what distinguishes THIS group from the other groups.
+              - WRITE THE NAME AT THE GROUP'S LEVEL. Each group states the Bloom level it sits at,
+                taken from the outcomes beneath it, and the name's verb must match it: a group at
+                APPLY is named by what the student does, not by what they understand about it, and
+                naming an ANALYZE or EVALUATE group "understanding ..." states a lower level than the
+                group actually reaches. Choose the verb for the stated level in the output language.
               - The names must stay distinguishable WITHOUT their action verb. No two may name the
                 same object with a different verb; if two groups would take the same object, you are
                 describing them too broadly, so go one level more specific in each.
@@ -448,17 +457,30 @@ public class CompactTaxonomySynthesizer {
                 policy.residue(), numbered(presented));
         String model = effectiveModel(modelOverride, partitionModel);
         try {
-            return restoreSubSkillOrder(validateSubSkillPartition(
+            return restoreSubSkillOrder(validated(
                     call(prompt, languageName, model, partitionTemperature,
                             new ParameterizedTypeReference<SubSkillPartition>() {}),
-                    candidates.size(), languageName, setAsideOutcomes), order);
+                    presented, languageName), order);
         } catch (IllegalArgumentException invalid) {
             log.warn("Sub-skill selection was invalid; retrying once: {}", invalid.getMessage());
-            return restoreSubSkillOrder(validateSubSkillPartition(
+            return restoreSubSkillOrder(validated(
                     call(prompt + RETRY.formatted(invalid.getMessage()), languageName, model, 0.0,
                             new ParameterizedTypeReference<SubSkillPartition>() {}),
-                    candidates.size(), languageName, setAsideOutcomes), order);
+                    presented, languageName), order);
         }
+    }
+
+    /**
+     * Both stage-one rules, applied in the space the model answered in. The election check runs
+     * against the PRESENTED candidates, since every index in the response — and in the retry message
+     * quoting it back — refers to that list rather than to lecture order.
+     */
+    private SubSkillSelection validated(SubSkillPartition partition, List<Candidate> presented,
+                                        String languageName) {
+        SubSkillSelection selection = validateSubSkillPartition(
+                partition, presented.size(), languageName, setAsideOutcomes);
+        validateRepresentativeBloom(selection.groups(), presented);
+        return selection;
     }
 
     /** Stage 2a: structure only, over a short list, so it runs on the planner model. */
@@ -910,6 +932,50 @@ public class CompactTaxonomySynthesizer {
         return List.copyOf(result);
     }
 
+    /** Where a candidate sits on Bloom, or -1 when it carries no level that can be ranked. */
+    private static int bloomRank(Candidate candidate) {
+        if (candidate == null || candidate.bloomLevel() == null) {
+            return -1;
+        }
+        try {
+            return BloomLevel.valueOf(candidate.bloomLevel()).ordinal();
+        } catch (IllegalArgumentException unknown) {
+            return -1;
+        }
+    }
+
+    /**
+     * The elected representative must sit at its group's highest Bloom level.
+     *
+     * <p>Election only ever required that the representative "read well as the name of every
+     * member", which says nothing about level, so a doing-goal could be elected away by an
+     * understanding-goal that merely reads more smoothly. The whole branch then drops a tier: the
+     * sub-skill goes APPLY to UNDERSTAND, and because a terminal takes the highest level among its
+     * sub-skills, the terminal follows it down. Measured on a nineteen-lecture course, nine outcomes
+     * ended up supporting an elector of lower Bloom than their own — "Implementing classification
+     * with sparse grids" among them, filed under an UNDERSTAND node.
+     *
+     * <p>Checked separately from the partition because it is the one rule here that needs to read
+     * the candidates rather than just count them. Candidates whose level is missing or unrecognised
+     * are not ranked: an unclassified outcome cannot lose an election it was never in.
+     */
+    static void validateRepresentativeBloom(List<SubSkillGroup> groups, List<Candidate> candidates) {
+        for (SubSkillGroup group : groups) {
+            int elected = bloomRank(candidates.get(group.representative()));
+            for (Integer member : group.supporting()) {
+                int rank = bloomRank(candidates.get(member));
+                if (rank > elected) {
+                    throw new IllegalArgumentException("The elected representative ["
+                            + group.representative() + "] sits below its own group member [" + member
+                            + "] on Bloom (" + candidates.get(group.representative()).bloomLevel()
+                            + " under " + candidates.get(member).bloomLevel() + "). Elect a member at"
+                            + " the group's highest level, so the node names the performance rather"
+                            + " than the knowledge that serves it");
+                }
+            }
+        }
+    }
+
     static int minSubSkills(int candidateCount) {
         return Math.max(1, Math.min(MIN_FULL_COURSE_SUB_SKILLS,
                 ceilDiv(candidateCount, OUTCOMES_PER_SUB_SKILL)));
@@ -996,12 +1062,26 @@ public class CompactTaxonomySynthesizer {
         return result.toString();
     }
 
-    /** Stage 2b sees each group whole: every sub-skill it holds, so the name can come from them. */
+    /**
+     * Stage 2b sees each group whole: every sub-skill it holds, so the name can come from them —
+     * and the level the group sits at, so the name can be written AT that level.
+     *
+     * <p>The level was previously withheld, and a terminal's stored Bloom is raised afterwards to
+     * the highest level among its sub-skills. So the name and the level were decided by two steps
+     * that never met, and the name was never revisited: half the terminals of one course read
+     * "Understanding ..." while carrying ANALYZE or EVALUATE. Naming the group at a level it is
+     * already known to sit at is the half of that mismatch that can be fixed at the source.
+     */
     private static String renderGroups(List<List<Integer>> groups, List<SubSkillGroup> subSkills,
                                        List<Candidate> candidates) {
         StringBuilder result = new StringBuilder();
         for (int index = 0; index < groups.size(); index++) {
-            result.append("Group ").append(index).append(":\n");
+            result.append("Group ").append(index);
+            String level = groupLevel(groups.get(index), subSkills, candidates);
+            if (level != null) {
+                result.append(" (level: ").append(level).append(')');
+            }
+            result.append(":\n");
             for (Integer member : groups.get(index)) {
                 result.append("  - ")
                         .append(candidates.get(subSkills.get(member).representative()).text())
@@ -1009,6 +1089,19 @@ public class CompactTaxonomySynthesizer {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * The level a terminal will end up at: the highest among its sub-skills, which is exactly the
+     * floor {@code ExtractionRunner.atLeastSubSkillBloom} raises the stored level to. Null when no
+     * sub-skill carries a level to take it from.
+     */
+    static String groupLevel(List<Integer> group, List<SubSkillGroup> subSkills,
+                             List<Candidate> candidates) {
+        int highest = group.stream()
+                .mapToInt(member -> bloomRank(candidates.get(subSkills.get(member).representative())))
+                .max().orElse(-1);
+        return highest < 0 ? null : BloomLevel.values()[highest].name();
     }
 
     /** Stage 2a sees each group through its elected outcome, which is the node's visible name. */
