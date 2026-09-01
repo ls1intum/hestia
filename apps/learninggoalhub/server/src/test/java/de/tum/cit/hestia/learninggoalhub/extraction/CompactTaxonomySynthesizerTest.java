@@ -123,6 +123,67 @@ class CompactTaxonomySynthesizerTest {
         assertThat(prompt).contains("5 is the hard maximum").contains("between 14 and 24 sub-skills");
     }
 
+    /**
+     * A doing-goal must not be elected away by an understanding-goal: the node names the performance
+     * the group builds, and the terminal above it takes its level from these elections.
+     */
+    @Test
+    void rejectsARepresentativeThatSitsBelowItsOwnGroupOnBloom() {
+        List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
+                new CompactTaxonomySynthesizer.Candidate("Understanding sparse grid concepts", "UNDERSTAND", "L1"),
+                new CompactTaxonomySynthesizer.Candidate("Implementing sparse grid classification", "APPLY", "L2"));
+
+        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateRepresentativeBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1))), candidates))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sits below its own group member")
+                .hasMessageContaining("UNDERSTAND under APPLY");
+
+        // The same group is fine once the doing-goal is the one elected.
+        CompactTaxonomySynthesizer.validateRepresentativeBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(1, List.of(0, 1))), candidates);
+    }
+
+    /** An outcome with no classified level cannot lose an election it was never in. */
+    @Test
+    void ignoresUnrankableLevelsWhenCheckingTheElection() {
+        List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
+                new CompactTaxonomySynthesizer.Candidate("Elected without a level", null, "L1"),
+                new CompactTaxonomySynthesizer.Candidate("Member with nonsense", "MASTERING", "L2"),
+                new CompactTaxonomySynthesizer.Candidate("Member with a real level", "APPLY", "L3"));
+
+        CompactTaxonomySynthesizer.validateRepresentativeBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1))), candidates);
+        // A rankable member still outranks an unrankable elector, which is the case worth catching.
+        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateRepresentativeBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 2))), candidates))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * The namer decides the verb and the stored Bloom is raised to the sub-skills' highest level
+     * afterwards, so the level has to reach the namer or the two cannot agree.
+     */
+    @Test
+    void showsTheNamerTheLevelEachGroupWillEndUpAt() {
+        List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
+                new CompactTaxonomySynthesizer.Candidate("Understanding quadrature error", "UNDERSTAND", "L1"),
+                new CompactTaxonomySynthesizer.Candidate("Evaluating solver trade-offs", "EVALUATE", "L2"),
+                new CompactTaxonomySynthesizer.Candidate("Unclassified outcome", null, "L3"));
+        List<CompactTaxonomySynthesizer.SubSkillGroup> subSkills = List.of(
+                new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0)),
+                new CompactTaxonomySynthesizer.SubSkillGroup(1, List.of(1)),
+                new CompactTaxonomySynthesizer.SubSkillGroup(2, List.of(2)));
+
+        // The group takes the HIGHEST level among its sub-skills, not the first or the average.
+        assertThat(CompactTaxonomySynthesizer.groupLevel(List.of(0, 1), subSkills, candidates))
+                .isEqualTo("EVALUATE");
+        assertThat(CompactTaxonomySynthesizer.groupLevel(List.of(0), subSkills, candidates))
+                .isEqualTo("UNDERSTAND");
+        // Nothing to take a level from is left unstated rather than guessed at.
+        assertThat(CompactTaxonomySynthesizer.groupLevel(List.of(2), subSkills, candidates)).isNull();
+    }
+
     /** Every visible sub-skill must be a real extracted outcome, never generated text. */
     @Test
     void everySubSkillNodeIsAnElectedSourceOutcome() {
