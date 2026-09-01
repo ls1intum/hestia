@@ -128,36 +128,55 @@ class CompactTaxonomySynthesizerTest {
      * the group builds, and the terminal above it takes its level from these elections.
      */
     @Test
-    void rejectsARepresentativeThatSitsBelowItsOwnGroupOnBloom() {
+    void reElectsARepresentativeThatSitsBelowItsOwnGroupOnBloom() {
         List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
                 new CompactTaxonomySynthesizer.Candidate("Understanding sparse grid concepts", "UNDERSTAND", "L1"),
                 new CompactTaxonomySynthesizer.Candidate("Implementing sparse grid classification", "APPLY", "L2"));
 
-        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateRepresentativeBloom(
+        assertThat(CompactTaxonomySynthesizer.electHighestBloom(
                 List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1))), candidates))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("sits below its own group member")
-                .hasMessageContaining("UNDERSTAND under APPLY");
-
-        // The same group is fine once the doing-goal is the one elected.
-        CompactTaxonomySynthesizer.validateRepresentativeBloom(
-                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(1, List.of(0, 1))), candidates);
+                .singleElement()
+                .extracting(CompactTaxonomySynthesizer.SubSkillGroup::representative)
+                .isEqualTo(1);
     }
 
-    /** An outcome with no classified level cannot lose an election it was never in. */
+    /** A pick already at the group's top level is left alone, so the model's naming judgement stands. */
     @Test
-    void ignoresUnrankableLevelsWhenCheckingTheElection() {
+    void keepsARepresentativeThatAlreadySitsAtItsGroupsHighestLevel() {
+        List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
+                new CompactTaxonomySynthesizer.Candidate("Applying the transform, well worded", "APPLY", "L1"),
+                new CompactTaxonomySynthesizer.Candidate("Applying the transform, awkwardly worded", "APPLY", "L2"),
+                new CompactTaxonomySynthesizer.Candidate("Understanding the transform", "UNDERSTAND", "L3"));
+
+        assertThat(CompactTaxonomySynthesizer.electHighestBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1, 2))), candidates))
+                .singleElement()
+                .extracting(CompactTaxonomySynthesizer.SubSkillGroup::representative)
+                .isEqualTo(0);
+    }
+
+    /**
+     * An outcome with no classified level cannot win an election it was never in, and a group of
+     * only those keeps the pick it came with rather than failing.
+     */
+    @Test
+    void ignoresUnrankableLevelsWhenReElecting() {
         List<CompactTaxonomySynthesizer.Candidate> candidates = List.of(
                 new CompactTaxonomySynthesizer.Candidate("Elected without a level", null, "L1"),
                 new CompactTaxonomySynthesizer.Candidate("Member with nonsense", "MASTERING", "L2"),
                 new CompactTaxonomySynthesizer.Candidate("Member with a real level", "APPLY", "L3"));
 
-        CompactTaxonomySynthesizer.validateRepresentativeBloom(
-                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1))), candidates);
-        // A rankable member still outranks an unrankable elector, which is the case worth catching.
-        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateRepresentativeBloom(
+        assertThat(CompactTaxonomySynthesizer.electHighestBloom(
+                List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 1))), candidates))
+                .singleElement()
+                .extracting(CompactTaxonomySynthesizer.SubSkillGroup::representative)
+                .isEqualTo(0);
+        // A rankable member outranks an unrankable elector, which is the case worth correcting.
+        assertThat(CompactTaxonomySynthesizer.electHighestBloom(
                 List.of(new CompactTaxonomySynthesizer.SubSkillGroup(0, List.of(0, 2))), candidates))
-                .isInstanceOf(IllegalArgumentException.class);
+                .singleElement()
+                .extracting(CompactTaxonomySynthesizer.SubSkillGroup::representative)
+                .isEqualTo(2);
     }
 
     /**
