@@ -62,6 +62,67 @@ class CompactTaxonomySynthesizerTest {
                 .hasMessageContaining("elected representative [70]");
     }
 
+    /**
+     * The exact partition gives an outcome the model cannot place nowhere to go but a group, and
+     * the count band alone never stopped it from being the nearest one: one real run returned five
+     * groups of one beside a single group of nine covering five separate capabilities.
+     */
+    @Test
+    void rejectsAGroupThatSweptUnplaceableOutcomesTogether() {
+        // Fifty-six outcomes, the size of the course that produced the nine-member group. Nineteen
+        // groups of two plus one of eighteen partitions them exactly and passes every other rule.
+        List<CompactTaxonomySynthesizer.SubSkillGroup> swept =
+                new ArrayList<>(subSkillPartition(19, 2));
+        swept.add(new CompactTaxonomySynthesizer.SubSkillGroup(38,
+                java.util.stream.IntStream.rangeClosed(38, 55).boxed().toList()));
+
+        assertThatThrownBy(() -> CompactTaxonomySynthesizer.validateSubSkillPartition(
+                new CompactTaxonomySynthesizer.SubSkillPartition(swept, List.of()), 56, "English"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not hold more than 5 source outcomes")
+                .hasMessageContaining("one holds 18");
+    }
+
+    /** The cap bounds a group, not the tree: spreading the same outcomes wider is what it asks for. */
+    @Test
+    void acceptsTheSameOutcomesOnceTheyAreSpreadAcrossGroups() {
+        assertThat(selected(new CompactTaxonomySynthesizer.SubSkillPartition(
+                subSkillPartition(14, 4), List.of()), 56)).hasSize(14);
+        assertThat(selected(new CompactTaxonomySynthesizer.SubSkillPartition(
+                subSkillPartition(12, 5), List.of()), 60)).hasSize(12);
+    }
+
+    /**
+     * A flat cap is not always satisfiable, and an unsatisfiable rule does not reject a bad tree —
+     * it rejects every tree. One corpus course carries 195 source outcomes, which cannot fit into
+     * {@code MAX_SUB_SKILLS} groups of five however well they are grouped.
+     */
+    @Test
+    void widensTheCapWhenTheSubSkillCeilingWouldMakeItUnsatisfiable() {
+        assertThat(CompactTaxonomySynthesizer.maxMembersPerSubSkill(56)).isEqualTo(5);
+        assertThat(CompactTaxonomySynthesizer.maxMembersPerSubSkill(120)).isEqualTo(5);
+        assertThat(CompactTaxonomySynthesizer.maxMembersPerSubSkill(195)).isEqualTo(9);
+
+        // 195 outcomes at the widened cap: a partition exists, so the stage can still succeed.
+        assertThat(selected(new CompactTaxonomySynthesizer.SubSkillPartition(
+                subSkillPartition(24, 8), List.of()), 192)).hasSize(24);
+    }
+
+    /**
+     * The prompt is only rendered on a live run, so a placeholder that does not match its argument
+     * would fail against SAIA rather than here. The cap must also reach the model: enforcing a rule
+     * the prompt never states buys a retry where it could have bought a correct first answer.
+     */
+    @Test
+    void rendersTheStageOnePromptWithTheGroupSizeCapInIt() {
+        String prompt = CompactTaxonomySynthesizer.SUB_SKILL_PROMPT.formatted(
+                "opening", "{\"subSkills\":[]}", 14, 24, "accounting",
+                CompactTaxonomySynthesizer.maxMembersPerSubSkill(56), "conflict", "residue",
+                "0. an outcome");
+
+        assertThat(prompt).contains("5 is the hard maximum").contains("between 14 and 24 sub-skills");
+    }
+
     /** Every visible sub-skill must be a real extracted outcome, never generated text. */
     @Test
     void everySubSkillNodeIsAnElectedSourceOutcome() {
