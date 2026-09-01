@@ -91,6 +91,26 @@ public class CompactTaxonomySynthesizer {
     static final double MIN_SELECTED_SHARE = 0.5;
     /** Outcomes per sub-skill used to scale the requested count down on a short input. */
     private static final int OUTCOMES_PER_SUB_SKILL = 4;
+    /**
+     * How many source outcomes one sub-skill may absorb.
+     *
+     * <p>A group is meant to hold ONE performance restated — the same capability taught again in
+     * another lecture — and the prompt says so, but saying it was all that held: the count band and
+     * the exact partition were validated, a group's size never was. That gap has a direction.
+     * Because the partition is exact and {@code setAside} is off by default, every outcome must land
+     * in some group, so an outcome the model cannot confidently place still has to go somewhere and
+     * the nearest loosely-related group is the cheapest disposal. Measured on a nineteen-lecture
+     * course: five groups of one sitting beside a single group of nine that spanned the definition
+     * of a transform, its matrix form, two FFT variants and a bit-reversal ordering — five
+     * capabilities wearing one name, and 54 knowledge items gathered under it. The two extremes in
+     * one run are the tell; a model genuinely grouping restatements produces neither.
+     *
+     * <p>Five rather than the three the prompt calls normal, because this bounds the damage rather
+     * than judging coherence: a real restatement cluster spanning several lectures must still fit.
+     * The tier above has been bounded this way all along — see {@link #MAX_SUB_SKILLS_PER_SKILL},
+     * enforced on terminal width — so this only gives the sub-skill tier the check its parent has.
+     */
+    static final int MAX_MEMBERS_PER_SUB_SKILL = 5;
 
     public record Candidate(String text, String bloomLevel, String session) {}
 
@@ -228,7 +248,8 @@ public class CompactTaxonomySynthesizer {
                 the supporting array of the performance it serves, and elect a representative that
                 names that performance rather than the detail.""");
 
-    private static final String SUB_SKILL_PROMPT = """
+    /** Package-private so a test can render it: an arity slip would otherwise surface on a live run. */
+    static final String SUB_SKILL_PROMPT = """
             %s
 
             Do NOT write any new outcome text. Return only indices:
@@ -241,7 +262,10 @@ public class CompactTaxonomySynthesizer {
               - A sub-skill is ONE performance a student can be asked to carry out. Its supporting
                 array holds ONLY the outcomes that are the SAME performance restated — the same
                 capability taught again in another lecture, or worded differently. Two or three
-                members is normal. If you find yourself putting unrelated performances together
+                members is normal and %d is the hard maximum: a larger group is several capabilities
+                under one name and is rejected. If you cannot place an outcome, that is never a
+                reason to add it to the nearest group — return more sub-skills instead, up to the
+                maximum above. If you find yourself putting unrelated performances together
                 because they share a lecture or a chapter, that is the error this rule exists to
                 prevent: %s
               - representative must be one of that group's own supporting indices, and must read
@@ -420,7 +444,8 @@ public class CompactTaxonomySynthesizer {
         List<Candidate> presented = order.stream().map(candidates::get).toList();
         SelectionPolicy policy = setAsideOutcomes ? SELECT : PARTITION;
         String prompt = SUB_SKILL_PROMPT.formatted(policy.opening(), policy.example(), min, max,
-                policy.accounting(), policy.conflict(), policy.residue(), numbered(presented));
+                policy.accounting(), maxMembersPerSubSkill(candidates.size()), policy.conflict(),
+                policy.residue(), numbered(presented));
         String model = effectiveModel(modelOverride, partitionModel);
         try {
             return restoreSubSkillOrder(validateSubSkillPartition(
@@ -619,6 +644,7 @@ public class CompactTaxonomySynthesizer {
         }
         int min = minAcceptedSubSkills(candidateCount);
         int max = maxSubSkills(candidateCount);
+        int maxMembers = maxMembersPerSubSkill(candidateCount);
         if (partition.subSkills().size() < min || partition.subSkills().size() > max) {
             throw new IllegalArgumentException("Sub-skill selection returned " + partition.subSkills().size()
                     + " sub-skills for " + candidateCount + " outcomes; it must hold between "
@@ -635,6 +661,16 @@ public class CompactTaxonomySynthesizer {
             if (!members.contains(group.representative())) {
                 throw new IllegalArgumentException("The elected representative ["
                         + group.representative() + "] must be one of its own group's outcomes");
+            }
+            // The size rule the prompt has always stated, now enforced like every other rule here.
+            // The message names the split rather than the violation, because a model that swept its
+            // leftovers into one group needs to be told where they go instead — and the count band
+            // above normally leaves unused groups to put them in.
+            if (members.size() > maxMembers) {
+                throw new IllegalArgumentException("A sub-skill must not hold more than " + maxMembers
+                        + " source outcomes; one holds " + members.size() + ". A group is ONE"
+                        + " performance restated, so split it into the separate capabilities it"
+                        + " covers and give each its own sub-skill");
             }
             groups.add(new SubSkillGroup(group.representative(), members));
         }
@@ -892,6 +928,23 @@ public class CompactTaxonomySynthesizer {
     /** Bounded by {@link #MAX_SUB_SKILLS} so stage two can always fit them within the width cap. */
     static int maxSubSkills(int candidateCount) {
         return Math.max(minSubSkills(candidateCount), Math.min(MAX_SUB_SKILLS, candidateCount));
+    }
+
+    /**
+     * The largest group stage one may return for a course of this size.
+     *
+     * <p>{@link #MAX_MEMBERS_PER_SUB_SKILL} is a floor, not the answer, because a flat cap is not
+     * always satisfiable: the sub-skill count is itself capped at {@value #MAX_SUB_SKILLS}, so a
+     * course whose outcomes outnumber {@code MAX_SUB_SKILLS * MAX_MEMBERS_PER_SUB_SKILL} has no
+     * valid partition at all and every response would be rejected until the stage failed. One
+     * corpus course carries 195 source outcomes against a ceiling of 120. So the cap widens to
+     * whatever the arithmetic forces — the same reasoning as {@link #minAcceptedSubSkills}, which is
+     * likewise looser than what the prompt requests so that a coherent tree is never rejected on an
+     * editorial preference.
+     */
+    static int maxMembersPerSubSkill(int candidateCount) {
+        return Math.max(MAX_MEMBERS_PER_SUB_SKILL,
+                ceilDiv(candidateCount, maxSubSkills(candidateCount)));
     }
 
     /** The fewest terminals the sub-skills fit into at the width cap. */
