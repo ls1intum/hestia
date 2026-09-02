@@ -71,13 +71,18 @@ export interface SlideData {
     | "title"
     | "agenda"
     | "standard"
+    | "default"
+    | "content"
     | "activity_tiled"
     | "activity_sidebar"
     | "activity_grid3"
+    | "activity_qanda"
+    | "activity_q&a"
     | "live_poll"
     | "concept_map"
     | "lecture_placeholder"
-    | "debrief";
+    | "debrief"
+    | "break";
   activityInstructions?: string[];
   activityPrompt?: string;
   activityOutputExpectation?: string;
@@ -86,7 +91,7 @@ export interface SlideData {
   /** Single centred reflective question for debrief slides */
   debriefQuestion?: string;
   /** Slide group from the 7-part deck structure */
-  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary";
+  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary" | "break";
   /** Learning goal index (1-based) — present on main_lecture and check_understanding slides */
   lgIndex?: number;
 }

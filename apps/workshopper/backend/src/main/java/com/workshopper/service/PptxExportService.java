@@ -347,12 +347,13 @@ public class PptxExportService {
                                                               List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Activate Prior Knowledge";
+        String phaseName = "ACTIVATE";
 
         // ── Lecture placeholder (always present for ACTIVATE) ────────────────
         Map<String, Object> placeholder = new LinkedHashMap<>();
         placeholder.put("group", "activate_prior_knowledge");
         placeholder.put("layout", "lecture_placeholder");
-        placeholder.put("subtitle", label);
+        placeholder.put("subtitle", phaseName);
         placeholder.put("title", "[Placeholder] " + label);
         placeholder.put("bullets", List.of("Insert any framing/context lecture content here"));
         placeholder.put("notes", "Instructor's optional lecture/context slides before the activation activity.");
@@ -384,7 +385,7 @@ public class PptxExportService {
                 schemaSnippet = """
                     {
                       "layout": "live_poll",
-                      "title": "Activate: [Topic]",
+                      "title": "[Specific Activity Name, e.g. Think-Pair-Share]: [Topic or previous topics]",
                       "pollQuestion": "the open activation question",
                       "pollOptions": ["A) ...", "B) ...", "C) ..."],
                       "notes": "a PLAIN STRING — expected answers/misconceptions"
@@ -402,7 +403,7 @@ public class PptxExportService {
                 schemaSnippet = """
                     {
                       "layout": "%s",
-                      "title": "Activate: [Topic]",
+                      "title": "[Specific Activity Name, e.g. Think-Pair-Share]: [Topic or previous topics]",
                       "activityPrompt": "the open activation question",
                       "activityInstructions": %s,
                       "activityOutputExpectation": "what students should be prepared to share",
@@ -465,6 +466,7 @@ public class PptxExportService {
                                                                     List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Learning Cycle";
+        String phaseName = "LEARNING CYCLE";
         int lgIndex = block.goalTag() != null ? parseLgIndex(block.goalTag()) : 0;
         String lgText = resolveGoalText(lgIndex, goals, meta);
 
@@ -690,6 +692,7 @@ public class PptxExportService {
                                                               List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Summary & Wrap-up";
+        String phaseName = "SUMMARY";
 
         String sysPrompt = """
                 You are an expert instructional designer writing the Summary & Wrap-up slides for a session.
@@ -740,7 +743,7 @@ public class PptxExportService {
 
         for (Map<String, Object> slide : llmSlides) {
             slide.put("group", "summary");
-            slide.put("subtitle", label);
+            slide.put("subtitle", phaseName);
             if (!slide.containsKey("layout")) slide.put("layout", "concept_map");
             slides.add(slide);
         }
@@ -749,7 +752,7 @@ public class PptxExportService {
         Map<String, Object> thankYou = new LinkedHashMap<>();
         thankYou.put("group", "summary");
         thankYou.put("layout", "debrief");
-        thankYou.put("subtitle", label);
+        thankYou.put("subtitle", phaseName);
         thankYou.put("title", "Thank You");
         thankYou.put("debriefQuestion", "Any final questions before we close?");
         thankYou.put("notes", "Wrap up remaining questions. Share contact details if desired. End on time.");
@@ -786,7 +789,7 @@ public class PptxExportService {
             return """
                 SLIDE 1 — Activity slide:
                   "layout": "live_poll"
-                  "title": "Quiz / Polls: [Topic]"
+                  "title": "Quiz / Poll: [Learning Goal or Topic]"
                   "pollQuestion": "the student-facing question"
                   "pollOptions": ["A) ...", "B) ...", "C) ...", "D) ..."]
                   "notes": a PLAIN STRING — answer/reasoning, common wrong answers.
@@ -813,7 +816,7 @@ public class PptxExportService {
         return """
                 SLIDE 1 — Activity slide:
                   "layout": "%s"
-                  "title": "[Specific Activity Name]: [Topic]" (e.g. use "Quiz", "Q&A", or "Think Pair Share" instead of "Activity")
+                  "title": "[Specific Activity Name, e.g. Think-Pair-Share]: [Learning Goal or Topic]"
                   "activityInstructions": %s
                   "activityPrompt": the student-facing question/task/scenario (do NOT include "LG" or learning goal tags)
                   "activityOutputExpectation": what students will present/submit (if applicable, else omit)

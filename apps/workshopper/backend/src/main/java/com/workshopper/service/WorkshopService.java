@@ -466,10 +466,10 @@ public class WorkshopService {
                         8. For ARRIVE blocks, do NOT generate process steps. Instead, the single section MUST contain exactly one step per learning goal from the LEARNING GOALS list — copy each goal verbatim as its own step string, with NO time prefix. Example: if there are 3 LGs, output exactly 3 steps: ["LG1 text verbatim", "LG2 text verbatim", "LG3 text verbatim"].
                            For all other non-learning-cycle blocks (ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
                         9. The 'phaseLabel' should be a short, topic-focused title.
-                        10. Do NOT list "Lecture" or "Presentation" under 'methods'.
-                        11. When generating an 'Understanding Check' (EVALUATE), generate exactly ONE prompt per learning goal. If SELECTED ACTIVITIES contains exact mappings like "LG1:Quiz/Polls", you MUST use the specified activity for that specific learning goal (1-based index); for any LGs not mapped, infer the best-fit activity using the taxonomy map below. If SELECTED ACTIVITIES is just a list without "LGX:" prefixes, map them to the LGs by best-fit Bloom's/SOLO level, ensuring EVERY provided activity is used. If no list is provided, infer the best-fit activity using ONLY this mapping:
+                        10. Do NOT list "Lecture" or "Presentation" under 'methods'. Furthermore, 'Q&A Session' is strictly reserved for the 'Summary & Wrap-up' block and MUST NOT be generated in any other blocks.
+                        11. When generating an 'Understanding Check' (EVALUATE), generate exactly ONE prompt per learning goal. If SELECTED ACTIVITIES contains exact mappings like "LG1:Quiz/Polls", you MUST use the specified activity for that specific learning goal (1-based index); for any LGs not mapped, infer the best-fit activity using the taxonomy map below. If SELECTED ACTIVITIES is just a list without "LGX:" prefixes, map them to the LGs by best-fit Bloom's/SOLO level using the taxonomy map below. CRITICAL: You must explicitly prioritize VARIETY — do not overuse 'Think-Pair-Share' or 'Group Discussion'. Ensure you pick a uniquely tailored, diverse activity for each learning goal based on its specific verb. Do NOT use 'Q&A Session' in this block under any circumstances, even if it appears in the list. If no list is provided, infer the best-fit activity using ONLY this mapping:
                             - Bloom's Remember / SOLO Unistructural → Quiz/Polls
-                            - Bloom's Understand / SOLO Multistructural → Q&A Session or Think-Pair-Share
+                            - Bloom's Understand / SOLO Multistructural → Think-Pair-Share
                             - Bloom's Apply (structured) / SOLO Relational → Worked Problem
                             - Bloom's Apply (open-ended) / SOLO Relational → Hands-on Practice
                             - Bloom's Analyze / SOLO Relational → Case Study, Group Discussion, or Concept Mapping
@@ -480,10 +480,11 @@ public class WorkshopService {
                             Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
                         12. When generating a 'Summary & Wrap-up' block:
                             a) Start with one 'Takeaway: [key concept]' step per learning goal (no time prefix, just the text "Takeaway: [concise statement of the main concept]"). These are NOT timed.
-                            b) Then choose EXACTLY ONE student-centered closing activity — either 'One-Minute Paper' OR 'Q&A Session' — with timed steps.
+                            b) Then choose EXACTLY ONE student-centered closing activity based on the overall complexity of the session: if the content is highly complex, use a 'One-Minute Paper'; if it is simple/foundational, use a 'Q&A Session'.
                             c) Consolidate final logistics into one step ≤ 3 min.
                             d) Keep the phaseLabel strictly as "Summary & Wrap-up". Limit methods to 1 activity or 0 if unnecessary.
                         13. Ensure the combined duration of the final evaluation and wrap-up blocks is strictly between %d and %d minutes. To maintain momentum, no single sub-step within these final blocks should exceed 4 minutes.
+                        14. When generating an 'Activate Prior Knowledge' (ACTIVATE) block, strictly limit the block to exactly ONE activity. Do NOT generate multiple different activities for this block.
 
                         OUTPUT FORMAT (return only this JSON object, no markdown):
                         {

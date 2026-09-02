@@ -23,7 +23,7 @@ export function SortableBlockRow({
   onEditStepTime, onSaveStepTime,
   onEditBlockDuration, onSaveBlockDuration, onEditSectionDuration, onSaveSectionDuration,
   onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
-  isEditMode = false, onToggleEditMode, onSwitchEvaluateActivity
+  isEditMode = false, onToggleEditMode, onCancelEditMode, onSwitchEvaluateActivity
 }: {
   block: DndActivityBlock;
   isExpanded: boolean;
@@ -50,9 +50,10 @@ export function SortableBlockRow({
   onDeleteStep: (sectionIdx: number, stepIdx: number) => void;
   isEditMode?: boolean;
   onToggleEditMode?: () => void;
+  onCancelEditMode?: () => void;
   onSwitchEvaluateActivity?: (lgNum: number, newActivity: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.dndId
   });
   const style = {
@@ -176,7 +177,7 @@ export function SortableBlockRow({
                               <DropdownMenuSubContent>
                                 {groupActivities.map(act => (
                                   <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onSwitchActivity(m, act); }}>
-                                    Switch to {act}
+                                    {act}
                                   </DropdownMenuItem>
                                 ))}
                               </DropdownMenuSubContent>
@@ -195,7 +196,7 @@ export function SortableBlockRow({
                               <DropdownMenuSubContent>
                                 {custom.map(act => (
                                   <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onSwitchActivity(m, act); }}>
-                                    Switch to {act}
+                                    {act}
                                   </DropdownMenuItem>
                                 ))}
                               </DropdownMenuSubContent>
@@ -203,7 +204,7 @@ export function SortableBlockRow({
                           ) : null;
                         })()}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                           onClick={e => { e.stopPropagation(); onDeleteActivity(m); }}
                         >
@@ -213,7 +214,7 @@ export function SortableBlockRow({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
-                    <div 
+                    <div
                       style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
                       className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0"
                     >
@@ -273,14 +274,23 @@ export function SortableBlockRow({
                 </div>
               )}
 
+              {isEditMode && (
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 transition-colors shrink-0 text-destructive bg-destructive/10 hover:bg-destructive/20"
+                  onClick={e => { e.stopPropagation(); onCancelEditMode?.(); }}
+                  title="Undo block edits"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
               {/* Edit icon — pencil to enter, check to exit */}
               <Button
                 variant="ghost" size="icon"
-                className={`h-7 w-7 transition-colors shrink-0 ${
-                  isEditMode
+                className={`h-7 w-7 transition-colors shrink-0 ${isEditMode
                     ? "text-primary bg-primary/10 hover:bg-primary/20"
                     : "text-muted-foreground/40 hover:text-primary hover:bg-primary/10"
-                }`}
+                  }`}
                 onClick={e => { e.stopPropagation(); onToggleEditMode?.(); }}
                 title={isEditMode ? "Done editing" : "Edit block"}
               >
@@ -351,12 +361,12 @@ export function SortableBlockRow({
                 const rawGoals = meta?.learningGoals && meta.learningGoals.length > 0
                   ? meta.learningGoals
                   : allSteps
-                      .filter((s: string) => /learning goal|objective/i.test(s))
-                      .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
+                    .filter((s: string) => /learning goal|objective/i.test(s))
+                    .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
                 const goals = rawGoals.length > 0 ? rawGoals : allSteps
                   .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
                   .filter((s: string) => s.length > 0);
-                  
+
                 return (
                   <div className="pl-4 space-y-1.5">
                     <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
@@ -396,6 +406,10 @@ export function SortableBlockRow({
                 const sections = block.sections || [];
                 const contentSteps = sections.length > 0 ? (sections[0].steps || []) : [];
                 const activityStep = allSteps.find(s =>
+                  /^(?:\d+\s*(?:min|m)[\s—:-]*)?prompt[:\s]/i.test(s)
+                ) || allSteps.find(s =>
+                  /^(?:\d+\s*(?:min|m)[\s—:-]*)?(?:activity|task|scenario)[:\s]/i.test(s)
+                ) || allSteps.find(s =>
                   /prompt|activity|task|scenario|discuss|question/i.test(s)
                 );
                 const cleanActivity = activityStep
@@ -498,7 +512,7 @@ export function SortableBlockRow({
                       const lgNum = lgMatch ? lgMatch[1] : lgFallback ? lgFallback[1] : null;
                       const activity = lgMatch ? lgMatch[2].trim() : null;
                       const question = lgMatch ? lgMatch[3].trim() : lgFallback ? lgFallback[2].trim() : noTime;
-                      
+
                       return (
                         <div key={i} className="rounded-lg text-sm overflow-hidden"
                           style={{ border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeft: '2px solid var(--hestia-phase-evaluate)' }}>
@@ -537,12 +551,24 @@ export function SortableBlockRow({
                                         <DropdownMenuSubContent>
                                           {group.activities.map(act => (
                                             <DropdownMenuItem key={act.name} onClick={e => { e.stopPropagation(); onSwitchEvaluateActivity(parseInt(lgNum), act.name); }}>
-                                              Switch to {act.name}
+                                              {act.name}
                                             </DropdownMenuItem>
                                           ))}
                                         </DropdownMenuSubContent>
                                       </DropdownMenuSub>
                                     ))}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        const indices = findStepIndices(s);
+                                        if (indices) onDeleteStep(indices.sIdx, indices.stIdx);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete Activity
+                                    </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               ))}

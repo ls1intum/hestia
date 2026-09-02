@@ -50,6 +50,8 @@ const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "final-review", label: "Final Review" },
 ];
 
+let hasRestored = false;
+
 export default function App() {
   const [view, setView] = useState<"dashboard" | "wizard">("dashboard");
   const [step, setStep]         = useState<Step>("input-1");
@@ -63,6 +65,16 @@ export default function App() {
 
   // Current session being created/edited
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const setSessionIdSynced = (id: string | null) => {
+    sessionIdRef.current = id;
+    setSessionId(id);
+    if (id) {
+      sessionStorage.setItem("workshopper_session_id", id);
+    } else {
+      sessionStorage.removeItem("workshopper_session_id");
+    }
+  };
   const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
   const [entityType, setEntityType] = useState<"SESSION" | "LECTURE">("SESSION");
 
@@ -76,7 +88,8 @@ export default function App() {
   // All form state
   const [workshopInput, setWorkshopInput] = useState<Partial<WorkshopInput>>({});
   const [refinedGoals,  setRefinedGoals]  = useState<LearningGoalPlan[]>([]);
-  const [session,       setSession]       = useState<WorkshopSession | null>(null);
+  const [session, setSession] = useState<WorkshopSession | null>(null);
+  const [originalSession, setOriginalSession] = useState<WorkshopSession | null>(null);
   const [currentSkeleton, setCurrentSkeleton] = useState<SessionSkeleton | null>(null);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [slidesCache, setSlidesCache] = useState<Record<number, SlideData[]>>({});
@@ -138,7 +151,7 @@ export default function App() {
   // ── Navigation helpers ──────────────────────────────────────────────
 
   const startNewSession = () => {
-    setSessionId(null);
+    setSessionIdSynced(null);
     setCurrentLectureId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -154,7 +167,7 @@ export default function App() {
   };
 
   const startNewLecture = () => {
-    setSessionId(null);
+    setSessionIdSynced(null);
     setCurrentLectureId(null);
     setEntityType("LECTURE");
     setWorkshopInput({});
@@ -181,7 +194,7 @@ export default function App() {
           setWorkshopInput(inheritedInput);
         }
       }
-      setSessionId(null);
+      setSessionIdSynced(null);
       setCurrentLectureId(lectureId);
       setEntityType("SESSION");
       setRefinedGoals([]);
@@ -202,7 +215,7 @@ export default function App() {
     }
   };
 
-  const resumeSession = async (id: string) => {
+  const resumeSession = async (id: string, opts?: { silent?: boolean }) => {
     setIsLoading(true);
     try {
       const detail = await getSessionDetail(id);
@@ -211,7 +224,7 @@ export default function App() {
       const resolvedEntityType = detail.type ?? "SESSION";
       const resolvedLectureId = detail.lectureId ?? null;
 
-      setSessionId(detail.id);
+      setSessionIdSynced(detail.id);
       setEntityType(resolvedEntityType);
       setCurrentLectureId(resolvedLectureId);
 
@@ -268,6 +281,11 @@ export default function App() {
           if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
         } catch (_) { /* best effort */ }
       }
+      
+      // Also restore slidesCache for the draft
+      if (detail.session?.slides) {
+        setSlidesCache(detail.session.slides);
+      }
 
       // Navigate to where the user left off
       let targetStepStr = (detail.currentStep as string) ?? "input-1";
@@ -293,11 +311,15 @@ export default function App() {
       setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
-      toast({
-        title: "Could not load session",
-        description: e instanceof Error ? e.message : "Unknown error",
-        variant: "destructive",
-      });
+      if (opts?.silent) {
+        sessionStorage.removeItem("workshopper_session_id");
+      } else {
+        toast({
+          title: "Could not load session",
+          description: e instanceof Error ? (e.stack || e.message) : "Unknown error",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -313,8 +335,8 @@ export default function App() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, "input-2", sessionId, entityType, currentLectureId);
-      if (!sessionId) setSessionId(id);
+      const id = await persistDraft(draft, "input-2", sessionIdRef.current, entityType, currentLectureId);
+      if (!sessionId) setSessionIdSynced(id);
       setStep("input-2");
     } finally {
       setIsLoading(false);
@@ -335,8 +357,8 @@ export default function App() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionId, entityType, currentLectureId);
-      if (!sessionId) setSessionId(id);
+      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionIdRef.current, entityType, currentLectureId);
+      if (!sessionId) setSessionIdSynced(id);
       if (entityType === "LECTURE") {
         toast({ title: "Lecture successfully created", description: "Your lecture has been saved to the dashboard." });
         // C-3: short delay so the toast is visible before navigating away
@@ -365,8 +387,8 @@ export default function App() {
       
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
       const initialDraft = buildDraft(updatedInput, goals, skeleton);
-      const currentId = await persistDraft(initialDraft, "goals", sessionId, entityType, currentLectureId);
-      if (!sessionId) setSessionId(currentId);
+      const currentId = await persistDraft(initialDraft, "goals", sessionIdRef.current, entityType, currentLectureId);
+      if (!sessionId) setSessionIdSynced(currentId);
       
       const skeletonWithId: SessionSkeleton = {
         ...skeleton,
@@ -381,6 +403,7 @@ export default function App() {
         result.title = updatedInput.title.trim();
       }
       setSession(result);
+      setOriginalSession(JSON.parse(JSON.stringify(result)));
       
       const draft = buildDraft(updatedInput, goals, skeleton, result);
       await persistDraft(draft, "timeline", currentId, entityType, currentLectureId);
@@ -400,7 +423,7 @@ export default function App() {
   const handleReset = () => {
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     setView("dashboard");
-    setSessionId(null);
+    setSessionIdSynced(null);
     setCurrentLectureId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -426,6 +449,15 @@ export default function App() {
   useEffect(() => {
     setHighestStepIdx(prev => Math.max(prev, currentIdx));
   }, [currentIdx]);
+
+  useEffect(() => {
+    if (hasRestored) return;
+    hasRestored = true;
+    const savedId = sessionStorage.getItem("workshopper_session_id");
+    if (savedId) {
+      resumeSession(savedId, { silent: true });
+    }
+  }, []);
 
   const loadingMessages: Record<Step, { title: string; sub: string }> = {
     "input-1":  { title: "Loading…",                    sub: "" },
@@ -606,8 +638,12 @@ export default function App() {
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
             onBack={() => {
-              // N-2: show confirmation before going back to goals (which triggers regen)
-              setShowTimelineBackConfirm(true);
+              // Check if session differs from original
+              if (originalSession && JSON.stringify(session) !== JSON.stringify(originalSession)) {
+                setShowTimelineBackConfirm(true);
+              } else {
+                setStep("goals");
+              }
             }}
             onNext={(latestSession) => {
               setSession(latestSession);

@@ -87,6 +87,27 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
   const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
+
+  const toggleEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId) {
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+    } else {
+      setEditingBlockId(dndId);
+      const block = blocks.find(b => b.dndId === dndId);
+      if (block) setEditingBlockOriginal(JSON.parse(JSON.stringify(block)));
+    }
+  };
+
+  const cancelEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId && editingBlockOriginal) {
+      setBlocks(prev => prev.map(b => b.dndId === dndId ? editingBlockOriginal : b));
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+    }
+  };
+
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -698,7 +719,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   isRegenerating={regeneratingBlockId === block.dndId}
                   selectedActivities={meta.selectedActivities || []}
                   isEditMode={editingBlockId === block.dndId}
-                  onToggleEditMode={() => setEditingBlockId(prev => prev === block.dndId ? null : block.dndId)}
+                  onToggleEditMode={() => toggleEditBlock(block.dndId)}
+                  onCancelEditMode={() => cancelEditBlock(block.dndId)}
                   onToggleExpand={() => toggleExpand(block.dndId)}
                   onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
                   onSaveTitle={v => handleSaveTitle(block.dndId, v)}
