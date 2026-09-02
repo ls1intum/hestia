@@ -77,10 +77,9 @@ hestia:
   extraction:
     # Large session prompts are provider-intensive. Four concurrent calls keep useful throughput
     # without sending an entire medium-sized course as one burst.
-    chunk-size: 16000
     parallelism: 4
-    # Sessions at or below this length use one full-session extraction call; 0 disables the direct
-    # path entirely for shadow-run comparison with the legacy chunked pipeline.
+    # The budget for one extraction call. A section longer than this is cut into page-aligned
+    # windows that share its session; 0 disables the split and sends every section whole.
     direct-max-chars: 80000
     # Keep generation consistent across evaluation runs; temperature 0 can make systematic omissions
     # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
