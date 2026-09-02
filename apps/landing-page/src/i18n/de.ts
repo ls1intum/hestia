@@ -164,6 +164,13 @@ export const de = {
       },
     ],
   },
+  info: {
+    title: "Über Hestia",
+    backToHome: "Zurück zur Startseite",
+    p1: "Hestia ist eine KI-Forschungsinitiative an der Technischen Universität München (TUM), die Tools entwickelt, um Hochschullehrende mithilfe großer Sprachmodelle bei der Gestaltung besserer Lehre zu unterstützen. Das Projekt reagiert auf eine einfache Realität: Professorinnen und Professoren haben wenig Zeit für die Lehrvorbereitung, wodurch bewährte, lernförderliche Methoden oft zu wenig genutzt werden. Die Tools von Hestia sollen fundiertes didaktisches Design schneller und zugänglicher machen.",
+    p2: "Die Initiative umfasst drei Tools. LearningGoalHub hilft Lehrenden, die Lernziele ihrer Kurse zu verstehen, zu gestalten und zu kommunizieren. ExamLense bewertet Prüfungen, indem es misst, wie gut KI-Modelle bei ihnen abschneiden, und zeigt so, welche Prüfungsformate anfällig für KI-gestützte Bearbeitung sind. Workshopper hilft neuen Lehrenden dabei, aus ihren Lernzielen konkrete, didaktisch fundierte Lehreinheiten zu entwickeln — inklusive Zeitplan und bearbeitbarer Folien.",
+    p3: "Gemeinsam begleiten diese Tools Lehrende durch den gesamten Prozess der Kursgestaltung, von der Zieldefinition über die Sitzungsvorbereitung bis hin zur Überprüfung von Prüfungen.",
+  },
   privacy: {
     title: "Datenschutzerklärung",
     backToHome: "Zurück zur Startseite",
