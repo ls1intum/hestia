@@ -92,22 +92,13 @@ class ExtractionControllerTest {
     private HierarchyNodeRepository hierarchyRepository;
 
     @Autowired
-    private GoalCandidateRepository goalCandidateRepository;
-
-    @Autowired
     private ExtractionRunRepository extractionRunRepository;
 
     @Autowired
     private ExtractionRunAuditService extractionRunAuditService;
 
     @MockitoBean
-    private ExtractionService extractionService;
-
-    @MockitoBean
     private SessionExtractionService sessionExtractionService;
-
-    @MockitoBean
-    private SessionGoalConsolidator sessionGoalConsolidator;
 
     @MockitoBean
     private PageDescriptionService pageDescriptionService;
@@ -124,18 +115,8 @@ class ExtractionControllerTest {
     @MockitoBean
     private CompactTaxonomySynthesizer compactTaxonomySynthesizer;
 
-    /**
-     * Identity consolidation: pass each session's candidates through unchanged (one outcome per
-     * candidate, each supported by itself). This isolates the fallback path from the consolidation LLM.
-     */
     @BeforeEach
-    void stubIdentityConsolidation() {
-        when(sessionGoalConsolidator.consolidate(anyString(), anyList(), anyString(), any())).thenAnswer(inv -> {
-            List<String> candidates = inv.getArgument(1);
-            return java.util.stream.IntStream.range(0, candidates.size())
-                    .mapToObj(i -> new ConsolidatedGoal(candidates.get(i), List.of(i)))
-                    .toList();
-        });
+    void stubIdentityTreeSynthesis() {
         when(compactTaxonomySynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
             List<CompactTaxonomySynthesizer.Candidate> candidates = inv.getArgument(0);
             List<Integer> supporting = java.util.stream.IntStream.range(0, candidates.size()).boxed().toList();
@@ -248,8 +229,6 @@ class ExtractionControllerTest {
         oldGoal.setHierarchyNode(oldSession);
         oldGoal = goalRepository.saveAndFlush(oldGoal);
         goalSourceRepository.save(new GoalSource(oldGoal, document, "old source"));
-        goalCandidateRepository.save(new GoalCandidate(course, oldSession, "old candidate",
-                GoalKind.EXPLICIT, "old candidate source"));
 
         when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("en"), eq("English"), eq(null)))
                 .thenReturn(List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome"))));
@@ -258,7 +237,6 @@ class ExtractionControllerTest {
 
         assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
         assertThat(goalSourceRepository.findByGoalId(oldGoal.getId())).isEmpty();
-        assertThat(goalCandidateRepository.findByCourseId(course.getId())).isEmpty();
         assertThat(hierarchyRepository.findByCourseId(course.getId()))
                 .noneMatch(node -> node.getLabel().equals("Old module") || node.getLabel().equals("Old session"));
         assertThat(goalRepository.findByCourseId(course.getId()))
@@ -301,10 +279,6 @@ class ExtractionControllerTest {
                         "Behaviour-Preserving Refactoring");
         assertThat(goals).allSatisfy(g -> assertThat(g.getEmbedding()).isNull());
         verifyNoInteractions(embeddingService);
-
-        // Direct extraction does not create legacy raw candidate rows.
-        List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
-        assertThat(candidates).isEmpty();
 
         long sourcesForLecture = goalSourceRepository.findAll().stream()
                 .filter(s -> s.getDocument().getId().equals(lecture.getId()))
@@ -381,7 +355,7 @@ class ExtractionControllerTest {
         Course course = courseRepository.save(new Course("Audit lifecycle"));
 
         Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
-                "{\"chunk-size\":16000,\"direct-max-chars\":80000,\"parallelism\":16}");
+                "{\"direct-max-chars\":80000,\"parallelism\":16}");
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
                 .isEqualTo(ExtractionRun.Status.RUNNING);
 
@@ -435,42 +409,142 @@ class ExtractionControllerTest {
         assertThat(sources.get("Unsupported outcome").getEvidenceKind()).isEqualTo(EvidenceKind.UNSUPPORTED);
     }
 
+    /**
+     * A section too large for one extraction call becomes several units on the ONE session node its
+     * section created, and each unit is extracted on its own. The grounding assertion is the point:
+     * every window reports its source lines relative to its own text, so a goal from the third window
+     * must resolve to the third window's line — which only holds while each goal carries its own unit
+     * through classification. Collapsing the units (one per node) would silently resolve all three
+     * against the first window and give three identical snippets.
+     */
     @Test
-    void oversizedSessionUsesFallbackCandidatesAndProvenance() throws Exception {
+    void oversizedSectionIsSplitIntoWindowsOnOneSession() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
-        String oversizedText = "This session is deliberately longer than the direct extraction threshold. "
-                .repeat(3);
+        // direct-max-chars is 80 here, so a 180-character document cuts into three 60-character
+        // line-aligned windows.
+        String first = paddedLine("Apply the first capability.");
+        String second = paddedLine("Apply the second capability.");
+        String third = paddedLine("Apply the third capability.");
         Document document = documentRepository.save(
-                new Document(course, "fallback.pdf", "application/pdf", oversizedText));
+                new Document(course, "combined.pdf", "application/pdf", first + second + third));
 
-        when(extractionService.extract(eq(oversizedText), eq("English"), eq(null))).thenReturn(List.of(
-                new ExtractedGoal("Apply the fallback procedure.", GoalKind.EXPLICIT, "...fallback procedure...")));
-        when(sessionGoalConsolidator.consolidate(eq("fallback.pdf"), anyList(), eq("English"), eq(null))).thenReturn(List.of(
-                new ConsolidatedGoal("Apply the fallback procedure.", "Fallback Procedure", List.of(0))));
-        stubEmbedAll(Map.of("Apply the fallback procedure.", orthogonalEmbedding(0)));
+        when(sessionExtractionService.extract(eq("combined.pdf"), eq(first), eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the first capability.", "First",
+                        GoalKind.EXPLICIT, ""), 0, 0)));
+        when(sessionExtractionService.extract(eq("combined.pdf"), eq(second), eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the second capability.", "Second",
+                        GoalKind.EXPLICIT, ""), 0, 0)));
+        when(sessionExtractionService.extract(eq("combined.pdf"), eq(third), eq("en"), eq("English"), eq(null)))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the third capability.", "Third",
+                        GoalKind.EXPLICIT, ""), 0, 0)));
+        stubEmbedAll(Map.of(
+                "Apply the first capability.", orthogonalEmbedding(0),
+                "Apply the second capability.", orthogonalEmbedding(1),
+                "Apply the third capability.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
-        verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), anyString(), eq(null));
-        List<GoalCandidate> candidates = goalCandidateRepository.findByCourseId(course.getId());
-        assertThat(candidates)
+        List<LearningGoal> extracted = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .toList();
+        assertThat(extracted).extracting(LearningGoal::getShortLabel)
+                .containsExactlyInAnyOrder("First", "Second", "Third");
+
+        // The split is invisible above the extraction unit: one session node owns all three windows.
+        assertThat(extracted).extracting(goal -> goal.getHierarchyNode().getId())
+                .containsOnly(extracted.getFirst().getHierarchyNode().getId());
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .filteredOn(node -> node.getLevel() == HierarchyLevel.SESSION)
                 .singleElement()
-                .satisfies(candidate -> assertThat(candidate.getConsolidatedGoal()).isNotNull());
+                .satisfies(node -> assertThat(node.getLabel()).isEqualTo("combined.pdf"));
+
+        Map<Long, String> goalTextById = extracted.stream()
+                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<String, String> snippets = goalSourceRepository.findAll().stream()
+                .filter(source -> source.getDocument().getId().equals(document.getId()))
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()),
+                        source -> source.getSnippet().strip()));
+        assertThat(snippets).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "Apply the first capability.", "Apply the first capability.",
+                "Apply the second capability.", "Apply the second capability.",
+                "Apply the third capability.", "Apply the third capability."));
+
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
-                .satisfies(run -> assertThat(run.getPromptVersion()).isEqualTo("chunked-v5"));
-        assertThat(goalSourceRepository.findAll())
-                .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
-                .hasSize(1);
-        assertThat(goalSourceRepository.findAll())
-                .filteredOn(source -> source.getDocument().getId().equals(document.getId()))
+                .satisfies(run -> assertThat(run.getPromptVersion())
+                        .isEqualTo(SessionExtractionService.PROMPT_VERSION));
+    }
+
+    /** Pads a sentence to exactly 59 characters plus a newline, so windows land on known offsets. */
+    private static String paddedLine(String sentence) {
+        return sentence + " ".repeat(59 - sentence.length()) + "\n";
+    }
+
+    /**
+     * The same split on a PDF, where page offsets exist: the cut follows page boundaries rather than
+     * lines, so no slide is torn in half and every window keeps a true page range. Each goal must
+     * resolve to the page of its own window.
+     */
+    @Test
+    void oversizedSectionSplitsOnPageBoundaries() throws Exception {
+        Course course = courseRepository.save(new Course("Paged sections"));
+        // Four 50-character pages against an 80-character budget: whole pages pack one per window.
+        List<String> pages = List.of(
+                pagedLine("Apply the page one capability."),
+                pagedLine("Apply the page two capability."),
+                pagedLine("Apply the page three capability."),
+                pagedLine("Apply the page four capability."));
+        String rawText = String.join("", pages);
+        Document document = documentRepository.save(
+                new Document(course, "paged.pdf", "application/pdf", rawText));
+        document.setPageOffsets(new int[]{0, 50, 100, 150, 200});
+        documentRepository.saveAndFlush(document);
+        documentSectionRepository.saveAndFlush(new DocumentSection(
+                document, 0, "Combined chapter", 0, rawText.length(), 1, 4));
+
+        List<String> labels = List.of("Page one", "Page two", "Page three", "Page four");
+        for (int i = 0; i < pages.size(); i++) {
+            when(sessionExtractionService.extract(eq("Combined chapter"), eq(pages.get(i)),
+                    eq("en"), eq("English"), eq(null)))
+                    .thenReturn(List.of(skill(new ExtractedGoal(labels.get(i) + " outcome", labels.get(i),
+                            GoalKind.EXPLICIT, ""), 0, 0)));
+        }
+        stubEmbedAll(Map.of(
+                "Page one outcome", orthogonalEmbedding(0),
+                "Page two outcome", orthogonalEmbedding(1),
+                "Page three outcome", orthogonalEmbedding(2),
+                "Page four outcome", orthogonalEmbedding(3)));
+
+        startExtraction(course.getId());
+
+        List<LearningGoal> extracted = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .toList();
+        assertThat(extracted).extracting(LearningGoal::getShortLabel)
+                .containsExactlyInAnyOrderElementsOf(labels);
+        assertThat(extracted).extracting(goal -> goal.getHierarchyNode().getId())
+                .containsOnly(extracted.getFirst().getHierarchyNode().getId());
+        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+                .filteredOn(node -> node.getLevel() == HierarchyLevel.SESSION)
                 .singleElement()
-                .extracting(GoalSource::getEvidenceKind)
-                .isEqualTo(EvidenceKind.UNSUPPORTED);
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .singleElement()
-                .extracting(LearningGoal::getShortLabel)
-                .isEqualTo("Fallback Procedure");
+                .satisfies(node -> assertThat(node.getLabel()).isEqualTo("Combined chapter"));
+
+        Map<Long, String> goalTextById = extracted.stream()
+                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<String, Integer> pageByGoal = goalSourceRepository.findAll().stream()
+                .filter(source -> source.getDocument().getId().equals(document.getId()))
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()),
+                        GoalSource::getPage));
+        assertThat(pageByGoal).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "Page one outcome", 1,
+                "Page two outcome", 2,
+                "Page three outcome", 3,
+                "Page four outcome", 4));
+    }
+
+    /** Pads a sentence to exactly 49 characters plus a newline, giving 50-character pages. */
+    private static String pagedLine(String sentence) {
+        return sentence + " ".repeat(49 - sentence.length()) + "\n";
     }
 
     @Test

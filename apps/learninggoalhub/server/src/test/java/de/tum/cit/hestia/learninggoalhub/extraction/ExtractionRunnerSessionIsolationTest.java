@@ -79,7 +79,6 @@ class ExtractionRunnerSessionIsolationTest {
         LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
-        DocumentChunker documentChunker = mock(DocumentChunker.class);
 
         Course course = mock(Course.class);
         when(course.getId()).thenReturn(1L);
@@ -100,7 +99,6 @@ class ExtractionRunnerSessionIsolationTest {
         when(hierarchyNodeRepository.findByCourseId(1L)).thenReturn(List.of());
         when(hierarchyNodeRepository.save(any(HierarchyNode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(documentChunker.getChunkSize()).thenReturn(8000);
         when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
@@ -117,14 +115,10 @@ class ExtractionRunnerSessionIsolationTest {
                 goalRepository,
                 mock(GoalSourceRepository.class),
                 mock(GoalRelationshipRepository.class),
-                mock(ExtractionService.class),
                 sessionExtractionService,
-                mock(SessionGoalConsolidator.class),
                 auditService,
-                mock(GoalCandidateRepository.class),
                 documentSectionRepository,
                 mock(CompactTaxonomySynthesizer.class),
-                documentChunker,
                 hierarchyNodeRepository,
                 mock(TaxonomyService.class),
                 progressTracker,
