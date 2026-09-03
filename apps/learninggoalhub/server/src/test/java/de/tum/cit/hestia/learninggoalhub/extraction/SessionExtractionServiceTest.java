@@ -497,4 +497,74 @@ class SessionExtractionServiceTest {
                 .hasMessageContaining("must not contain more than 1 broad skills");
         assertThat(SessionExtractionService.validate(two, "German", null, 0, 2)).hasSize(2);
     }
+
+    /**
+     * The failure this prevents: a real 32-document run died after both attempts on "invalid source
+     * range [20..166]: spans more than 5 numbered lines". Every skill in that session cited badly, so
+     * the salvage returned nothing and all 39 units of the course were lost to one lecture's
+     * footnotes.
+     */
+    @Test
+    void keepsAWellWordedSkillWhoseCitationCannotBeVerified() {
+        // Real lines, drawn far too wide: the failing run cited [20..166] where 5 lines are allowed.
+        String session = java.util.stream.IntStream.rangeClosed(1, 200)
+                .mapToObj(i -> "line " + i).collect(java.util.stream.Collectors.joining("\n"));
+        List<ExtractedSkill> overWideRange = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, 20, 166, List.of()));
+
+        List<ExtractedSkill> salvaged = SessionExtractionService.salvageValidOutcomes(
+                overWideRange, "English", NumberedLines.of(session), 0);
+
+        assertThat(salvaged).singleElement()
+                .satisfies(skill -> {
+                    assertThat(skill.text()).isEqualTo("Applying quadrature rules in higher dimensions.");
+                    // The citation is dropped, never narrowed: five of the 166 lines the model pointed
+                    // at would be a citation nobody verified.
+                    assertThat(skill.sourceStartLine()).isNull();
+                    assertThat(skill.sourceEndLine()).isNull();
+                    assertThat(skill.sourceFigure()).isNull();
+                });
+    }
+
+    /** A badly WORDED skill is still dropped: it is not a usable outcome, however it cites itself. */
+    @Test
+    void stillDropsASkillWhoseWordingIsInvalid() {
+        List<ExtractedSkill> badWording = List.of(
+                new ExtractedSkill(null, "No text at all", GoalKind.EXPLICIT, 1, 2, List.of()),
+                new ExtractedSkill("Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                        GoalKind.EXPLICIT, 1, 2, List.of()));
+
+        assertThat(SessionExtractionService.salvageValidOutcomes(
+                badWording, "English", NumberedLines.of("one\ntwo\nthree"), 0))
+                .singleElement()
+                .extracting(ExtractedSkill::shortLabel).isEqualTo("Apply Quadrature");
+    }
+
+    /** A verifiable citation is kept exactly as the model gave it. */
+    @Test
+    void keepsAValidCitationUntouched() {
+        List<ExtractedSkill> good = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, 1, 2, List.of()));
+
+        assertThat(SessionExtractionService.salvageValidOutcomes(
+                good, "English", NumberedLines.of("one\ntwo\nthree"), 0))
+                .singleElement()
+                .satisfies(skill -> {
+                    assertThat(skill.sourceStartLine()).isEqualTo(1);
+                    assertThat(skill.sourceEndLine()).isEqualTo(2);
+                });
+    }
+
+    /** Past the end of the text is not imprecision — it points nowhere, so the skill is still dropped. */
+    @Test
+    void stillDropsASkillWhoseCitationIsBeyondTheText() {
+        List<ExtractedSkill> outOfBounds = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, 9, 9, List.of()));
+
+        assertThat(SessionExtractionService.salvageValidOutcomes(
+                outOfBounds, "English", NumberedLines.of("one\ntwo\nthree"), 0)).isEmpty();
+    }
 }
