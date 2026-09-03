@@ -36,6 +36,52 @@ public class SessionExtractionService {
      */
     static final int MAX_SKILLS_PER_SESSION = 4;
 
+    /**
+     * Turns a unit's size into the number of skills it may yield.
+     *
+     * <p>Until this existed the allowance was flat, so a one-page problem sheet and a fifty-page
+     * lecture were each asked for the same two or three outcomes. Measured on a real corpus, exercise
+     * sheets were 14-17% of a course's text and produced 36-47% of its skills; across one 19-document
+     * course the density ranged from 1,332 to 7,743 characters per skill purely by how the material
+     * happened to be split into files. The tree's size was therefore decided by the uploader's
+     * packaging rather than by how much the course teaches.
+     *
+     * <p>Scaling by size makes it decided by content instead: repackaging the same lectures into one
+     * combined PDF, or splitting one exercise sheet into twelve, changes the total character count
+     * not at all and so changes the allowance not at all.
+     *
+     * <p>The floor of one matters as much as the ceiling. A unit below the target still teaches
+     * something, and rounding it to zero would silently drop short material — a genuine risk with
+     * exercise sheets, which carry a course's highest Bloom levels (100% and 90% at APPLY or above on
+     * the two corpora measured, against 73-75% for lectures).
+     *
+     * @param chars       the unit's own length; units are already split at the granularity budget.
+     * @param targetChars characters per skill; zero or less disables scaling and keeps the ceiling.
+     */
+    static int skillBudget(int chars, int targetChars) {
+        if (targetChars <= 0) {
+            return MAX_SKILLS_PER_SESSION;
+        }
+        long scaled = Math.round((double) chars / targetChars);
+        return (int) Math.max(1, Math.min(MAX_SKILLS_PER_SESSION, scaled));
+    }
+
+    /**
+     * How the count is asked for at each allowance.
+     *
+     * <p>"Two or three, never more than four" reads as an instruction to produce three whatever the
+     * material holds, which is what the model did on ten of thirteen lectures. At a budget of one or
+     * two that phrasing would be actively misleading, so the request is stated at the size it was
+     * computed for.
+     */
+    static String allowancePhrase(int budget) {
+        return switch (budget) {
+            case 1 -> "return exactly ONE";
+            case 2 -> "return ONE OR TWO";
+            default -> "return TWO OR THREE";
+        };
+    }
+
     private static final String REQUIRED_FIELDS_RETRY = """
 
             Your previous response violated a required field or outcome-wording rule. Regenerate the
@@ -57,11 +103,12 @@ public class SessionExtractionService {
 
             Extract the session's BROAD instructor-level learning outcomes — the two or three objectives
             an instructor would put on a "learning objectives" slide for this session, not a line-by-line
-            inventory of every fact, step or example. SKILLS stay FEW and broad: return TWO OR THREE, and
-            never more than %d. Reaching the maximum is a signal that you have not merged enough: go back
-            and fold the narrower candidates into the broader capability they serve. A single lecture
-            rarely teaches more than three genuinely separate capabilities, however much material it
-            covers — a long lecture means MORE KNOWLEDGE under each skill, not more skills.
+            inventory of every fact, step or example. SKILLS stay FEW and broad: %s, and
+            never more than %d. That allowance is set from how much material this unit holds, so it is
+            already the right number for what you are reading — reaching the maximum is a signal that
+            you have not merged enough: go back and fold the narrower candidates into the broader
+            capability they serve. However much material a unit covers, more of it means MORE KNOWLEDGE
+            under each skill, not more skills.
 
             If you are unsure whether something is a skill or knowledge, make it knowledge. Merge related
             facets, steps, methods and examples into the larger competency they support as that skill's
@@ -198,11 +245,23 @@ public class SessionExtractionService {
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
                                         String languageName, String modelOverride,
                                         List<PageDescriptionService.FigureDescription> figureDescriptions) {
+        return extract(sessionTitle, sessionText, expectedLanguageCode, languageName, modelOverride,
+                figureDescriptions, MAX_SKILLS_PER_SESSION);
+    }
+
+    /**
+     * @param skillBudget the most skills this unit may yield, from {@link #skillBudget(int, int)}.
+     */
+    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
+                                        String languageName, String modelOverride,
+                                        List<PageDescriptionService.FigureDescription> figureDescriptions,
+                                        int skillBudget) {
+        int budget = Math.max(1, Math.min(MAX_SKILLS_PER_SESSION, skillBudget));
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
         NumberedLines numberedLines = NumberedLines.of(sessionText);
         String numberedSessionText = numberedLines.render();
         String prompt = PROMPT_TEMPLATE.formatted(
-                languageName, MAX_SKILLS_PER_SESSION, title, numberedSessionText);
+                languageName, allowancePhrase(budget), budget, title, numberedSessionText);
         if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
             StringBuilder figures = new StringBuilder();
             for (int i = 0; i < figureDescriptions.size(); i++) {
@@ -217,7 +276,7 @@ public class SessionExtractionService {
         List<ExtractedSkill> first;
         try {
             first = validate(call(prompt, languageName, modelOverride, temperature, false), languageName,
-                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size());
+                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size(), budget);
         } catch (IllegalArgumentException invalidResponse) {
             log.warn("Session extraction returned invalid fields, wording or evidence for '{}'; retrying once: {}",
                     title, invalidResponse.getMessage());
@@ -226,7 +285,7 @@ public class SessionExtractionService {
             List<ExtractedSkill> retryResponse = call(retryPrompt, languageName, modelOverride, 0.0, false);
             try {
                 first = validate(retryResponse, languageName, numberedLines,
-                        figureDescriptions == null ? 0 : figureDescriptions.size());
+                        figureDescriptions == null ? 0 : figureDescriptions.size(), budget);
             } catch (IllegalArgumentException invalidRetry) {
                 first = salvageValidOutcomes(retryResponse, languageName, numberedLines,
                         figureDescriptions == null ? 0 : figureDescriptions.size());
@@ -250,7 +309,7 @@ public class SessionExtractionService {
         List<ExtractedSkill> retry;
         try {
             retry = validate(call(prompt, languageName, modelOverride, 0.0, true), languageName,
-                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size());
+                    numberedLines, figureDescriptions == null ? 0 : figureDescriptions.size(), budget);
         } catch (IllegalArgumentException invalidResponse) {
             log.warn("Language retry for '{}' returned invalid fields or wording; keeping the valid first response: {}",
                     title, invalidResponse.getMessage());
@@ -270,17 +329,18 @@ public class SessionExtractionService {
 
     /** Rejects malformed structured output before taxonomy, embedding, or database persistence. */
     static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName) {
-        return validate(extracted, languageName, null, 0);
+        return validate(extracted, languageName, null, 0, MAX_SKILLS_PER_SESSION);
     }
 
-    private static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName,
-                                                 NumberedLines numberedLines, int figureCount) {
+    static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName,
+                                         NumberedLines numberedLines, int figureCount,
+                                         int skillBudget) {
         if (extracted == null || extracted.isEmpty()) {
             return List.of();
         }
-        if (extracted.size() > MAX_SKILLS_PER_SESSION) {
-            throw new IllegalArgumentException("A session must not contain more than "
-                    + MAX_SKILLS_PER_SESSION + " broad skills");
+        if (extracted.size() > skillBudget) {
+            throw new IllegalArgumentException("A unit of this size must not contain more than "
+                    + skillBudget + " broad skills");
         }
         List<ExtractedSkill> valid = new ArrayList<>(extracted.size());
         for (ExtractedSkill skill : extracted) {

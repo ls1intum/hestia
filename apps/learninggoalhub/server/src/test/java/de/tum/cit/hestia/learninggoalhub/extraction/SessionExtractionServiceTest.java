@@ -69,7 +69,8 @@ class SessionExtractionServiceTest {
                 // Asserted in fragments: the template wraps both sentences across two lines.
                 .contains("return TWO OR THREE, and")
                 .contains("never more than 4")
-                .contains("Reaching the maximum is a signal that you have not merged enough")
+                .contains("reaching the maximum is a signal that")
+                .contains("you have not merged enough")
                 .contains("If you are unsure whether something")
                 .contains("is a skill or knowledge, make it knowledge")
                 .contains("knowledge children")
@@ -426,5 +427,74 @@ class SessionExtractionServiceTest {
         ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
         verify(spec, times(2)).system(systemCaptor.capture());
         assertThat(systemCaptor.getAllValues().get(1)).contains("language-correction retry");
+    }
+
+    /**
+     * The defect this fixes: a one-page problem sheet and a fifty-page lecture were asked for the
+     * same two or three outcomes, so extraction volume followed the uploader's file packaging rather
+     * than the material. Measured on a real corpus, exercise sheets were 14-17% of a course's text
+     * and produced 36-47% of its skills.
+     */
+    @Test
+    void scalesTheSkillAllowanceWithTheUnitsSize() {
+        assertThat(SessionExtractionService.skillBudget(1_092, 3_000)).isEqualTo(1);
+        assertThat(SessionExtractionService.skillBudget(4_763, 3_000)).isEqualTo(2);
+        assertThat(SessionExtractionService.skillBudget(8_555, 3_000)).isEqualTo(3);
+        assertThat(SessionExtractionService.skillBudget(11_600, 3_000)).isEqualTo(4);
+    }
+
+    /**
+     * A unit below the target still teaches something. Rounding its allowance to zero would silently
+     * drop short material — the real risk being exercise sheets, which carry a course's highest Bloom
+     * levels.
+     */
+    @Test
+    void neverRoundsAUnitsAllowanceBelowOneSkill() {
+        assertThat(SessionExtractionService.skillBudget(1, 3_000)).isEqualTo(1);
+        assertThat(SessionExtractionService.skillBudget(0, 3_000)).isEqualTo(1);
+    }
+
+    /** However long a unit is, the ceiling still holds: units are split before they reach here. */
+    @Test
+    void capsTheAllowanceAtTheSessionMaximum() {
+        assertThat(SessionExtractionService.skillBudget(250_000, 3_000))
+                .isEqualTo(SessionExtractionService.MAX_SKILLS_PER_SESSION);
+    }
+
+    /** Zero disables scaling, so the allowance falls back to the flat ceiling. */
+    @Test
+    void keepsTheFlatCeilingWhenScalingIsDisabled() {
+        assertThat(SessionExtractionService.skillBudget(500, 0))
+                .isEqualTo(SessionExtractionService.MAX_SKILLS_PER_SESSION);
+    }
+
+    /**
+     * "Two or three, never more than four" reads as an instruction to produce three whatever the
+     * material holds — which is what the model did on ten of thirteen lectures. At a budget of one
+     * that phrasing would ask for the opposite of what was computed.
+     */
+    @Test
+    void asksForTheCountAtTheAllowanceItWasGiven() {
+        assertThat(SessionExtractionService.PROMPT_TEMPLATE.formatted(
+                "German", SessionExtractionService.allowancePhrase(1), 1, "Blatt 3", "1 text"))
+                .contains("return exactly ONE").contains("never more than 1");
+        assertThat(SessionExtractionService.PROMPT_TEMPLATE.formatted(
+                "German", SessionExtractionService.allowancePhrase(3), 3, "Vorlesung 3", "1 text"))
+                .contains("return TWO OR THREE").contains("never more than 3");
+    }
+
+    /** A response above the unit's own allowance is rejected, not just one above the global cap. */
+    @Test
+    void rejectsMoreSkillsThanTheUnitsAllowancePermits() {
+        List<ExtractedSkill> two = List.of(
+                new ExtractedSkill("Anwenden von Wegintegralen auf geschlossene Kurven.",
+                        "Wegintegrale anwenden", GoalKind.EXPLICIT, 0, 0, List.of()),
+                new ExtractedSkill("Berechnen von Residuen einfacher Polstellen.",
+                        "Residuen berechnen", GoalKind.EXPLICIT, 0, 0, List.of()));
+
+        assertThatThrownBy(() -> SessionExtractionService.validate(two, "German", null, 0, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not contain more than 1 broad skills");
+        assertThat(SessionExtractionService.validate(two, "German", null, 0, 2)).hasSize(2);
     }
 }

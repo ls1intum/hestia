@@ -126,7 +126,8 @@ class ExtractionRunnerSessionIsolationTest {
                 // Single-threaded, so the failing session is deterministically the first one.
                 1,
                 1,
-                80_000,
+                12_000,
+                3_000,
                 null,
                 20,
                 mock(HighlightGeometryService.class));

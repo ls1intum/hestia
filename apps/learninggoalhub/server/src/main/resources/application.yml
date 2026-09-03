@@ -78,9 +78,12 @@ hestia:
     # Large session prompts are provider-intensive. Four concurrent calls keep useful throughput
     # without sending an entire medium-sized course as one burst.
     parallelism: 4
-    # The budget for one extraction call. A section longer than this is cut into page-aligned
-    # windows that share its session; 0 disables the split and sends every section whole.
-    direct-max-chars: 80000
+    # The budget for one extraction call, and the pipeline's granularity knob. A section longer
+    # than this is cut into page-aligned windows that share its session; 0 sends every section
+    # whole, which makes the tree's size depend on how the uploader split their PDFs.
+    unit-max-chars: 12000
+    # Characters per skill; a unit's allowance is its length over this, floor 1, ceiling 4.
+    skill-target-chars: 3000
     # Keep generation consistent across evaluation runs; temperature 0 can make systematic omissions
     # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
     temperature: 0.2
