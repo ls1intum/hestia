@@ -30,6 +30,14 @@ import org.springframework.core.ParameterizedTypeReference;
  * outcomes to salvage and the extraction aborted. Collapsing duplicates before binding keeps the
  * last value, which is what a plain JSON reader would have done.
  *
+ * <p>An enum value the model invented is read as null rather than failing the reply. Bloom is
+ * carried by an outcome's verb and the prompt says so, which is exactly why a model sometimes writes
+ * the verb where the enum belongs — one knowledge item came back with {@code "bloom": "IDENTIFYING"}
+ * and Jackson rejected the whole session, taking a nineteen-lecture run with it. A null reaches the
+ * extraction validator, which fails that one outcome by its own rules and lets the retry and salvage
+ * paths keep the rest. The same reasoning as duplicate keys above: a strict binder must not decide
+ * the fate of a reply the validators are there to judge.
+ *
  * <p>The mapper otherwise matches Spring AI's own default for
  * {@link BeanOutputConverter}, so the JSON schema sent to the model is unchanged.
  */
@@ -38,6 +46,7 @@ public final class LenientJson {
     private static final ObjectMapper MAPPER = JsonMapper.builder()
             .addModules(JacksonUtils.instantiateAvailableModules())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL, true)
             .enable(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER)
             .build();
 

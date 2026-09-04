@@ -2,6 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
@@ -83,6 +84,29 @@ class LenientJsonTest {
     void leavesTextThatIsNotJsonToTheConverter() {
         assertThat(LenientJson.collapseDuplicateKeys("not json at all"))
                 .isEqualTo("not json at all");
+    }
+
+    /**
+     * A model that invents an enum value must not take the whole reply with it.
+     *
+     * <p>Measured on a real run: one knowledge item came back with {@code "bloom": "IDENTIFYING"} —
+     * the verb, where the enum name belongs — and Jackson rejected the entire session, aborting a
+     * nineteen-lecture course. Reading it as null lets the extraction validator fail that one
+     * outcome and salvage the rest.
+     */
+    @Test
+    void readsAnInventedEnumValueAsNullInsteadOfFailingTheReply() {
+        record Levelled(String text, BloomLevel bloom) {
+        }
+
+        Levelled invented = LenientJson.converter(Levelled.class)
+                .convert("{\"text\": \"Identifying trees\", \"bloom\": \"IDENTIFYING\"}");
+        Levelled valid = LenientJson.converter(Levelled.class)
+                .convert("{\"text\": \"Applying trees\", \"bloom\": \"APPLY\"}");
+
+        assertThat(invented.text()).isEqualTo("Identifying trees");
+        assertThat(invented.bloom()).isNull();
+        assertThat(valid.bloom()).isEqualTo(BloomLevel.APPLY);
     }
 
     /** The markdown fences Spring AI's own default chain strips are still stripped. */
