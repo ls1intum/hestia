@@ -48,7 +48,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString());
+        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString(), any());
         verify(fixture.pageDescriptionRepository(), never()).findByDocumentId(any());
         verifyPromptDoesNotContainFigures(fixture.chatClient());
         verifyRunParams(fixture.auditService(), false);
@@ -60,7 +60,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"));
+        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"), any());
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(fixture.chatClient().prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())

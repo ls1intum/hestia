@@ -239,31 +239,30 @@ public class ExtractionRunner {
                                                      ExtractionProgressTracker.Run run) {
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
         if (course.isFiguresEnabled()) {
-            // Documents are described concurrently, but at a much lower width than the text phases: each
-            // call carries several rendered pages, so the provider rejects a wide burst of them, and every
-            // document opens its own transaction for the commit-per-document guarantee.
+            // The width is spent on batches, not documents: a document is taken at a time so it keeps
+            // its own transaction and the commit-per-document guarantee, while the executor runs that
+            // document's page batches concurrently. Spreading across documents instead capped a
+            // two-PDF course at two calls in flight however wide the pool.
             run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
             ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
             try {
-                List<CompletableFuture<Void>> futures = documents.stream()
-                        .map(document -> CompletableFuture.runAsync(() -> {
-                            try {
-                                documentContentRepository.findById(document.getId())
-                                        .map(DocumentContent::getBytes)
-                                        .ifPresent(bytes -> {
-                                            String languageCode = resolveLanguage(
-                                                    course, document.getLanguage(), dominantLanguage);
-                                            pageDescriptionService.describeEligiblePages(document, bytes,
-                                                    languageCode, LanguageUtils.englishName(languageCode));
-                                        });
-                            } catch (RuntimeException e) {
-                                log.warn("Could not prepare figure descriptions for document {}: {}",
-                                        document.getId(), e.getMessage());
-                            }
-                            run.increment();
-                        }, figureExecutor))
-                        .toList();
-                futures.forEach(CompletableFuture::join);
+                for (Document document : documents) {
+                    try {
+                        documentContentRepository.findById(document.getId())
+                                .map(DocumentContent::getBytes)
+                                .ifPresent(bytes -> {
+                                    String languageCode = resolveLanguage(
+                                            course, document.getLanguage(), dominantLanguage);
+                                    pageDescriptionService.describeEligiblePages(document, bytes,
+                                            languageCode, LanguageUtils.englishName(languageCode),
+                                            figureExecutor);
+                                });
+                    } catch (RuntimeException e) {
+                        log.warn("Could not prepare figure descriptions for document {}: {}",
+                                document.getId(), e.getMessage());
+                    }
+                    run.increment();
+                }
             } finally {
                 figureExecutor.shutdown();
             }
