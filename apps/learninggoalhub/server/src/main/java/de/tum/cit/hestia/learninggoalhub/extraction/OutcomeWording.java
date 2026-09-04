@@ -26,6 +26,28 @@ final class OutcomeWording {
 
     static void validate(String text, String shortLabel, String languageName, String subject) {
         validateTextAndLabelPresence(text, shortLabel, subject);
+        validateLabelReadsAsALabel(text, shortLabel, subject);
+        validateTextGrammar(text, languageName, subject);
+    }
+
+    /**
+     * The outcome itself, independent of how its label reads.
+     *
+     * <p>Salvage uses this to tell the two apart. An outcome whose TEXT is unusable is not an
+     * outcome; an outcome whose shortLabel merely repeats that text is a real outcome with a poor
+     * caption. Dropping the second kind cost a whole course run: one session's every skill came back
+     * with shortLabel equal to text, so salvage kept nothing and the extraction aborted at 70%.
+     *
+     * <p>{@link #validateAudited} already made this call for the audited path, keeping a collapsed
+     * pair "as a presentation fallback instead of losing the complete source partition". This is the
+     * same judgement, reached the same way.
+     */
+    static void validateOutcomeText(String text, String shortLabel, String languageName, String subject) {
+        validateTextAndLabelPresence(text, shortLabel, subject);
+        validateTextGrammar(text, languageName, subject);
+    }
+
+    private static void validateLabelReadsAsALabel(String text, String shortLabel, String subject) {
         String normalizedText = normalized(text);
         String normalizedLabel = normalized(shortLabel);
         if (normalizedText.equals(normalizedLabel)) {
@@ -34,7 +56,6 @@ final class OutcomeWording {
         if (normalizedText.length() < normalizedLabel.length() + 5) {
             throw new IllegalArgumentException(subject + " text must add meaningful detail beyond shortLabel");
         }
-        validateTextGrammar(text, languageName, subject);
     }
 
     /**

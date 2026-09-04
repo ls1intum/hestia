@@ -254,19 +254,16 @@ class SessionExtractionServiceTest {
     }
 
     @Test
-    void acceptsFigureOnlyEvidenceAndRejectsLinesCombinedWithFigure() {
+    void acceptsFigureOnlyEvidence() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        ExtractedSkill both = new ExtractedSkill(
-                "Applying a visual method to representative examples.", "Apply Visual Method",
-                GoalKind.IMPLICIT, 0, 0, 0, List.of());
         ExtractedSkill figureOnly = new ExtractedSkill(
                 "Applying a visual method to representative examples.", "Apply Visual Method",
                 GoalKind.IMPLICIT, null, null, 0, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(both), List.of(figureOnly));
+                .thenReturn(List.of(figureOnly));
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
@@ -275,7 +272,39 @@ class SessionExtractionServiceTest {
                         List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
 
         assertThat(result).containsExactly(figureOnly);
-        verify(spec, times(2)).user(anyString());
+        verify(spec).user(anyString());
+    }
+
+    /**
+     * Citing both no longer costs a correction round trip. The redundancy is resolved where it is
+     * found — text first, figure as the fallback — so a session whose skills all cite both is
+     * extracted on the first attempt instead of retried and then failed.
+     */
+    @Test
+    void doesNotRetryWhenTheModelCitesLinesAndAFigureAtOnce() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill both = new ExtractedSkill(
+                "Applying a visual method to representative examples.", "Apply Visual Method",
+                GoalKind.IMPLICIT, 0, 0, 0, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(both));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(
+                builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Lecture", "one line", null, "English", null,
+                        List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
+
+        assertThat(result).singleElement()
+                .satisfies(skill -> {
+                    assertThat(skill.sourceStartLine()).isEqualTo(0);
+                    assertThat(skill.sourceEndLine()).isEqualTo(0);
+                    assertThat(skill.sourceFigure()).isNull();
+                });
+        verify(spec).user(anyString());
     }
 
     @Test
@@ -525,6 +554,80 @@ class SessionExtractionServiceTest {
                     assertThat(skill.sourceEndLine()).isNull();
                     assertThat(skill.sourceFigure()).isNull();
                 });
+    }
+
+    /**
+     * The failure this prevents: on a course run with figures enabled, two sessions died on "Every
+     * skill must cite lines or a figure, never both" after both attempts. What a slide teaches is in
+     * the picture, so the model names the picture and the line that captions it — and the run aborted
+     * over an outcome that had named its source twice rather than not at all.
+     */
+    @Test
+    void keepsASkillCitingBothLinesAndAFigure() {
+        List<ExtractedSkill> citesBoth = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, 0, 1, 0, List.of()));
+
+        List<ExtractedSkill> validated = SessionExtractionService.validate(
+                citesBoth, "English", NumberedLines.of("one\ntwo\nthree"), 1, 4);
+
+        // Text first, the same precedence the source resolver applies: the range stands and the
+        // redundant figure is dropped.
+        assertThat(validated).singleElement()
+                .satisfies(skill -> {
+                    assertThat(skill.sourceStartLine()).isEqualTo(0);
+                    assertThat(skill.sourceEndLine()).isEqualTo(1);
+                    assertThat(skill.sourceFigure()).isNull();
+                });
+    }
+
+    /** With both cited and the range unusable, the figure is the half that points at real material. */
+    @Test
+    void keepsTheFigureWhenTheLineRangeCitedBesideItIsUnusable() {
+        String session = java.util.stream.IntStream.rangeClosed(1, 200)
+                .mapToObj(i -> "line " + i).collect(java.util.stream.Collectors.joining("\n"));
+        List<ExtractedSkill> citesBoth = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, 20, 166, 0, List.of()));
+
+        assertThat(SessionExtractionService.validate(citesBoth, "English", NumberedLines.of(session), 1, 4))
+                .singleElement()
+                .satisfies(skill -> {
+                    assertThat(skill.sourceStartLine()).isNull();
+                    assertThat(skill.sourceEndLine()).isNull();
+                    assertThat(skill.sourceFigure()).isEqualTo(0);
+                });
+    }
+
+    /** Citing a figure that was never offered is still citing nothing. */
+    @Test
+    void stillRejectsAFigureThatWasNeverOffered() {
+        List<ExtractedSkill> citesMissingFigure = List.of(new ExtractedSkill(
+                "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                GoalKind.EXPLICIT, null, null, 3, List.of()));
+
+        assertThatThrownBy(() -> SessionExtractionService.validate(
+                citesMissingFigure, "English", NumberedLines.of("one\ntwo"), 1, 4))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cites figure 3");
+    }
+
+    /**
+     * The abort itself: every skill in the session cited both, so before this the salvage returned
+     * nothing, the session failed, and the whole course run was aborted.
+     */
+    @Test
+    void salvagesASessionWhereEverySkillCitedBoth() {
+        List<ExtractedSkill> citesBoth = List.of(
+                new ExtractedSkill("Applying quadrature rules in higher dimensions.", "Apply Quadrature",
+                        GoalKind.EXPLICIT, 0, 1, 0, List.of()),
+                new ExtractedSkill("Comparing sampling schemes on their convergence.", "Compare Sampling",
+                        GoalKind.EXPLICIT, 1, 2, 0, List.of()));
+
+        assertThat(SessionExtractionService.salvageValidOutcomes(
+                citesBoth, "English", NumberedLines.of("one\ntwo\nthree"), 1))
+                .hasSize(2)
+                .allSatisfy(skill -> assertThat(skill.sourceFigure()).isNull());
     }
 
     /** A badly WORDED skill is still dropped: it is not a usable outcome, however it cites itself. */

@@ -87,7 +87,7 @@ public class SessionExtractionService {
             Your previous response violated a required field or outcome-wording rule. Regenerate the
             COMPLETE response. Every skill and knowledge item must contain non-blank, distinct text
             and shortLabel values plus kind EXPLICIT or IMPLICIT. Follow the action-noun wording
-            invariant exactly. Every outcome must cite either one valid 1-5-line source range from
+            invariant exactly. Every outcome must cite either one valid 1-10-line source range from
             the numbered session text or one offered figure, never both. Do not omit valid outcomes.
             Return only the structured JSON result.
             """;
@@ -166,7 +166,7 @@ public class SessionExtractionService {
               - kind: EXPLICIT or IMPLICIT.
               - sourceStartLine and sourceEndLine: the inclusive zero-based index range of the numbered
                 lines shown below that best supports the outcome, selected from ONE contiguous place
-                in the text. Usually select 1-3 lines; never select more than 5 lines and never combine
+                in the text. Usually select 1-3 lines; never select more than 10 lines and never combine
                 separate passages. A heading and the bullet points beneath it are SEPARATE passages,
                 even when they sit together on one slide: pick one, never combine them. The indices
                 MUST come from the numbered lines shown below.
@@ -351,8 +351,8 @@ public class SessionExtractionService {
             if (skill.kind() == null) {
                 throw new IllegalArgumentException("Every skill must have a kind");
             }
-            Integer skillFigure = offeredFigure(skill.sourceFigure(), figureCount);
-            validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(), skillFigure,
+            Citation skillCitation = validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(),
+                    offeredFigure(skill.sourceFigure(), figureCount),
                     numberedLines, figureCount, "Every skill");
             List<ExtractedSkill.Knowledge> knowledgeItems = new ArrayList<>(skill.knowledge().size());
             for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
@@ -364,16 +364,19 @@ public class SessionExtractionService {
                 if (knowledge.kind() == null) {
                     throw new IllegalArgumentException("Every knowledge item must have a kind");
                 }
-                Integer knowledgeFigure = offeredFigure(knowledge.sourceFigure(), figureCount);
-                validateEvidence(knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure,
+                Citation knowledgeCitation = validateEvidence(
+                        knowledge.sourceStartLine(), knowledge.sourceEndLine(),
+                        offeredFigure(knowledge.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every knowledge item");
                 knowledgeItems.add(new ExtractedSkill.Knowledge(
                         knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
-                        knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure));
+                        knowledgeCitation.startLine(), knowledgeCitation.endLine(),
+                        knowledgeCitation.figure()));
             }
             valid.add(new ExtractedSkill(
                     skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
-                    skill.sourceStartLine(), skill.sourceEndLine(), skillFigure, knowledgeItems));
+                    skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
+                    knowledgeItems));
         }
         return List.copyOf(valid);
     }
@@ -388,46 +391,68 @@ public class SessionExtractionService {
      * and keeping those would let a session that ignored the citation contract through as a set of
      * silently ungrounded goals.
      */
-    private static boolean pointsAtSourceImprecisely(ExtractedSkill skill, NumberedLines numberedLines) {
+    private static boolean pointsAtSourceImprecisely(ExtractedSkill skill, NumberedLines numberedLines,
+                                                     int figureCount) {
         return numberedLines != null
                 && skill.sourceStartLine() != null
                 && skill.sourceEndLine() != null
-                && skill.sourceFigure() == null
+                && !offersFigure(skill.sourceFigure(), figureCount)
                 && numberedLines.isInBoundsButTooWide(skill.sourceStartLine(), skill.sourceEndLine());
     }
 
-    private static void validateEvidence(Integer startLine, Integer endLine, Integer figure,
-                                         NumberedLines numberedLines, int figureCount, String subject) {
+    /** One outcome's citation once validated: at most one of a line range or a figure survives. */
+    record Citation(Integer startLine, Integer endLine, Integer figure) {
+
+        static final Citation NONE = new Citation(null, null, null);
+    }
+
+    /**
+     * Validates one outcome's citation and returns the half of it that stands.
+     *
+     * <p>Text first, figure as the fallback — the same precedence {@code resolveDirectSource} applies
+     * when it turns a citation into a stored source. A model that cites both was asked for one and
+     * gave two, and where either half points at real material the outcome is grounded; the redundant
+     * half is dropped rather than the outcome. Figure descriptions make that common: what a slide
+     * teaches is in the picture, so the model names the picture and the line that captions it, and on
+     * a course run with figures enabled two sessions died of exactly that — every skill cited both,
+     * salvage kept none, and the run aborted.
+     *
+     * <p>Citing nothing, or citing only things that point nowhere — half a range, a range past the
+     * end of the text, a figure that was never offered — still fails. The difference is between a
+     * model that over-answered the citation contract and one that ignored it.
+     */
+    private static Citation validateEvidence(Integer startLine, Integer endLine, Integer figure,
+                                             NumberedLines numberedLines, int figureCount, String subject) {
         // The package-level validation overload is retained for focused wording tests whose fixtures
         // predate source fields. Production extraction always supplies NumberedLines here.
         if (numberedLines == null) {
-            return;
+            return new Citation(startLine, endLine, figure);
         }
         boolean hasAnyLine = startLine != null || endLine != null;
         boolean hasCompleteLineRange = startLine != null && endLine != null;
-        boolean hasFigure = figure != null;
-        if (hasCompleteLineRange && hasFigure) {
-            throw new IllegalArgumentException(subject + " must cite lines or a figure, never both");
+        if (hasCompleteLineRange && numberedLines.span(startLine, endLine).isPresent()) {
+            return new Citation(startLine, endLine, null);
         }
-        if (hasAnyLine && !hasCompleteLineRange) {
-            throw new IllegalArgumentException(subject + " must provide both sourceStartLine and sourceEndLine");
+        if (offersFigure(figure, figureCount)) {
+            return new Citation(null, null, figure);
         }
         if (hasCompleteLineRange) {
-            if (numberedLines.span(startLine, endLine).isEmpty()) {
-                throw new IllegalArgumentException(subject + " has an invalid source range ["
-                        + startLine + ".." + endLine + "]: "
-                        + numberedLines.rejectionReason(startLine, endLine));
-            }
-            return;
+            throw new IllegalArgumentException(subject + " has an invalid source range ["
+                    + startLine + ".." + endLine + "]: "
+                    + numberedLines.rejectionReason(startLine, endLine));
         }
-        if (hasFigure) {
-            if (figure < 0 || figure >= figureCount) {
-                throw new IllegalArgumentException(subject + " cites figure " + figure
-                        + " but only " + figureCount + " figures were offered");
-            }
-            return;
+        if (hasAnyLine) {
+            throw new IllegalArgumentException(subject + " must provide both sourceStartLine and sourceEndLine");
+        }
+        if (figure != null) {
+            throw new IllegalArgumentException(subject + " cites figure " + figure
+                    + " but only " + figureCount + " figures were offered");
         }
         throw new IllegalArgumentException(subject + " must cite a source line range or an offered figure");
+    }
+
+    private static boolean offersFigure(Integer figure, int figureCount) {
+        return figure != null && figure >= 0 && figure < figureCount;
     }
 
     private static Integer offeredFigure(Integer figure, int figureCount) {
@@ -459,10 +484,10 @@ public class SessionExtractionService {
                 continue;
             }
             try {
-                OutcomeWording.validate(skill.text(), skill.shortLabel(), languageName, "Every skill");
                 if (skill.kind() == null) {
                     throw new IllegalArgumentException("Every skill must have a kind");
                 }
+                keepIfOnlyTheLabelReadsBadly(skill.text(), skill.shortLabel(), languageName, "Every skill");
             } catch (IllegalArgumentException invalidSkill) {
                 continue;
             }
@@ -481,23 +506,21 @@ public class SessionExtractionService {
             // verified, which is worse than admitting there is none. Without a range the goal
             // resolves as UNSUPPORTED, which the pipeline already models and counts, so it stays
             // visibly ungrounded rather than quietly looking sourced.
-            boolean evidenceUsable = true;
+            Citation skillCitation;
             try {
-                validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(),
+                skillCitation = validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(),
                         offeredFigure(skill.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every skill");
             } catch (IllegalArgumentException invalidEvidence) {
-                if (!pointsAtSourceImprecisely(skill, numberedLines)) {
-                    // Cited nothing, cited half a range, or cited lines and a figure at once. The
-                    // model did not point anywhere, so there is nothing to keep it honest about.
+                if (!pointsAtSourceImprecisely(skill, numberedLines, figureCount)) {
+                    // Cited nothing, or cited only things that point nowhere. The model did not name
+                    // any material, so there is nothing to keep it honest about.
                     continue;
                 }
-                evidenceUsable = false;
+                skillCitation = Citation.NONE;
                 log.warn("Keeping a skill whose citation could not be verified: {}",
                         invalidEvidence.getMessage());
             }
-
-            Integer skillFigure = evidenceUsable ? offeredFigure(skill.sourceFigure(), figureCount) : null;
 
             List<ExtractedSkill.Knowledge> validKnowledge = new ArrayList<>();
             for (ExtractedSkill.Knowledge knowledge : skill.knowledge()) {
@@ -505,30 +528,47 @@ public class SessionExtractionService {
                     continue;
                 }
                 try {
-                    OutcomeWording.validate(knowledge.text(), knowledge.shortLabel(), languageName,
-                            "Every knowledge item");
                     if (knowledge.kind() == null) {
                         throw new IllegalArgumentException("Every knowledge item must have a kind");
                     }
-                    Integer knowledgeFigure = offeredFigure(knowledge.sourceFigure(), figureCount);
-                    validateEvidence(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
-                            knowledgeFigure, numberedLines, figureCount, "Every knowledge item");
+                    keepIfOnlyTheLabelReadsBadly(knowledge.text(), knowledge.shortLabel(), languageName,
+                            "Every knowledge item");
+                    Citation knowledgeCitation = validateEvidence(
+                            knowledge.sourceStartLine(), knowledge.sourceEndLine(),
+                            offeredFigure(knowledge.sourceFigure(), figureCount),
+                            numberedLines, figureCount, "Every knowledge item");
                     validKnowledge.add(new ExtractedSkill.Knowledge(
                             knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
-                            knowledge.sourceStartLine(), knowledge.sourceEndLine(), knowledgeFigure));
+                            knowledgeCitation.startLine(), knowledgeCitation.endLine(),
+                            knowledgeCitation.figure()));
                 } catch (IllegalArgumentException invalidKnowledge) {
                     // Retain the grounded parent and its other valid knowledge rather than the bad child.
                 }
             }
-            valid.add(evidenceUsable
-                    ? new ExtractedSkill(
-                            skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
-                            skill.sourceStartLine(), skill.sourceEndLine(), skillFigure, validKnowledge)
-                    : new ExtractedSkill(
-                            skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
-                            null, null, null, validKnowledge));
+            valid.add(new ExtractedSkill(
+                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
+                    validKnowledge));
         }
         return List.copyOf(valid);
+    }
+
+    /**
+     * Passes an outcome whose only defect is a shortLabel that repeats its text.
+     *
+     * <p>The label is a caption for the tree, not the outcome. Rejecting one costs the outcome and,
+     * on a session where every skill captions itself the same way, the whole run — which is exactly
+     * how a measured run died at 70%. Anything wrong with the text itself still throws.
+     */
+    private static void keepIfOnlyTheLabelReadsBadly(String text, String shortLabel, String languageName,
+                                                     String subject) {
+        try {
+            OutcomeWording.validate(text, shortLabel, languageName, subject);
+        } catch (IllegalArgumentException invalidWording) {
+            OutcomeWording.validateOutcomeText(text, shortLabel, languageName, subject);
+            log.warn("Keeping an outcome whose shortLabel does not read as a distinct label: {}",
+                    invalidWording.getMessage());
+        }
     }
 
     private static String blankToNull(String value) {
