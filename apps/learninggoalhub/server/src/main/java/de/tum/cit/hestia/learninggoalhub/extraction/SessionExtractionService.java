@@ -75,9 +75,8 @@ public class SessionExtractionService {
             COMPLETE response. Every skill and knowledge item must contain non-blank, distinct text
             and shortLabel values plus kind EXPLICIT or IMPLICIT. Follow the action-noun wording
             invariant exactly. Every outcome must cite either one valid 1-10-line source range from
-            the numbered session text or one offered figure. Every skill must carry a bloom of APPLY,
-            ANALYZE, EVALUATE or CREATE and every knowledge item a bloom of REMEMBER or UNDERSTAND,
-            each with a solo level. Do not omit valid outcomes.
+            the numbered session text or one offered figure. Every outcome must carry a bloom and a
+            solo value, spelled exactly as one of the enum names listed. Do not omit valid outcomes.
             Return only the structured JSON result.
             """;
 
@@ -353,7 +352,7 @@ public class SessionExtractionService {
             if (skill.kind() == null) {
                 throw new IllegalArgumentException("Every skill must have a kind");
             }
-            validateLevels(skill.bloom(), skill.solo(), "Every skill");
+            noteMissingLevels(skill.bloom(), skill.solo(), "A skill");
             noteTier(skill.bloom(), GoalRole.SKILL, skill.text());
             Citation skillCitation = validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(),
                     offeredFigure(skill.sourceFigure(), figureCount),
@@ -368,7 +367,7 @@ public class SessionExtractionService {
                 if (knowledge.kind() == null) {
                     throw new IllegalArgumentException("Every knowledge item must have a kind");
                 }
-                validateLevels(knowledge.bloom(), knowledge.solo(), "Every knowledge item");
+                noteMissingLevels(knowledge.bloom(), knowledge.solo(), "A knowledge item");
                 noteTier(knowledge.bloom(), GoalRole.KNOWLEDGE, knowledge.text());
                 Citation knowledgeCitation = validateEvidence(
                         knowledge.sourceStartLine(), knowledge.sourceEndLine(),
@@ -409,16 +408,22 @@ public class SessionExtractionService {
     }
 
     /**
-     * A level is a required field like any other: a reply that omits it did not follow the contract,
-     * and a goal that reaches the database without one cannot be levelled later — extraction is the
-     * only place the source material was in view.
+     * Records, without rejecting, an outcome that came back without a level.
+     *
+     * <p>Throwing here was stricter than anything downstream asks for: both level columns are
+     * nullable and the classification call this replaced already persisted goals unlevelled whenever
+     * it failed. The cost of the strictness is not one outcome. A session whose skills ALL lack a
+     * level empties the salvage, and an empty salvage aborts the whole course — so a model that
+     * simply never learned to emit {@code solo} would take the run down, which is the same failure
+     * the invented-enum fix in {@link de.tum.cit.hestia.learninggoalhub.llm.LenientJson} exists to
+     * prevent. The outcome is kept unlevelled and counted instead.
      */
-    private static void validateLevels(BloomLevel bloom, SoloLevel solo, String subject) {
+    private static void noteMissingLevels(BloomLevel bloom, SoloLevel solo, String subject) {
         if (bloom == null) {
-            throw new IllegalArgumentException(subject + " must have a bloom level");
+            log.warn("{} came back without a bloom level", subject);
         }
         if (solo == null) {
-            throw new IllegalArgumentException(subject + " must have a solo level");
+            log.warn("{} came back without a solo level", subject);
         }
     }
 
@@ -531,7 +536,7 @@ public class SessionExtractionService {
                 if (skill.kind() == null) {
                     throw new IllegalArgumentException("Every skill must have a kind");
                 }
-                validateLevels(skill.bloom(), skill.solo(), "Every skill");
+                noteMissingLevels(skill.bloom(), skill.solo(), "A skill");
                 noteTier(skill.bloom(), GoalRole.SKILL, skill.text());
                 keepIfOnlyTheLabelReadsBadly(skill.text(), skill.shortLabel(), languageName, "Every skill");
             } catch (IllegalArgumentException invalidSkill) {
@@ -577,7 +582,7 @@ public class SessionExtractionService {
                     if (knowledge.kind() == null) {
                         throw new IllegalArgumentException("Every knowledge item must have a kind");
                     }
-                    validateLevels(knowledge.bloom(), knowledge.solo(), "Every knowledge item");
+                    noteMissingLevels(knowledge.bloom(), knowledge.solo(), "A knowledge item");
                     noteTier(knowledge.bloom(), GoalRole.KNOWLEDGE, knowledge.text());
                     keepIfOnlyTheLabelReadsBadly(knowledge.text(), knowledge.shortLabel(), languageName,
                             "Every knowledge item");
