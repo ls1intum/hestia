@@ -170,8 +170,8 @@ class ExtractionRunnerFigureSettingTest {
                 1,
                 12_000,
                 3_000,
+                false,
                 null,
-                20,
                 highlightGeometryService);
         return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
     }

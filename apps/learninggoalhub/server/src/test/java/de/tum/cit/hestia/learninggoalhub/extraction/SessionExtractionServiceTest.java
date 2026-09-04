@@ -11,7 +11,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import java.util.List;
@@ -44,14 +46,14 @@ class SessionExtractionServiceTest {
         List<ExtractedSkill> expected = List.of(
                 new ExtractedSkill("Applying the testing strategy in representative projects.",
                         "Apply Testing Strategy", GoalKind.EXPLICIT,
-                        0, 0,
+                        BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0,
                         List.of(new ExtractedSkill.Knowledge(
                                 "Explaining the principles behind the testing strategy.",
                                 "Explain Testing Strategy",
-                                GoalKind.EXPLICIT, 0, 0))),
+                                GoalKind.EXPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 0, 0))),
                 new ExtractedSkill("Applying the strategy to a small project.", "Apply Testing Practice",
                         GoalKind.IMPLICIT,
-                        0, 0, List.of()));
+                        BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(expected);
@@ -67,18 +69,15 @@ class SessionExtractionServiceTest {
                 .contains("Session 4: Testing")
                 .contains("[0] FULL-SESSION-MARKER-42")
                 // Asserted in fragments: the template wraps both sentences across two lines.
-                .contains("return TWO OR THREE, and")
-                .contains("never more than 4")
-                .contains("reaching the maximum is a signal that")
-                .contains("you have not merged enough")
-                .contains("If you are unsure whether something")
-                .contains("is a skill or knowledge, make it knowledge")
-                .contains("knowledge children")
-                .contains("Apply Bayes' theorem")
+                .contains("Return at most 4.")
+                .contains("outcomes at APPLY, ANALYZE, EVALUATE")
+                .contains("Knowledge sits at REMEMBER or UNDERSTAND")
+                .contains("Return an empty list when that is the case")
                 // Knowledge must be demanded as an OUTCOME, not as a bare fact: the word
                 // "declarative" used to licence propositions and produced 55% bare statements.
                 .doesNotContain("declarative")
-                .contains("expanded action-noun form naming what the student does with it")
+                .contains("expanded action-noun")
+                .contains("form naming what the student does with it")
                 .contains("Never state a bare fact")
                 .contains("WRONG:")
                 .contains("RIGHT:")
@@ -102,10 +101,10 @@ class SessionExtractionServiceTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill malformed = new ExtractedSkill(null, "Diskrete Teilmengen charakterisieren",
-                GoalKind.IMPLICIT, 0, 0, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
         ExtractedSkill corrected = new ExtractedSkill(
                 "Charakterisieren diskreter Teilmengen anhand ihrer Häufungspunkte.",
-                "Diskrete Teilmengen charakterisieren", GoalKind.IMPLICIT, 0, 0, List.of());
+                "Diskrete Teilmengen charakterisieren", GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(malformed), List.of(corrected));
@@ -132,7 +131,7 @@ class SessionExtractionServiceTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill malformed = new ExtractedSkill(null, "Missing text",
-                GoalKind.IMPLICIT, 0, 0, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(malformed));
@@ -154,7 +153,7 @@ class SessionExtractionServiceTest {
                         1, SessionExtractionService.MAX_SKILLS_PER_SESSION + 1)
                 .mapToObj(index -> new ExtractedSkill(
                         "Applying method " + index + " in representative contexts.",
-                        "Apply Method " + index, GoalKind.IMPLICIT, 0, 0, List.of()))
+                        "Apply Method " + index, GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()))
                 .toList();
 
         assertThatThrownBy(() -> SessionExtractionService.validate(overfull, "English"))
@@ -168,10 +167,10 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill invalid = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, 8, 9, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 8, 9, List.of());
         ExtractedSkill corrected = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, 0, 1, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 1, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(invalid), List.of(corrected));
@@ -197,10 +196,10 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill missing = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, null, null, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
         ExtractedSkill partial = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, 0, null, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, null, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(missing), List.of(partial));
@@ -223,19 +222,19 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill invalidFirst = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, null, null, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
         ExtractedSkill validSkill = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
-                GoalKind.IMPLICIT, 0, 0, List.of(
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of(
                         new ExtractedSkill.Knowledge(
                                 "Explaining the method's central assumption in context.",
-                                "Explain Central Assumption", GoalKind.IMPLICIT, 1, 1),
+                                "Explain Central Assumption", GoalKind.IMPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 1, 1),
                         new ExtractedSkill.Knowledge(
                                 "Identifying an unsupported detail in the example.",
-                                "Identify Unsupported Detail", GoalKind.IMPLICIT, null, null)));
+                                "Identify Unsupported Detail", GoalKind.IMPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, null, null)));
         ExtractedSkill invalidSkill = new ExtractedSkill(
                 "Applying an unsupported procedure to examples.", "Apply Unsupported Procedure",
-                GoalKind.IMPLICIT, 9, 9, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(invalidFirst), List.of(validSkill, invalidSkill));
@@ -260,7 +259,7 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill figureOnly = new ExtractedSkill(
                 "Applying a visual method to representative examples.", "Apply Visual Method",
-                GoalKind.IMPLICIT, null, null, 0, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, 0, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(figureOnly));
@@ -287,7 +286,7 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill both = new ExtractedSkill(
                 "Applying a visual method to representative examples.", "Apply Visual Method",
-                GoalKind.IMPLICIT, 0, 0, 0, List.of());
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of());
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(both));
@@ -314,10 +313,10 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         ExtractedSkill modelResponse = new ExtractedSkill(
                 "Applying a textual method to representative examples.", "Apply Textual Method",
-                GoalKind.IMPLICIT, 0, 0, 0, List.of(
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of(
                         new ExtractedSkill.Knowledge(
                                 "Explaining the textual method's central assumption.",
-                                "Explain Central Assumption", GoalKind.IMPLICIT, 1, 1, 0)));
+                                "Explain Central Assumption", GoalKind.IMPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 1, 1, 0)));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(List.of(modelResponse));
@@ -435,10 +434,10 @@ class SessionExtractionServiceTest {
         when(builder.build()).thenReturn(chatClient);
         List<ExtractedSkill> first = List.of(new ExtractedSkill(
                 "Anwenden einer englischen Methode in repräsentativen Kontexten.", "Englische Methode anwenden",
-                GoalKind.EXPLICIT, 0, 0, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
         List<ExtractedSkill> retry = List.of(new ExtractedSkill(
                 "Anwenden einer deutschen Methode in repräsentativen Kontexten.", "Deutsche Methode anwenden",
-                GoalKind.EXPLICIT, 0, 0, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
         ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(first, retry);
@@ -498,18 +497,35 @@ class SessionExtractionServiceTest {
     }
 
     /**
-     * "Two or three, never more than four" reads as an instruction to produce three whatever the
-     * material holds — which is what the model did on ten of thirteen lectures. At a budget of one
-     * that phrasing would ask for the opposite of what was computed.
+     * The template takes four arguments and the call site passes four. Java silently ignores extra
+     * arguments to {@code formatted}, so a mismatch does not fail here — it shifts every value one
+     * place left and ships a prompt whose "session title" is a stray parameter and whose source text
+     * is missing altogether. Only a render can catch that.
      */
     @Test
-    void asksForTheCountAtTheAllowanceItWasGiven() {
-        assertThat(SessionExtractionService.PROMPT_TEMPLATE.formatted(
-                "German", SessionExtractionService.allowancePhrase(1), 1, "Blatt 3", "1 text"))
-                .contains("return exactly ONE").contains("never more than 1");
-        assertThat(SessionExtractionService.PROMPT_TEMPLATE.formatted(
-                "German", SessionExtractionService.allowancePhrase(3), 3, "Vorlesung 3", "1 text"))
-                .contains("return TWO OR THREE").contains("never more than 3");
+    void rendersEveryPlaceholderFromTheArgumentsTheCallSitePasses() {
+        String prompt = SessionExtractionService.PROMPT_TEMPLATE.formatted(
+                "German", 3, "Vorlesung 3", "0: Bayes");
+
+        assertThat(prompt)
+                .contains("Write every generated text and shortLabel value in German")
+                .contains("Return at most 3.")
+                .contains("Vorlesung 3")
+                .contains("0: Bayes")
+                .doesNotContain("%s")
+                .doesNotContain("%d");
+    }
+
+    /** The tier contract the pipeline now rests on has to be stated to the model that must honour it. */
+    @Test
+    void statesTheLevelEachTierMustCarry() {
+        String prompt = SessionExtractionService.PROMPT_TEMPLATE.formatted(
+                "English", 2, "Lecture 3", "0: Bayes");
+
+        assertThat(prompt)
+                .contains("APPLY, ANALYZE, EVALUATE")
+                .contains("Knowledge sits at REMEMBER or UNDERSTAND")
+                .contains("Return an empty list");
     }
 
     /** A response above the unit's own allowance is rejected, not just one above the global cap. */
@@ -517,9 +533,9 @@ class SessionExtractionServiceTest {
     void rejectsMoreSkillsThanTheUnitsAllowancePermits() {
         List<ExtractedSkill> two = List.of(
                 new ExtractedSkill("Anwenden von Wegintegralen auf geschlossene Kurven.",
-                        "Wegintegrale anwenden", GoalKind.EXPLICIT, 0, 0, List.of()),
+                        "Wegintegrale anwenden", GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()),
                 new ExtractedSkill("Berechnen von Residuen einfacher Polstellen.",
-                        "Residuen berechnen", GoalKind.EXPLICIT, 0, 0, List.of()));
+                        "Residuen berechnen", GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
 
         assertThatThrownBy(() -> SessionExtractionService.validate(two, "German", null, 0, 1))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -540,7 +556,7 @@ class SessionExtractionServiceTest {
                 .mapToObj(i -> "line " + i).collect(java.util.stream.Collectors.joining("\n"));
         List<ExtractedSkill> overWideRange = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, 20, 166, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 20, 166, List.of()));
 
         List<ExtractedSkill> salvaged = SessionExtractionService.salvageValidOutcomes(
                 overWideRange, "English", NumberedLines.of(session), 0);
@@ -566,7 +582,7 @@ class SessionExtractionServiceTest {
     void keepsASkillCitingBothLinesAndAFigure() {
         List<ExtractedSkill> citesBoth = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, 0, 1, 0, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 1, 0, List.of()));
 
         List<ExtractedSkill> validated = SessionExtractionService.validate(
                 citesBoth, "English", NumberedLines.of("one\ntwo\nthree"), 1, 4);
@@ -588,7 +604,7 @@ class SessionExtractionServiceTest {
                 .mapToObj(i -> "line " + i).collect(java.util.stream.Collectors.joining("\n"));
         List<ExtractedSkill> citesBoth = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, 20, 166, 0, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 20, 166, 0, List.of()));
 
         assertThat(SessionExtractionService.validate(citesBoth, "English", NumberedLines.of(session), 1, 4))
                 .singleElement()
@@ -604,7 +620,7 @@ class SessionExtractionServiceTest {
     void stillRejectsAFigureThatWasNeverOffered() {
         List<ExtractedSkill> citesMissingFigure = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, null, null, 3, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, 3, List.of()));
 
         assertThatThrownBy(() -> SessionExtractionService.validate(
                 citesMissingFigure, "English", NumberedLines.of("one\ntwo"), 1, 4))
@@ -620,9 +636,9 @@ class SessionExtractionServiceTest {
     void salvagesASessionWhereEverySkillCitedBoth() {
         List<ExtractedSkill> citesBoth = List.of(
                 new ExtractedSkill("Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                        GoalKind.EXPLICIT, 0, 1, 0, List.of()),
+                        GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 1, 0, List.of()),
                 new ExtractedSkill("Comparing sampling schemes on their convergence.", "Compare Sampling",
-                        GoalKind.EXPLICIT, 1, 2, 0, List.of()));
+                        GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 1, 2, 0, List.of()));
 
         assertThat(SessionExtractionService.salvageValidOutcomes(
                 citesBoth, "English", NumberedLines.of("one\ntwo\nthree"), 1))
@@ -634,9 +650,9 @@ class SessionExtractionServiceTest {
     @Test
     void stillDropsASkillWhoseWordingIsInvalid() {
         List<ExtractedSkill> badWording = List.of(
-                new ExtractedSkill(null, "No text at all", GoalKind.EXPLICIT, 1, 2, List.of()),
+                new ExtractedSkill(null, "No text at all", GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 1, 2, List.of()),
                 new ExtractedSkill("Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                        GoalKind.EXPLICIT, 1, 2, List.of()));
+                        GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 1, 2, List.of()));
 
         assertThat(SessionExtractionService.salvageValidOutcomes(
                 badWording, "English", NumberedLines.of("one\ntwo\nthree"), 0))
@@ -649,7 +665,7 @@ class SessionExtractionServiceTest {
     void keepsAValidCitationUntouched() {
         List<ExtractedSkill> good = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, 1, 2, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 1, 2, List.of()));
 
         assertThat(SessionExtractionService.salvageValidOutcomes(
                 good, "English", NumberedLines.of("one\ntwo\nthree"), 0))
@@ -665,7 +681,7 @@ class SessionExtractionServiceTest {
     void stillDropsASkillWhoseCitationIsBeyondTheText() {
         List<ExtractedSkill> outOfBounds = List.of(new ExtractedSkill(
                 "Applying quadrature rules in higher dimensions.", "Apply Quadrature",
-                GoalKind.EXPLICIT, 9, 9, List.of()));
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of()));
 
         assertThat(SessionExtractionService.salvageValidOutcomes(
                 outOfBounds, "English", NumberedLines.of("one\ntwo\nthree"), 0)).isEmpty();

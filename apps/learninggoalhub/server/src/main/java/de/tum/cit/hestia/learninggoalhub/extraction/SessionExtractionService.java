@@ -2,6 +2,9 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +23,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v17";
+    static final String PROMPT_VERSION = "direct-v18";
 
     /**
      * How many broad skills one session may yield.
@@ -66,91 +69,87 @@ public class SessionExtractionService {
         return (int) Math.max(1, Math.min(MAX_SKILLS_PER_SESSION, scaled));
     }
 
-    /**
-     * How the count is asked for at each allowance.
-     *
-     * <p>"Two or three, never more than four" reads as an instruction to produce three whatever the
-     * material holds, which is what the model did on ten of thirteen lectures. At a budget of one or
-     * two that phrasing would be actively misleading, so the request is stated at the size it was
-     * computed for.
-     */
-    static String allowancePhrase(int budget) {
-        return switch (budget) {
-            case 1 -> "return exactly ONE";
-            case 2 -> "return ONE OR TWO";
-            default -> "return TWO OR THREE";
-        };
-    }
-
     private static final String REQUIRED_FIELDS_RETRY = """
 
             Your previous response violated a required field or outcome-wording rule. Regenerate the
             COMPLETE response. Every skill and knowledge item must contain non-blank, distinct text
             and shortLabel values plus kind EXPLICIT or IMPLICIT. Follow the action-noun wording
             invariant exactly. Every outcome must cite either one valid 1-10-line source range from
-            the numbered session text or one offered figure, never both. Do not omit valid outcomes.
+            the numbered session text or one offered figure. Every skill must carry a bloom of APPLY,
+            ANALYZE, EVALUATE or CREATE and every knowledge item a bloom of REMEMBER or UNDERSTAND,
+            each with a solo level. Do not omit valid outcomes.
             Return only the structured JSON result.
             """;
 
     static final String PROMPT_TEMPLATE = """
-            You analyse the complete educational material of one session (a lecture, chapter or
-            exercise) to identify its learning outcomes.
+            You analyse one part of a university lecture or exercise to identify what a student should
+            be able to do after working through this material.
 
             Write every generated text and shortLabel value in %s. Keep the JSON property names
-            text, shortLabel, kind, sourceStartLine, sourceEndLine and knowledge exactly as written,
-            and keep kind values exactly EXPLICIT or IMPLICIT. The source line indices refer to the
-            numbered non-blank lines shown below; never translate the source text.
+            text, shortLabel, kind, bloom, solo, sourceStartLine, sourceEndLine and knowledge exactly
+            as written, and keep kind values exactly EXPLICIT or IMPLICIT. The source line indices
+            refer to the numbered non-blank lines shown below; never translate the source text.
 
-            Extract the session's BROAD instructor-level learning outcomes — the two or three objectives
-            an instructor would put on a "learning objectives" slide for this session, not a line-by-line
-            inventory of every fact, step or example. SKILLS stay FEW and broad: %s, and
-            never more than %d. That allowance is set from how much material this unit holds, so it is
-            already the right number for what you are reading — reaching the maximum is a signal that
-            you have not merged enough: go back and fold the narrower candidates into the broader
-            capability they serve. However much material a unit covers, more of it means MORE KNOWLEDGE
-            under each skill, not more skills.
+            Bloom's revised taxonomy (cognitive process an outcome targets):
+              - REMEMBER: recall facts and basic concepts.
+              - UNDERSTAND: explain ideas or concepts.
+              - APPLY: use information in new situations.
+              - ANALYZE: draw connections among ideas; break material into parts.
+              - EVALUATE: justify a stance or decision.
+              - CREATE: produce new or original work.
 
-            If you are unsure whether something is a skill or knowledge, make it knowledge. Merge related
-            facets, steps, methods and examples into the larger competency they support as that skill's
-            knowledge children; do not delete those facets — nothing is lost by demoting them, because
-            knowledge is where the detail of this session is supposed to live.
-            For contrast: "Apply Bayes' theorem" is a skill, while "Explain Bayes' theorem" is a
-            knowledge item underpinning it, and so are the individual steps of applying it.
+            SOLO taxonomy (structure of the observed learning outcome):
+              - PRESTRUCTURAL: misses the point.
+              - UNISTRUCTURAL: identifies one relevant aspect.
+              - MULTISTRUCTURAL: identifies several relevant aspects without integrating them.
+              - RELATIONAL: integrates aspects into a coherent whole.
+              - EXTENDED_ABSTRACT: generalises beyond the given context.
 
-            MERGING MUST NOT REDUCE DETAIL. When two candidate skills become one, the specifics of
-            BOTH survive as separate knowledge items beneath it. Merging changes which tier a point
-            sits in; it never removes the point. Reporting fewer skills than the material suggests
-            while ALSO reporting little knowledge means you have summarised the session instead of
-            inventorying what it teaches, and that is the one clearly wrong answer here.
+            Bloom is carried by the outcome's VERB, and only by the verb. Every outcome is written in
+            the action-noun form that names what the student does with the material — "Understanding
+            ...", "Applying ...", "Analysing ..." — so the verb you choose IS the level you report. Do
+            not re-derive the level from the rest of the sentence: an outcome that names several
+            facets, or ends on a clause about comparing or deriving something, is still UNDERSTAND
+            when its verb is "Understanding". The topic an outcome covers is not its cognitive level,
+            and a long outcome is not a higher one. SOLO is the opposite — it describes how the whole
+            statement is structured, so read all of it. UNDERSTAND on Bloom with RELATIONAL on SOLO is
+            a normal pairing, not a contradiction to resolve.
 
-            KNOWLEDGE covers what a student must know to reach the skill above it: every fact,
-            definition, method, step or distinction the session teaches that the skill genuinely rests
-            on, each as its own item. Include what is independently assessable; leave out incidental
-            examples, asides and repetition.
+            SKILLS are what the student can DO with this material: outcomes at APPLY, ANALYZE, EVALUATE
+            or CREATE. These are the objectives an instructor would put on a "learning objectives"
+            slide, not a line-by-line inventory of every fact, step or example. Return at most %d.
 
-            Knowledge is where this session's substance lives, so there is far MORE of it than there
-            are skills: expect roughly five to ten knowledge items under each skill. Then check your
-            coverage before answering — read the numbered lines from first to last and confirm that
-            every substantive passage (each definition, theorem, rule, method, distinction or worked
-            technique) is cited by at least one outcome, in almost every case a knowledge item. A
-            passage that no outcome cites is material you have silently dropped.
+            KNOWLEDGE is what the student must know to reach the skill above it: every fact,
+            definition, method, step or distinction this material teaches that the skill genuinely
+            rests on, each as its own item. Knowledge sits at REMEMBER or UNDERSTAND — it is what the
+            student knows, never what they do. Include what is independently assessable; leave out
+            incidental examples, asides and repetition. Before answering, check that everything each
+            skill actually rests on appears beneath it; a passage the skill depends on that no
+            knowledge item cites is material you have silently dropped.
 
-            Every knowledge item is itself a learning outcome and MUST
-            use the expanded action-noun form naming what the student does with it — "Explaining",
-            "Describing", "Identifying", "Distinguishing", "Naming", "Recalling". Never state a bare fact.
+            Every knowledge item is itself a learning outcome and MUST use the expanded action-noun
+            form naming what the student does with it — "Explaining", "Describing", "Identifying",
+            "Naming", "Recalling", "Stating". Never state a bare fact, and never use a verb above
+            UNDERSTAND ("Distinguishing", "Comparing", "Deriving", "Evaluating", "Constructing") for a
+            knowledge item: if the student genuinely performs that action, it is a skill, not knowledge.
               WRONG: "The optimal variable ordering problem is NP-complete"
               RIGHT: "Explaining why finding the optimal variable ordering is NP-complete"
-            Skills are what the student can DO; knowledge is what the student must know to do it.
+
+            MATERIAL THAT TEACHES NO SKILL IS NORMAL. Much lecture material explains rather than asks
+            the student to perform anything, and that material has no APPLY-or-above outcome in it.
+            Return an empty list when that is the case. Do not manufacture a skill by escalating a verb
+            to have something to report — an invented "Applying ..." over material the student is only
+            expected to follow is worse than returning nothing.
 
             Choose each outcome's verb by what the STUDENT is expected to be able to do or know
-            afterwards — not by the activity the material happens to show. Slides often derive, prove,
-            demonstrate or work through something that the student is only expected to UNDERSTAND, not
-            to reproduce: a worked derivation of an estimator, a demonstrated construction, or a proof
-            usually means the student should "understand"/"explain" it, not "derive"/"construct"/
-            "prove" it themselves. Pick the verb accordingly and do NOT escalate — reserve "apply",
-            "compute", "construct", "derive", "design" or "evaluate" for material that genuinely asks
-            the student to carry out that action, not merely to follow it. When in doubt, prefer the
-            lower level (understand/know).
+            afterwards, not by the activity the material happens to show. Slides often derive, prove,
+            demonstrate or work through something the student is only expected to understand: a worked
+            derivation of an estimator, a demonstrated construction, or a proof usually means the
+            student should "understand"/"explain" it, not "derive"/"construct"/"prove" it themselves.
+            Reserve "apply", "compute", "construct", "derive", "design" or "evaluate" for material that
+            genuinely asks the student to carry out that action. The reverse error counts too: material
+            that does ask the student to perform something — an exercise, a task, a procedure they must
+            execute — yields a skill, and reporting it as knowledge understates what is taught.
 
             Classify each skill and knowledge item as:
               - EXPLICIT: stated directly as a goal or outcome in the text (e.g. "students can ...",
@@ -164,6 +163,8 @@ public class SessionExtractionService {
                 natural word order of the output language (German puts the infinitive last:
                 "Bias-Varianz-Abwägung analysieren") and do not end it with a period.
               - kind: EXPLICIT or IMPLICIT.
+              - bloom: APPLY, ANALYZE, EVALUATE or CREATE, matching the verb of text.
+              - solo: one of the SOLO enum names above.
               - sourceStartLine and sourceEndLine: the inclusive zero-based index range of the numbered
                 lines shown below that best supports the outcome, selected from ONE contiguous place
                 in the text. Usually select 1-3 lines; never select more than 10 lines and never combine
@@ -171,13 +172,14 @@ public class SessionExtractionService {
                 even when they sit together on one slide: pick one, never combine them. The indices
                 MUST come from the numbered lines shown below.
               - knowledge: every knowledge item underpinning this skill, each with its own text,
-                shortLabel, kind, sourceStartLine and sourceEndLine. The wording invariant and every
-                source-line rule above apply to knowledge items exactly as they do to skills.
+                shortLabel, kind, bloom (REMEMBER or UNDERSTAND), solo, sourceStartLine and
+                sourceEndLine. The wording invariant and every source-line rule above apply to
+                knowledge items exactly as they do to skills.
 
             Do not invent outcomes that are not supported by the text. Do not promote a demonstrated
             derivation, proof or construction into an expected student action unless the text explicitly
             requires students to perform it. Return skills in the order in which their supporting
-            material first appears in the session; order each skill's knowledge the same way.
+            material first appears in the material below; order each skill's knowledge the same way.
 
             Session title:
             ---
@@ -261,7 +263,7 @@ public class SessionExtractionService {
         NumberedLines numberedLines = NumberedLines.of(sessionText);
         String numberedSessionText = numberedLines.render();
         String prompt = PROMPT_TEMPLATE.formatted(
-                languageName, allowancePhrase(budget), budget, title, numberedSessionText);
+                languageName, budget, title, numberedSessionText);
         if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
             StringBuilder figures = new StringBuilder();
             for (int i = 0; i < figureDescriptions.size(); i++) {
@@ -351,6 +353,8 @@ public class SessionExtractionService {
             if (skill.kind() == null) {
                 throw new IllegalArgumentException("Every skill must have a kind");
             }
+            validateLevels(skill.bloom(), skill.solo(), "Every skill");
+            noteTier(skill.bloom(), GoalRole.SKILL, skill.text());
             Citation skillCitation = validateEvidence(skill.sourceStartLine(), skill.sourceEndLine(),
                     offeredFigure(skill.sourceFigure(), figureCount),
                     numberedLines, figureCount, "Every skill");
@@ -364,17 +368,21 @@ public class SessionExtractionService {
                 if (knowledge.kind() == null) {
                     throw new IllegalArgumentException("Every knowledge item must have a kind");
                 }
+                validateLevels(knowledge.bloom(), knowledge.solo(), "Every knowledge item");
+                noteTier(knowledge.bloom(), GoalRole.KNOWLEDGE, knowledge.text());
                 Citation knowledgeCitation = validateEvidence(
                         knowledge.sourceStartLine(), knowledge.sourceEndLine(),
                         offeredFigure(knowledge.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every knowledge item");
                 knowledgeItems.add(new ExtractedSkill.Knowledge(
                         knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                        knowledge.bloom(), knowledge.solo(),
                         knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                         knowledgeCitation.figure()));
             }
             valid.add(new ExtractedSkill(
                     skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     knowledgeItems));
         }
@@ -398,6 +406,42 @@ public class SessionExtractionService {
                 && skill.sourceEndLine() != null
                 && !offersFigure(skill.sourceFigure(), figureCount)
                 && numberedLines.isInBoundsButTooWide(skill.sourceStartLine(), skill.sourceEndLine());
+    }
+
+    /**
+     * A level is a required field like any other: a reply that omits it did not follow the contract,
+     * and a goal that reaches the database without one cannot be levelled later — extraction is the
+     * only place the source material was in view.
+     */
+    private static void validateLevels(BloomLevel bloom, SoloLevel solo, String subject) {
+        if (bloom == null) {
+            throw new IllegalArgumentException(subject + " must have a bloom level");
+        }
+        if (solo == null) {
+            throw new IllegalArgumentException(subject + " must have a solo level");
+        }
+    }
+
+    /**
+     * Records, without rejecting, an outcome whose level contradicts the tier it was returned in.
+     *
+     * <p>The prompt asks for skills at APPLY or above and knowledge at UNDERSTAND or below, and
+     * whether a model can honour that on material which teaches no performance is the open question
+     * this design is meant to answer. Rejecting the violation would answer it by hiding it: the unit
+     * would be re-asked, then salvaged, and the run would report only what survived. A course was
+     * already lost once to a validator enforcing a rule the model could not satisfy, so the tier is
+     * observed here and enforced nowhere — the counts in the log are the measurement.
+     */
+    private static void noteTier(BloomLevel bloom, GoalRole role, String text) {
+        if (bloom == null) {
+            return;
+        }
+        boolean doing = bloom.ordinal() >= BloomLevel.APPLY.ordinal();
+        if (role == GoalRole.SKILL && !doing) {
+            log.warn("Skill returned below APPLY ({}): {}", bloom, text);
+        } else if (role == GoalRole.KNOWLEDGE && doing) {
+            log.warn("Knowledge item returned above UNDERSTAND ({}): {}", bloom, text);
+        }
     }
 
     /** One outcome's citation once validated: at most one of a line range or a figure survives. */
@@ -487,6 +531,8 @@ public class SessionExtractionService {
                 if (skill.kind() == null) {
                     throw new IllegalArgumentException("Every skill must have a kind");
                 }
+                validateLevels(skill.bloom(), skill.solo(), "Every skill");
+                noteTier(skill.bloom(), GoalRole.SKILL, skill.text());
                 keepIfOnlyTheLabelReadsBadly(skill.text(), skill.shortLabel(), languageName, "Every skill");
             } catch (IllegalArgumentException invalidSkill) {
                 continue;
@@ -531,6 +577,8 @@ public class SessionExtractionService {
                     if (knowledge.kind() == null) {
                         throw new IllegalArgumentException("Every knowledge item must have a kind");
                     }
+                    validateLevels(knowledge.bloom(), knowledge.solo(), "Every knowledge item");
+                    noteTier(knowledge.bloom(), GoalRole.KNOWLEDGE, knowledge.text());
                     keepIfOnlyTheLabelReadsBadly(knowledge.text(), knowledge.shortLabel(), languageName,
                             "Every knowledge item");
                     Citation knowledgeCitation = validateEvidence(
@@ -539,6 +587,7 @@ public class SessionExtractionService {
                             numberedLines, figureCount, "Every knowledge item");
                     validKnowledge.add(new ExtractedSkill.Knowledge(
                             knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                            knowledge.bloom(), knowledge.solo(),
                             knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                             knowledgeCitation.figure()));
                 } catch (IllegalArgumentException invalidKnowledge) {
@@ -547,6 +596,7 @@ public class SessionExtractionService {
             }
             valid.add(new ExtractedSkill(
                     skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     validKnowledge));
         }

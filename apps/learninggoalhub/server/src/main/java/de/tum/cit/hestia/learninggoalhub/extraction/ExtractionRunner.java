@@ -87,6 +87,7 @@ public class ExtractionRunner {
     private final CompactTaxonomySynthesizer compactTaxonomySynthesizer;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
+    private final boolean keepEmptyUnits;
     private final ExtractionProgressTracker progressTracker;
     private final TransactionOperations extractionTransactions;
     private final int parallelism;
@@ -94,7 +95,6 @@ public class ExtractionRunner {
     private final int unitMaxChars;
     private final int skillTargetChars;
     private final String configuredDefaultModel;
-    private final int taxonomyBatchSize;
     private final HighlightGeometryService highlightGeometryService;
 
     public ExtractionRunner(CourseRepository courseRepository,
@@ -117,8 +117,8 @@ public class ExtractionRunner {
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
                             @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
+                            @Value("${hestia.extraction.keep-empty-units:false}") boolean keepEmptyUnits,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
-                            @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
                             HighlightGeometryService highlightGeometryService) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
@@ -140,8 +140,8 @@ public class ExtractionRunner {
         this.figureParallelism = figureParallelism;
         this.unitMaxChars = unitMaxChars;
         this.skillTargetChars = skillTargetChars;
+        this.keepEmptyUnits = keepEmptyUnits;
         this.configuredDefaultModel = configuredDefaultModel;
-        this.taxonomyBatchSize = taxonomyBatchSize;
         this.highlightGeometryService = highlightGeometryService;
     }
 
@@ -463,6 +463,7 @@ public class ExtractionRunner {
     private String runParams(String language, boolean figuresEnabled) {
         return "{\"unit-max-chars\":" + unitMaxChars
                 + ",\"skill-target-chars\":" + skillTargetChars
+                + ",\"keep-empty-units\":" + keepEmptyUnits
                 + ",\"parallelism\":" + parallelism
                 + ",\"output-language\":\"" + language + "\""
                 + ",\"figures-enabled\":" + figuresEnabled
@@ -532,7 +533,8 @@ public class ExtractionRunner {
                         "");
                 goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
                         new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine(),
-                                skill.sourceFigure())));
+                                skill.sourceFigure()),
+                        new TaxonomyClassification(skill.bloom(), skill.solo())));
                 List<ExtractedSkill.Knowledge> orderedKnowledge = skill.knowledge().stream()
                         .sorted(Comparator.comparing(
                                 ExtractedSkill.Knowledge::sourceStartLine,
@@ -544,7 +546,8 @@ public class ExtractionRunner {
                             "");
                     goals.add(new SessionGoal(knowledgeGoal, GoalRole.KNOWLEDGE, skillGoal,
                             new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
-                                    knowledge.sourceFigure())));
+                                    knowledge.sourceFigure()),
+                            new TaxonomyClassification(knowledge.bloom(), knowledge.solo())));
                 }
             }
             if (!goals.isEmpty()) {
@@ -570,6 +573,14 @@ public class ExtractionRunner {
      * references them, so nothing is orphaned; the MODULE root is always kept as the tree's anchor.
      */
     private int pruneEmptyUnits(Course course) {
+        if (keepEmptyUnits) {
+            // A unit that returned no skill is a finding, not debris: whether a lecture teaches any
+            // performance at all is what the APPLY-or-above contract is being measured on, and a
+            // pruned node cannot be told apart from one that was never uploaded.
+            log.info("Keeping empty units in course {} (hestia.extraction.keep-empty-units)",
+                    course.getId());
+            return 0;
+        }
         Set<Long> nodesWithGoals = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
                 .map(g -> g.getHierarchyNode().getId())
                 .collect(Collectors.toSet());
@@ -1080,62 +1091,27 @@ public class ExtractionRunner {
     }
 
     /**
-     * Classifies every extracted goal along Bloom + SOLO. Goals are flattened into one ordered list
-     * and grouped into fixed-size batches ({@code hestia.taxonomy.batch-size}); each batch is a single
-     * LLM call and the batches run in parallel. Batching instead of one call per goal cuts request
-     * count (and rate-limit pressure) and lets the model grade goals relative to each other.
+     * Pairs every extracted goal with the level extraction already gave it.
+     *
+     * <p>This used to be a phase of its own: goals were flattened, batched and sent back to a model
+     * that read the Bloom level off the finished sentence. Extraction now returns bloom and solo with
+     * the outcome, so the levels are simply carried across — one fewer call per twenty goals, and no
+     * second opinion that can disagree with the verb the writer chose while the material was in view.
+     * The phase is still reported so the progress bar keeps its shape.
      */
     private List<ClassifiedGoal> classifyInParallel(List<UnitExtraction> extractions, String modelOverride,
                                                     ExtractionProgressTracker.Run run) {
-        // Flatten goals while remembering each one's owning unit, so classifications map back to the
-        // right document + extraction unit after the (order-preserving) batch calls.
-        List<UnitExtraction> owners = new ArrayList<>();
-        List<SessionGoal> goals = new ArrayList<>();
-        for (UnitExtraction de : extractions) {
-            for (SessionGoal e : de.goals()) {
-                owners.add(de);
-                goals.add(e);
+        List<ClassifiedGoal> classified = new ArrayList<>();
+        for (UnitExtraction extraction : extractions) {
+            for (SessionGoal goal : extraction.goals()) {
+                classified.add(new ClassifiedGoal(extraction.document(), extraction.unit(),
+                        goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
+                        extraction.figures(), goal.classification()));
             }
         }
-        run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, goals.size());
-        if (goals.isEmpty()) {
-            return List.of();
-        }
-
-        int batchSize = Math.max(1, taxonomyBatchSize);
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
-        try {
-            List<CompletableFuture<List<TaxonomyClassification>>> futures = new ArrayList<>();
-            for (int start = 0; start < goals.size(); start += batchSize) {
-                int from = start;
-                int to = Math.min(start + batchSize, goals.size());
-                List<String> texts = goals.subList(from, to).stream()
-                        .map(e -> e.extracted().text()).toList();
-                futures.add(CompletableFuture.supplyAsync(
-                        () -> {
-                            List<TaxonomyClassification> result = safeClassifyBatch(texts, modelOverride);
-                            run.increment(to - from);
-                            return result;
-                        },
-                        executor));
-            }
-
-            List<ClassifiedGoal> classified = new ArrayList<>(goals.size());
-            int i = 0;
-            for (CompletableFuture<List<TaxonomyClassification>> future : futures) {
-                List<TaxonomyClassification> batch = future.join();
-                for (TaxonomyClassification c : batch) {
-                    SessionGoal goal = goals.get(i);
-                    classified.add(new ClassifiedGoal(owners.get(i).document(), owners.get(i).unit(),
-                            goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
-                            owners.get(i).figures(), c));
-                    i++;
-                }
-            }
-            return classified;
-        } finally {
-            executor.shutdown();
-        }
+        run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, classified.size());
+        run.increment(classified.size());
+        return List.copyOf(classified);
     }
 
     /**
@@ -1455,7 +1431,8 @@ public class ExtractionRunner {
     }
 
     private record SessionGoal(ExtractedGoal extracted, GoalRole role, ExtractedGoal parentSkill,
-                               SourceLineSelection sourceLineSelection) {
+                               SourceLineSelection sourceLineSelection,
+                               TaxonomyClassification classification) {
     }
 
     private record ClassifiedGoal(Document document, Unit unit, ExtractedGoal extracted,

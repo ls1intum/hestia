@@ -152,11 +152,12 @@ class ExtractionControllerTest {
 
     private static ExtractedSkill skill(ExtractedGoal goal, int sourceStartLine, int sourceEndLine) {
         return new ExtractedSkill(goal.text(), goal.shortLabel(), goal.kind(),
+                BloomLevel.APPLY, SoloLevel.RELATIONAL,
                 sourceStartLine, sourceEndLine, List.of());
     }
 
     private static ExtractedSkill figureSkill(String text, int sourceFigure) {
-        return new ExtractedSkill(text, text, GoalKind.IMPLICIT, null, null, sourceFigure, List.of());
+        return new ExtractedSkill(text, text, GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, sourceFigure, List.of());
     }
 
     private void startExtraction(Long courseId) throws Exception {
@@ -389,7 +390,7 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("Section"), eq(rawText), eq("en"), eq("English"), eq(null), anyList(), anyInt()))
                 .thenReturn(List.of(
                         new ExtractedSkill("Text outcome", "Text", GoalKind.IMPLICIT,
-                                0, 0, 0, List.of()),
+                                BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of()),
                         figureSkill("Figure outcome", 0),
                         figureSkill("Unsupported outcome", 4)));
         stubEmbedAll(Map.of(
@@ -827,8 +828,8 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("en"), eq("English"), eq(null), anyList(), anyInt()))
                 .thenReturn(List.of(
                         new ExtractedSkill("Apply the capability.", "Capability", GoalKind.EXPLICIT,
-                                0, 0, List.of(new ExtractedSkill.Knowledge(
-                                        "Understand the basics.", "Basics", GoalKind.EXPLICIT, 1, 1)))));
+                                BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of(new ExtractedSkill.Knowledge(
+                                        "Understand the basics.", "Basics", GoalKind.EXPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 1, 1)))));
         when(taxonomyService.classifyBatch(anyList(), eq(null))).thenAnswer(inv -> {
             List<String> texts = inv.getArgument(0);
             return texts.stream()
