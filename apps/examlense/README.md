@@ -42,6 +42,8 @@ set -a; source .env; set +a   # Spring Boot does not auto-read .env
 ./gradlew bootRun             # http://localhost:8081
 ```
 
+With the `local` profile the whole API is browsable at
+<http://localhost:8081/swagger-ui.html> — see [API documentation](#api-documentation) below.
 See [`server/README.md`](server/README.md) for configuration and a smoke test.
 
 ### 3. Client
@@ -61,6 +63,17 @@ unreachable — you can continue without a course", section confirmation still s
 `/api/lgh/courses` returns 502 while the rest of the app works normally. You only lose the
 goal insights in the grading and results views. Point `LGH_BASE_URL` at a local LGH if you
 are running one.
+
+## API documentation
+
+The server API is documented by a generated **OpenAPI spec** — spec at `/v3/api-docs`,
+Swagger UI at `/swagger-ui.html`. Both are enabled by the `local` profile and off in
+deployments, so run the server with `SPRING_PROFILES_ACTIVE=local` and open
+<http://localhost:8081/swagger-ui.html>. Click **Authorize** and paste your `API_AUTH_TOKEN`
+to make "Try it out" work.
+
+Full details — how to enable it elsewhere, and how the spec is kept honest — live in
+**[`server/README.md` → API documentation](server/README.md#api-documentation)**.
 
 ## Environment variables
 
