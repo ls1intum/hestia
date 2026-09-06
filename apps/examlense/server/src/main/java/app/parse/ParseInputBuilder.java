@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 /**
  * Assembles the LLM user content for one parse, per {@link ParserStrategy.PdfMode}:
  *   RASTERIZE  — every page rendered to a PNG data URL
- *   TEXT_ONLY  — PDFBox plain-text extraction (raw text persisted for audit)
  *   PDF_DIRECT — the PDF bytes inlined for providers with native document input
  *
  * Failures surface as {@link InputException} carrying a user-facing message.
@@ -30,20 +29,16 @@ class ParseInputBuilder {
     private static final float RASTERIZE_DPI = 150f;
 
     private final PdfRasterizer rasterizer;
-    private final PdfTextExtractor textExtractor;
     private final ParseProgress progress;
 
-    ParseInputBuilder(PdfRasterizer rasterizer, PdfTextExtractor textExtractor,
-                      ParseProgress progress) {
+    ParseInputBuilder(PdfRasterizer rasterizer, ParseProgress progress) {
         this.rasterizer = rasterizer;
-        this.textExtractor = textExtractor;
         this.progress = progress;
     }
 
     AiProvider.UserContent build(ParserStrategy.PdfMode mode, UUID examId, byte[] bytes) {
         return switch (mode) {
             case RASTERIZE -> rasterized(examId, bytes);
-            case TEXT_ONLY -> extractedText(examId, bytes);
             case PDF_DIRECT -> pdfDirect(bytes);
         };
     }
@@ -68,34 +63,6 @@ class ParseInputBuilder {
             parts.add(new AiProvider.ImageUrlPart("data:image/png;base64," + b64));
         }
         return new AiProvider.MultipartContent(parts);
-    }
-
-    private AiProvider.UserContent extractedText(UUID examId, byte[] bytes) {
-        String text;
-        long tExtract = System.nanoTime();
-        try {
-            progress.setPhase(examId, "extracting");
-            text = textExtractor.extractText(bytes);
-            log.info("parse-exam-pdf[{}] timing step=text-extract took={}ms chars={}",
-                examId, msSince(tExtract), text.length());
-        } catch (PdfTextExtractor.TextExtractionException e) {
-            log.error("parse-exam-pdf[{}] text extraction failed", examId, e);
-            throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
-        } catch (Exception e) {
-            log.error("parse-exam-pdf[{}] text extraction failed", examId, e);
-            throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
-        }
-        return new AiProvider.MultipartContent(List.of(
-            new AiProvider.TextPart(
-                "You will receive the exam as PLAIN TEXT extracted from the PDF page-by-page."
-                    + " Pages are delimited by `----- Page N -----` markers; use those to populate"
-                    + " figures[].page_number and to reason about layout boundaries."
-                    + " Line wraps are mechanical, not semantic — paragraphs may span lines and"
-                    + " words may be hyphenated across line breaks; reconstruct sensibly."
-                    + " Math, code, and tables may have lost typographic formatting; restore them"
-                    + " with markdown ($..$ / $$..$$ for math, ```...``` for code) where appropriate."
-                    + "\n\n----- PDF TEXT -----\n" + text)
-        ));
     }
 
     private AiProvider.UserContent pdfDirect(byte[] bytes) {

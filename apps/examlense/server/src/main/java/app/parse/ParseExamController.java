@@ -23,8 +23,7 @@ public class ParseExamController {
     public record ParseExamRequest(
         @NotBlank String exam_id,
         @NotBlank String storage_path,
-        String parser_model,
-        Boolean fast_mode
+        String parser_model
     ) {}
 
     private final ParseExamService service;
@@ -73,7 +72,6 @@ public class ParseExamController {
             userId,
             req.storage_path(),
             strategy,
-            Boolean.TRUE.equals(req.fast_mode()),
             requestNanos
         );
         return ResponseEntity.accepted().body(Map.of(

@@ -36,7 +36,7 @@ class ParseFallbackTest {
     private ExamRepository examRepository;
     private StorageService storage;
     private AiProviderFactory providerFactory;
-    private PdfTextExtractor textExtractor;
+    private PdfPageCounter pageCounter;
     private ParseInputBuilder inputBuilder;
     private ParsedExamPersister persister;
     private ParseMetricsRecorder metricsRecorder;
@@ -51,7 +51,7 @@ class ParseFallbackTest {
         examRepository = mock(ExamRepository.class);
         storage = mock(StorageService.class);
         providerFactory = mock(AiProviderFactory.class);
-        textExtractor = mock(PdfTextExtractor.class);
+        pageCounter = mock(PdfPageCounter.class);
         inputBuilder = mock(ParseInputBuilder.class);
         persister = mock(ParsedExamPersister.class);
         metricsRecorder = mock(ParseMetricsRecorder.class);
@@ -60,15 +60,17 @@ class ParseFallbackTest {
         gptProvider = mock(AiProvider.class);
 
         service = new ParseExamService(
-            examRepository, storage, providerFactory, textExtractor,
-            inputBuilder, persister, metricsRecorder, progress
+            examRepository, storage, providerFactory, pageCounter,
+            inputBuilder, persister, metricsRecorder, progress,
+            mock(app.parse.figures.FigureExtractionService.class)
         );
 
         when(storage.download(eq("exam-pdfs"), anyString())).thenReturn(new byte[]{1, 2, 3});
-        when(textExtractor.pageCount(any())).thenReturn(1);
+        when(pageCounter.pageCount(any())).thenReturn(1);
         when(inputBuilder.build(any(), any(), any()))
             .thenReturn(new AiProvider.TextContent("pdf-stub"));
-        when(persister.persist(any(), any(), any())).thenReturn(true);
+        when(persister.persist(any(), any(), any()))
+            .thenReturn(new ParsedExamPersister.PersistResult(true, java.util.List.of()));
 
         // Route each ParserStrategy to its provider mock.
         when(providerFactory.forParser(any())).thenAnswer(inv -> {
@@ -80,7 +82,7 @@ class ParseFallbackTest {
     private void runParse() {
         service.runAsync(
             EXAM_ID.toString(), UUID.randomUUID().toString(), "exam-pdfs/file.pdf",
-            ParserStrategies.resolve(ParserStrategies.DEFAULT_ID), false, System.nanoTime()
+            ParserStrategies.resolve(ParserStrategies.DEFAULT_ID), System.nanoTime()
         );
     }
 

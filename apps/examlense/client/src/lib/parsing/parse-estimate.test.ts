@@ -7,9 +7,9 @@ import {
 
 describe("estimateParseSeconds", () => {
   it("rounds to a multiple of 5 with a floor of 5", () => {
-    expect(estimateParseSeconds(10, false)).toBe(45); // 45
-    expect(estimateParseSeconds(10, true)).toBe(30); // 30
-    expect(estimateParseSeconds(1, true)).toBe(5); // 3 → floored to 5
+    expect(estimateParseSeconds(10)).toBe(45); // 45
+    expect(estimateParseSeconds(3)).toBe(15); // 13.5 → 15
+    expect(estimateParseSeconds(1)).toBe(5); // 4.5 → floored to 5
   });
 });
 

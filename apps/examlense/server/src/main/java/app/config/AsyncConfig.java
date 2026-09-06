@@ -30,6 +30,23 @@ public class AsyncConfig {
     }
 
     /**
+     * Background pool for cropping figures out of a parsed PDF. Deliberately not
+     * the solver pool: that one is sized for threads idling on the AI gateway,
+     * whereas page rendering is CPU- and heap-bound (an A4 page at 200 DPI is
+     * ~15 MB), so running six of these at once is how you get an OOM.
+     */
+    @Bean(name = "figureExecutor")
+    public Executor figureExecutor() {
+        ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
+        exec.setCorePoolSize(1);
+        exec.setMaxPoolSize(2);
+        exec.setQueueCapacity(20);
+        exec.setThreadNamePrefix("figure-");
+        exec.initialize();
+        return exec;
+    }
+
+    /**
      * Background pool for LearningGoalHub goal generation, separate from the
      * solver pool so a slow LGH run (one LLM call per task, synchronous on
      * their side) can never starve solve-exam orchestration.

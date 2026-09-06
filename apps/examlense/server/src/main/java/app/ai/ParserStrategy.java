@@ -13,7 +13,6 @@ public record ParserStrategy(
 ) {
     public enum PdfMode {
         PDF_DIRECT,
-        RASTERIZE,
-        TEXT_ONLY
+        RASTERIZE
     }
 }

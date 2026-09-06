@@ -9,7 +9,6 @@ import { apiRequest } from "@/lib/api/api-client";
 export interface ParseExamArgs {
   examId: string;
   storagePath: string;
-  fastMode?: boolean;
 }
 
 /**
@@ -27,7 +26,6 @@ export async function parseExamPdf(args: ParseExamArgs): Promise<void> {
     json: {
       exam_id: args.examId,
       storage_path: args.storagePath,
-      fast_mode: args.fastMode ?? undefined,
     },
   });
 }

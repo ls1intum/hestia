@@ -2,28 +2,19 @@ import { useRef, useState } from "react";
 import { FileText, FileUp, X } from "lucide-react";
 import { quickCheckUpload, UPLOAD_ACCEPT } from "@/lib/parsing/pdf-precheck";
 import { formatBytes, truncateFilename } from "./shared";
-import { FastModeToggle } from "./FastModeToggle";
 
 interface Props {
   file: File | null;
   onChange: (file: File | null) => void;
   onError: (msg: string) => void;
-  fastMode: boolean;
-  onFastModeChange: (enabled: boolean) => void;
 }
 
 /**
- * First step of the PDF flow: drop or browse for an exam PDF or Word .docx (plus
- * the Fast Mode parsing toggle). Validates type and size; the selected file is
- * lifted to the orchestrator via onChange.
+ * First step of the PDF flow: drop or browse for an exam PDF or Word .docx.
+ * Validates type and size; the selected file is lifted to the orchestrator via
+ * onChange.
  */
-export const UploadStep = ({
-  file,
-  onChange,
-  onError,
-  fastMode,
-  onFastModeChange,
-}: Props) => {
+export const UploadStep = ({ file, onChange, onError }: Props) => {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -108,10 +99,5 @@ export const UploadStep = ({
     </label>
   );
 
-  return (
-    <div className="space-y-hestia-3">
-      {fileArea}
-      <FastModeToggle checked={fastMode} onChange={onFastModeChange} />
-    </div>
-  );
+  return <div className="space-y-hestia-3">{fileArea}</div>;
 };

@@ -5,6 +5,8 @@ import type { Section, SectionBlock, SectionFigure } from "@/lib/exam/exam-helpe
 export const sectionsKey = (examId: string) => ["sections", examId] as const;
 export const blocksKey = (examId: string) => ["section-blocks", examId] as const;
 export const figuresKey = (blockId: string) => ["section-figures", blockId] as const;
+/** Prefix for every block's figure query — React Query matches by key prefix. */
+export const figuresRootKey = ["section-figures"] as const;
 
 export function useSections(examId: string | undefined) {
   return useQuery({

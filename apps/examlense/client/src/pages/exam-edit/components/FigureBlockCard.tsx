@@ -12,6 +12,7 @@ import { BlockCard } from "@/components/shared/exam-content/BlockCard";
 import { BlockActionsMenu } from "@/components/shared/exam-content/BlockActionsMenu";
 import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
+import { Badge } from "@/components/ui/badge";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -108,6 +109,14 @@ export const FigureBlockCard = ({
       labelVariant="eyebrow"
       quietControls
       dragAlwaysVisible
+      // Flag crops taken from the PDF. They are usually right and occasionally
+      // wrong, and the editor is where the author is already checking the parse —
+      // the one moment a cue to look actually costs nothing.
+      badge={
+        figure?.source === "pdf" ? (
+          <Badge variant="secondary">Auto-extracted</Badge>
+        ) : undefined
+      }
       actionsMenu={
         <BlockActionsMenu
           ariaLabel="Figure actions"

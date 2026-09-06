@@ -9,6 +9,7 @@ import app.shared.Access;
 import app.error.ApiException;
 import app.exam.Exam;
 import app.exam.ExamRepository;
+import app.parse.figures.FigureExtractionService;
 import app.storage.StorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,30 +46,33 @@ public class ParseExamService {
     private final ExamRepository examRepository;
     private final StorageService storage;
     private final AiProviderFactory providerFactory;
-    private final PdfTextExtractor textExtractor;
+    private final PdfPageCounter pageCounter;
     private final ParseInputBuilder inputBuilder;
     private final ParsedExamPersister persister;
     private final ParseMetricsRecorder metricsRecorder;
     private final ParseProgress progress;
+    private final FigureExtractionService figureExtraction;
 
     public ParseExamService(
         ExamRepository examRepository,
         StorageService storage,
         AiProviderFactory providerFactory,
-        PdfTextExtractor textExtractor,
+        PdfPageCounter pageCounter,
         ParseInputBuilder inputBuilder,
         ParsedExamPersister persister,
         ParseMetricsRecorder metricsRecorder,
-        ParseProgress progress
+        ParseProgress progress,
+        FigureExtractionService figureExtraction
     ) {
         this.examRepository = examRepository;
         this.storage = storage;
         this.providerFactory = providerFactory;
-        this.textExtractor = textExtractor;
+        this.pageCounter = pageCounter;
         this.inputBuilder = inputBuilder;
         this.persister = persister;
         this.metricsRecorder = metricsRecorder;
         this.progress = progress;
+        this.figureExtraction = figureExtraction;
     }
 
     /**
@@ -108,19 +112,18 @@ public class ParseExamService {
         String userId,
         String storagePath,
         ParserStrategy strategy,
-        boolean fastMode,
         long requestNanos
     ) {
         // Valid by construction: preflight already resolved this exam.
         UUID examUuid = UUID.fromString(examId);
         long pipelineStart = System.nanoTime();
-        ParserStrategy.PdfMode pdfMode = effectivePdfMode(strategy, fastMode);
-        log.info("parse-exam-pdf[{}] timing start strategy={} mode={} fastMode={} queueWait={}ms",
-            examId, strategy.id(), pdfMode, fastMode, msSince(requestNanos));
+        ParserStrategy.PdfMode pdfMode = strategy.pdfMode();
+        log.info("parse-exam-pdf[{}] timing start strategy={} mode={} queueWait={}ms",
+            examId, strategy.id(), pdfMode, msSince(requestNanos));
 
         ParseAttempt attempt = new ParseAttempt(examUuid, userId, strategy.id(), pdfMode.name());
         try {
-            run(attempt, strategy, pdfMode, fastMode, storagePath);
+            run(attempt, strategy, pdfMode, storagePath);
             log.info("parse-exam-pdf[{}] timing total took={}ms strategy={}",
                 examId, msSince(pipelineStart), strategy.id());
         } catch (Exception e) {
@@ -137,7 +140,7 @@ public class ParseExamService {
     }
 
     private void run(ParseAttempt attempt, ParserStrategy strategy, ParserStrategy.PdfMode pdfMode,
-                     boolean fastMode, String storagePath) {
+                     String storagePath) {
         UUID examId = attempt.examId;
 
         // 1. Download + sanity checks
@@ -159,7 +162,7 @@ public class ParseExamService {
             fail(attempt, ParseErrorMessages.PDF_TOO_LARGE);
             return;
         }
-        attempt.pageCount = textExtractor.pageCount(bytes);
+        attempt.pageCount = pageCounter.pageCount(bytes);
         if (attempt.pageCount == null || attempt.pageCount == 0) {
             fail(attempt, ParseErrorMessages.PDF_INVALID);
             return;
@@ -186,7 +189,7 @@ public class ParseExamService {
         // a different model (see extractWithFallback) before surfacing an error.
         Map<String, Object> parsed;
         try {
-            parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, fastMode, bytes);
+            parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, bytes);
         } catch (AiExceptions.RateLimitException e) {
             fail(attempt, ParseErrorMessages.AI_RATE_LIMIT);
             return;
@@ -223,22 +226,33 @@ public class ParseExamService {
         // 4. Persist
         progress.setPhase(examId, "persisting");
         long tPersist = System.nanoTime();
-        attempt.success = persister.persist(attempt, parsed, tasks);
+        ParsedExamPersister.PersistResult persisted = persister.persist(attempt, parsed, tasks);
+        attempt.success = persisted.ok();
         log.info("parse-exam-pdf[{}] timing step=persist took={}ms tasks={}",
             examId, msSince(tPersist), tasks.size());
+
+        // 5. Fill the figure placeholders with crops from the PDF. Dispatched, not
+        // inlined: the exam is already `draft` and usable, and this must never be
+        // able to fail a parse that produced tasks. Unlike the LLM steps above it
+        // costs nothing per run — the geometry is read from the PDF itself, not
+        // from whatever input the parser was shown.
+        if (persisted.ok() && !persisted.figureBlocks().isEmpty()) {
+            figureExtraction.extractAsync(
+                examId, attempt.ownerId, storagePath, persisted.figureBlocks());
+        }
     }
 
     /**
      * Runs the parser LLM call for {@code primary}; on a <em>transient</em> failure
      * (busy/unreachable/5xx — see {@link AiExceptions#isTransient}) retries once with
-     * the {@link ParserStrategies#FALLBACK_ID} model, honoring fast mode. Non-transient
+     * the {@link ParserStrategies#FALLBACK_ID} model. Non-transient
      * failures (malformed output, out-of-credits) and a failed fallback propagate to the
      * caller's exception→message mapping. Updates {@code attempt} to record the model that
      * actually served so the single metrics row and the exam reflect it.
      */
     private Map<String, Object> extractWithFallback(
         ParseAttempt attempt, ParserStrategy primary, AiProvider.UserContent primaryContent,
-        ParserStrategy.PdfMode primaryMode, boolean fastMode, byte[] bytes
+        ParserStrategy.PdfMode primaryMode, byte[] bytes
     ) {
         try {
             return extract(attempt, primary, primaryContent);
@@ -249,9 +263,9 @@ public class ParseExamService {
             }
             log.warn("parse-exam-pdf[{}] primary parser {} failed transiently ({}); falling back to {}",
                 attempt.examId, primary.id(), e.toString(), fallback.id());
-            // Honor fast mode for the fallback; only rebuild input if the mode actually
-            // differs (the default→fallback pair shares PDF_DIRECT, so this reuses content).
-            ParserStrategy.PdfMode fbMode = effectivePdfMode(fallback, fastMode);
+            // Only rebuild input if the mode actually differs (the default→fallback
+            // pair shares PDF_DIRECT, so this reuses the content already built).
+            ParserStrategy.PdfMode fbMode = fallback.pdfMode();
             AiProvider.UserContent fbContent = fbMode == primaryMode
                 ? primaryContent
                 : inputBuilder.build(fbMode, attempt.examId, bytes);
@@ -280,10 +294,6 @@ public class ParseExamService {
         log.info("parse-exam-pdf[{}] timing step=llm-call took={}ms model={}",
             attempt.examId, attempt.llmMs, res.model());
         return res.toolArgs();
-    }
-
-    public static ParserStrategy.PdfMode effectivePdfMode(ParserStrategy strategy, boolean fastMode) {
-        return fastMode ? ParserStrategy.PdfMode.TEXT_ONLY : strategy.pdfMode();
     }
 
     private static long msSince(long startNanos) {

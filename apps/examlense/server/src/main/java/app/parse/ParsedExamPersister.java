@@ -1,6 +1,7 @@
 package app.parse;
 
 import app.exam.Exam;
+import app.parse.figures.FigurePlacement;
 import app.section.Section;
 import app.section.SectionBlock;
 import app.task.Task;
@@ -75,8 +76,17 @@ class ParsedExamPersister {
             .orElse(true);
     }
 
+    /**
+     * What the persist produced. The figure placements exist so the extraction
+     * pass downstream knows which block sits on which PDF page — the parser asks
+     * the model for {@code page_number} and this is the only place it survives.
+     */
+    record PersistResult(boolean ok, List<FigurePlacement> figureBlocks) {
+        static PersistResult failed() { return new PersistResult(false, List.of()); }
+    }
+
     @SuppressWarnings("unchecked")
-    boolean persist(
+    PersistResult persist(
         ParseAttempt attempt,
         Map<String, Object> parsed,
         List<Map<String, Object>> tasks
@@ -91,7 +101,7 @@ class ParsedExamPersister {
         if (isNoLongerParsing(examId)) {
             log.info("parse-exam-pdf[{}] no longer parsing before persist — skipping (cancelled?)", examId);
             attempt.error = "Cancelled before results were saved.";
-            return false;
+            return PersistResult.failed();
         }
 
         // -- Defensive fill: every task must end up in a section. The prompt
@@ -147,14 +157,15 @@ class ParsedExamPersister {
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] structural insert failed", examId, e);
             fail(attempt, "Failed to save parsed tasks.");
-            return false;
+            return PersistResult.failed();
         }
 
         // -- Figures + mid-section context blocks: best-effort, decorative.
-        persistDecorativeBlocks(examId, parsed, taskRows, sectionIdByName, sectionDescByName);
+        List<FigurePlacement> figureBlocks = persistDecorativeBlocks(
+            examId, attempt.pageCount, parsed, taskRows, sectionIdByName, sectionDescByName);
 
         // -- Finalize exam
-        return finalizeExam(attempt, parsed);
+        return new PersistResult(finalizeExam(attempt, parsed), figureBlocks);
     }
 
     private List<Map<String, String>> collectSections(
@@ -238,8 +249,9 @@ class ParsedExamPersister {
      * resolve the section, map after_task_index → position, insert with a
      * swallowing try/catch (blocks are decorative — tasks are already safe).
      */
-    private void persistDecorativeBlocks(
+    private List<FigurePlacement> persistDecorativeBlocks(
         UUID examId,
+        Integer pageCount,
         Map<String, Object> parsed,
         List<Task> taskRows,
         Map<String, UUID> sectionIdByName,
@@ -249,7 +261,7 @@ class ParsedExamPersister {
         Object ctxObj = parsed.get("context_blocks");
         boolean hasFigures = figuresObj instanceof List<?> fl && !fl.isEmpty();
         boolean hasContext = ctxObj instanceof List<?> cl && !cl.isEmpty();
-        if (!hasFigures && !hasContext) return;
+        if (!hasFigures && !hasContext) return List.of();
 
         // Build after_task_index -> position map from the tasks we just created.
         Map<UUID, List<Integer>> positionsBySection = new HashMap<>();
@@ -260,8 +272,10 @@ class ParsedExamPersister {
         }
         for (List<Integer> v : positionsBySection.values()) Collections.sort(v);
 
+        List<FigurePlacement> placements = new ArrayList<>();
         if (hasFigures) {
             List<SectionBlock> rows = new ArrayList<>();
+            int order = 0;
             for (Object o : (List<?>) figuresObj) {
                 if (!(o instanceof Map<?, ?> fig)) continue;
                 List<String> pieces = new ArrayList<>();
@@ -271,9 +285,16 @@ class ParsedExamPersister {
                 SectionBlock b = decorativeBlock(examId, fig, "figure",
                     pieces.isEmpty() ? "" : String.join(" — ", pieces),
                     sectionIdByName, positionsBySection);
-                if (b != null) rows.add(b);
+                if (b == null) continue;
+                rows.add(b);
+                // Block ids are app-assigned, so they are already known here — which
+                // is what lets the page number reach extraction without a new column.
+                placements.add(new FigurePlacement(
+                    b.getId(), pageNumber(fig, pageCount), asString(fig.get("label")), order++));
             }
-            saveBlocksBestEffort(examId, rows, "figure");
+            // Only hand on placements for rows that actually landed: saveAll is
+            // transactional, so a failure means none of these blocks exist.
+            if (!saveBlocksBestEffort(examId, rows, "figure")) placements.clear();
         }
 
         if (hasContext) {
@@ -295,6 +316,15 @@ class ParsedExamPersister {
             }
             saveBlocksBestEffort(examId, rows, "context");
         }
+        return placements;
+    }
+
+    /** The model's 1-based page number, or null when absent or out of range. */
+    private static Integer pageNumber(Map<?, ?> fig, Integer pageCount) {
+        if (!(fig.get("page_number") instanceof Number n)) return null;
+        int page = n.intValue();
+        if (page < 1) return null;
+        return (pageCount != null && page > pageCount) ? null : page;
     }
 
     /** Resolve one raw figure/context entry to a block row, or null when its section is unknown. */
@@ -311,12 +341,14 @@ class ParsedExamPersister {
         return blockRow(examId, sid, pos, content, kind);
     }
 
-    private void saveBlocksBestEffort(UUID examId, List<SectionBlock> rows, String kind) {
-        if (rows.isEmpty()) return;
+    private boolean saveBlocksBestEffort(UUID examId, List<SectionBlock> rows, String kind) {
+        if (rows.isEmpty()) return true;
         try {
             sectionBlockRepository.saveAll(rows);
+            return true;
         } catch (Exception e) {
             log.error("parse-exam-pdf[{}] {} blocks insert failed", examId, kind, e);
+            return false;
         }
     }
 
