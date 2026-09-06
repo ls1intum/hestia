@@ -6,11 +6,16 @@ import app.error.ApiException;
 import app.security.CurrentUser;
 import app.storage.SignedUrls;
 import app.storage.StorageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +30,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Figures", description = """
+    Images attached to a context block. The rows live here; the bytes live in storage and are \
+    read through short-lived signed URLs.""")
 public class FigureController {
 
     private static final String FIGURE_BUCKET = "exam-figures";
@@ -45,6 +53,11 @@ public class FigureController {
         this.signedUrls = signedUrls;
     }
 
+    @Operation(
+        summary = "List a block's figures",
+        description = "Ordered by `position`. Returns metadata only — fetch a signed URL to render one.")
+    @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such block, or `blockId` is not a valid UUID.")
     @GetMapping("/blocks/{blockId}/figures")
     public List<SectionDtos.FigureDto> list(@PathVariable String blockId, @CurrentUser String userId) {
         requireBlock(Access.id(blockId), userId);
@@ -52,10 +65,25 @@ public class FigureController {
             .stream().map(SectionDtos.FigureDto::from).toList();
     }
 
-    @PostMapping("/blocks/{blockId}/figures")
+    @Operation(
+        summary = "Upload a figure to a block",
+        description = """
+            `multipart/form-data` with a `file` part and an optional `position` (defaults to the \
+            end of the block). The image type is taken from the filename extension, falling back \
+            to the content type; only `png`, `jpg`, `jpeg`, `webp`, and `gif` are accepted.""")
+    @ApiResponse(responseCode = "400", description = "Unsupported image type.")
+    @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such block, or `blockId` is not a valid UUID.")
+    // `consumes` is what makes the spec advertise multipart/form-data; without it
+    // springdoc documents the (correct) file schema under application/json.
+    @PostMapping(value = "/blocks/{blockId}/figures", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public SectionDtos.FigureDto upload(@PathVariable String blockId,
-                                 @RequestParam("file") MultipartFile file,
-                                 @RequestParam(value = "position", required = false) Integer position,
+                                 @RequestParam("file")
+                                 @Parameter(description = "PNG, JPEG, WebP, or GIF image.")
+                                 MultipartFile file,
+                                 @RequestParam(value = "position", required = false)
+                                 @Parameter(description = "Insertion index; appended when omitted.")
+                                 Integer position,
                                  @CurrentUser String userId) throws IOException {
         UUID bid = Access.id(blockId);
         SectionBlock block = requireBlock(bid, userId);
@@ -85,6 +113,11 @@ public class FigureController {
         return dto;
     }
 
+    @Operation(
+        summary = "Update a figure",
+        description = "Sparse update accepting `caption` and `position`. The image bytes are immutable — re-upload to replace one.")
+    @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @PatchMapping("/figures/{id}")
     public SectionDtos.FigureDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
                                 @CurrentUser String userId) {
@@ -94,6 +127,12 @@ public class FigureController {
         return SectionDtos.FigureDto.from(figureRepository.save(fig));
     }
 
+    @Operation(
+        summary = "Delete a figure",
+        description = "Removes the row; the stored object is deleted on a best-effort basis and a storage failure does not block it.")
+    @ApiResponse(responseCode = "204", description = "Deleted.")
+    @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @DeleteMapping("/figures/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
         SectionFigure fig = loadFigure(id, userId);
@@ -103,6 +142,13 @@ public class FigureController {
     }
 
     /** Short-lived signed URL for rendering the figure via <img src>. */
+    @Operation(
+        summary = "Get a signed URL for a figure",
+        description = """
+            Returns `{ signed_url }` — an absolute, HMAC-signed `/api/files/**` URL valid for \
+            one hour. It needs no bearer token, so it can go straight into an `<img src>`.""")
+    @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @GetMapping("/figures/{id}/signed-url")
     public Map<String, Object> signedUrl(@PathVariable String id, @CurrentUser String userId) {
         SectionFigure fig = loadFigure(id, userId);

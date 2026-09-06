@@ -6,6 +6,9 @@ import app.exam.Exam;
 import app.task.Task;
 import app.task.TaskRepository;
 import app.security.CurrentUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Learning goals", description = """
+    Proxy in front of LearningGoalHub. The browser cannot reach LGH directly (VPN-only, no \
+    CORS), so course lookups and goal resolution go through here. LGH being unreachable is a \
+    502 the UI degrades on rather than an error state.""")
 public class LghController {
 
     private static final Logger log = LoggerFactory.getLogger(LghController.class);
@@ -48,6 +55,10 @@ public class LghController {
         this.taskRepository = taskRepository;
     }
 
+    @Operation(
+        summary = "List LGH courses",
+        description = "Every course LGH knows about, for the picker shown when an exam is created.")
+    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @GetMapping("/lgh/courses")
     public List<CourseDto> courses(@CurrentUser String userId) {
         return viaLgh("list LGH courses", () -> client.listCourses().stream()
@@ -56,6 +67,11 @@ public class LghController {
     }
 
     /** Create a new, empty LGH course (name only) and return it for linking to an exam. */
+    @Operation(
+        summary = "Create an LGH course",
+        description = "Creates an empty course in LGH and returns it, so a new exam can be linked to it.")
+    @ApiResponse(responseCode = "400", description = "`name` is missing or blank.")
+    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @PostMapping("/lgh/courses")
     public CourseDto createCourse(@RequestBody CreateCourseReq req, @CurrentUser String userId) {
         String name = req.name() == null ? "" : req.name().trim();
@@ -72,6 +88,18 @@ public class LghController {
      * The resolved learning goals of an exam: the goals of its linked LGH
      * course, narrowed to the ids actually stored on the exam's tasks.
      */
+    @Operation(
+        summary = "Resolve an exam's learning goals",
+        description = """
+            The goals of the exam's linked LGH course, narrowed to the ids actually stored on \
+            its tasks. Only ids live in this database — the text, Bloom, and SOLO levels are \
+            resolved through LGH at read time.
+
+            Returns an empty list (not an error) when the exam has no linked course or its \
+            tasks carry no goal ids.""")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
+    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable; the client falls back to `Goal #id` placeholders.")
     @GetMapping("/exams/{id}/learning-goals")
     public List<LearningGoalDto> examLearningGoals(@PathVariable String id, @CurrentUser String userId) {
         Exam exam = access.requireExam(Access.id(id), userId);

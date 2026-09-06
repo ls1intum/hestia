@@ -25,6 +25,11 @@ dependencies {
     implementation("org.springframework.security:spring-security-saml2-service-provider")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
+    // OpenAPI spec + Swagger UI. Pinned to the 2.6.x line, which targets Spring Boot
+    // 3.3.x — apps/learninggoalhub is on springdoc 2.8.17 because it runs Boot 3.5.x.
+    // Do not "align" the two versions without bumping this module's Boot version first.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+
     // Persistence: JPA + Postgres + Flyway (migration off Supabase PostgREST → local Postgres)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.flywaydb:flyway-core")

@@ -13,3 +13,15 @@
 # Activate with:  SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 learninggoalhub:
   base-url: https://hestia-test.aet.cit.tum.de/learninggoalhub
+
+# Browsable API docs while developing: /v3/api-docs and /swagger-ui.html.
+# Off in the default profile — see application.yml.
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+app:
+  docs:
+    enabled: true

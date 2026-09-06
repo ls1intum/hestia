@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -48,6 +49,15 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
                 .header("Access-Control-Request-Method", "GET"))
             .andExpect(status().isOk())
             .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8080"));
+    }
+
+    @Test
+    void apiDocsAreNotExposedByDefault() throws Exception {
+        // app.docs.enabled defaults to false, so springdoc registers no handlers and
+        // SecurityConfig adds no permitAll for them. Anything but 200 is acceptable —
+        // what matters is that a deployment doesn't serve the spec unasked.
+        mvc.perform(get("/v3/api-docs"))
+            .andExpect(status().is(not(200)));
     }
 
     @Test

@@ -5,6 +5,9 @@ import app.shared.Access;
 import app.error.ApiException;
 import app.security.CurrentUser;
 import app.storage.StorageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,6 +25,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/exams")
+@Tag(name = "Exams", description = """
+    Exam lifecycle. Status moves `parsing → draft → ready → evaluating → grading → finished`, \
+    or `failed`. Every endpoint is scoped to the caller's own exams.""")
 public class ExamController {
 
     public record CreateExamRequest(
@@ -48,6 +54,9 @@ public class ExamController {
         this.progress = progress;
     }
 
+    @Operation(
+        summary = "List the caller's exams",
+        description = "Newest first, each with its task and graded-task counts for the dashboard's progress column.")
     @GetMapping
     public List<ExamDtos.ExamListItemDto> list(@CurrentUser String userId) {
         List<Exam> exams = examRepository.findByOwnerIdOrderByCreatedAtDesc(UUID.fromString(userId));
@@ -58,11 +67,25 @@ public class ExamController {
             .toList();
     }
 
+    @Operation(summary = "Get one exam")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
     @GetMapping("/{id}")
     public ExamDtos.ExamDto get(@PathVariable String id, @CurrentUser String userId) {
         return ExamDtos.ExamDto.from(access.requireExam(Access.id(id), userId));
     }
 
+    @Operation(
+        summary = "Create an exam",
+        description = """
+            **`source` is required** and must be `pdf` or `manual` — omitting it fails the \
+            not-null constraint and surfaces as a 409. Everything else falls back to a column \
+            default (`title` empty, `status` `draft`). `owner_id` is stamped from the caller and \
+            cannot be set.
+
+            Link `lgh_course_id` here to enable learning-goal derivation — omitting it disables \
+            goal insights for the exam's whole life.""")
+    @ApiResponse(responseCode = "409", description = "A required field was omitted — most often `source`.")
     @PostMapping
     public ExamDtos.ExamDto create(@RequestBody CreateExamRequest req, @CurrentUser String userId) {
         Exam e = new Exam();
@@ -82,6 +105,20 @@ public class ExamController {
     private static final Set<String> PATCHABLE_STATUSES =
         Set.of("draft", "parsing", "failed", "ready", "evaluating", "grading", "finished");
 
+    @Operation(
+        summary = "Update an exam",
+        description = """
+            Sparse update — only the keys present in the body are written. Accepts `title`, \
+            `course`, `status`, `parse_error`, `parser_model`, `solver_model`, \
+            `source_file_url`, and `lgh_course_id`.
+
+            `parse_phase` is internal progress state and deliberately not patchable. `status` \
+            must be one of `draft`, `parsing`, `failed`, `ready`, `evaluating`, `grading`, \
+            `finished`; setting it to `finished` additionally requires every task to be graded.""")
+    @ApiResponse(responseCode = "400", description = "Unknown `status` value.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
+    @ApiResponse(responseCode = "409", description = "Tried to finish an exam that still has ungraded tasks.")
     @PatchMapping("/{id}")
     public ExamDtos.ExamDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
                               @CurrentUser String userId) {
@@ -117,6 +154,15 @@ public class ExamController {
         return ExamDtos.ExamDto.from(examRepository.save(e));
     }
 
+    @Operation(
+        summary = "Delete an exam",
+        description = """
+            Deletes the exam and cascades to its sections, tasks, blocks, figures, answers, and \
+            grades. The source PDF and figure objects are removed from storage on a best-effort \
+            basis — a storage failure does not block the delete. Parse metrics survive by design.""")
+    @ApiResponse(responseCode = "204", description = "Deleted.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
         Exam e = access.requireExam(Access.id(id), userId);
@@ -138,6 +184,20 @@ public class ExamController {
      * {@link ExamRepository#cancelParsing} / {@link ExamRepository#cancelEvaluating}
      * for why the two paths land in different statuses.
      */
+    @Operation(
+        summary = "Cancel an in-progress parse or evaluation",
+        description = """
+            Reverts the exam's status, which is what actually stops the run — the background \
+            job is fire-and-forget and cannot be interrupted, so it finishes its current step \
+            and then declines to finalize.
+
+            The two paths land differently on purpose: cancelling a parse leaves the exam \
+            `failed` (there is no usable structure yet), while cancelling an evaluation returns \
+            it to `ready` so the intact, edited exam goes back to the editor rather than into an \
+            error state.""")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
+    @ApiResponse(responseCode = "409", description = "The exam is not currently parsing or evaluating.")
     @PostMapping("/{id}/cancel")
     public ExamDtos.ExamDto cancel(@PathVariable String id, @CurrentUser String userId) {
         Exam e = access.requireExam(Access.id(id), userId); // 404 if missing, 403 if not owner
@@ -150,6 +210,18 @@ public class ExamController {
         return ExamDtos.ExamDto.from(examRepository.findById(e.getId()).orElse(e));
     }
 
+    @Operation(
+        summary = "Duplicate an exam",
+        description = """
+            Copies the exam's content — sections, tasks, blocks, figures, and the source PDF — \
+            into a fresh `draft` owned by the caller. Answers and grades are **not** copied, and \
+            neither are learning-goal ids: those identify goals owned by the source exam's \
+            sections, and are regenerated when the copy's sections are confirmed.
+
+            The body is optional; `title` and `solver_model` override the copy defaults when \
+            given, otherwise the title gets a `(Copy)` suffix.""")
+    @ApiResponse(responseCode = "403", description = "The source exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
     @PostMapping("/{id}/duplicate")
     public ExamDtos.ExamDto duplicate(@PathVariable String id,
                                       @RequestBody(required = false) DuplicateExamRequest req,

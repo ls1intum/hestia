@@ -2,6 +2,9 @@ package app.parse;
 
 import app.ai.ParserStrategy;
 import app.security.CurrentUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +17,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Parsing", description = "Turn an uploaded exam PDF into sections, tasks, and figures.")
 public class ParseExamController {
 
     public record ParseExamRequest(
@@ -36,6 +40,25 @@ public class ParseExamController {
      * background pool, and returns 202 immediately. The frontend observes
      * `exams.parse_phase` for progress (via SSE once Phase 2c lands).
      */
+    @Operation(
+        summary = "Parse an uploaded exam PDF",
+        description = """
+            Verifies ownership synchronously, then runs the extraction on a background pool \
+            and returns **202** right away with `{ ok, exam_id, status: "parsing" }`.
+
+            `parser_model` is optional; an omitted **or unrecognised** id falls back to the \
+            default parser rather than failing, so check the exam's `parser_model` afterwards \
+            to see what actually served.
+
+            `storage_path` is the value returned by `POST /api/exams/{examId}/pdf`. The \
+            parse outcome arrives over `GET /api/exams/{id}/events`, not in this response: \
+            on success the exam moves to `draft`, on failure to `failed` with `parse_error` \
+            set. A transient provider failure is retried once with the fallback model, which \
+            may change the exam's `parser_model`.""")
+    @ApiResponse(responseCode = "202", description = "Parse accepted and dispatched.")
+    @ApiResponse(responseCode = "400", description = "`exam_id` or `storage_path` is blank.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `exam_id` is not a valid UUID.")
     @PostMapping("/parse-exam-pdf")
     public ResponseEntity<Map<String, Object>> parse(
         @Valid @RequestBody ParseExamRequest req,

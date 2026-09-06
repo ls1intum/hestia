@@ -7,6 +7,13 @@ import app.exam.ExamRepository;
 import app.parse.DocxToPdfConverter;
 import app.parse.PdfTextExtractor;
 import app.security.CurrentUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -25,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Files", description = "Exam source-file upload and signed-URL object download.")
 public class FileController {
 
     private static final String PDF_BUCKET = "exam-pdfs";
@@ -53,9 +61,30 @@ public class FileController {
      * the rest of the (PDF-only) parse pipeline is unchanged. Detected by magic bytes: %PDF for
      * PDF, PK\x03\x04 (ZIP) for .docx. Legacy .doc and other formats are rejected.
      */
-    @PostMapping("/exams/{examId}/pdf")
+    @Operation(
+        summary = "Upload an exam's source document",
+        description = """
+            `multipart/form-data` with a single `file` part. Accepts a PDF, or a Word \
+            `.docx` which is converted to PDF server-side so the PDF-only parse pipeline is \
+            unchanged. The format is detected by magic bytes, not by filename or content \
+            type — legacy `.doc` and everything else is rejected. Spring caps the request at \
+            12 MB.
+
+            Stores the PDF, records it on the exam, and returns `{ storage_path }` — pass \
+            that straight to `POST /api/parse-exam-pdf`.""")
+    @ApiResponse(responseCode = "400",
+        description = "Not a PDF or `.docx`, or the Word document could not be converted.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
+    @ApiResponse(responseCode = "503",
+        description = "Word conversion timed out or the converter pool is saturated. Retryable.")
+    // `consumes` is what makes the spec advertise multipart/form-data; without it
+    // springdoc documents the (correct) file schema under application/json.
+    @PostMapping(value = "/exams/{examId}/pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> uploadPdf(@PathVariable String examId,
-                                         @RequestParam("file") MultipartFile file,
+                                         @RequestParam("file")
+                                         @Parameter(description = "The exam PDF or Word .docx.")
+                                         MultipartFile file,
                                          @CurrentUser String userId) throws IOException {
         Exam exam = access.requireExam(Access.id(examId), userId);
         byte[] bytes = file.getBytes();
@@ -112,9 +141,28 @@ public class FileController {
      * Serve a stored object for a valid signed URL. PUBLIC route (see SecurityConfig)
      * — authorization is the HMAC signature + expiry, so plain &lt;img src&gt; works.
      */
+    @Operation(
+        summary = "Download a stored object via a signed URL",
+        description = """
+            Serves a stored PDF or figure. **Unauthenticated by design** — authorization is \
+            the HMAC signature plus expiry in the query string, so the URL works in a plain \
+            `<img src>` or a new browser tab. Do not send a bearer token here; get a ready-made \
+            URL from `GET /api/figures/{id}/signed-url` instead of assembling one by hand.
+
+            `path` is a wildcard and may contain slashes (objects are keyed \
+            `{userId}/{examId}...`). The response `Content-Type` is inferred from the file \
+            extension.""")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "200", description = "The object's bytes.",
+        content = @Content(schema = @Schema(type = "string", format = "binary")))
+    @ApiResponse(responseCode = "403", description = "Signature invalid or expired.", content = @Content)
+    @ApiResponse(responseCode = "404", description = "No such object in the bucket.", content = @Content)
     @GetMapping("/files/{bucket}/{*path}")
-    public ResponseEntity<byte[]> content(@PathVariable String bucket, @PathVariable String path,
-                                          @RequestParam long exp, @RequestParam String sig) {
+    public ResponseEntity<byte[]> content(
+        @PathVariable @Parameter(description = "Storage bucket, e.g. `exam-pdfs` or `exam-figures`.") String bucket,
+        @PathVariable @Parameter(description = "Object key within the bucket; may contain slashes.") String path,
+        @RequestParam @Parameter(description = "Expiry as a Unix epoch second.") long exp,
+        @RequestParam @Parameter(description = "HMAC signature over bucket, path, and expiry.") String sig) {
         String clean = path.startsWith("/") ? path.substring(1) : path;
         if (!signedUrls.verify(bucket, clean, exp, sig)) {
             return ResponseEntity.status(403).build();

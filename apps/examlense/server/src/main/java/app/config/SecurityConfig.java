@@ -25,7 +25,9 @@ import static org.springframework.security.config.Customizer.withDefaults;
  * rate limiter (bot/overload protection only). A valid token authenticates the
  * request as the single seeded user (see {@link app.shared.DefaultUser}).
  *
- * Public endpoints: /api/healthz (liveness probe) and CORS preflight.
+ * Public endpoints: /api/healthz (liveness probe), CORS preflight, the
+ * signature-gated file endpoint, and — only when {@code app.docs.enabled} is set
+ * — the OpenAPI spec and Swagger UI.
  */
 @Configuration
 public class SecurityConfig {
@@ -46,6 +48,19 @@ public class SecurityConfig {
     @Value("${app.ratelimit.behind-proxy:false}")
     private boolean behindProxy;
 
+    /**
+     * Whether to open the OpenAPI spec / Swagger UI paths. Same switch that
+     * enables springdoc itself (see application.yml), so the two cannot drift.
+     * With docs off these fall through to {@code anyRequest().authenticated()}
+     * and answer 401 — the filter chain runs before the servlet would 404, so
+     * the spec's absence is not distinguishable from any other protected path.
+     *
+     * Swagger UI needs them unauthenticated when they are on: the browser page
+     * cannot present the bearer token on its initial load.
+     */
+    @Value("${app.docs.enabled:false}")
+    private boolean docsEnabled;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         StaticTokenAuthFilter tokenFilter = new StaticTokenAuthFilter(authToken);
@@ -55,20 +70,24 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/healthz").permitAll()
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/files/**").permitAll() // signed-URL file content (validated by HMAC in 2b)
-                .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
-                // Container-generated error dispatch. An SSE stream that ends
-                // abnormally (client disconnect) is re-dispatched to /error after
-                // the response is already committed; without permitting it here the
-                // AuthorizationFilter denies (no principal on the error dispatch),
-                // and ExceptionTranslationFilter logs a noisy "response already
-                // committed" ServletException. The real endpoints stay authenticated.
-                .requestMatchers("/error").permitAll()
-                .anyRequest().authenticated()
-            )
+            .authorizeHttpRequests(auth -> {
+                auth
+                    .requestMatchers("/api/healthz").permitAll()
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    .requestMatchers("/api/files/**").permitAll() // signed-URL file content (validated by HMAC in 2b)
+                    .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
+                    // Container-generated error dispatch. An SSE stream that ends
+                    // abnormally (client disconnect) is re-dispatched to /error after
+                    // the response is already committed; without permitting it here the
+                    // AuthorizationFilter denies (no principal on the error dispatch),
+                    // and ExceptionTranslationFilter logs a noisy "response already
+                    // committed" ServletException. The real endpoints stay authenticated.
+                    .requestMatchers("/error").permitAll();
+                if (docsEnabled) {
+                    auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                }
+                auth.anyRequest().authenticated();
+            })
             .saml2Login(withDefaults())
             .saml2Metadata(withDefaults())
             // 401 (not the default 403) when no/invalid token is presented.
