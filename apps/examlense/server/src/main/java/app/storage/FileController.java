@@ -5,7 +5,7 @@ import app.error.ApiException;
 import app.exam.Exam;
 import app.exam.ExamRepository;
 import app.parse.DocxToPdfConverter;
-import app.parse.PdfTextExtractor;
+import app.parse.PdfPageCounter;
 import app.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -42,17 +42,17 @@ public class FileController {
     private final Access access;
     private final SignedUrls signedUrls;
     private final DocxToPdfConverter docxConverter;
-    private final PdfTextExtractor textExtractor;
+    private final PdfPageCounter pageCounter;
 
     public FileController(StorageService storage, ExamRepository examRepository,
                           Access access, SignedUrls signedUrls,
-                          DocxToPdfConverter docxConverter, PdfTextExtractor textExtractor) {
+                          DocxToPdfConverter docxConverter, PdfPageCounter pageCounter) {
         this.storage = storage;
         this.examRepository = examRepository;
         this.access = access;
         this.signedUrls = signedUrls;
         this.docxConverter = docxConverter;
-        this.textExtractor = textExtractor;
+        this.pageCounter = pageCounter;
     }
 
     /**
@@ -118,7 +118,7 @@ public class FileController {
         exam.setSourceFileUrl(path);
         // Document metadata used by the frontend for a page-count-based parsing
         // time estimate; cheap PDFBox call, null if the count can't be read.
-        exam.setPageCount(textExtractor.pageCount(pdfBytes));
+        exam.setPageCount(pageCounter.pageCount(pdfBytes));
         examRepository.save(exam);
         return Map.of("storage_path", path);
     }

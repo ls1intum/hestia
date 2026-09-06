@@ -69,7 +69,7 @@ export const LEGACY_PARSER_MODELS: LlmModel[] = [
   },
   {
     id: "mistral-large-3-text",
-    label: "Mistral Large 3 — Fast Mode (GWDG)",
+    label: "Mistral Large 3 — Text Only (GWDG)",
     description: "Legacy text-only parser strategy.",
   },
   {

@@ -21,28 +21,32 @@ public final class SolverStrategies {
             "Gemini 3.5 Flash (Google)",
             "Google Gemini model for fast exam solving.",
             "gemini-3.5-flash",
-            GEMINI
+            GEMINI,
+            true
         ));
         REGISTRY.register(new SolverStrategy(
             "gpt-5.5",
             "GPT-5.5 (OpenAI)",
             "OpenAI frontier model for complex reasoning and tool-heavy work.",
             "gpt-5.5",
-            OPENAI
+            OPENAI,
+            true
         ));
         REGISTRY.register(new SolverStrategy(
             "claude-opus-4-8",
             "Claude Opus 4.8 (Anthropic)",
             "Anthropic flagship model for complex reasoning and long-context work.",
             "claude-opus-4-8",
-            ANTHROPIC
+            ANTHROPIC,
+            true
         ));
         REGISTRY.register(new SolverStrategy(
             "qwen3.6-35b-a3b",
             "Qwen 3.6 35B A3B (GWDG)",
             "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
             "qwen3.6-35b-a3b",
-            OPENAI_COMPATIBLE
+            OPENAI_COMPATIBLE,
+            true
         ));
         // Retired models: exams created before the catalog change still
         // reference these ids, so they stay resolvable but hidden.
@@ -51,28 +55,32 @@ public final class SolverStrategies {
             "Gemini 2.5 Flash (Google)",
             "Google Gemini model for fast exam solving.",
             "gemini-2.5-flash",
-            GEMINI
+            GEMINI,
+            true
         ));
         REGISTRY.legacy(new SolverStrategy(
             "mistral-large-3-675b-instruct-2512",
             "Mistral Large 3 675B (GWDG)",
             "GWDG-hosted large reasoning model.",
             "mistral-large-3-675b-instruct-2512",
-            OPENAI_COMPATIBLE
+            OPENAI_COMPATIBLE,
+            true
         ));
         REGISTRY.legacy(new SolverStrategy(
             "gemma-4-31b-it",
             "Gemma 4 31B Instruct (GWDG)",
             "GWDG-hosted instruction-tuned model.",
             "gemma-4-31b-it",
-            OPENAI_COMPATIBLE
+            OPENAI_COMPATIBLE,
+            false
         ));
         REGISTRY.legacy(new SolverStrategy(
             "qwen3.5-397b-a17b",
             "Qwen 3.5 397B A17B (GWDG)",
             "GWDG-hosted Qwen 3.5 large mixture-of-experts model.",
             "qwen3.5-397b-a17b",
-            OPENAI_COMPATIBLE
+            OPENAI_COMPATIBLE,
+            false
         ));
     }
 

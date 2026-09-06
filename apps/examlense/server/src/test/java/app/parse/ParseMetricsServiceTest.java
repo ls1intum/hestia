@@ -68,7 +68,7 @@ class ParseMetricsServiceTest {
     }
 
     @Test
-    void legacyAndNewMistralFastModeRowsCombineIntoOneGroup() {
+    void legacyAndNewMistralTextOnlyRowsCombineIntoOneGroup() {
         Metrics m = aggregate(List.of(
             row("mistral-large-3-text", null, true, 5, 5_000, 500),
             row("mistral-large-3-675b-instruct-2512", "TEXT_ONLY", true, 5, 5_000, 500)

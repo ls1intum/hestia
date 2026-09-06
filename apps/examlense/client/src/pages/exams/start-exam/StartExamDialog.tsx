@@ -40,7 +40,7 @@ const SCAFFOLD_TASK =
 
 /**
  * Guided, one-question-per-step exam creation. Driven by `mode`:
- * - "pdf":    Drop PDF (+ Fast Mode toggle) → link course → pick solver →
+ * - "pdf":    Drop PDF → link course → pick solver →
  *             lands on the parsing loading screen. Nothing is created until the
  *             final confirm: the exam is created, the PDF uploaded, and parsing
  *             fired only when the last step ("Open exam") is confirmed. The
@@ -54,7 +54,6 @@ interface WizardState {
   stepIndex: number;
   busy: boolean;
   file: File | null;
-  parserFastMode: boolean;
   /** Page count of the uploaded PDF (for the pre-parse estimate); null = unknown. */
   pageCount: number | null;
   solverId: string;
@@ -72,7 +71,6 @@ const initialWizardState = (solverId: string): WizardState => ({
   stepIndex: 0,
   busy: false,
   file: null,
-  parserFastMode: false,
   pageCount: null,
   solverId,
   courseValue: NO_COURSE,
@@ -104,11 +102,10 @@ export const StartExamDialog = ({
   // an open counter), which re-runs the initializer — so there is deliberately
   // no reset-on-open effect here.
   const [form, dispatch] = useReducer(wizardReducer, defaultSolverId, initialWizardState);
-  const { stepIndex, busy, file, parserFastMode, pageCount, solverId, courseValue, newCourseName, title } = form;
+  const { stepIndex, busy, file, pageCount, solverId, courseValue, newCourseName, title } = form;
   const setStepIndex = (stepIndex: number) => dispatch({ stepIndex });
   const setBusy = (busy: boolean) => dispatch({ busy });
   const setFile = (file: File | null) => dispatch({ file });
-  const setParserFastMode = (parserFastMode: boolean) => dispatch({ parserFastMode });
   const setPageCount = (pageCount: number | null) => dispatch({ pageCount });
   const setSolverId = (solverId: string) => dispatch({ solverId });
   const setCourseValue = (courseValue: string) => dispatch({ courseValue });
@@ -193,7 +190,6 @@ export const StartExamDialog = ({
     parseExamPdf({
       examId: examRow.id,
       storagePath,
-      fastMode: parserFastMode,
     }).catch((e) => console.error("invoke parse-exam-pdf failed", e));
 
     queryClient.invalidateQueries({ queryKey: ["exams-list"] });
@@ -331,8 +327,6 @@ export const StartExamDialog = ({
               file={file}
               onChange={setFile}
               onError={onError}
-              fastMode={parserFastMode}
-              onFastModeChange={setParserFastMode}
             />
           ),
         };
@@ -354,7 +348,7 @@ export const StartExamDialog = ({
         // so show a rough page-count-based time estimate left of the button.
         const estimate =
           activeMode === "pdf" && pageCount
-            ? formatParseEstimate(pageCount, parserFastMode)
+            ? formatParseEstimate(pageCount)
             : null;
         return {
           heading: "Which LLM should solve the exam?",

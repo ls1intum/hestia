@@ -100,6 +100,15 @@ public final class Prompts {
         );
     }
 
+    /**
+     * How a figure is referred to in the prompt. Attached figure images are
+     * labelled with the same string, which is the only thing tying an image in
+     * the request to its placeholder in the section text.
+     */
+    public static String figureLabel(int sectionPosition, int figureNumber) {
+        return "Figure " + sectionPosition + "." + figureNumber;
+    }
+
     public static String buildSectionUserPrompt(
         SectionPromptInfo section,
         List<BlockPromptInfo> blocks,
@@ -126,7 +135,12 @@ public final class Prompts {
                     lines.add("- " + b.content().trim());
                 } else {
                     figureCount += 1;
-                    lines.add("- [Figure " + section.position() + "." + figureCount + "]");
+                    // The block's own content is the parser's "label — caption". It
+                    // used to be dropped, leaving the model a bare token; the caption
+                    // is often the only description of a figure it will ever get.
+                    String caption = b.content() == null ? "" : b.content().trim();
+                    lines.add("- [" + figureLabel(section.position(), figureCount) + "]"
+                        + (caption.isEmpty() ? "" : " " + caption));
                 }
             }
         }

@@ -35,7 +35,14 @@ class ParseProgress {
     }
 
     void notifyExam(UUID examId) {
-        sse.examUpdated(examId);
+        // Guarded like every other method here: this one runs inside `preflight`,
+        // on the request thread, BEFORE the parse is dispatched — so anything
+        // escaping it would 500 the POST and the parse would never start at all.
+        try {
+            sse.examUpdated(examId);
+        } catch (Exception e) {
+            log.warn("parse-exam-pdf[{}] notifyExam failed: {}", examId, e.getMessage());
+        }
     }
 
     /** Record the model that actually parsed (e.g. after a fallback). Best-effort. */

@@ -4,6 +4,7 @@ import app.ai.AiExceptions;
 import app.ai.AiProvider;
 import app.ai.AiProviderFactory;
 import app.ai.SolverStrategies;
+import app.ai.SolverStrategy;
 import app.shared.Access;
 import app.error.ApiException;
 import app.exam.Exam;
@@ -47,10 +48,12 @@ public class SolveTaskService {
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Task not found"));
         Exam exam = access.requireExam(task.getExamId(), userId);
 
-        SolveCore.PromptContext ctx = core.loadContext(exam.getId(), task.getSectionId());
+        SolverStrategy strategy = SolverStrategies.resolve(exam.getSolverModel());
+        SolveCore.PromptContext ctx =
+            core.loadContext(exam.getId(), task.getSectionId(), strategy.supportsVision());
         Prompts.TaskPromptInfo taskInfo = core.toTaskInfo(task);
 
-        AiProvider provider = providerFactory.forSolver(SolverStrategies.resolve(exam.getSolverModel()));
+        AiProvider provider = providerFactory.forSolver(strategy);
         String systemPrompt = core.systemPrompt(exam);
 
         Answer answer = invokeWithRetry(provider, systemPrompt, ctx, taskInfo);

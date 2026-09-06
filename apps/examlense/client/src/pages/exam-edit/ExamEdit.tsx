@@ -23,7 +23,7 @@ import {
   cancelExam,
 } from "@/lib/api/api-client";
 import { examKey, tasksKey } from "@/hooks/data/use-exam";
-import { sectionsKey, blocksKey } from "@/hooks/data/use-sections";
+import { sectionsKey, blocksKey, figuresRootKey } from "@/hooks/data/use-sections";
 import { useExamBundle } from "@/hooks/data/use-exam-bundle";
 import { useExamRealtime } from "@/hooks/data/use-exam-realtime";
 import { useExamMutations } from "@/pages/exam-edit/use-exam-mutations";
@@ -111,6 +111,11 @@ const ExamEditInner = () => {
       qc.invalidateQueries({ queryKey: tasksKey(id) });
       qc.invalidateQueries({ queryKey: sectionsKey(id) });
       qc.invalidateQueries({ queryKey: blocksKey(id) });
+      // Figures are keyed per block, so there is no exam-scoped key to hit.
+      // Invalidating the prefix refreshes every mounted block at once, which is
+      // what makes figures cropped out of the PDF appear after the exam has
+      // already reached `draft` and rendered.
+      qc.invalidateQueries({ queryKey: figuresRootKey });
     },
     // Learning goals were generated in the background — refresh the tasks
     // (they carry the goal ids) and the resolved-goal cache.

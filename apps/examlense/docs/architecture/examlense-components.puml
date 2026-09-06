@@ -1,0 +1,62 @@
+@startuml ExamLense-components
+top to bottom direction
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam ArrowColor #586471
+skinparam ArrowFontSize 12
+skinparam nodesep 30
+skinparam ranksep 35
+skinparam packageStyle rectangle
+skinparam packageBackgroundColor white
+skinparam packageBorderColor #586471
+skinparam component {
+  BackgroundColor #DCEAFB
+  BorderColor #586471
+  BackgroundColor<<page>> #FFE6BF
+  BackgroundColor<<external subsystem>> #EEEEEE
+}
+skinparam interfaceBackgroundColor white
+skinparam interfaceBorderColor #586471
+skinparam legendBackgroundColor white
+skinparam legendBorderColor #586471
+
+legend top center
+  <back:#FFE6BF> Client views </back>  <back:#DCEAFB> Server </back>  <back:#EEEEEE> External systems </back>
+  Dotted arrows: Instructor workflow · Ball/socket: provided/required interface
+endlegend
+
+package "ExamLense Client\n<size:12>React / TypeScript</size>" as Client <<subsystem>> {
+  component "1. Dashboard\nExaminations" as Dashboard <<page>>
+  component "2. Edit Mode" as Edit <<page>>
+  component "3. Grading Mode" as Grading <<page>>
+  component "4. Final Results" as Results <<page>>
+  Dashboard .right.> Edit
+  Edit .right.> Grading
+  Grading .right.> Results
+}
+
+component "ExamLense Server\n<size:12>Spring Boot / Java</size>\n\nManages examinations, sections, blocks and tasks\nParses examinations and coordinates AI answers\nPersists grading and links learning goals" as Server <<subsystem>>
+
+interface "REST API / SSE" as AppApi
+Client -down-( AppApi
+AppApi -down- Server
+
+component "Examination Database\n<size:12>PostgreSQL</size>" as Database <<external subsystem>>
+component "LLM Providers\n<size:12>OpenAI · Anthropic · Google Gemini · GWDG</size>" as Llm <<external subsystem>>
+component "LearningGoalHub\n<size:12>Spring Boot</size>" as Lgh <<external subsystem>>
+
+interface "JDBC" as Sql
+interface "Model APIs" as ModelApi
+interface "REST API" as GoalApi
+Server -down-( Sql
+Sql -down- Database
+Server -down-( ModelApi
+ModelApi -down- Llm
+Server -down-( GoalApi
+GoalApi -down- Lgh
+
+footer Confirming a section starts its solving while the Instructor continues editing.\nResults are calculated in the client from tasks, answers, grading and learning goals.
+@enduml

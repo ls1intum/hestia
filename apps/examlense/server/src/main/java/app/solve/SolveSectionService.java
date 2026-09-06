@@ -3,6 +3,7 @@ package app.solve;
 import app.ai.AiProvider;
 import app.ai.AiProviderFactory;
 import app.ai.SolverStrategies;
+import app.ai.SolverStrategy;
 import app.shared.Access;
 import app.exam.Exam;
 import app.section.Section;
@@ -88,7 +89,9 @@ public class SolveSectionService {
     }
 
     private Result doSolve(UUID examId, UUID sectionId, Exam exam) {
-        SolveCore.PromptContext ctx = core.loadContext(examId, sectionId);
+        SolverStrategy strategy = SolverStrategies.resolve(exam.getSolverModel());
+        SolveCore.PromptContext ctx =
+            core.loadContext(examId, sectionId, strategy.supportsVision());
 
         // Tasks for this section (or unassigned bucket), ordered by position.
         List<Task> taskEntities = sectionId != null
@@ -100,7 +103,7 @@ public class SolveSectionService {
             return new Result("no_tasks", 0, 0);
         }
 
-        AiProvider provider = providerFactory.forSolver(SolverStrategies.resolve(exam.getSolverModel()));
+        AiProvider provider = providerFactory.forSolver(strategy);
         String systemPrompt = core.systemPrompt(exam);
 
         // First pass: ask for everything.

@@ -29,9 +29,13 @@ export const SOLO_LABELS: Record<SoloLevel, string> = {
   EXTENDED_ABSTRACT: "Extended abstract",
 };
 
-/** Readable labels for the parser's effective PDF input mode (from `pdf_mode`). */
+/**
+ * Readable labels for the parser's effective PDF input mode (from `pdf_mode`).
+ * `TEXT_ONLY` is retired but kept: past `parse_metrics` rows still carry it, and
+ * without the entry the admin dashboard renders them as "Unknown mode".
+ */
 export const PDF_MODE_LABELS: Record<string, string> = {
-  TEXT_ONLY: "Fast Mode",
+  TEXT_ONLY: "Text only",
   PDF_DIRECT: "Direct PDF",
   RASTERIZE: "Page images",
 };
