@@ -18,18 +18,34 @@ talking to a plain **PostgreSQL** database. (Supabase has been fully removed.)
   the token rides as a `?token=` query param since `EventSource` can't set headers.
   The hub sends a keep-alive comment every 25s so proxies don't drop idle streams.
 
-Endpoint surface: `/api/healthz`, `/api/me`, `/api/parser-models`, `/api/solver-models`,
-`POST /api/parse-exam-pdf` (async), `POST /api/solve-task|solve-section|solve-exam`,
-full CRUD under
-`/api/exams|sections|tasks|blocks|figures` (+ `duplicate`, `cancel`,
-`confirm`/`unconfirm`, delete-by-section), `/api/task-grades`,
-`/api/parse-metrics`,
-the LGH proxy (`/api/lgh/courses`, `/api/exams/{id}/learning-goals`), and the
-SSE/file endpoints above.
+## API documentation
 
-This API is **internal to ExamLense** — no other app consumes it, and there is no
-published contract (no springdoc/OpenAPI). Do not treat it as a stable interface.
-See [`../DEPLOY.md`](../DEPLOY.md) for what actually protects it in production.
+The endpoint surface is documented by a generated OpenAPI spec rather than by
+hand here, so it cannot drift from the code:
+
+- **Spec** — `GET /v3/api-docs`
+- **Swagger UI** — [`/swagger-ui.html`](http://localhost:8081/swagger-ui.html)
+
+Both are **off by default** and enabled by the `local` profile, so a normal
+`SPRING_PROFILES_ACTIVE=local ./gradlew bootRun` has them. Deployments serve
+neither. To browse them on a deployed instance, set `API_DOCS_ENABLED=true` —
+note they are unauthenticated when enabled (Swagger UI can't present a bearer
+token on its initial page load), and the frontend's `nginx.conf` would need a
+`location` block for `/v3/api-docs` and `/swagger-ui` to route them at all.
+
+Click **Authorize** in Swagger UI and paste the value of `API_AUTH_TOKEN` to
+make "Try it out" work. To grab a point-in-time copy of the spec:
+
+```bash
+curl -s http://localhost:8081/v3/api-docs -o openapi.json
+```
+
+`OpenApiDocsTest` keeps the spec honest — every operation must carry a summary
+and a tag, and the authenticated principal must not leak in as a parameter.
+
+This API is **internal to ExamLense** — no other app consumes it, and the spec
+carries no compatibility guarantee. Do not treat it as a stable interface. See
+[`../DEPLOY.md`](../DEPLOY.md) for what actually protects it in production.
 
 ## Requirements
 
@@ -54,6 +70,26 @@ See [`../DEPLOY.md`](../DEPLOY.md) for what actually protects it in production.
    ```bash
    set -a; source .env; set +a
    ```
+
+3. Provide SAML signing credentials. The SP config in `application.yml` is loaded
+   at startup whether or not you use SSO, so **without these the app will not
+   boot** — it fails with `Private key location 'class path resource
+   [certs/private-key.pem]' does not exist`. The real credentials are secrets and
+   the paths are gitignored, so generate a throwaway self-signed pair for local
+   work:
+
+   ```bash
+   mkdir -p src/main/resources/certs
+   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+     -keyout src/main/resources/certs/private-key.pem \
+     -out    src/main/resources/certs/certificate.crt \
+     -subj "/CN=examlense-local"
+   ```
+
+   These are only good enough to boot the app; TUM SSO will not accept them. Point
+   `SAML_PRIVATE_KEY_LOCATION` / `SAML_CERTIFICATE_LOCATION` elsewhere (they accept
+   `file:` URLs) if you keep your credentials outside the source tree. The test
+   suite is unaffected — it mocks `RelyingPartyRegistrationRepository`.
 
 ## Run locally
 
@@ -90,6 +126,9 @@ curl -H "Authorization: Bearer dev-local-token" http://localhost:8081/api/exams
 
 A 401 means the `Authorization` header is missing or the token doesn't match
 `API_AUTH_TOKEN`.
+
+Under the `local` profile you can also browse the whole API at
+<http://localhost:8081/swagger-ui.html> — see [API documentation](#api-documentation).
 
 ## Tests
 
@@ -152,8 +191,9 @@ server/
 │   ├── storage/         # StorageService, LocalFileSystemStorageService, SignedUrls, FileController
 │   ├── sse/             # SseHub + SseController
 │   ├── security/        # StaticTokenAuthFilter, RateLimitFilter, CurrentUser
-│   ├── config/          # SecurityConfig, AsyncConfig (solver/LGH pools, scheduling)
-│   ├── error/           # ApiException + GlobalExceptionHandler
+│   ├── config/          # SecurityConfig, AsyncConfig (solver/LGH pools, scheduling),
+│   │                    #   OpenApiConfig (spec metadata; only loaded when docs are on)
+│   ├── error/           # ApiException + GlobalExceptionHandler + ErrorResponse (spec schema)
 │   ├── prompts/         # solver prompt + submit_answers schema
 │   ├── models/          # ModelsController (parser/solver model catalog endpoint)
 │   ├── health/          # HealthController

@@ -4,6 +4,10 @@ import app.shared.Access;
 
 import app.error.ApiException;
 import app.security.CurrentUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Tasks", description = """
+    The exam's questions. `type` is one of `single_choice`, `multiple_choice`, or `text`; a task \
+    may belong to a section or sit unassigned.""")
 public class TaskController {
 
     public record CreateTaskRequest(
@@ -40,6 +47,9 @@ public class TaskController {
         this.taskService = taskService;
     }
 
+    @Operation(summary = "List an exam's tasks", description = "Ordered by `position`, across all sections.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/tasks")
     public List<TaskDtos.TaskDto> list(@PathVariable String examId, @CurrentUser String userId) {
         access.requireExam(Access.id(examId), userId);
@@ -47,6 +57,13 @@ public class TaskController {
             .stream().map(TaskDtos.TaskDto::from).toList();
     }
 
+    @Operation(
+        summary = "Create a task",
+        description = """
+            Inserts at `position` (default 0), shifting later items down. A null `section_id` \
+            leaves the task unassigned. `options` is only meaningful for the choice types.""")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or an id is not a valid UUID.")
     @PostMapping("/tasks")
     public TaskDtos.TaskDto create(@RequestBody CreateTaskRequest req, @CurrentUser String userId) {
         UUID examId = Access.id(req.exam_id());
@@ -64,6 +81,19 @@ public class TaskController {
         return TaskDtos.TaskDto.from(taskService.addTask(t));
     }
 
+    @Operation(
+        summary = "Update a task",
+        description = """
+            Sparse update accepting `position`, `type`, `prompt`, `options`, `reference_answer`, \
+            `points`, `section`, `section_id`, `parse_confidence`, and `learning_goal_ids`.
+
+            Moving a task via `section_id` is checked: the target section must belong to the same \
+            exam. `learning_goal_ids` holds LGH goal ids only — the goal text is resolved through \
+            `GET /api/exams/{id}/learning-goals` — and is normally written by goal generation \
+            rather than by hand.""")
+    @ApiResponse(responseCode = "400", description = "The target `section_id` is unknown or belongs to a different exam.")
+    @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such task, or `id` is not a valid UUID.")
     @PatchMapping("/tasks/{id}")
     public TaskDtos.TaskDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
                               @CurrentUser String userId) {
@@ -86,6 +116,10 @@ public class TaskController {
         return TaskDtos.TaskDto.from(taskRepository.save(t));
     }
 
+    @Operation(summary = "Delete a task", description = "Its answer and grade cascade with it.")
+    @ApiResponse(responseCode = "204", description = "Deleted.")
+    @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such task, or `id` is not a valid UUID.")
     @DeleteMapping("/tasks/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
         Task t = load(id, userId);
@@ -93,9 +127,17 @@ public class TaskController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(
+        summary = "Delete every task in a section",
+        description = "Bulk delete used when the editor clears a section. Deleting the section itself does this too.")
+    @ApiResponse(responseCode = "204", description = "Deleted.")
+    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+    @ApiResponse(responseCode = "404", description = "No such exam, or an id is not a valid UUID.")
     @DeleteMapping("/exams/{examId}/tasks")
     public ResponseEntity<Void> deleteBySection(@PathVariable String examId,
-                                                 @RequestParam("section_id") String sectionId,
+                                                 @RequestParam("section_id")
+                                                 @Parameter(description = "Section whose tasks are removed.")
+                                                 String sectionId,
                                                  @CurrentUser String userId) {
         access.requireExam(Access.id(examId), userId);
         taskRepository.deleteByExamIdAndSectionId(Access.id(examId), Access.id(sectionId));
