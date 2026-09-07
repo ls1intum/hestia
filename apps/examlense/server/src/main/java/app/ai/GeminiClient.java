@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * Native Google Gemini (generateContent) shapes.
  *
- * Unlike {@link OpenAiCompatibleClient} this speaks Gemini's own request /
+ * Unlike the OpenAI/Anthropic clients this speaks Gemini's own request /
  * response dialect, so we can send the raw PDF as an {@code inline_data} document
  * part (the PDF_DIRECT strategy) and let Gemini parse the document natively —
  * layout, tables, figures, scanned pages — instead of rasterizing to images.

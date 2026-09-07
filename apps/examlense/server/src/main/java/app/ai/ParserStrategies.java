@@ -8,7 +8,7 @@ import static app.ai.ParserStrategy.PdfMode.RASTERIZE;
 import static app.ai.ProviderKind.ANTHROPIC;
 import static app.ai.ProviderKind.GEMINI;
 import static app.ai.ProviderKind.OPENAI;
-import static app.ai.ProviderKind.OPENAI_COMPATIBLE;
+import static app.ai.ProviderKind.RETIRED;
 
 public final class ParserStrategies {
 
@@ -44,16 +44,18 @@ public final class ParserStrategies {
             PDF_DIRECT,
             OPENAI
         ));
-        REGISTRY.register(new ParserStrategy(
+        // Retired models: exams created before the catalog change still
+        // reference these ids, so they stay resolvable but hidden. The GWDG
+        // entries are tombstones — the OpenAI-compatible transport they used is
+        // gone, so resolving one yields a label but parsing with it is refused.
+        REGISTRY.legacy(new ParserStrategy(
             "qwen3.6-35b-a3b",
             "Qwen 3.6 35B A3B (GWDG)",
             "GWDG-hosted vision model; PDF pages rasterized to images.",
             "qwen3.6-35b-a3b",
             RASTERIZE,
-            OPENAI_COMPATIBLE
+            RETIRED
         ));
-        // Retired models: exams created before the catalog change still
-        // reference these ids, so they stay resolvable but hidden.
         REGISTRY.legacy(new ParserStrategy(
             "gemini-2.5-flash",
             "Gemini 2.5 Flash (Google)",
@@ -68,7 +70,7 @@ public final class ParserStrategies {
             "GWDG-hosted vision model; PDF pages rasterized to images.",
             "mistral-large-3-675b-instruct-2512",
             RASTERIZE,
-            OPENAI_COMPATIBLE
+            RETIRED
         );
         REGISTRY.legacy(mistral);
         REGISTRY.alias("mistral-large-3-text", mistral);

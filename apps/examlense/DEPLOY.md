@@ -85,11 +85,11 @@ Per environment, set:
 App secrets are **namespaced with an `EXAMLENSE_` prefix** so they don't collide with the other
 apps' secrets in the shared environment (learninggoalhub does the same with `LEARNINGGOALHUB_`).
 `compose.prod.yaml` maps each app-scoped name to the generic env var the container reads (e.g.
-`EXAMLENSE_SAIA_API_KEY` → `AI_API_KEY`).
+`EXAMLENSE_OPENAI_API_KEY` → `OPENAI_API_KEY`).
 
 - **Secrets (required):** `VM_HOST`, `VM_USERNAME`, `VM_SSH_PRIVATE_KEY` (SSH access to that
-  VM — these stay generic), `EXAMLENSE_POSTGRES_PASSWORD`, `EXAMLENSE_SAIA_API_KEY` (the GWDG
-  key, mapped to `AI_API_KEY`), `EXAMLENSE_FILES_SIGNING_SECRET` (dedicated HMAC key for signed
+  VM — these stay generic), `EXAMLENSE_POSTGRES_PASSWORD`,
+  `EXAMLENSE_FILES_SIGNING_SECRET` (dedicated HMAC key for signed
   file URLs — a fresh random value, unrelated to the auth token; see **Security model** below
   for why leaving it unset is not safe in production).
 - **Secrets (optional):** `EXAMLENSE_API_AUTH_TOKEN` (must match the token baked into the
@@ -100,7 +100,7 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
 - **Variables (required):** `APP_HOST` — the VM's FQDN, must match the TLS cert SAN (shared,
   not prefixed — it's the same host for every app on the VM).
 - **Variables (optional, all have compose defaults):** `POSTGRES_DB`, `POSTGRES_USER`,
-  `JAVA_OPTS`, `AI_BASE_URL`, `LGH_BASE_URL`, `API_RATELIMIT_BEHIND_PROXY` (defaults to `true`
+  `JAVA_OPTS`, `LGH_BASE_URL`, `API_RATELIMIT_BEHIND_PROXY` (defaults to `true`
   in `compose.prod.yaml` since the VMs sit behind Traefik).
   Leave `LGH_BASE_URL` unset unless you intentionally need an override; the production default is
   the Docker-internal `http://learninggoalhub-web`, not the public `/learninggoalhub` URL.
@@ -108,7 +108,7 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
 The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config — they do
 **not** need to be set per repo. Everything except the connection keys is written verbatim into
 `.env` on the VM, so any value `compose.prod.yaml` references must exist as a secret or variable
-here; the two with no default (`EXAMLENSE_POSTGRES_PASSWORD`, `EXAMLENSE_SAIA_API_KEY`) will fail the deploy if
+here; the one with no default (`EXAMLENSE_POSTGRES_PASSWORD`) will fail the deploy if
 missing.
 
 > **Auth-token gotcha:** the deployed client bakes `VITE_API_AUTH_TOKEN` in at build time from
@@ -237,7 +237,7 @@ be in GHCR):
 ```bash
 cd /opt/hestia/examlense                          # or a fresh checkout's apps/examlense
 sudo docker login ghcr.io                         # only if your cached GHCR credential expired
-# .env must have EXAMLENSE_POSTGRES_PASSWORD, EXAMLENSE_SAIA_API_KEY, APP_HOST, and IMAGE_TAG set
+# .env must have EXAMLENSE_POSTGRES_PASSWORD, APP_HOST, and IMAGE_TAG set
 sudo docker compose -f compose.prod.yaml --env-file .env pull    # fetches the new digest
 sudo docker compose -f compose.prod.yaml --env-file .env up -d   # recreates changed containers
 ```
@@ -253,7 +253,7 @@ only `server` + `web` (whose images changed); **`postgres` and its data volume a
 | --- | --- |
 | Deploy job fails at `test-server` | A server test is red — fix it; nothing is built or deployed until it's green. |
 | `Production` deploy stuck "waiting" | The environment's required reviewer hasn't approved yet (by design). |
-| Deploy fails writing `.env` / missing var | A `compose.prod.yaml` value has no GitHub secret/variable. `EXAMLENSE_POSTGRES_PASSWORD` and `EXAMLENSE_SAIA_API_KEY` are mandatory; check `APP_HOST` too. |
+| Deploy fails writing `.env` / missing var | A `compose.prod.yaml` value has no GitHub secret/variable. `EXAMLENSE_POSTGRES_PASSWORD` is mandatory; check `APP_HOST` too. |
 | `permission denied … /var/run/docker.sock` (manual) | Your user isn't in the `docker` group — use `sudo` for **every** docker command (login included; root and your user have separate credential stores). |
 | `pull` says `denied` / `unauthorized` (manual) | GHCR login expired or wrong. `sudo docker login ghcr.io` with a **classic PAT** (scope `read:packages`), and authorize it for the `ls1intum` org if SSO prompts. |
 | `server` restarting after deploy | Almost always a Flyway migration error or a bad `.env` value — `logs server` says which. |

@@ -5,6 +5,7 @@ import app.ai.AiProvider;
 import app.ai.AiProviderFactory;
 import app.ai.ParserStrategies;
 import app.ai.ParserStrategy;
+import app.ai.ProviderKind;
 import app.shared.Access;
 import app.error.ApiException;
 import app.exam.Exam;
@@ -94,6 +95,13 @@ public class ParseExamService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Forbidden");
         }
         ParserStrategy strategy = ParserStrategies.resolve(parserModelId);
+        // Only a re-parse of an old exam can name a withdrawn model — new ones pick
+        // from the catalog. Refuse here rather than in the background run: the user
+        // gets an answer immediately, and we don't rasterize a PDF for a call that
+        // cannot be made.
+        if (strategy.providerKind() == ProviderKind.RETIRED) {
+            throw new ApiException(HttpStatus.GONE, ParseErrorMessages.AI_MODEL_RETIRED);
+        }
 
         exam.setStatus("parsing");
         exam.setParseError(null);

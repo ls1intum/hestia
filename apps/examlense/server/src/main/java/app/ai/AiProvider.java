@@ -9,7 +9,7 @@ import java.util.Map;
  */
 public interface AiProvider {
 
-    /** Stable identifier persisted on generated rows (e.g. "openai-compatible"). */
+    /** Stable identifier persisted on generated rows (e.g. "openai", "anthropic"). */
     String name();
 
     ChatResponse chat(ChatRequest req);

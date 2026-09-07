@@ -13,12 +13,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiProviderFactory {
 
-    @Value("${ai.openai-compatible.api-key:}")
-    private String openaiCompatibleApiKey;
-
-    @Value("${ai.openai-compatible.base-url:}")
-    private String openaiCompatibleBaseUrl;
-
     @Value("${ai.openai.api-key:}")
     private String openaiApiKey;
 
@@ -58,18 +52,22 @@ public class AiProviderFactory {
 
     private AiProvider create(ProviderKind kind, String model) {
         return switch (kind) {
-            case OPENAI_COMPATIBLE -> new OpenAiCompatibleProvider(
-                require(openaiCompatibleApiKey, "openai-compatible provider requires AI_API_KEY and AI_BASE_URL"),
-                require(openaiCompatibleBaseUrl, "openai-compatible provider requires AI_API_KEY and AI_BASE_URL"),
-                model);
             case OPENAI -> new OpenAiResponsesProvider(
                 require(openaiApiKey, "openai provider requires OPENAI_API_KEY"), openaiBaseUrl, model);
             case ANTHROPIC -> new AnthropicProvider(
                 require(anthropicApiKey, "anthropic provider requires ANTHROPIC_API_KEY"), anthropicBaseUrl, model);
             case GEMINI -> new GeminiProvider(
                 require(geminiApiKey, "gemini provider requires GEMINI_API_KEY"), geminiBaseUrl, model);
+            // 410, not 500: AiExceptions.isTransient treats 5xx as retryable, and a
+            // retired model must never be retried into a fallback that answers as a
+            // different model than the exam records.
+            case RETIRED -> throw new AiExceptions.ProviderException(RETIRED_MESSAGE, 410);
         };
     }
+
+    /** Thrown when something still references a withdrawn model. */
+    public static final String RETIRED_MESSAGE =
+        "This model has been retired and is no longer available.";
 
     private static String require(String value, String message) {
         if (value == null || value.isBlank()) {

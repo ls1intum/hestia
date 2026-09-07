@@ -7,7 +7,7 @@ import static app.ai.ParserStrategy.PdfMode.RASTERIZE;
 import static app.ai.ProviderKind.ANTHROPIC;
 import static app.ai.ProviderKind.GEMINI;
 import static app.ai.ProviderKind.OPENAI;
-import static app.ai.ProviderKind.OPENAI_COMPATIBLE;
+import static app.ai.ProviderKind.RETIRED;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StrategyRegistryTest {
@@ -20,8 +20,7 @@ class StrategyRegistryTest {
             .containsExactly(
                 "gemini-3.5-flash",
                 "claude-opus-4-8",
-                "gpt-5.5",
-                "qwen3.6-35b-a3b"
+                "gpt-5.5"
             );
     }
 
@@ -58,10 +57,10 @@ class StrategyRegistryTest {
         assertThat(gpt.providerKind()).isEqualTo(OPENAI);
         assertThat(gpt.pdfMode()).isEqualTo(PDF_DIRECT);
 
-        assertThat(qwen.providerKind()).isEqualTo(OPENAI_COMPATIBLE);
+        assertThat(qwen.providerKind()).isEqualTo(RETIRED);
         assertThat(qwen.pdfMode()).isEqualTo(RASTERIZE);
 
-        assertThat(mistral.providerKind()).isEqualTo(OPENAI_COMPATIBLE);
+        assertThat(mistral.providerKind()).isEqualTo(RETIRED);
         assertThat(mistral.pdfMode()).isEqualTo(RASTERIZE);
     }
 
@@ -82,8 +81,7 @@ class StrategyRegistryTest {
             .containsExactly(
                 "gemini-3.5-flash",
                 "gpt-5.5",
-                "claude-opus-4-8",
-                "qwen3.6-35b-a3b"
+                "claude-opus-4-8"
             );
     }
 
@@ -108,10 +106,10 @@ class StrategyRegistryTest {
         assertThat(claude.providerKind()).isEqualTo(ANTHROPIC);
         assertThat(claude.providerModel()).isEqualTo("claude-opus-4-8");
 
-        assertThat(mistral.providerKind()).isEqualTo(OPENAI_COMPATIBLE);
+        assertThat(mistral.providerKind()).isEqualTo(RETIRED);
         assertThat(mistral.providerModel()).isEqualTo("mistral-large-3-675b-instruct-2512");
 
-        assertThat(qwen.providerKind()).isEqualTo(OPENAI_COMPATIBLE);
+        assertThat(qwen.providerKind()).isEqualTo(RETIRED);
         assertThat(qwen.providerModel()).isEqualTo("qwen3.6-35b-a3b");
     }
 
@@ -119,5 +117,34 @@ class StrategyRegistryTest {
     void legacySolverIdsRemainResolvable() {
         assertThat(SolverStrategies.resolve("gemma-4-31b-it").id()).isEqualTo("gemma-4-31b-it");
         assertThat(SolverStrategies.resolve("qwen3.5-397b-a17b").id()).isEqualTo("qwen3.5-397b-a17b");
+    }
+
+    /**
+     * Every withdrawn GWDG id must still resolve to itself. An exam or a
+     * parse_metrics row that names one keeps its label; resolving to the default
+     * instead would silently relabel history as GPT-5.5.
+     */
+    @Test
+    void retiredGwdgIdsResolveToThemselvesRatherThanTheDefault() {
+        for (String id : java.util.List.of(
+            "qwen3.6-35b-a3b", "mistral-large-3-675b-instruct-2512",
+            "gemma-4-31b-it", "qwen3.5-397b-a17b")) {
+            SolverStrategy s = SolverStrategies.resolve(id);
+            assertThat(s.id()).as("solver %s", id).isEqualTo(id);
+            assertThat(s.providerKind()).as("solver %s", id).isEqualTo(RETIRED);
+        }
+        for (String id : java.util.List.of("qwen3.6-35b-a3b", "mistral-large-3-675b-instruct-2512")) {
+            ParserStrategy s = ParserStrategies.resolve(id);
+            assertThat(s.id()).as("parser %s", id).isEqualTo(id);
+            assertThat(s.providerKind()).as("parser %s", id).isEqualTo(RETIRED);
+        }
+    }
+
+    @Test
+    void noActiveStrategyIsRetired() {
+        assertThat(ParserStrategies.all()).allSatisfy(
+            s -> assertThat(s.providerKind()).as("parser %s", s.id()).isNotEqualTo(RETIRED));
+        assertThat(SolverStrategies.all()).allSatisfy(
+            s -> assertThat(s.providerKind()).as("solver %s", s.id()).isNotEqualTo(RETIRED));
     }
 }

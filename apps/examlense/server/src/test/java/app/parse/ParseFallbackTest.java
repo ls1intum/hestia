@@ -130,6 +130,23 @@ class ParseFallbackTest {
         assertThat(captor.getValue().parserModel).isEqualTo(ParserStrategies.DEFAULT_ID);
     }
 
+    /**
+     * A retired model fails with 410, which is deliberately outside the transient
+     * set — falling back here would answer the exam with GPT-5.5 while the exam
+     * still records the withdrawn model.
+     */
+    @Test
+    void retiredPrimaryModelFailsWithoutFallingBack() {
+        when(geminiProvider.chat(any()))
+            .thenThrow(new AiExceptions.ProviderException("retired", 410));
+
+        runParse();
+
+        verify(gptProvider, never()).chat(any());
+        verify(progress).fail(eq(EXAM_ID), eq(ParseErrorMessages.AI_MODEL_RETIRED));
+        verify(persister, never()).persist(any(), any(), any());
+    }
+
     private static ParserStrategy argThatIsGpt() {
         return org.mockito.ArgumentMatchers.argThat(
             s -> s != null && ParserStrategies.FALLBACK_ID.equals(s.id()));

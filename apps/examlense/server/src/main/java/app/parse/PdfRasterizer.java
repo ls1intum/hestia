@@ -17,8 +17,11 @@ import java.util.List;
  *
  * Replaces the Deno `pdf-rasterize.ts` helper. We use PDFBox's renderer at a
  * fixed DPI (default 150 to match the edge function) and encode each page as
- * a PNG bytestream that the OpenAI-compatible vision API can ingest via
- * `image_url` parts.
+ * a PNG bytestream a vision model can ingest via `image_url` parts.
+ *
+ * Currently unused: every active parser strategy is PDF_DIRECT since the
+ * rasterizing GWDG models were retired. Kept so re-adding one is a registry
+ * entry rather than a rewrite.
  */
 @Component
 public class PdfRasterizer {

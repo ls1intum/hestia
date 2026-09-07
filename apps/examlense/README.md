@@ -7,7 +7,7 @@ React 18 + TypeScript SPA for **exam authoring, AI-powered parsing, solving, gra
 - **Client** — Vite (SWC), React 18, TypeScript, Tailwind (HESTIA design system), shadcn/ui (Radix), React Query, React Router v6, Recharts. English-only; there is no i18n layer.
 - **Spring Boot server** (`server/`, JDK 21) — the only service. Owns all CRUD + ownership, parse/solve/metrics endpoints, file storage (local filesystem + HMAC-signed URLs), and SSE realtime. Auth is a static bearer token (single-user). See [`server/README.md`](server/README.md).
 - **PostgreSQL** — plain Postgres (Docker, host port 5433); schema managed by Flyway in `server/src/main/resources/db/migration/`.
-- **AI providers** — GWDG OpenAI-compatible models via `AI_API_KEY` + `AI_BASE_URL`, plus optional native OpenAI, Anthropic, and Gemini keys for GPT / Claude / Gemini strategies. The model catalog lives in `client/src/lib/exam/llm-models.ts`.
+- **AI providers** — native OpenAI, Anthropic, and Gemini APIs for the GPT / Claude / Gemini strategies, each enabled by its own key. The model catalog lives in `client/src/lib/exam/llm-models.ts`.
 
 > Supabase (auth, Postgres+RLS, storage, realtime, edge functions) has been fully removed.
 
@@ -84,7 +84,7 @@ Client lives in `client/`; Vite loads `client/.env.local` with priority over `cl
 | `VITE_API_BASE_URL` | Spring Boot server base URL (default `http://localhost:8081`). |
 | `VITE_API_AUTH_TOKEN` | Static bearer token; must match the server's `API_AUTH_TOKEN` (default `dev-local-token`). |
 
-Server secrets (`AI_API_KEY`, `AI_BASE_URL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `API_AUTH_TOKEN`, optional `FILES_SIGNING_SECRET`) live in `server/.env` (gitignored). The client `.env` holds only the non-secret dev defaults above.
+Server secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `API_AUTH_TOKEN`, optional `FILES_SIGNING_SECRET`) live in `server/.env` (gitignored). The client `.env` holds only the non-secret dev defaults above.
 
 ## Commands
 
