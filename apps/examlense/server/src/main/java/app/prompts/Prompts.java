@@ -135,8 +135,8 @@ public final class Prompts {
                     lines.add("- " + b.content().trim());
                 } else {
                     figureCount += 1;
-                    // The block's own content is the parser's "label — caption". It
-                    // used to be dropped, leaving the model a bare token; the caption
+                    // A figure block's content is its caption (see SolveCore#figureCaption).
+                    // It used to be dropped, leaving the model a bare token; the caption
                     // is often the only description of a figure it will ever get.
                     String caption = b.content() == null ? "" : b.content().trim();
                     lines.add("- [" + figureLabel(section.position(), figureCount) + "]"

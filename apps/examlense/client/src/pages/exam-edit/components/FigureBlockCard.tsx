@@ -1,10 +1,12 @@
 import { useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { uploadFigure, deleteFigure } from "@/lib/api/api-client";
+import { uploadFigure, deleteFigure, patchFigure } from "@/lib/api/api-client";
 import { useFigureUrl } from "@/hooks/data/use-figure-url";
 import { useSectionFigures, figuresKey } from "@/hooks/data/use-sections";
 import { useToast } from "@/hooks/ui/use-toast";
+import { useInlineTextEdit } from "@/hooks/ui/use-inline-text-edit";
+import { MarkdownEditField } from "@/components/shared/exam-content/MarkdownEditField";
 import { cn } from "@/lib/utils/utils";
 import type { SectionBlock, SectionFigure } from "@/lib/exam/exam-helpers";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
@@ -75,8 +77,17 @@ export const FigureBlockCard = ({
       // Upload the replacement first, then drop the previous figure so the
       // block keeps its single-figure invariant. The backend assigns the
       // storage path + id.
-      await uploadFigure(block.id, file, 0);
+      const uploaded = await uploadFigure(block.id, file, 0);
       if (figure) {
+        // The caption describes the figure, not the file, so replacing the
+        // image must not silently discard what the author wrote.
+        if (figure.caption) {
+          try {
+            await patchFigure(uploaded.id, { caption: figure.caption });
+          } catch {
+            /* the image is what matters; a lost caption can be retyped */
+          }
+        }
         try {
           await deleteFigure(figure.id);
         } catch {
@@ -148,11 +159,33 @@ export const FigureBlockCard = ({
       )}
     >
       {figure ? (
-        <FigureThumb
-          figure={figure}
-          onRemove={removeFigure}
-          onReplace={() => inputRef.current?.click()}
-        />
+        <>
+          <FigureThumb
+            figure={figure}
+            onRemove={removeFigure}
+            onReplace={() => inputRef.current?.click()}
+          />
+          <FigureCaption
+            key={figure.id}
+            figure={figure}
+            onCommit={async (caption) => {
+              try {
+                // Stored untrimmed: the committed value flows straight back into
+                // the field, and trimming it would eat the space the author just
+                // typed mid-sentence. Blank means "no caption".
+                await patchFigure(figure.id, {
+                  caption: caption.trim() ? caption : null,
+                });
+                refresh();
+              } catch {
+                toast({
+                  title: "Could not save this caption. Please try again.",
+                  variant: "destructive",
+                });
+              }
+            }}
+          />
+        </>
       ) : (
         <>
         <WarningBanner text="Missing figure; upload it or simply take a screenshot of the original and drop it here" />
@@ -200,6 +233,39 @@ export const FigureBlockCard = ({
         onConfirm={onDelete}
       />
     </>
+  );
+};
+
+/**
+ * The figure's caption — seeded by the parser, optional, and part of what the
+ * solver is shown for this block. Keyed by figure id at the call site so
+ * replacing the image remounts it with the carried-over text.
+ */
+const FigureCaption = ({
+  figure,
+  onCommit,
+}: {
+  figure: SectionFigure;
+  onCommit: (caption: string) => void;
+}) => {
+  const field = useInlineTextEdit({
+    value: figure.caption ?? "",
+    onCommit,
+    optional: true,
+  });
+
+  return (
+    <div className="mt-hestia-2">
+      <MarkdownEditField
+        field={field}
+        optional
+        rows={1}
+        placeholder="Add a caption…"
+        ariaLabel="Figure caption"
+        readViewClassName="-mx-hestia-2 cursor-text rounded-hestia-sm px-hestia-2 py-1 transition-colors hover:bg-hestia-primary-muted/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary/40"
+        markdownClassName="text-sm text-hestia-text-muted"
+      />
+    </div>
   );
 };
 

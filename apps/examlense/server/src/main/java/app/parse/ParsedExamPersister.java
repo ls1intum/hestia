@@ -282,15 +282,18 @@ class ParsedExamPersister {
                 for (String k : List.of("label", "caption")) {
                     if (fig.get(k) instanceof String sv && !sv.trim().isEmpty()) pieces.add(sv.trim());
                 }
-                SectionBlock b = decorativeBlock(examId, fig, "figure",
-                    pieces.isEmpty() ? "" : String.join(" — ", pieces),
+                String printed = pieces.isEmpty() ? "" : String.join(" — ", pieces);
+                SectionBlock b = decorativeBlock(examId, fig, "figure", printed,
                     sectionIdByName, positionsBySection);
                 if (b == null) continue;
                 rows.add(b);
                 // Block ids are app-assigned, so they are already known here — which
-                // is what lets the page number reach extraction without a new column.
+                // is what lets the page number and caption reach extraction without
+                // a new column. The block keeps `printed` as the parse record; the
+                // figure row gets the same text as its editable caption.
                 placements.add(new FigurePlacement(
-                    b.getId(), pageNumber(fig, pageCount), asString(fig.get("label")), order++));
+                    b.getId(), pageNumber(fig, pageCount), asString(fig.get("label")),
+                    printed.isEmpty() ? null : printed, order++));
             }
             // Only hand on placements for rows that actually landed: saveAll is
             // transactional, so a failure means none of these blocks exist.

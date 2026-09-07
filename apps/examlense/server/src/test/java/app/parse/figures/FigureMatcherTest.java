@@ -20,7 +20,7 @@ class FigureMatcherTest {
     private final FigureMatcher matcher = new FigureMatcher();
 
     private static FigurePlacement block(Integer page, String label, int order) {
-        return new FigurePlacement(UUID.randomUUID(), page, label, order);
+        return new FigurePlacement(UUID.randomUUID(), page, label, null, order);
     }
 
     private static Rectangle2D rect(double x, double y, double w, double h) {

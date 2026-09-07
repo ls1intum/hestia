@@ -121,7 +121,7 @@ class SolveCore {
                 b.getSectionId().toString(),
                 b.getPosition(),
                 b.getKind(),
-                b.getContent()
+                "figure".equals(b.getKind()) ? figureCaption(b) : b.getContent()
             ));
         }
         return new PromptContext(
@@ -129,6 +129,21 @@ class SolveCore {
             blocks,
             withFigures ? loadFigures(sec.getPosition(), blockRows) : List.of()
         );
+    }
+
+    /**
+     * The author-facing caption of a figure block's image, falling back to the
+     * block's own content (the parser's untouched {@code label — caption}) when
+     * no image exists or it carries no caption. Runs even for solver models that
+     * take no images: the caption is often the only description of a figure such
+     * a model will ever get.
+     */
+    private String figureCaption(SectionBlock block) {
+        return sectionFigureRepository.findByBlockIdOrderByPositionAsc(block.getId()).stream()
+            .findFirst()
+            .map(SectionFigure::getCaption)
+            .filter(c -> !c.isBlank())
+            .orElseGet(block::getContent);
     }
 
     /**

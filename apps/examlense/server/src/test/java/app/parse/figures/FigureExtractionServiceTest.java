@@ -44,6 +44,7 @@ class FigureExtractionServiceTest {
     private static final String USER = "11111111-1111-1111-1111-111111111111";
     private static final String PATH = USER + "/" + EXAM + ".pdf";
     private static final OffsetDateTime PARSED_AT = OffsetDateTime.now();
+    private static final String CAPTION = "Abbildung 1 — Der Ablauf des Verfahrens";
 
     private ExamRepository examRepository;
     private SectionFigureRepository figureRepository;
@@ -77,7 +78,7 @@ class FigureExtractionServiceTest {
     }
 
     private static FigurePlacement placement(Integer page) {
-        return new FigurePlacement(UUID.randomUUID(), page, "Abbildung 1", 0);
+        return new FigurePlacement(UUID.randomUUID(), page, "Abbildung 1", CAPTION, 0);
     }
 
     @Test
@@ -99,6 +100,30 @@ class FigureExtractionServiceTest {
             .startsWith(USER + "/" + EXAM + "/auto/")
             .endsWith(".png");
         verify(sse).examUpdated(EXAM);
+    }
+
+    @Test
+    void seedsTheRowWithTheParsedCaption() {
+        when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
+
+        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+
+        ArgumentCaptor<SectionFigure> row = ArgumentCaptor.forClass(SectionFigure.class);
+        verify(figureRepository).save(row.capture());
+        assertThat(row.getValue().getCaption()).isEqualTo(CAPTION);
+    }
+
+    /** Captions are optional: a figure the PDF printed none for stores none. */
+    @Test
+    void leavesTheCaptionNullWhenTheParserFoundNone() {
+        when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
+
+        service.extract(EXAM, USER, PATH,
+            List.of(new FigurePlacement(UUID.randomUUID(), 1, "Abbildung 1", null, 0)));
+
+        ArgumentCaptor<SectionFigure> row = ArgumentCaptor.forClass(SectionFigure.class);
+        verify(figureRepository).save(row.capture());
+        assertThat(row.getValue().getCaption()).isNull();
     }
 
     @Test

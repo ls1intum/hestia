@@ -112,6 +112,11 @@ public class FigureExtractionService {
             return;
         }
 
+        Map<UUID, String> captions = new LinkedHashMap<>();
+        for (FigurePlacement p : withPage) {
+            if (p.caption() != null && !p.caption().isBlank()) captions.put(p.blockId(), p.caption());
+        }
+
         long start = System.nanoTime();
         int stored = 0;
         try (PDDocument doc = Loader.loadPDF(pdf)) {
@@ -119,7 +124,7 @@ public class FigureExtractionService {
             if (pages.isEmpty()) return;
 
             List<FigureMatcher.Match> matches = matcher.match(withPage, pages);
-            stored = writeCrops(examId, userId, doc, matches, parsedAt);
+            stored = writeCrops(examId, userId, doc, matches, captions, parsedAt);
         } catch (Exception e) {
             log.warn("figure-extract[{}] failed: {}", examId, e.toString());
         }
@@ -164,7 +169,8 @@ public class FigureExtractionService {
 
     /** Renders each matched page once, crops every figure on it, then moves on. */
     private int writeCrops(UUID examId, String userId, PDDocument doc,
-                           List<FigureMatcher.Match> matches, OffsetDateTime parsedAt) {
+                           List<FigureMatcher.Match> matches, Map<UUID, String> captions,
+                           OffsetDateTime parsedAt) {
         Map<Integer, List<FigureMatcher.Match>> byPage = new LinkedHashMap<>();
         for (FigureMatcher.Match m : matches) {
             byPage.computeIfAbsent(m.pageNumber(), k -> new ArrayList<>()).add(m);
@@ -187,14 +193,14 @@ public class FigureExtractionService {
                     log.info("figure-extract[{}] exam re-parsed mid-run — stopping", examId);
                     return stored;
                 }
-                if (writeOne(examId, userId, m, page, rendered)) stored++;
+                if (writeOne(examId, userId, m, captions.get(m.blockId()), page, rendered)) stored++;
             }
         }
         return stored;
     }
 
     private boolean writeOne(UUID examId, String userId, FigureMatcher.Match match,
-                             PDPage page, BufferedImage rendered) {
+                             String caption, PDPage page, BufferedImage rendered) {
         Optional<PdfFigureCropper.Crop> crop;
         try {
             crop = cropper.crop(rendered, page, match.region());
@@ -213,6 +219,9 @@ public class FigureExtractionService {
         fig.setBlockId(match.blockId());
         fig.setSource("pdf");
         fig.setPosition(0);
+        // The parser's caption for this figure, seeding the field the author can
+        // edit. Null when the PDF printed none — captions are optional.
+        fig.setCaption(caption);
         // The `auto/` segment keeps extracted images separable from the user's own
         // uploads, so a future re-extract can clear only what it created.
         String path = userId + "/" + examId + "/auto/" + fig.getId() + ".png";
