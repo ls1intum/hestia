@@ -9,6 +9,12 @@ interface InlineTextEditOptions {
   /** Persist a committed value. Debounced on keystroke, flushed on blur. */
   onCommit: (value: string) => void;
   debounceMs?: number;
+  /**
+   * The value may legitimately stay blank (e.g. a figure caption). Blank no
+   * longer forces the editor open, and blurring an empty field closes it
+   * instead of pinning a textarea open on a field nobody has to fill.
+   */
+  optional?: boolean;
 }
 
 export interface InlineTextEdit {
@@ -31,18 +37,20 @@ export interface InlineTextEdit {
  * Click-to-edit text field state machine shared by the editable task and
  * context cards: a debounced local mirror, an `editing` toggle that starts open
  * when the value is blank, a focus-caret-on-enter effect, and a blur handler
- * that flushes the pending patch and closes edit mode once non-empty.
+ * that flushes the pending patch and closes edit mode once non-empty. Pass
+ * `optional` for a field that is allowed to stay blank.
  */
 export function useInlineTextEdit({
   value: source,
   onCommit,
   debounceMs = 250,
+  optional = false,
 }: InlineTextEditOptions): InlineTextEdit {
   const [value, setValue] = useState(source);
   useEffect(() => setValue(source), [source]);
 
   const textareaRef = useAutosizeTextarea<HTMLTextAreaElement>(value);
-  const [editing, setEditing] = useState(() => isTextEmpty(source));
+  const [editing, setEditing] = useState(() => !optional && isTextEmpty(source));
   const justEnteredEdit = useRef(false);
 
   useEffect(() => {
@@ -86,7 +94,7 @@ export function useInlineTextEdit({
       onBlur: () => {
         debounced.flush();
         if (value !== source) onCommit(value);
-        if (!isTextEmpty(value)) setEditing(false);
+        if (optional || !isTextEmpty(value)) setEditing(false);
       },
     },
   };

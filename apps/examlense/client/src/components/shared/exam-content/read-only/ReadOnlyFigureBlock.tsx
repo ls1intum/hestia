@@ -36,19 +36,26 @@ const FigureThumb = ({ figure }: { figure: SectionFigure }) => {
   const url = useFigureUrl(figure.id);
 
   return (
-    <div className="overflow-hidden rounded-hestia-md border border-hestia-border bg-hestia-bg/40">
-      {url ? (
-        <img
-          src={url}
-          alt={figure.caption ?? "Figure"}
-          className="max-h-72 w-full object-contain"
-          loading="lazy"
-        />
-      ) : (
-        <div className="flex h-32 w-full items-center justify-center text-xs text-hestia-text-muted">
-          …
-        </div>
+    <>
+      <div className="overflow-hidden rounded-hestia-md border border-hestia-border bg-hestia-bg/40">
+        {url ? (
+          <img
+            src={url}
+            alt={figure.caption ?? "Figure"}
+            className="max-h-72 w-full object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-32 w-full items-center justify-center text-xs text-hestia-text-muted">
+            …
+          </div>
+        )}
+      </div>
+      {figure.caption && (
+        <p className="mt-hestia-1 text-sm text-hestia-text-muted">
+          {figure.caption}
+        </p>
       )}
-    </div>
+    </>
   );
 };

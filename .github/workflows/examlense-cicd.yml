@@ -98,6 +98,6 @@ jobs:
       deployment-base-path: /opt/hestia/examlense
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
     # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars (POSTGRES_PASSWORD,
-    # AI_API_KEY, AI_BASE_URL, APP_HOST, APP_PATH_PREFIX, ...). The reusable workflow writes
+    # OPENAI_API_KEY, APP_HOST, APP_PATH_PREFIX, ...). The reusable workflow writes
     # them into .env on the VM next to IMAGE_TAG, then runs docker compose pull && up -d.
     secrets: inherit

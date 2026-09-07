@@ -37,16 +37,23 @@ export const PARSER_MODELS: LlmModel[] = [
     description:
       "OpenAI frontier model; reads the PDF directly with native file input.",
   },
-  {
-    id: "qwen3.6-35b-a3b",
-    label: "Qwen 3.6 35B A3B (GWDG)",
-    description: "GWDG-hosted vision model; PDF pages rasterized to images.",
-  },
 ];
 
 export const DEFAULT_PARSER_MODEL_ID = "gemini-3.5-flash";
 
+/**
+ * Retired ids, kept only so `parserModelLabel` still names them. The admin
+ * Parsing Metrics table groups by the raw `parser_model` recorded on each parse,
+ * and those rows outlive the catalog — drop an id here and history renders as a
+ * bare slug. The GWDG entries are gone from the server for good (their
+ * OpenAI-compatible endpoint was removed); these are labels, not offers.
+ */
 export const LEGACY_PARSER_MODELS: LlmModel[] = [
+  {
+    id: "qwen3.6-35b-a3b",
+    label: "Qwen 3.6 35B A3B (GWDG)",
+    description: "Retired GWDG parser model.",
+  },
   {
     id: "gemini-2.5-flash",
     label: "Gemini 2.5 Flash (Google)",
@@ -101,14 +108,15 @@ export const SOLVER_MODELS: LlmModel[] = [
     description:
       "Anthropic flagship model for complex reasoning and long-context work.",
   },
+];
+
+/** Retired ids, kept so historical exams still show a label. See LEGACY_PARSER_MODELS. */
+export const LEGACY_SOLVER_MODELS: LlmModel[] = [
   {
     id: "qwen3.6-35b-a3b",
     label: "Qwen 3.6 35B A3B (GWDG)",
-    description: "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
+    description: "Retired GWDG solver model.",
   },
-];
-
-export const LEGACY_SOLVER_MODELS: LlmModel[] = [
   {
     id: "gemini-2.5-flash",
     label: "Gemini 2.5 Flash (Google)",

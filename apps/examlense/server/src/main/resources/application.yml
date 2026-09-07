@@ -43,9 +43,6 @@ learninggoalhub:
   base-url: ${LGH_BASE_URL:https://hestia-test.aet.cit.tum.de/learninggoalhub}
 
 ai:
-  openai-compatible:
-    api-key: ${AI_API_KEY:}
-    base-url: ${AI_BASE_URL:}
   openai:
     api-key: ${OPENAI_API_KEY:}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}

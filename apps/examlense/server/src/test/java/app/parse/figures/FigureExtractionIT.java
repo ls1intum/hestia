@@ -92,7 +92,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.length()").value(0));
 
         extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
-            List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", 0)));
+            List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
 
         // A row landed, marked as machine-extracted and under the auto/ prefix.
         List<SectionFigure> rows = figures.findByBlockIdOrderByPositionAsc(f.block().getId());
@@ -129,7 +129,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
     void deletingTheBlockCascadesTheExtractedFigureRowAway() {
         Fixture f = seed();
         extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
-            List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", 0)));
+            List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
         assertThat(figures.findByBlockIdOrderByPositionAsc(f.block().getId())).hasSize(1);
 
         blocks.deleteById(f.block().getId());
@@ -145,7 +145,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         UUID ghost = UUID.randomUUID();
 
         extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
-            List.of(new FigurePlacement(ghost, 1, "Abbildung 1", 0)));
+            List.of(new FigurePlacement(ghost, 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
 
         assertThat(figures.findByBlockIdOrderByPositionAsc(ghost)).isEmpty();
     }

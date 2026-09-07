@@ -57,9 +57,8 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
 ## Configure
 
 1. Copy `.env.example` to `.env` and fill in the AI provider values you want to
-   use. GWDG uses `AI_API_KEY` / `AI_BASE_URL`; GPT strategies use
-   `OPENAI_API_KEY`; Claude strategies use `ANTHROPIC_API_KEY`; Gemini
-   strategies use `GEMINI_API_KEY`. `API_AUTH_TOKEN` defaults to
+   use. GPT strategies use `OPENAI_API_KEY`; Claude strategies use
+   `ANTHROPIC_API_KEY`; Gemini strategies use `GEMINI_API_KEY`. `API_AUTH_TOKEN` defaults to
    `dev-local-token` and must match the client's `VITE_API_AUTH_TOKEN`.
    Optional hardening: `FILES_SIGNING_SECRET` (dedicated HMAC key for signed
    file URLs — recommended in deployments so token rotation doesn't invalidate
@@ -242,10 +241,6 @@ you want to use; selecting a model without its key returns a clear provider
 configuration error.
 
 ```
-# GWDG / OpenAI-compatible models
-AI_API_KEY=<your GWDG (or other OpenAI-compatible) key>
-AI_BASE_URL=<provider base url, e.g. https://chat-ai.academiccloud.de/v1>
-
 # OpenAI GPT models
 OPENAI_API_KEY=<your OpenAI key>
 # OPENAI_BASE_URL=https://api.openai.com/v1

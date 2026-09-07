@@ -45,6 +45,9 @@ public final class ParseErrorMessages {
     public static final String AI_UNAVAILABLE =
         "The AI service is temporarily unavailable (it returned a server error). Please wait "
         + "a few minutes and retry parsing.";
+    public static final String AI_MODEL_RETIRED =
+        "The model this exam was parsed with has been retired and is no longer available. "
+        + "Please re-parse it with one of the current models.";
     public static final String AI_UNREACHABLE =
         "We couldn't reach the AI service (network timeout or connection problem). Please retry "
         + "in a few minutes; if it keeps happening, contact the administrator.";
@@ -67,6 +70,7 @@ public final class ParseErrorMessages {
      *   <li>401/403/500 → misconfiguration (auth/credentials or missing API key). The
      *       missing-key path throws {@code ProviderException(msg, 500)}; a persistent
      *       upstream 500 also warrants admin attention.</li>
+     *   <li>410 → the model was withdrawn; retrying is pointless, re-parse instead.</li>
      *   <li>0/408/425 → transport failure, timeout, or DNS — couldn't reach the service.</li>
      *   <li>≥501 (502/503/504…) → upstream temporarily unavailable.</li>
      *   <li>anything else → treated as temporarily unavailable.</li>
@@ -74,6 +78,7 @@ public final class ParseErrorMessages {
      */
     public static String forProviderStatus(int status) {
         if (status == 401 || status == 403 || status == 500) return AI_MISCONFIGURED;
+        if (status == 410) return AI_MODEL_RETIRED;
         if (status == 0 || status == 408 || status == 425) return AI_UNREACHABLE;
         return AI_UNAVAILABLE;
     }

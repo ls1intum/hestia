@@ -21,6 +21,13 @@ interface Props {
   /** Class forwarded to MarkdownView in the read view. */
   markdownClassName?: string;
   hint?: string;
+  /**
+   * The field may stay blank (pair with `useInlineTextEdit`'s `optional`). A
+   * blank value then renders the placeholder as a click target rather than
+   * pinning the textarea open, and the Markdown hint is dropped — an optional
+   * one-liner does not need to advertise formatting it rarely uses.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -37,10 +44,11 @@ export const MarkdownEditField = ({
   readViewClassName = markdownSurfaceClassName,
   markdownClassName,
   hint = "Code blocks and snippets (Markdown) supported",
+  optional = false,
 }: Props) => {
   const { editing, isEmpty, enterEdit, textareaRef, textareaProps, value } = field;
 
-  if (editing || isEmpty) {
+  if (editing || (isEmpty && !optional)) {
     return (
       <>
         <Textarea
@@ -50,7 +58,7 @@ export const MarkdownEditField = ({
           rows={rows}
           className={cn(markdownTextareaClassName, textareaClassName)}
         />
-        <p className="mt-1 text-xs text-hestia-text-muted">{hint}</p>
+        {!optional && <p className="mt-1 text-xs text-hestia-text-muted">{hint}</p>}
       </>
     );
   }
@@ -78,7 +86,13 @@ export const MarkdownEditField = ({
         />
       </span>
       <div className="min-w-0 flex-1">
-        <MarkdownView content={value} className={markdownClassName} />
+        {isEmpty ? (
+          <span className={cn("text-hestia-text-muted/70", markdownClassName)}>
+            {placeholder}
+          </span>
+        ) : (
+          <MarkdownView content={value} className={markdownClassName} />
+        )}
       </div>
     </div>
   );

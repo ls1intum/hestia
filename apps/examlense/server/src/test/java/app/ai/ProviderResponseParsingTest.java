@@ -15,45 +15,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class ProviderResponseParsingTest {
 
-    // -- OpenAI-compatible (chat/completions) --
-
-    @Test
-    void openAiCompatibleParsesToolCallAndUsage() {
-        String json = """
-            {"model":"qwen3.6-35b-a3b","choices":[{"message":{"tool_calls":[
-              {"function":{"name":"submit_answers","arguments":"{\\"answers\\":[{\\"task_id\\":\\"t1\\"}]}"}}]}}],
-             "usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
-            """;
-        AiProvider.ChatResponse res = OpenAiCompatibleClient.parseResponse(json, "requested", "openai-compatible");
-        assertThat(res.model()).isEqualTo("qwen3.6-35b-a3b");
-        assertThat(res.toolArgs()).containsKey("answers");
-        assertThat(res.usage().totalTokens()).isEqualTo(15);
-    }
-
-    @Test
-    void openAiCompatibleRejectsMissingToolCall() {
-        String json = """
-            {"choices":[{"message":{"content":"I refuse to call tools"}}]}
-            """;
-        assertThatThrownBy(() -> OpenAiCompatibleClient.parseResponse(json, "m", "p"))
-            .isInstanceOf(AiExceptions.MalformedModelOutputException.class);
-    }
-
-    @Test
-    void openAiCompatibleRejectsInvalidJsonArguments() {
-        String json = """
-            {"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{not json"}}]}}]}
-            """;
-        assertThatThrownBy(() -> OpenAiCompatibleClient.parseResponse(json, "m", "p"))
-            .isInstanceOf(AiExceptions.MalformedModelOutputException.class);
-    }
-
-    @Test
-    void openAiCompatibleRejectsUnparseableEnvelope() {
-        assertThatThrownBy(() -> OpenAiCompatibleClient.parseResponse("not json at all", "m", "p"))
-            .isInstanceOf(AiExceptions.MalformedModelOutputException.class);
-    }
-
     // -- OpenAI Responses --
 
     @Test

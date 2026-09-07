@@ -93,7 +93,7 @@ final class ProviderHttpCaller {
         try {
             // Use .exchange() so we drain the response body ourselves — bypasses
             // the message-converter pipeline that chokes on upstreams returning
-            // JSON labelled as application/octet-stream (seen on GWDG).
+            // JSON labelled as application/octet-stream.
             String json = client.post()
                 .uri(adapter.path(model))
                 .headers(h -> adapter.applyHeaders(h, apiKey))

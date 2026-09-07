@@ -3,7 +3,7 @@ package app.ai;
 /**
  * Native Google Gemini provider (generateContent API). Sends the PDF inline so
  * Gemini parses the document natively (PDF_DIRECT). Thin wrapper — the request /
- * response shapes live in {@link GeminiClient}, mirroring {@link OpenAiCompatibleProvider}.
+ * response shapes live in {@link GeminiClient}, mirroring {@link AnthropicProvider}.
  */
 public final class GeminiProvider implements AiProvider {
     private final String apiKey;

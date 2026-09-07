@@ -56,7 +56,7 @@ public final class ParseExamPrompts {
         - section: the section the figure belongs to (matching the section name used on tasks).
         - after_task_index: 0-based index of the task within that section that the figure visually follows. Use null if the figure appears before the first task of the section (i.e. it is part of the section intro).
         - label: the figure's printed label if any (e.g. "Figure 2", "Abb. 3a", "Diagram 1").
-        - caption: the figure's caption text verbatim, if any. Do NOT describe the image contents.
+        - caption: OPTIONAL. The caption line printed next to the figure, copied verbatim in the source language (including a trailing period if printed). Omit the label prefix — that goes in "label". Set it to null when the figure has no printed caption: NEVER invent one and NEVER describe the image contents.
         - page_number: the page the figure appears on, if you can tell.
 
         Pure text formatting (bullet lists, equation lines) is NOT a figure. Source code, pseudocode, or LaTeX that is just typeset as text is also NOT a figure — keep it inline (use fenced ``` code blocks for code, `$...$` / `$$...$$` for math).

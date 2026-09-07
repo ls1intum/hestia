@@ -21,6 +21,14 @@ class ParseErrorMessagesTest {
     }
 
     @Test
+    void retiredModelStatusMapsToItsOwnMessage() {
+        // Not AI_UNAVAILABLE: "wait a few minutes and retry" is wrong advice for a
+        // model that is never coming back.
+        assertThat(ParseErrorMessages.forProviderStatus(410))
+            .isEqualTo(ParseErrorMessages.AI_MODEL_RETIRED);
+    }
+
+    @Test
     void upstreamServerErrorsMapToUnavailable() {
         assertThat(ParseErrorMessages.forProviderStatus(502)).isEqualTo(ParseErrorMessages.AI_UNAVAILABLE);
         assertThat(ParseErrorMessages.forProviderStatus(503)).isEqualTo(ParseErrorMessages.AI_UNAVAILABLE);

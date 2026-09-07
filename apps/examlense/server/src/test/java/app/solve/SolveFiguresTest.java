@@ -82,13 +82,26 @@ class SolveFiguresTest {
     }
 
     private void withFigureImage(SectionBlock block, String path, byte[] bytes) {
+        withFigureImage(block, path, bytes, null);
+    }
+
+    private void withFigureImage(SectionBlock block, String path, byte[] bytes, String caption) {
         SectionFigure fig = new SectionFigure();
         fig.setBlockId(block.getId());
         fig.setStoragePath(path);
         fig.setSource("pdf");
+        fig.setCaption(caption);
         when(figureRepository.findByBlockIdOrderByPositionAsc(block.getId()))
             .thenReturn(List.of(fig));
         when(storage.download("exam-figures", path)).thenReturn(bytes);
+    }
+
+    /** The prompt body, whether or not images were attached alongside it. */
+    private static String promptTextOf(AiProvider.ChatRequest request) {
+        if (request.userContent() instanceof AiProvider.TextContent t) return t.text();
+        AiProvider.ContentPart first =
+            ((AiProvider.MultipartContent) request.userContent()).parts().get(0);
+        return ((AiProvider.TextPart) first).text();
     }
 
     /** Captures the request a solve would send for this context. */
@@ -169,6 +182,43 @@ class SolveFiguresTest {
             List.of());
 
         assertThat(prompt).contains("[Figure 2.1] Abbildung 3 — Zustandsdiagramm des Automaten");
+    }
+
+    @Test
+    void prefersTheFiguresOwnCaptionOverTheBlocksParseRecord() {
+        SectionBlock fig = block("figure", 1, "Abbildung 3 — wie der Parser sie las");
+        when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
+        withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, "Vom Autor korrigierte Bildunterschrift");
+
+        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+
+        assertThat(promptTextOf(request))
+            .contains("[Figure 2.1] Vom Autor korrigierte Bildunterschrift")
+            .doesNotContain("wie der Parser sie las");
+    }
+
+    /** A caption is the only figure description a text-only model can ever get. */
+    @Test
+    void sendsTheCaptionEvenToASolverModelThatCannotSeeImages() {
+        SectionBlock fig = block("figure", 1, "Abbildung 3");
+        when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
+        withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, "Zustandsdiagramm des Automaten");
+
+        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, false));
+
+        assertThat(request.userContent()).isInstanceOf(AiProvider.TextContent.class);
+        assertThat(promptTextOf(request)).contains("[Figure 2.1] Zustandsdiagramm des Automaten");
+    }
+
+    @Test
+    void fallsBackToTheBlocksParseRecordWhenTheFigureHasNoCaption() {
+        SectionBlock fig = block("figure", 1, "Abbildung 3 — Zustandsdiagramm");
+        when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
+        withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, null);
+
+        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+
+        assertThat(promptTextOf(request)).contains("[Figure 2.1] Abbildung 3 — Zustandsdiagramm");
     }
 
     @Test

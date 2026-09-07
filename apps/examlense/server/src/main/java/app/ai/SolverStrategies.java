@@ -6,7 +6,7 @@ import java.util.Optional;
 import static app.ai.ProviderKind.ANTHROPIC;
 import static app.ai.ProviderKind.GEMINI;
 import static app.ai.ProviderKind.OPENAI;
-import static app.ai.ProviderKind.OPENAI_COMPATIBLE;
+import static app.ai.ProviderKind.RETIRED;
 
 public final class SolverStrategies {
 
@@ -40,16 +40,18 @@ public final class SolverStrategies {
             ANTHROPIC,
             true
         ));
-        REGISTRY.register(new SolverStrategy(
+        // Retired models: exams created before the catalog change still
+        // reference these ids, so they stay resolvable but hidden. The GWDG
+        // entries are tombstones — the OpenAI-compatible transport they used is
+        // gone, so resolving one yields a label but calling it fails loudly.
+        REGISTRY.legacy(new SolverStrategy(
             "qwen3.6-35b-a3b",
             "Qwen 3.6 35B A3B (GWDG)",
             "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
             "qwen3.6-35b-a3b",
-            OPENAI_COMPATIBLE,
+            RETIRED,
             true
         ));
-        // Retired models: exams created before the catalog change still
-        // reference these ids, so they stay resolvable but hidden.
         REGISTRY.legacy(new SolverStrategy(
             "gemini-2.5-flash",
             "Gemini 2.5 Flash (Google)",
@@ -63,7 +65,7 @@ public final class SolverStrategies {
             "Mistral Large 3 675B (GWDG)",
             "GWDG-hosted large reasoning model.",
             "mistral-large-3-675b-instruct-2512",
-            OPENAI_COMPATIBLE,
+            RETIRED,
             true
         ));
         REGISTRY.legacy(new SolverStrategy(
@@ -71,7 +73,7 @@ public final class SolverStrategies {
             "Gemma 4 31B Instruct (GWDG)",
             "GWDG-hosted instruction-tuned model.",
             "gemma-4-31b-it",
-            OPENAI_COMPATIBLE,
+            RETIRED,
             false
         ));
         REGISTRY.legacy(new SolverStrategy(
@@ -79,7 +81,7 @@ public final class SolverStrategies {
             "Qwen 3.5 397B A17B (GWDG)",
             "GWDG-hosted Qwen 3.5 large mixture-of-experts model.",
             "qwen3.5-397b-a17b",
-            OPENAI_COMPATIBLE,
+            RETIRED,
             false
         ));
     }
