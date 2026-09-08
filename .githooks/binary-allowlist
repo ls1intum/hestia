@@ -7,3 +7,6 @@
 apps/landing-page/public/fonts/inter.woff2
 apps/landing-page/public/fonts/jetbrains-mono.woff2
 apps/landing-page/public/fonts/playfair.woff2
+# Default PowerPoint template for the Workshopper app used to export generated slides.
+# Verified to contain no sensitive data or copyrighted material.
+apps/workshopper/backend/src/main/resources/templates/workshopper-default.pptx

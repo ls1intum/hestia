@@ -289,85 +289,200 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                             {innerContent}
                           </AccordionTrigger>
                           <AccordionContent className="pl-0 sm:pl-[5.5rem] pr-0 pb-4 pt-2 relative z-10">
-                            {block.sections && block.sections.length > 0 && (
-                              <div className="space-y-4">
-                                {block.sections.map((section, sIdx) => {
-                                  const sectionMode = getSectionMode(section.title || "", mode);
-                                  const secColors = MODE_COLORS[sectionMode];
-                                  
-                                  return (
-                                    <div key={sIdx} className="relative pl-6">
-                                      {/* Sub-section chip */}
-                                      {block.phase === "LEARNING_CYCLE" && section.title && (
-                                        <div className="mb-2">
-                                          <span 
-                                            className="inline-flex font-mono text-[0.75rem] font-semibold uppercase tracking-[0.07em] px-2.5 py-0.5 rounded-md"
-                                            style={{ backgroundColor: secColors.badgeBg, color: secColors.badgeText }}
-                                          >
-                                            {section.title}
-                                          </span>
-                                        </div>
-                                      )}
-                                      
-                                      <div className="relative">
-                                        {/* Sub Timeline track */}
-                                        <div className="absolute top-2 bottom-2 left-[-16px] w-[1.5px]" style={{ backgroundColor: secColors.border, opacity: 0.25 }} />
-                                        
+                            {(() => {
+                              const phase = block.phase;
+                              const allSteps = (block.sections || []).flatMap(s => s.steps || []);
+                              const allMethods = Array.from(new Set([
+                                ...(block.methods || []),
+                                ...(block.sections || []).flatMap(s => s.methods || [])
+                              ])).filter(m => m && !m.toLowerCase().includes("lecture") && !m.toLowerCase().includes("presentation"));
+
+                              // ── ARRIVE / Welcome: just list the learning goals ───────────────
+                              if (phase === "ARRIVE") {
+                                const rawGoals = meta?.learningGoals && meta.learningGoals.length > 0
+                                  ? meta.learningGoals
+                                  : allSteps
+                                      .filter((s: string) => /learning goal|objective/i.test(s))
+                                      .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
+                                const goals = rawGoals.length > 0 ? rawGoals : allSteps
+                                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
+                                  .filter((s: string) => s.length > 0);
+                                return (
+                                  <div className="pl-6 space-y-1.5 mt-2">
+                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
+                                    {goals.map((g: string, i: number) => (
+                                      <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
+                                        style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                        <span className="font-mono text-xs font-bold shrink-0 mt-0.5 whitespace-nowrap" style={{ color: 'var(--hestia-primary)' }}>Learning Goal {i + 1}</span>
+                                        <span className="leading-relaxed">{g}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              }
+
+                              // ── ACTIVATE: show the activity prompt question ──────────────────
+                              if (phase === "ACTIVATE") {
+                                const promptStep = allSteps.find(s =>
+                                  /prompt|question|discuss|think|consider|reflect/i.test(s)
+                                ) || allSteps[0] || block.objective;
+                                const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
+                                return (
+                                  <div className="pl-6 space-y-1.5 mt-2">
+                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
+                                    <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
+                                      style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                      {clean || block.objective}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              // ── LEARNING_CYCLE: content checklist + activity prompt ───────────
+                              if (phase === "LEARNING_CYCLE") {
+                                // Content: only steps from sections that are NOT "Participants Practice"
+                                const contentSteps = (block.sections || [])
+                                  .filter((s: { title?: string }) => !/participants\s*practice/i.test(s.title || ""))
+                                  .flatMap((s: { steps?: string[] }) => (s.steps || []).map((step: string) =>
+                                    step.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim()
+                                  ))
+                                  .filter((s: string) => s.length > 0);
+
+                                const practiceSection = (block.sections || []).find((s: { title?: string }) =>
+                                  /participants\s*practice/i.test(s.title || "")
+                                );
+                                const promptStep = (practiceSection?.steps || []).find((s: string) =>
+                                  /^(\d+\s*(?:min|m)[\s—:-]*)?prompt/i.test(s)
+                                ) || allSteps.find((s: string) => /prompt/i.test(s));
+                                const cleanActivity = promptStep
+                                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
+                                  .replace(/^prompt[:\s]*/i, "")
+                                  .trim();
+
+                                return (
+                                  <div className="pl-6 space-y-3 mt-2">
+                                    {contentSteps.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
                                         <div className="space-y-1.5">
-                                          {(section.steps || []).map((step, stepIdx) => {
-                                            const match = step.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|:)\s*(.*)/i);
-                                            const timeVal = match ? match[1] : "";
-                                            let contentText = match ? match[2] : step;
-                                            const subEmoji = getStepEmoji(contentText);
-                                            const stepMode = getStepMode(contentText, sectionMode);
-                                            const stepColors = MODE_COLORS[stepMode];
-
-                                            return (
-                                              <div key={stepIdx} className="relative flex items-center gap-2.5 group">
-                                                {/* Sub dot */}
-                                                <div 
-                                                  className="absolute left-[-19.5px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full z-10" 
-                                                  style={{ backgroundColor: stepColors.dot, opacity: 0.8, border: '1px solid white' }} 
-                                                />
-                                                
-                                                {/* Time outside */}
-                                                {timeVal ? (
-                                                  <div 
-                                                    className="w-7 shrink-0 text-[11px] font-mono font-medium text-right pr-0.5" 
-                                                    style={{ color: stepColors.border }}
-                                                  >
-                                                    {timeVal}m
-                                                  </div>
-                                                ) : (
-                                                  <div className="w-7 shrink-0" />
-                                                )}
-
-                                                {/* Content box */}
-                                                <div 
-                                                  className={`flex-1 px-3 py-2 text-sm font-body text-foreground/90 leading-relaxed flex items-center gap-2 ${contentText.toLowerCase().startsWith('activity') ? 'rounded-3xl' : 'rounded-lg'}`}
-                                                  style={{
-                                                    backgroundColor: stepColors.bgTint,
-                                                    borderWidth: '1px',
-                                                    borderStyle: contentText.toLowerCase().startsWith('prompt') ? 'dashed' : 'solid',
-                                                    borderColor: 'color-mix(in srgb, var(--hestia-text) 10%, transparent)',
-                                                    borderLeftWidth: '3px',
-                                                    borderLeftStyle: (contentText.toLowerCase().startsWith('explain') && section.title?.toLowerCase().includes('practice')) ? 'dotted' : 'solid',
-                                                    borderLeftColor: contentText.toLowerCase().startsWith('prompt') ? 'var(--hestia-phase-evaluate)' : contentText.toLowerCase().startsWith('activity') ? 'var(--hestia-phase-setup)' : stepColors.border,
-                                                  }}
-                                                >
-                                                  {subEmoji && <span className="opacity-80 shrink-0">{subEmoji}</span>}
-                                                  <span className="flex-1 min-w-0">{contentText}</span>
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
+                                          {contentSteps.map((s: string, i: number) => (
+                                            <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
+                                              style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                              <span className="shrink-0 mt-0.5 text-muted-foreground">•</span>
+                                              <span className="leading-relaxed">{s}</span>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
+                                    )}
+                                    {(cleanActivity || block.objective) && (
+                                      <div>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
+                                        </p>
+                                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
+                                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-setup)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                          {cleanActivity || block.objective}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              // ── SUMMARY: key takeaways + activity prompt ─────────────────────
+                              if (phase === "SUMMARY") {
+                                const takeawaySteps = allSteps
+                                  .filter((s: string) => /^takeaway:/i.test(s.trim()))
+                                  .map((s: string) => s.replace(/^takeaway:\s*/i, "").trim());
+                                const activityStep = allSteps.find((s: string) =>
+                                  /^\d+\s*(?:min|m)/i.test(s) && /prompt|one.minute|q&a|question/i.test(s)
+                                );
+                                const cleanActivity = activityStep
+                                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
+                                  .replace(/^(activity|prompt)[:\s]*/i, "")
+                                  .trim();
+
+                                return (
+                                  <div className="pl-6 space-y-3 mt-2">
+                                    {takeawaySteps.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
+                                        <div className="space-y-1.5">
+                                          {takeawaySteps.map((s: string, i: number) => (
+                                            <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
+                                              style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                              <span className="shrink-0 mt-0.5" style={{ color: 'var(--hestia-primary)' }}>✦</span>
+                                              <span className="leading-relaxed">{s}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {(cleanActivity || block.objective) && (
+                                      <div>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
+                                        </p>
+                                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
+                                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-primary)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
+                                          {cleanActivity || block.objective}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              // ── EVALUATE: one prompt per LG, each with its own activity ─────────────────────
+                              if (phase === "EVALUATE") {
+                                return (
+                                  <div className="pl-6 space-y-2 mt-2">
+                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                      Understanding Check
+                                    </p>
+                                    {allSteps.map((s: string, i: number) => {
+                                      const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+                                      const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•]\s*([^:]+):\s*(.*)/i);
+                                      const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
+                                      const lgNum = lgMatch ? lgMatch[1] : lgFallback ? lgFallback[1] : null;
+                                      const activity = lgMatch ? lgMatch[2].trim() : null;
+                                      const question = lgMatch ? lgMatch[3].trim() : lgFallback ? lgFallback[2].trim() : noTime;
+                                      return (
+                                        <div key={i} className="rounded-lg text-sm overflow-hidden"
+                                          style={{ border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeft: '2px solid var(--hestia-phase-evaluate)' }}>
+                                          {lgNum && (
+                                            <div className="flex items-center gap-2 px-3 py-1 border-b"
+                                              style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--hestia-text) 8%, transparent)' }}>
+                                              <span className="font-mono text-[10px] font-bold" style={{ color: 'var(--hestia-phase-evaluate)' }}>
+                                                Learning Goal {lgNum}
+                                              </span>
+                                              {activity && (
+                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                                  style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 15%, transparent)', color: 'var(--hestia-phase-evaluate)' }}>
+                                                  {activity}
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                          <div className="px-3 py-2 italic leading-relaxed"
+                                            style={{ backgroundColor: 'var(--hestia-surface)' }}>
+                                            {question}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              }
+
+                              // ── BREAK / BUFFER / custom: show objective only ──────
+                              return (
+                                <div className="pl-6 mt-2">
+                                  <p className="text-sm text-muted-foreground leading-relaxed">{block.objective || block.description}</p>
+                                </div>
+                              );
+                            })()}
                           </AccordionContent>
                         </AccordionItem>
                       );

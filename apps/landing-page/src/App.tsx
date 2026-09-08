@@ -8,6 +8,7 @@ import { PipelineSection } from "@/components/PipelineSection";
 import { MaterialSection } from "@/components/MaterialSection";
 import { ImpressumPage } from "@/components/ImpressumPage";
 import { DatenschutzPage } from "@/components/DatenschutzPage";
+import { InfoPage } from "@/components/InfoPage";
 import { SiteFooter } from "@/components/SiteFooter";
 import { TestSystemBanner } from "@/components/TestSystemBanner";
 
@@ -31,10 +32,11 @@ const App = () => {
   const hash = useHashRoute();
   const isImprint = hash === "#/impressum";
   const isPrivacy = hash === "#/datenschutz";
+  const isInfo = hash === "#/info";
 
   useEffect(() => {
-    if (isImprint || isPrivacy) window.scrollTo(0, 0);
-  }, [isImprint, isPrivacy]);
+    if (isImprint || isPrivacy || isInfo) window.scrollTo(0, 0);
+  }, [isImprint, isPrivacy, isInfo]);
 
   return (
     <LanguageProvider>
@@ -47,6 +49,8 @@ const App = () => {
               <ImpressumPage />
             ) : isPrivacy ? (
               <DatenschutzPage />
+            ) : isInfo ? (
+              <InfoPage />
             ) : (
               <>
                 <Hero />

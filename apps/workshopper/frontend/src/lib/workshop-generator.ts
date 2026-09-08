@@ -24,6 +24,7 @@ export interface WorkshopInput {
   interactionLevel?: InteractionLevel;
   selectedActivities?: string[];
   availableMaterials?: string[];
+  evaluateMappings?: { method: string; lgIds: string[] }[];
 }
 
 /** One learning goal with suggested activities (Plan Review step) */
@@ -71,13 +72,20 @@ export interface SlideData {
     | "title"
     | "agenda"
     | "standard"
+    | "default"
+    | "content"
     | "activity_tiled"
     | "activity_sidebar"
     | "activity_grid3"
+    | "activity_qanda"
+    | "activity_q&a"
     | "live_poll"
+    | "welcome"
+    | "summary"
     | "concept_map"
     | "lecture_placeholder"
-    | "debrief";
+    | "debrief"
+    | "break";
   activityInstructions?: string[];
   activityPrompt?: string;
   activityOutputExpectation?: string;
@@ -85,8 +93,14 @@ export interface SlideData {
   pollOptions?: string[];
   /** Single centred reflective question for debrief slides */
   debriefQuestion?: string;
+  /** Student-facing correct answer for debrief slides */
+  suggestedAnswer?: string;
+  /** Common misconceptions for debrief slides */
+  commonMisconceptions?: string[];
+  /** Key takeaway for debrief slides */
+  keyTakeaway?: string;
   /** Slide group from the 7-part deck structure */
-  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary";
+  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary" | "break";
   /** Learning goal index (1-based) — present on main_lecture and check_understanding slides */
   lgIndex?: number;
 }

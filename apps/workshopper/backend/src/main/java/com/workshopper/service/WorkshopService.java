@@ -246,7 +246,7 @@ public class WorkshopService {
 
         // 1. Generate title concurrently
         java.util.concurrent.CompletableFuture<String> titleFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                if (meta.title() != null && !meta.title().isBlank()) {
+                if (meta.title() != null && !meta.title().isBlank() && !isGenericTitle(meta.title())) {
                     return meta.title();
                 }
                 return generateSessionTitle(filteredSkeleton, goals, meta, sessionTypeLabel);
@@ -340,22 +340,70 @@ public class WorkshopService {
     }
 
     private String generateSessionTitle(SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel) {
-        String systemPrompt = "You are an expert learning designer. Create a short, engaging title for this workshop session. Return ONLY the title as a plain string, no quotes, no JSON.";
-        
+        // Extract topic keywords from learning goals for a grounded title
         var sb = new StringBuilder();
-        sb.append("SESSION CONTEXT:\n");
-        sb.append("- Type: ").append(sessionTypeLabel).append("\n");
-        sb.append("- Topic/Main Goal: ").append(skeleton.learningGoal() != null ? skeleton.learningGoal() : "").append("\n");
-        sb.append("LEARNING GOALS:\n");
+        sb.append("LEARNING GOALS FOR THIS SESSION:\n");
         for (int i = 0; i < goals.size(); i++) {
-            sb.append("- ").append(goals.get(i).goal()).append("\n");
+            String g = goals.get(i).goal() != null ? goals.get(i).goal() : goals.get(i).originalGoal();
+            if (g != null && !g.isBlank()) sb.append(i + 1).append(". ").append(g).append("\n");
         }
+        if (skeleton.learningGoal() != null && !skeleton.learningGoal().isBlank()) {
+            sb.append("Overall session topic: ").append(skeleton.learningGoal()).append("\n");
+        }
+        sb.append("\nTask: Write a SHORT, SPECIFIC title (3–7 words) that names the SUBJECT MATTER of this session.\n");
+        sb.append("Rules:\n");
+        sb.append("- Derive the title ONLY from the topic domain in the learning goals (e.g. 'Introduction to Neural Networks', 'Bayesian Inference Fundamentals', 'Decision Trees and Model Evaluation').\n");
+        sb.append("- Do NOT use generic words: Lecture, Session, Workshop, Seminar, Course, Class, Learning, or Training.\n");
+        sb.append("- Do NOT start with 'An Introduction to' — just name the topic directly.\n");
+        sb.append("- Return ONLY the title as a plain string. No quotes. No JSON. No prefix.\n");
+
+        String systemPrompt = "You are an expert learning designer naming a " + sessionTypeLabel + " from its learning goals. Return ONLY the title — a plain string, no quotes, no JSON.";
+
         try {
-            return llm.call(systemPrompt, sb.toString()).trim().replaceAll("^\"|\"$", "");
+            String raw = llm.call(systemPrompt, sb.toString()).trim()
+                    .replaceAll("^[\"|']+|[\"|']+$", "") // strip surrounding quotes
+                    .replaceAll("(?i)^title:\\s*", "");   // strip "Title:" prefix if LLM adds it
+            // If LLM still returned only the sessionTypeLabel, use fallback
+            if (raw.equalsIgnoreCase(sessionTypeLabel) || raw.equalsIgnoreCase(sessionTypeLabel + " session") || raw.isBlank()) {
+                log.warn("Title generation returned generic value '{}', using LG-derived fallback", raw);
+                return deriveTitleFromGoals(goals, sessionTypeLabel);
+            }
+            return raw;
         } catch (Exception e) {
             log.warn("Failed to generate title, using fallback", e);
-            return "Workshop Session Plan";
+            return deriveTitleFromGoals(goals, sessionTypeLabel);
         }
+    }
+
+    /** Hard fallback: extract the first noun phrase from the first LG's verb object. */
+    private String deriveTitleFromGoals(List<LearningGoalPlanDto> goals, String sessionTypeLabel) {
+        if (goals != null && !goals.isEmpty()) {
+            String g = goals.get(0).goal() != null ? goals.get(0).goal() : goals.get(0).originalGoal();
+            if (g != null && !g.isBlank()) {
+                // Strip leading "Participants will be able to [verb] " and take the rest (up to 60 chars)
+                String stripped = g.replaceAll("(?i)^participants will be able to \\w+\\s+", "").trim();
+                if (!stripped.isBlank()) {
+                    String title = stripped.length() > 60 ? stripped.substring(0, 60).trim() : stripped;
+                    return Character.toUpperCase(title.charAt(0)) + title.substring(1);
+                }
+            }
+        }
+        return sessionTypeLabel + " — Session Plan";
+    }
+
+    /**
+     * Returns true if the title is just a generic auto-generated session-type label
+     * (i.e. was never meaningfully set by the user) and should be regenerated.
+     */
+    private boolean isGenericTitle(String title) {
+        if (title == null) return true;
+        String t = title.trim().toLowerCase();
+        return t.equals("lecture") || t.equals("lecture session") ||
+               t.equals("workshop") || t.equals("workshop session") ||
+               t.equals("exercise session") || t.equals("seminar") ||
+               t.equals("practical course") || t.equals("other") ||
+               t.equals("workshop session plan") || t.contains(" — session plan") ||
+               t.equals("session plan");
     }
 
     private String buildHydrationPromptForBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton,
@@ -391,6 +439,62 @@ public class WorkshopService {
         sb.append("\nTARGET BLOCK TO HYDRATE:\n");
         sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(targetBlock));
 
+        // ── Custom EVALUATE time budget ────────────────────
+        int totalEvalMin = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
+        
+        var evaluateMappingStr = new StringBuilder();
+        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
+            int timePerBox = Math.max(1, totalEvalMin / meta.evaluateMappings().size());
+            int boxIdx = 1;
+            for (var mapping : meta.evaluateMappings()) {
+                evaluateMappingStr.append("Activity Box ").append(boxIdx).append(" (").append(timePerBox).append(" min):\n");
+                evaluateMappingStr.append("  - Activity Method: ").append(mapping.method()).append("\n");
+                evaluateMappingStr.append("  - Assigned Learning Goals:\n");
+                for (String lgId : mapping.lgIds()) {
+                    for (int j = 0; j < goals.size(); j++) {
+                        if (lgId.equals(goals.get(j).id())) {
+                            evaluateMappingStr.append("      LG").append(j + 1).append(": ").append(goals.get(j).goal()).append("\n");
+                        }
+                    }
+                }
+                evaluateMappingStr.append("\n");
+                boxIdx++;
+            }
+        }
+
+        String evaluateRules;
+        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
+            evaluateRules = """
+                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP for each Activity Box requested by the user.
+                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
+                            
+                            REQUESTED ACTIVITY BOXES:
+%s
+                            
+                            For each Activity Box, generate exactly ONE step describing the activity.
+                            Format: "{box_minutes} min — Combined · [{method}]: [unified scenario/task description testing the assigned LGs] (Instructor note: which parts exercise which LGs)"
+                            - If only ONE Learning Goal is assigned to the box, simplify the format to targeting ONLY that LG:
+                              Format: "{box_minutes} min — Prompt LG[N] · [{method}]: [specific question or task targeting ONLY this LG]"
+                            - Strictly follow the requested 'Activity Method' for each box.
+                            - Ignore any Learning Goals that are not assigned to any Activity Box.
+                            - The methods list on the block should include ALL distinct activities used.
+                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
+""".formatted(evaluateMappingStr.toString());
+        } else {
+            evaluateRules = """
+                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP representing an integrative scenario/case/task that naturally requires applying ALL Learning Goals together.
+                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
+                            Do NOT sub-label the task by LG — the scenario itself should be unified.
+                            Format: "%d min — Combined · [ActivityName]: [unified scenario/task description] (Instructor note: which parts exercise which LGs)"
+                            - Pick the activity type from the SELECTED ACTIVITIES list, or choose whichever activity best fits a multi-LG integrative scenario.
+                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
+""".formatted(totalEvalMin);
+        }
+
+        String selectedActivitiesStr = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty())
+                ? String.join(", ", meta.selectedActivities())
+                : "use best pedagogical judgment (e.g. Case Study, Think-Pair-Share, Debate, Design Sprint)";
+
         int totalDur = meta.duration() > 0 ? meta.duration() : 90;
         int minClosingTime = (int) Math.round(totalDur * 0.13);
         int maxClosingTime = (int) Math.round(totalDur * 0.20);
@@ -406,20 +510,28 @@ public class WorkshopService {
                         1. DO NOT invent or elaborate on the teaching content. Focus entirely on the PROCESS.
                         2. Keep the step descriptions short and precise. Avoid fluff.
                         3. Each step in the todo list should be timed and action-oriented. Do NOT use the word "instructor".
+                        3. Within a learning cycle block, the "You explain" section MUST list the key knowledge points the instructor will teach. Break it down into 3-5 specific, timed steps covering the key concepts (e.g. "3 min - Explain: Concept A"). Do NOT just generate a single step saying "10 min - Lecture on X". Do NOT include explanations of activities here.
                         4. Within a learning cycle block, the "Participants Practice" section MUST be led by the chosen activity and ideally broken down into these four distinct steps:
                            - Explain (e.g., "1 min - Explain: [provide highly specific, step-by-step instructions]")
                            - Prompt (e.g., "1 min - Prompt: [insert the detailed prompt]")
                            - Activity (e.g., "6 min - Activity: students do the activity in pairs")
                            - Summarize (e.g., "2 min - Summarize: [insert possible answers]")
-                        5. Match activities to the SELECTED ACTIVITIES list where appropriate.
+                        5. VARIETY IS REQUIRED for LEARNING_CYCLE blocks: Always check what activities are already assigned to other LEARNING_CYCLE blocks in the FULL SESSION OUTLINE. Assign a DIFFERENT activity to this block — do NOT repeat any activity that has already been used in another LG cycle unless every option from the SELECTED ACTIVITIES list has already been used. Draw from the full SELECTED ACTIVITIES list and spread them evenly across all LG cycles. Do not default to any single activity.
                         6. Every section's steps must sum exactly to that section's duration.
                         7. CRITICAL: Do NOT change the `phase`, `lgIndex`, section titles, or section durations from what is provided in the target block.
-                        8. For non-learning-cycle blocks (ARRIVE, ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
+                        8. For ARRIVE blocks, do NOT generate process steps. Instead, the single section MUST contain exactly one step per learning goal from the LEARNING GOALS list — copy each goal verbatim as its own step string, with NO time prefix. Example: if there are 3 LGs, output exactly 3 steps: ["LG1 text verbatim", "LG2 text verbatim", "LG3 text verbatim"].
+                           For all other non-learning-cycle blocks (ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
                         9. The 'phaseLabel' should be a short, topic-focused title.
-                        10. Do NOT list "Lecture" or "Presentation" under 'methods'.
-                        11. When generating an 'Understanding Check', design it for active peer instruction. The activity in this block MUST prompt regarding ALL learning goals of the session (e.g. assessing all LGs combined), instead of just asking one question for a single learning goal. If using polls, include a step for students to discuss mixed results with a neighbor. Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block. Limit this block to a maximum of 1 activity (methods), or 0 if unnecessary.
-                        12. When generating a 'Summary & Wrap-up' block, shift the cognitive load to the participants. Do NOT generate passive, sequential reviews of learning goals (e.g., 'Review LG1'). Generate student-centered synthesis activities (e.g., 'One-Minute Paper', or having students state takeaways). Consolidate all final Q&A, logistics, and the formal session closure into a single, final step lasting no more than 3 minutes. CRITICAL: Keep the phaseLabel strictly as "Summary & Wrap-up" (do not rename it to "Synthesis & Closure" or anything else). Limit this block to a maximum of 1 activity (methods), or 0 if unnecessary.
+                        10. Do NOT list "Lecture" or "Presentation" under 'methods'. Furthermore, 'Q&A Session' is strictly reserved for the 'Summary & Wrap-up' block and MUST NOT be generated in any other blocks.
+                        %s
+
+                        12. When generating a 'Summary & Wrap-up' block:
+                            a) Start with one 'Takeaway: [key concept]' step per learning goal (no time prefix, just the text "Takeaway: [concise statement of the main concept]"). These are NOT timed.
+                            b) Then choose EXACTLY ONE student-centered closing activity based on the overall complexity of the session: if the content is highly complex, use a 'One-Minute Paper'; if it is simple/foundational, use a 'Q&A Session'.
+                            c) Consolidate final logistics into one step ≤ 3 min.
+                            d) Keep the phaseLabel strictly as "Summary & Wrap-up". Limit methods to 1 activity or 0 if unnecessary.
                         13. Ensure the combined duration of the final evaluation and wrap-up blocks is strictly between %d and %d minutes. To maintain momentum, no single sub-step within these final blocks should exceed 4 minutes.
+                        14. When generating an 'Activate Prior Knowledge' (ACTIVATE) block, strictly limit the block to exactly ONE activity. Do NOT generate multiple different activities for this block.
 
                         OUTPUT FORMAT (return only this JSON object, no markdown):
                         {
@@ -434,7 +546,9 @@ public class WorkshopService {
                               "title": "You explain",
                               "duration": 10,
                               "steps": [
-                                "10 min — Lecture on [topic of LG1] using slides"
+                                "3 min — Explain: First key concept",
+                                "4 min — Explain: Second key concept",
+                                "3 min — Explain: Third key concept"
                               ],
                               "methods": [],
                               "materials": ["Slides"]
@@ -453,7 +567,9 @@ public class WorkshopService {
                             }
                           ]
                         }
-                        """, minClosingTime, maxClosingTime));
+                        """,
+                evaluateRules,
+                minClosingTime, maxClosingTime));
 
         return sb.toString();
     }

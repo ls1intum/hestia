@@ -76,8 +76,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
         const chunk = session.blocks.slice(i, i + concurrencyLimit);
         const promises = chunk.map(async (block, chunkIdx) => {
           const actualIdx = i + chunkIdx;
-          // Skip BUFFER and BREAK blocks — no slides generated for these
-          if (block.phase === "BUFFER" || block.phase === "BREAK") {
+          // Skip BUFFER blocks — no slides generated for these
+          if (block.phase === "BUFFER") {
             return { idx: actualIdx, slides: [] };
           }
           const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/block-slides", {
@@ -232,22 +232,28 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       for (const [key, val] of Object.entries(obj)) {
         const strVal = coerceToString(val);
         if (!strVal) continue;
-        
+
         // Convert camelCase/snake_case to Title Case (e.g., answerKey -> Answer Key)
         let label = key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
         label = label.charAt(0).toUpperCase() + label.slice(1);
-        
+
         lines.push(`${label}: ${strVal}`);
       }
       if (lines.length > 0) return lines.join("\n");
-      
+
       return "";
     }
     return String(value);
   };
 
-  const renderBoldPlaceholders = (text: unknown) => {
+  const cleanBullet = (text: unknown) => {
     const str = coerceToString(text);
+    if (!str) return "";
+    return str.trim().replace(/^([a-zA-Z][\.\)]|[0-9]+[\.\)]|[-•])\s*/, "");
+  };
+
+  const renderBoldPlaceholders = (text: unknown) => {
+    const str = cleanBullet(text);
     if (!str) return null;
     const parts = str.split(/(\[.*?\])/g);
     return parts.map((part, index) => {
@@ -259,16 +265,35 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   };
 
   const renderSlideHtml = (index: number) => {
+    // ── Template colours ─────────────────────────────────────────────────────
+    const CREAM = '#F8F7F6';
+    const CREAM2 = '#DFDEDD';
+    const DARK = '#2C2420';
+    const MUTED = '#6B6663';
+    const GREEN = '#059669'; // pair / small group
+    const BLUE = '#2563EB'; // individual / Q&A
+    const ORANGE = '#EA580C'; // whole class
+    const PURPLE = '#6D28D9'; // lecture / reflect
+    const BROWN = '#865C1D'; // title / brand
+
+    const titleFont = "'Playfair Display', 'Georgia', serif";
+    const bodyFont = "'Inter', 'system-ui', sans-serif";
+
+    // ── Title slide (index 0) ────────────────────────────────────────────────
     if (index === 0) {
       return (
-        <div style={{ background: '#ffffff' }} className="w-full h-full flex flex-col justify-center px-12 text-left">
-          <div style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', color: 'var(--hestia-primary)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>
-            {meta?.sessionType || "Lecture Slides"}
+        <div style={{ background: CREAM, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 48px', position: 'relative', overflow: 'hidden' }}>
+          {/* left accent stripe */}
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, background: BROWN }} />
+          {/* eyebrow */}
+          <div style={{ fontFamily: bodyFont, fontSize: '1.1rem', fontWeight: 600, color: BROWN, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12, paddingLeft: 8 }}>
+            WORKSHOP SESSION
           </div>
-          <h1 style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--hestia-text)', lineHeight: 1.2, marginBottom: '24px' }}>
-            {session.title || "Workshop Session"}
+          {/* title */}
+          <h1 style={{ fontFamily: titleFont, fontSize: '3rem', fontWeight: 700, color: DARK, lineHeight: 1.2, marginBottom: 20, paddingLeft: 8 }}>
+            {session.title || 'Workshop Session'}
           </h1>
-          <div style={{ height: '4px', width: '64px', background: 'var(--hestia-primary)' }} />
+          <div style={{ height: 3, width: 48, background: GREEN, marginLeft: 8 }} />
         </div>
       );
     }
@@ -276,164 +301,304 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     const slideData = allCachedSlides[index - 1];
     if (!slideData) return null;
 
-    let block = undefined;
-    let flatIndex = 0;
-    for (let i = 0; i < session.blocks.length; i++) {
-      const blockSlides = slidesCache[i] || [];
-      if (index - 1 >= flatIndex && index - 1 < flatIndex + blockSlides.length) {
-         block = session.blocks[i];
-         break;
+    // ── Determine accent colour from layout / activity type ─────────────────
+    const layout = slideData.layout || '';
+    const titleLow = (slideData.title || '').toLowerCase();
+
+    let accent = GREEN;
+    if (layout === 'lecture_placeholder' || layout === 'debrief') accent = PURPLE;
+    else if (layout === 'live_poll' || layout === 'activity_qanda' || layout === 'activity_q&a') accent = ORANGE;
+    else if (titleLow.includes('debate') || titleLow.includes('brainstorm') || titleLow.includes('quiz') || titleLow.includes('poll')) accent = ORANGE;
+    else if (layout === 'activity_sidebar' && (titleLow.includes('hands') || titleLow.includes('worked'))) accent = BLUE;
+
+    // ── Shared slide shell ──────────────────────────────────────────────────
+    const shell = (children: React.ReactNode, extraBg?: string) => {
+      let displayTitle = slideData.title || 'Slide';
+      let activityType: string | null = (slideData as any).activityName || null;
+      let isActivityLayout = false;
+
+      if (layout && (layout.startsWith('activity_') || layout === 'live_poll' || layout === 'debrief')) {
+        isActivityLayout = true;
+        const colonIdx = displayTitle.indexOf(':');
+        if (colonIdx > 0 && colonIdx < displayTitle.length - 1) {
+          if (!activityType) {
+            activityType = displayTitle.substring(0, colonIdx).trim();
+          }
+          displayTitle = displayTitle.substring(colonIdx + 1).trim();
+        }
       }
-      flatIndex += blockSlides.length;
+      
+      const group = (slideData as any).group;
+      const rawTopic = (slideData as any).topic || slideData.subtitle || displayTitle;
+      const topicVal = rawTopic.replace(/\s*-\s*LG\s*\d+/i, '').trim();
+
+      if (activityType === 'DEBRIEF') {
+        activityType = '🔄 DEBRIEF';
+      }
+
+      let headerText = slideData.subtitle || 'Phase';
+      if (group === 'welcome') {
+        headerText = '👋 WELCOME';
+      } else if (group === 'agenda') {
+        headerText = '🗂️ AGENDA';
+      } else if (group === 'activate_prior_knowledge') {
+        headerText = isActivityLayout ? 'ACTIVATE' : '📖 LECTURE';
+      } else if (group === 'main_lecture') {
+        if (layout === 'debrief') {
+          headerText = topicVal || 'DEBRIEF';
+        } else if (isActivityLayout) {
+          headerText = topicVal || 'ACTIVITY';
+        } else {
+          headerText = '📖 LECTURE';
+        }
+      } else if (group === 'check_understanding') {
+        headerText = 'CHECK UNDERSTANDING';
+      } else if (group === 'summary') {
+        headerText = '📝 SUMMARY';
+      }
+
+      return (
+        <div style={{ background: extraBg || CREAM, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+          {/* left accent stripe */}
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: accent }} />
+          {/* header */}
+          <div style={{ paddingLeft: 20, paddingRight: 16, paddingTop: 12, paddingBottom: 8, borderBottom: `1px solid ${CREAM2}`, flexShrink: 0 }}>
+            <div style={{ fontFamily: bodyFont, fontSize: '0.65rem', fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
+              {activityType
+                ? <><span style={{ color: accent, fontWeight: 800 }}>{activityType}</span> - {headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
+                : <>{headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
+              }
+            </div>
+            {!isActivityLayout && (
+              <h2 style={{ fontFamily: titleFont, fontSize: '1.6rem', fontWeight: 700, color: DARK, lineHeight: 1.2, margin: 0 }}>
+                {layout === 'lecture_placeholder' && !displayTitle.includes('[Placeholder]') ? `[Placeholder] ${displayTitle}` : displayTitle}
+              </h2>
+            )}
+          </div>
+          {/* body */}
+          <div style={{ flex: 1, paddingLeft: 20, paddingRight: 16, paddingTop: 10, paddingBottom: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {children}
+          </div>
+        </div>
+      )
+    };
+
+    // ── Agenda / content bullets ─────────────────────────────────────────────
+    if (layout === 'agenda' || slideData.group === 'agenda') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 }}>
+          {slideData.bullets?.map((b, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <span style={{ fontFamily: bodyFont, fontSize: '1.5rem', fontWeight: 700, color: accent }}>{i + 1}</span>
+              <span style={{ fontFamily: bodyFont, fontSize: '1.25rem', color: DARK, lineHeight: 1.4, marginTop: 4 }}>
+                {renderBoldPlaceholders(b)}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
     }
 
-    const phaseName = block?.phase?.toLowerCase() || 'setup';
-    let borderColor = 'var(--hestia-phase-setup)';
-    if (phaseName.includes('lecture') || phaseName.includes('arrive') || phaseName.includes('intro')) borderColor = 'var(--hestia-phase-lecture)';
-    if (phaseName.includes('practice') || phaseName.includes('cycle') || phaseName.includes('activate')) borderColor = 'var(--hestia-phase-practice)';
-    if (phaseName.includes('evaluate') || phaseName.includes('check')) borderColor = 'var(--hestia-phase-evaluate)';
-    if (phaseName.includes('summary') || phaseName.includes('wrap')) borderColor = 'var(--hestia-phase-summary)';
-
-    return (
-      <div style={{ background: '#ffffff', borderLeft: `4px solid ${borderColor}` }} className="w-full h-full flex flex-col pt-4 pb-4 px-6 text-left relative overflow-hidden rounded-r-md">
-        <div className="mb-3 shrink-0">
-          {slideData.subtitle && (
-            <div style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.45rem', color: 'var(--hestia-text-muted)', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.05em' }}>
-              {slideData.subtitle}
-            </div>
-          )}
-          <h2 style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '1rem', fontWeight: 'bold', color: 'var(--hestia-text)', lineHeight: 1.2 }}>
-            {slideData.title || "Slide"}
-          </h2>
-        </div>
-
-        <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-          {slideData.layout === 'activity_tiled' ? (
-            <div className="grid grid-cols-2 gap-2 h-full">
-              <div className="col-span-2 border rounded p-2 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderLeft: `2px solid ${borderColor}`, borderColor: 'var(--hestia-border)' }}>
-                <h3 className="text-xs font-bold mb-1 flex items-center gap-1" style={{ color: borderColor }}>
-                  <span>📝</span> The Prompt
-                </h3>
-                <p className="text-xs leading-snug text-gray-900">{slideData.activityPrompt || "Prompt placeholder"}</p>
-              </div>
-              <div className="border rounded p-2 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderColor: 'var(--hestia-border)' }}>
-                 <h3 className="text-xs font-bold mb-1 flex items-center gap-1" style={{ color: borderColor }}>
-                   <span>⏱️</span> Instructions
-                 </h3>
-                 <ul className="text-[10px] text-gray-900 leading-snug list-disc pl-3 m-0 space-y-0.5">
-                   {slideData.activityInstructions?.map((inst, i) => <li key={i}>{renderBoldPlaceholders(inst)}</li>)}
-                 </ul>
-              </div>
-              <div className="border rounded p-2 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderColor: 'var(--hestia-border)' }}>
-                 <h3 className="text-xs font-bold mb-1 flex items-center gap-1" style={{ color: borderColor }}>
-                   <span>🎯</span> Output Expectation
-                 </h3>
-                 <p className="text-[10px] leading-snug text-gray-900 italic">{slideData.activityOutputExpectation || "Expectation placeholder"}</p>
-              </div>
-            </div>
-          ) : slideData.layout === 'activity_sidebar' ? (
-            <div className="flex gap-2 h-full">
-              <div className="flex-[2] border rounded p-3 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderLeft: `2px solid ${borderColor}`, borderColor: 'var(--hestia-border)' }}>
-                <h3 className="text-xs font-bold mb-2 flex items-center gap-1" style={{ color: borderColor }}>
-                  <span>🌍</span> The Scenario / Task
-                </h3>
-                <p className="text-xs leading-relaxed text-gray-900">{slideData.activityPrompt || "Prompt placeholder"}</p>
-              </div>
-              <div className="flex-[1] border rounded p-3 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderColor: 'var(--hestia-border)' }}>
-                <h3 className="text-xs font-bold mb-2 flex items-center gap-1" style={{ color: borderColor }}>
-                  <span>📋</span> Details
-                </h3>
-                <ul className="text-[10px] text-gray-900 leading-snug list-disc pl-3 m-0 space-y-1.5">
-                  {slideData.activityInstructions?.map((inst, i) => <li key={i}>{renderBoldPlaceholders(inst)}</li>)}
-                </ul>
-              </div>
-            </div>
-          ) : slideData.layout === 'activity_grid3' ? (
-            <div className="flex flex-col gap-2 h-full">
-              <div className="flex-1 border rounded p-4 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderLeft: `2px solid ${borderColor}`, borderColor: 'var(--hestia-border)' }}>
-                <p className="text-sm font-semibold leading-relaxed text-gray-900">{slideData.activityPrompt || "Prompt placeholder"}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {slideData.activityInstructions?.slice(0, 3).map((inst, i) => {
-                  const parts = inst.split(':');
-                  const title = parts[0];
-                  const body = parts.slice(1).join(':').trim();
-                  return (
-                    <div key={i} className="border rounded p-2 flex flex-col justify-center" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderColor: 'var(--hestia-border)' }}>
-                      <h3 className="text-[10px] font-bold mb-1" style={{ color: borderColor }}>
-                        {i + 1}. {title}
-                      </h3>
-                      <p className="text-[9px] leading-snug text-gray-900 m-0">{body}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : slideData.layout === 'live_poll' ? (
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1 pr-4">
-                <p className="text-[0.9rem] font-bold text-gray-900 mb-2 leading-snug">{slideData.pollQuestion || "Poll Question Placeholder"}</p>
-                <div className="flex flex-col gap-1.5">
-                  {slideData.pollOptions?.map((opt, i) => (
-                    <div key={i} className="border rounded px-2 py-1 font-medium text-[10px]" style={{ background: 'color-mix(in srgb, var(--hestia-text) 3%, var(--hestia-surface))', borderColor: 'var(--hestia-border)' }}>
-                      {opt}
-                    </div>
-                  ))}
+    // ── Think-Pair-Share / Worked Problem (activity_grid3) ──────────────────
+    if (layout === 'activity_grid3') {
+      const steps = slideData.activityInstructions && slideData.activityInstructions.length > 0
+        ? slideData.activityInstructions.slice(0, 3)
+        : ['[THINK (2 min)]', '[PAIR (2 min)]', '[SHARE (1 min)]'];
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
+          <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '1.2rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+              {slideData.activityPrompt || 'Activity prompt'}
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, flex: 1 }}>
+            {steps.map((step, i) => {
+              const cleanStep = step.replace(/^\d+[\.\)]\s*/, '');
+              return (
+                <div key={i} style={{ background: accent, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px', textAlign: 'center' }}>
+                  <span style={{ fontFamily: bodyFont, fontSize: '1.05rem', fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{renderBoldPlaceholders(cleanStep)}</span>
                 </div>
-              </div>
-              <div className="flex flex-col items-center justify-center pl-4 border-l border-dashed" style={{ borderColor: 'var(--hestia-border)' }}>
-                 <div className="w-[60px] h-[60px] border-2 border-dashed rounded flex items-center justify-center font-semibold mb-2" style={{ background: 'color-mix(in srgb, var(--hestia-text) 5%, var(--hestia-surface))', borderColor: 'var(--hestia-border)', color: 'var(--hestia-text-muted)', fontSize: '8px' }}>
-                     [ QR ]
-                 </div>
-                 <div className="text-center font-bold text-[10px]">
-                   <p className="text-[8px]">menti.com</p>
-                   <p className="text-xs font-mono tracking-widest mt-0.5">1234</p>
-                 </div>
-              </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Group Discussion / Debate (activity_tiled) ───────────────────────────
+    if (layout === 'activity_tiled') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: '100%' }}>
+          <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}`, flex: 1 }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+              {slideData.activityPrompt || 'Discussion prompt'}
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>LOGISTICS</div>
+              <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                {(slideData.activityInstructions || []).map((inst, i) => {
+                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
+                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, marginBottom: 4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
+                })}
+              </ul>
             </div>
-          ) : slideData.layout === 'concept_map' ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-2">
-               <h3 className="text-[0.9rem] mb-2 font-bold" style={{ color: 'var(--hestia-primary)' }}>One-Minute Paper</h3>
-               <div className="text-[10px] max-w-lg text-left space-y-2">
-                 {slideData.bullets?.map((bullet, i) => (
-                   <p key={i} className="leading-snug">
-                     {renderBoldPlaceholders(typeof bullet === 'string' ? bullet : String(bullet))}
-                   </p>
-                 ))}
-               </div>
-            </div>
-          ) : slideData.layout === 'lecture_placeholder' ? (
-            // Lecture placeholder — instructor inserts own content here
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-              <div className="border-2 border-dashed rounded-lg p-6 w-full max-w-lg" style={{ borderColor: 'var(--hestia-phase-lecture)', background: 'color-mix(in srgb, var(--hestia-phase-lecture) 5%, white)' }}>
-                <div className="text-2xl mb-3">📖</div>
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--hestia-phase-lecture)' }}>INSTRUCTOR LECTURE CONTENT</p>
-                <p className="text-[10px] leading-snug" style={{ color: 'var(--hestia-text-muted)' }}>
-                  {slideData.bullets?.[0] ?? "Insert your lecture slides here"}
-                </p>
-              </div>
-            </div>
-          ) : slideData.layout === 'debrief' ? (
-            // Per-cycle debrief — single centred reflective question
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-              <div className="text-xl mb-3">💬</div>
-              <p className="text-sm italic leading-relaxed max-w-md font-medium" style={{ color: 'var(--hestia-text)' }}>
-                {slideData.debriefQuestion
-                  ? slideData.debriefQuestion
-                  : slideData.bullets?.[0] ?? "Reflect on what you just learned."}
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>DELIVERABLE</div>
+              <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
+                {slideData.activityOutputExpectation || ''}
               </p>
             </div>
-          ) : (
-            slideData.bullets?.map((bullet, i) => (
-              <div key={i} className="flex items-start gap-1.5 mb-1">
-                <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: borderColor, marginTop: '6px', flexShrink: 0 }} />
-                <p style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '0.8rem', fontWeight: '500', color: 'var(--hestia-text)', lineHeight: 1.3 }}>
-                  {renderBoldPlaceholders(typeof bullet === 'string' ? bullet : String(bullet))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Hands-on / Case Study (activity_sidebar) ─────────────────────────────
+    if (layout === 'activity_sidebar') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
+          {slideData.activityPrompt && (
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+              <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+                {slideData.activityPrompt}
+              </p>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+            <div style={{ flex: 2, background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 8 }}>INSTRUCTIONS</div>
+              <ol style={{ margin: 0, paddingLeft: 20, listStyle: 'decimal' }}>
+                {(slideData.activityInstructions || []).map((inst, i) => {
+                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
+                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '1.05rem', color: DARK, marginBottom: 6, lineHeight: 1.4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
+                })}
+              </ol>
+            </div>
+            {slideData.activityOutputExpectation && (
+              <div style={{ flex: 1, background: CREAM2, borderRadius: 4, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase' }}>DELIVERABLE</div>
+                <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+                  {slideData.activityOutputExpectation}
                 </p>
               </div>
-            ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Q&A ─────────────────────────────────────────────────────────────────
+    if (layout === 'activity_qanda' || layout === 'activity_q&a') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
+          <div style={{ fontSize: '3rem' }}>🙋</div>
+          <p style={{ fontFamily: titleFont, fontSize: '1.6rem', fontWeight: 700, color: DARK, textAlign: 'center', margin: 0 }}>
+            {slideData.activityPrompt || 'What questions do you have?'}
+          </p>
+          <p style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: MUTED, textAlign: 'center', margin: 0 }}>
+            {slideData.notes || ''}
+          </p>
+        </div>
+      );
+    }
+
+    // ── Quiz / Poll ──────────────────────────────────────────────────────────
+    if (layout === 'live_poll') {
+      const letters = ['A', 'B', 'C', 'D'];
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+          <p style={{ fontFamily: titleFont, fontSize: '1.35rem', fontWeight: 700, color: DARK, lineHeight: 1.3, margin: 0, borderLeft: `3px solid ${ORANGE}`, paddingLeft: 10 }}>
+            {slideData.pollQuestion || 'Poll question'}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
+            {(slideData.pollOptions || []).map((opt, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: CREAM2, borderRadius: 4, padding: '6px 10px' }}>
+                <span style={{ fontFamily: bodyFont, fontSize: '0.95rem', fontWeight: 800, color: '#fff', background: ORANGE, borderRadius: 3, padding: '2px 7px', flexShrink: 0 }}>{letters[i]}</span>
+                <span style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK }}>{renderBoldPlaceholders(opt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Lecture placeholder ──────────────────────────────────────────────────
+    if (layout === 'lecture_placeholder') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 10 }}>
+          <div style={{ fontSize: '2.8rem' }}>📖</div>
+          <p style={{ fontFamily: bodyFont, fontSize: '0.85rem', fontWeight: 600, color: PURPLE, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>INSTRUCTOR LECTURE CONTENT</p>
+          <div style={{ background: CREAM2, borderRadius: 6, padding: '10px 18px', textAlign: 'center', borderLeft: `3px solid ${PURPLE}`, maxWidth: '80%' }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: MUTED, margin: 0, lineHeight: 1.4 }}>
+              {slideData.bullets?.[0] ?? 'Add your own slides for this section'}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Debrief / Reflect ────────────────────────────────────────────────────
+    if (layout === 'debrief') {
+      const misconceptions = slideData.commonMisconceptions || [];
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
+          {/* Suggested answer */}
+          <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${PURPLE}` }}>
+            <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>SUGGESTED ANSWER</div>
+            <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, lineHeight: 1.4 }}>
+              {slideData.suggestedAnswer || ''}
+            </p>
+          </div>
+          {/* Misconceptions */}
+          {misconceptions.length > 0 && (
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px' }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>COMMON MISCONCEPTIONS</div>
+              <ul style={{ margin: 0, paddingLeft: 14, listStyle: 'disc' }}>
+                {misconceptions.map((mc: string, i: number) => (
+                  <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 2 }}>{renderBoldPlaceholders(mc)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Key takeaway */}
+          {slideData.keyTakeaway && (
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px', borderLeft: `3px solid ${PURPLE}` }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 3 }}>KEY TAKEAWAY</div>
+              <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, fontStyle: 'italic', lineHeight: 1.4 }}>
+                {slideData.keyTakeaway}
+              </p>
+            </div>
           )}
         </div>
+      );
+    }
+
+    // ── Break ────────────────────────────────────────────────────────────────
+    if (slideData.group === 'break') {
+      return (
+        <div style={{ background: CREAM, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <div style={{ fontSize: '3.5rem' }}>☕</div>
+          <h2 style={{ fontFamily: titleFont, fontSize: '2rem', fontWeight: 700, color: DARK, margin: 0 }}>Break</h2>
+          <p style={{ fontFamily: bodyFont, fontSize: '1.05rem', color: MUTED, margin: 0 }}>
+            {slideData.bullets?.[0] || '10 minutes — see you soon!'}
+          </p>
+        </div>
+      );
+    }
+
+    // ── Default: content bullets ─────────────────────────────────────────────
+    return shell(
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {(slideData.bullets || []).map((bullet, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: accent, marginTop: 7, flexShrink: 0 }} />
+            <p style={{ fontFamily: bodyFont, fontSize: '1rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+              {renderBoldPlaceholders(typeof bullet === 'string' ? bullet : String(bullet))}
+            </p>
+          </div>
+        ))}
       </div>
     );
   };
@@ -592,7 +757,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                 <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-50 border border-emerald-200">
                   <Check className="h-3 w-3 text-emerald-600" />
                   <span className="text-emerald-700" style={{ fontSize: '0.75rem', fontFamily: 'var(--hestia-font-mono)', fontWeight: 500 }}>
-                    {allCachedSlides.length} slides generated
+                    {allCachedSlides.length + 1} slides generated
                   </span>
                 </div>
               )}

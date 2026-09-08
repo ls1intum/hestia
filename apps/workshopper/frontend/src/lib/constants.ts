@@ -107,7 +107,11 @@ export const getStepEmoji = (text: string) => {
   if (t.includes("lecture") || t.includes("presentation") || t.includes("explain") || t.includes("concept")) return "🧑‍🏫";
   if (t.includes("prompt") || t.includes("question") || t.includes("q&a") || t.includes("quiz")) return "❓";
   if (t.includes("activity") || t.includes("exercise") || t.includes("practice")) return "🛠️";
-  if (t.includes("discuss") || t.includes("debate") || t.includes("share")) return "💬";
+  if (t.includes("concept map")) return "🗺️";
+  if (t.includes("worked problem")) return "📝";
+  if (t.includes("debate")) return "⚖️";
+  if (t.includes("design sprint") || t.includes("prototype")) return "🚀";
+  if (t.includes("discuss") || t.includes("share")) return "💬";
   if (t.includes("brainstorm") || t.includes("ideate")) return "💡";
   if (t.includes("review") || t.includes("feedback") || t.includes("evaluate")) return "✅";
   if (t.includes("welcome") || t.includes("intro")) return "👋";
@@ -128,6 +132,8 @@ export const DEFAULT_ACTIVITIES = [
   "Group Discussion", "Case Study", "Role Play",
   "Hands-on Practice", "Quiz / Polls", "Q&A Session",
   "Peer Review", "Brainstorming", "Think-Pair-Share",
+  "Concept Mapping", "Worked Problem", "Debate", 
+  "Design Sprint / Prototype Challenge"
 ];
 
 export interface ActivityInfo {
@@ -149,6 +155,8 @@ export const ACTIVITY_GROUPS: ActivityGroup[] = [
     activities: [
       { emoji: "✅", name: "Quiz / Polls", desc: "Short, structured questions used to check understanding, gather opinions, or gauge the room in real time. Quick to run and useful for engagement or knowledge checks." },
       { emoji: "🛠️", name: "Hands-on Practice", desc: "A guided, practical exercise where participants directly apply a skill or tool themselves rather than just observing. Reinforces learning through doing and immediate feedback." },
+      { emoji: "🗺️", name: "Concept Mapping", desc: "Learner draws relationships between concepts. This is the single best individual activity for mapping relational or extended abstract knowledge." },
+      { emoji: "📝", name: "Worked Problem", desc: "A problem with a known correct path, useful when you want to assess apply before moving to open-ended practice." },
     ],
   },
   {
@@ -166,6 +174,7 @@ export const ACTIVITY_GROUPS: ActivityGroup[] = [
       { emoji: "🎭", name: "Role Play", desc: "Participants act out defined roles or scenarios to practice skills, explore perspectives, or simulate real-life interactions in a low-stakes environment. Great for building empathy and interpersonal skills." },
       { emoji: "🕵️‍♂️", name: "Case Study", desc: "An in-depth analysis of a real or realistic scenario, where participants examine context, decisions, and outcomes to extract practical lessons. Ideal for applying theory to real-world situations." },
       { emoji: "💡", name: "Brainstorming", desc: "A free-flowing idea-generation session where quantity and creativity are prioritized over immediate judgment. Useful for problem-solving and innovation." },
+      { emoji: "🚀", name: "Design Sprint / Prototype Challenge", desc: "Group builds a small artifact (a plan, a mockup, a solution outline) in a time-boxed session. Cleanest option for testing the create level." },
     ],
   },
   {
@@ -174,6 +183,7 @@ export const ACTIVITY_GROUPS: ActivityGroup[] = [
     activities: [
       { emoji: "🗣️", name: "Group Discussion", desc: "An open conversation among participants to explore a topic collaboratively, share perspectives, and build on each other's ideas. Best for surfacing diverse viewpoints and encouraging active listening." },
       { emoji: "🙋‍♀️", name: "Q&A Session", desc: "A dedicated segment where participants can ask questions and receive direct answers from a facilitator or expert. Clarifies doubts and encourages open dialogue." },
+      { emoji: "⚖️", name: "Debate", desc: "Two sides argue a position with evidence. Strong for evaluating and weighing competing options rather than critiquing one artifact." },
     ],
   },
 ];
@@ -195,5 +205,9 @@ export const getMechanicDescription = (mechanic: string) => {
   if (m.includes("gallery walk")) return "Participants walk around the room to view, discuss, and add comments to charts or posters created by different groups.";
   if (m.includes("icebreaker")) return "A short, interactive activity designed to help participants get to know each other and feel comfortable in the group.";
   if (m.includes("snowball")) return "Individuals pair up to discuss an idea, then join another pair to form a group of four, continuing to double in size to synthesize ideas.";
+  if (m.includes("concept map")) return "Learner draws relationships between concepts. This is the single best individual activity for mapping relational or extended abstract knowledge.";
+  if (m.includes("worked problem")) return "A problem with a known correct path, useful when you want to assess apply before moving to open-ended practice.";
+  if (m.includes("debate")) return "Two sides argue a position with evidence. Strong for evaluating and weighing competing options rather than critiquing one artifact.";
+  if (m.includes("design sprint") || m.includes("prototype challenge")) return "Group builds a small artifact (a plan, a mockup, a solution outline) in a time-boxed session. Cleanest option for testing the create level.";
   return "A structured pedagogical activity designed to engage participants, encourage interaction, and facilitate active learning of the workshop material.";
 };

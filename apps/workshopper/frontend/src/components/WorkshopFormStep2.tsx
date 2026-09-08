@@ -23,8 +23,10 @@ const ALL_KNOWN_ACTIVITIES = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => 
 export default function WorkshopFormStep2({ initialInput, onNext, isLoading = false, onBack, onSelectionsChange }: Props) {
   const [selectedActivities, setSelectedActivities] = useState<string[]>(initialInput?.selectedActivities ?? []);
   const [customActivity, setCustomActivity] = useState("");
-  // All groups collapsed by default; track which are expanded
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  // All groups expanded by default; track which are expanded
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
+    ACTIVITY_GROUPS.reduce((acc, group) => ({ ...acc, [group.label]: true }), {})
+  );
 
   const handleNext = () => {
     onNext(selectedActivities);

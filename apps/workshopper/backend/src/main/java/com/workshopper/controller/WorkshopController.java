@@ -28,6 +28,19 @@ public class WorkshopController {
     private final PdfExportService pdfService;
     private final PptxExportService pptxService;
 
+    private java.io.InputStream getTemplateStream(String sessionId) {
+        byte[] templateData = (sessionId != null) ? service.getTemplate(sessionId) : null;
+        if (templateData != null) {
+            return new java.io.ByteArrayInputStream(templateData);
+        }
+        try {
+            return new org.springframework.core.io.ClassPathResource("templates/workshopper-default.pptx").getInputStream();
+        } catch (java.io.IOException e) {
+            log.warn("Failed to load default template", e);
+            return null;
+        }
+    }
+
     public WorkshopController(WorkshopService service, PdfExportService pdfService, PptxExportService pptxService) {
         this.service = service;
         this.pdfService = pdfService;
@@ -110,8 +123,7 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
         try {
-            byte[] templateData = (request.session() != null && request.session().id() != null) ? service.getTemplate(request.session().id()) : null;
-            java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+            java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
             byte[] pptxBytes = pptxService.exportToPptx(request, templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
@@ -132,8 +144,7 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) {
         try {
-            byte[] templateData = (request.session() != null && request.session().id() != null) ? service.getTemplate(request.session().id()) : null;
-            java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+            java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
             byte[] pptxBytes = pptxService.assembleFromSlides(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
@@ -186,6 +197,8 @@ public class WorkshopController {
             java.io.InputStream templateStream = null;
             if (template != null && !template.isEmpty()) {
                 templateStream = template.getInputStream();
+            } else {
+                templateStream = getTemplateStream(session.id());
             }
 
             byte[] pptxBytes = pptxService.assembleFromSlides(session, meta, prebuiltSlides, templateStream);
@@ -349,8 +362,7 @@ public class WorkshopController {
         try {
             com.workshopper.dto.SessionDetailDto detail = service.getSession(id)
                     .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
-            byte[] templateData = service.getTemplate(id);
-            java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+            java.io.InputStream templateStream = getTemplateStream(id);
             
             // Flatten the slides map into a single list
             List<Map<String, Object>> allSlides = new java.util.ArrayList<>();

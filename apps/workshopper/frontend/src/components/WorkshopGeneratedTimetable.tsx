@@ -61,6 +61,8 @@ interface Props {
   onBack: () => void;
   onNext: (latestSession: WorkshopSession) => void;
   onSaveSession?: (session: WorkshopSession) => void;
+  onGoalsChanged?: (goals: LearningGoalPlan[]) => void;
+  onMetaChanged?: (meta: import('@/lib/workshop-generator').WorkshopInput) => void;
 }
 
 // ── Inline editable text component removed and imported ───────────────────────────────────────────
@@ -68,7 +70,7 @@ interface Props {
 // ── Sortable block row component removed and imported ─────────────────────────────────────────────
 
 // ── Main component ─────────────────────────────────────────────────
-export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession }: Props) {
+export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged }: Props) {
   const [blocks, setBlocks] = useState<DndActivityBlock[]>(() =>
     (initialSession.blocks || []).map((b, i) => ({
       ...b,
@@ -87,6 +89,27 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
   const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
+
+  const toggleEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId) {
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+    } else {
+      setEditingBlockId(dndId);
+      const block = blocks.find(b => b.dndId === dndId);
+      if (block) setEditingBlockOriginal(JSON.parse(JSON.stringify(block)));
+    }
+  };
+
+  const cancelEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId && editingBlockOriginal) {
+      setBlocks(prev => prev.map(b => b.dndId === dndId ? editingBlockOriginal : b));
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+    }
+  };
+
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -481,12 +504,21 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     }
   };
 
-  const switchActivity = async (dndId: string, newActivity: string) => {
+  const switchActivity = async (dndId: string, oldActivity: string, newActivity: string) => {
     setRegeneratingBlockId(dndId);
     try {
       const block = blocks.find(b => b.dndId === dndId);
       if (!block) return;
       const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
+
+      const currentMethods = block.methods || [];
+      const newMethods = [...currentMethods];
+      const methodIndex = newMethods.indexOf(oldActivity);
+      if (methodIndex !== -1) {
+        newMethods[methodIndex] = newActivity;
+      } else {
+        newMethods.push(newActivity);
+      }
 
       const singleBlockSkeleton = {
         learningGoal: initialSession.learningGoal,
@@ -506,7 +538,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           goals,
-          meta: { ...meta, selectedActivities: [newActivity] },
+          meta: { ...meta, selectedActivities: newMethods },
           skeleton: singleBlockSkeleton,
         }),
       });
@@ -528,7 +560,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               ...b,
               ...updatedBlock,
               phaseLabel: finalPhaseLabel,
-              methods: Array.from(new Set([...(updatedBlock.methods || []), newActivity])),
+              methods: updatedBlock.methods || newMethods,
               dndId,
               lgIndex,
               blockId: block.blockId,
@@ -555,6 +587,173 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     }
   };
 
+
+  const [hasConfirmedEvaluatePriorities, setHasConfirmedEvaluatePriorities] = useState(
+    goals.length <= 2 || (meta.evaluateMappings && meta.evaluateMappings.length > 0)
+  );
+
+  const confirmEvaluateMappings = async (dndId: string, mappings: { method: string; lgIds: string[] }[]) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      
+      const newMeta = { ...meta, evaluateMappings: mappings };
+      onMetaChanged?.(newMeta);
+
+      const singleBlockSkeleton = {
+        learningGoal: initialSession.learningGoal,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex: block.lgIndex ?? 0,
+          duration: block.duration,
+          methods: mappings.map(m => m.method),
+          materials: []
+        }]
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skeleton: singleBlockSkeleton,
+          meta: newMeta,
+          goals: goals
+        })
+      });
+      if (!res.ok) throw new Error("Failed to regenerate");
+      const generated = await res.json();
+      
+      if (generated.blocks && generated.blocks.length > 0) {
+        setBlocks(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(b => b.dndId === dndId);
+          if (idx !== -1) {
+            const updatedBlock = generated.blocks[0];
+            const originalBlock = prev[idx];
+
+            next[idx] = { 
+              ...updatedBlock, 
+              dndId: originalBlock.dndId,
+              phaseLabel: originalBlock.phaseLabel || originalBlock.phase
+            };
+            if (!isEditMode && onSaveSession) {
+              setTimeout(() => {
+                const sessionTitle = initialSession.title || meta.title || "Workshop Session";
+                onSaveSession({
+                  ...initialSession,
+                  title: sessionTitle,
+                  blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+                });
+              }, 0);
+            }
+          }
+          return next;
+        });
+        setHasConfirmedEvaluatePriorities(true);
+        toast({ title: "Mappings updated", description: "Understanding Check regenerated." });
+      }
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+  const switchEvaluateActivity = async (dndId: string, targetLgNum: number, newActivity: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      
+      const exactMappings: string[] = [];
+      const section = (block.sections || [])[0];
+      if (section && section.steps) {
+        section.steps.forEach((s: string) => {
+          const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+          const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•\-]\s*([^:]+):\s*(.*)/i);
+          const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
+          
+          const lgNumStr = lgMatch ? lgMatch[1] : (lgFallback ? lgFallback[1] : null);
+          const currentAct = lgMatch ? lgMatch[2].trim() : null;
+
+          if (lgNumStr) {
+            const num = parseInt(lgNumStr);
+            if (num === targetLgNum) {
+              exactMappings.push(`LG${num}:${newActivity}`);
+            } else if (currentAct) {
+              exactMappings.push(`LG${num}:${currentAct}`);
+            }
+          }
+        });
+      }
+      
+      // If the LLM failed to include methods correctly, we force our exactMappings as the block methods fallback
+      const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
+
+      const singleBlockSkeleton = {
+        learningGoal: initialSession.learningGoal,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex: block.lgIndex ?? 0,
+          duration: block.duration,
+          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goals,
+          meta: { ...meta, selectedActivities: exactMappings },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to regenerate evaluate activity");
+      const newSession = await res.json();
+      if (newSession.blocks?.[0]) {
+        const updatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            return {
+              ...b,
+              ...updatedBlock,
+              phaseLabel: b.phaseLabel || b.phase,
+              methods: (updatedBlock.methods && updatedBlock.methods.length > 0) ? updatedBlock.methods : derivedMethods,
+              dndId,
+              lgIndex: b.lgIndex,
+              blockId: b.blockId,
+            };
+          });
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSession({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
+      }
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+
+  const evaluateBlockNeedsPrioritySelection = goals.length > 2 && !hasConfirmedEvaluatePriorities;
   const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
   const targetDuration = meta.duration || totalDuration;
   const timePercentage = Math.min(100, Math.round((totalDuration / targetDuration) * 100));
@@ -588,17 +787,24 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={blocks.map(b => b.dndId)} strategy={verticalListSortingStrategy}>
-              {blocks.map(block => (
-                <SortableBlockRow
-                  key={block.dndId}
-                  block={block}
+              {blocks.map(block => {
+                const isNeedsPriority = (goals.length > 2 && !hasConfirmedEvaluatePriorities) && block.phase === "EVALUATE";
+                return (
+                  <SortableBlockRow
+                    key={block.dndId}
+                    block={block}
+                    goals={goals}
+                    needsEvaluatePriority={isNeedsPriority}
+                    onConfirmEvaluateMappings={(mappings) => confirmEvaluateMappings(block.dndId, mappings)}
+                    onResetEvaluatePriority={() => setHasConfirmedEvaluatePriorities(false)}
                   isExpanded={expandedBlocks[block.dndId] ?? false}
                   editing={editing}
                   meta={meta}
                   isRegenerating={regeneratingBlockId === block.dndId}
                   selectedActivities={meta.selectedActivities || []}
                   isEditMode={editingBlockId === block.dndId}
-                  onToggleEditMode={() => setEditingBlockId(prev => prev === block.dndId ? null : block.dndId)}
+                  onToggleEditMode={() => toggleEditBlock(block.dndId)}
+                  onCancelEditMode={() => cancelEditBlock(block.dndId)}
                   onToggleExpand={() => toggleExpand(block.dndId)}
                   onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
                   onSaveTitle={v => handleSaveTitle(block.dndId, v)}
@@ -611,13 +817,15 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   onEditSectionDuration={(sIdx) => setEditing({ type: "sectionDuration", blockId: block.dndId, sectionIdx: sIdx })}
                   onSaveSectionDuration={(sIdx, v) => handleSaveSectionDuration(block.dndId, sIdx, v)}
                   onDeleteBlock={() => handleDeleteBlock(block.dndId)}
-                  onSwitchActivity={act => switchActivity(block.dndId, act)}
+                  onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
+                  onSwitchEvaluateActivity={(lgNum, newAct) => switchEvaluateActivity(block.dndId, lgNum, newAct)}
                   onDeleteActivity={method => handleDeleteActivity(block.dndId, method)}
                   onAddActivity={method => handleAddActivity(block.dndId, method)}
                   onAddStep={text => handleAddStep(block.dndId, text)}
                   onDeleteStep={(sIdx, stIdx) => handleDeleteStep(block.dndId, sIdx, stIdx)}
                 />
-              ))}
+                );
+              })}
             </SortableContext>
             
             <div className="mt-4 flex justify-center">
@@ -679,14 +887,15 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
             </div>
           </div>
 
-          <Button
-            size="sm"
-            onClick={handleNext}
-            disabled={totalDuration > targetDuration}
-            className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150"
-          >
-            Preparation <ArrowRight className="h-4 w-4" />
-          </Button>
+          {totalDuration > targetDuration ? (
+            <Button size="sm" disabled className="gap-2 shadow-md bg-muted text-muted-foreground font-semibold shrink-0 rounded-lg">
+              Preparation <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleNext} disabled={evaluateBlockNeedsPrioritySelection} className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150">
+              Preparation <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </Card>
 

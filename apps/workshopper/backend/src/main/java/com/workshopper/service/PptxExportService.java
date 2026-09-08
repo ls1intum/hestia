@@ -93,49 +93,45 @@ public class PptxExportService {
     private static final Map<String, String> FIXED_INSTRUCTION_TITLES = new java.util.HashMap<>();
     static {
         addFixedInstruction("groupdiscussion", "Group Discussion", List.of(
-            "1. Form groups and briefly introduce your perspectives",
-            "2. Listen actively and build upon your peers' points",
-            "3. Summarize your group's consensus to share with the class"
+            "Form groups and briefly introduce your perspectives",
+            "Listen actively and build upon your peers' points",
+            "Summarize your group's consensus to share with the class"
         ));
-        addFixedInstruction("casestudy", "Case Study", List.of(
-            "1. Read the provided scenario and identify the core problem",
-            "2. Analyze the decisions and discuss alternative approaches",
-            "3. Connect the case outcomes to today's learning objectives"
-        ));
+
         addFixedInstruction("roleplay", "Role Play", List.of(
-            "1. Review your assigned character's goals and background",
-            "2. Stay in character and respond naturally to the scenario",
-            "3. Step out of character afterwards to debrief the experience"
+            "Review your assigned character's goals and background",
+            "Stay in character and respond naturally to the scenario",
+            "Step out of character afterwards to debrief the experience"
         ));
         addFixedInstruction("handsonpractice", "Hands-on Practice", List.of(
-            "1. Attempt the task independently using provided materials",
-            "2. Ask questions immediately if you hit a blocking issue",
-            "3. Compare your solution with peers or the reference solution"
+            "Attempt the task independently using provided materials",
+            "Ask questions immediately if you hit a blocking issue",
+            "Compare your solution with peers or the reference solution"
         ));
         addFixedInstruction("quizpolls", "Quiz / Polls", List.of(
-            "1. Read the question and all options carefully",
-            "2. Answer honestly based on your current understanding",
-            "3. Discuss the correct answer when revealed by the instructor"
+            "Read the question and all options carefully",
+            "Answer honestly based on your current understanding",
+            "Discuss the correct answer when revealed by the instructor"
         ));
         addFixedInstruction("qasession", "Q&A Session", List.of(
-            "1. Formulate your question clearly and specifically",
-            "2. Raise your hand or use the digital Q&A tool to submit it",
-            "3. Listen to others' questions to avoid duplicates"
+            "Formulate your question clearly and specifically",
+            "Raise your hand or use the digital Q&A tool to submit it",
+            "Listen to others' questions to avoid duplicates"
         ));
         addFixedInstruction("peerreview", "Peer Review", List.of(
-            "1. Review your partner's work thoroughly and objectively",
-            "2. Provide specific, actionable, and constructive feedback",
-            "3. Discuss the feedback together to clarify misunderstandings"
+            "Review your partner's work thoroughly and objectively",
+            "Provide specific, actionable, and constructive feedback",
+            "Discuss the feedback together to clarify misunderstandings"
         ));
         addFixedInstruction("brainstorming", "Brainstorming", List.of(
-            "1. Share every idea that comes to mind, no matter how unusual",
-            "2. Focus on quantity first, without filtering or judging",
-            "3. Categorize and evaluate the ideas only after brainstorming ends"
+            "Share every idea that comes to mind, no matter how unusual",
+            "Focus on quantity first, without filtering or judging",
+            "Categorize and evaluate the ideas only after brainstorming ends"
         ));
         addFixedInstruction("thinkpairshare", "Think-Pair-Share", List.of(
-            "1. THINK: Reflect silently on the prompt and note your thoughts",
-            "2. PAIR: Discuss your reflections with a partner and compare views",
-            "3. SHARE: Present your pair's conclusions to the entire group"
+            "THINK: Reflect silently on the prompt and note your thoughts",
+            "PAIR: Discuss your reflections with a partner and compare views",
+            "SHARE: Present your pair's conclusions to the entire group"
         ));
     }
 
@@ -215,7 +211,8 @@ public class PptxExportService {
         String phase = block.phase() != null ? block.phase().toUpperCase().trim() : "";
         log.info("generateBlockSlides: phase='{}' phaseLabel='{}'", phase, block.phaseLabel());
 
-        return switch (phase) {
+        String normalizedPhase = phase == null ? "" : phase.toUpperCase();
+        return switch (normalizedPhase) {
             case "ARRIVE"         -> generateWelcomeAndAgendaSlides(block, meta, goals);
             case "ACTIVATE"       -> generateActivateSlides(block, meta, goals);
             case "LEARNING_CYCLE" -> generateLearningCycleSlides(block, meta, goals);
@@ -232,7 +229,7 @@ public class PptxExportService {
 
     private List<Map<String, Object>> generateBreakSlides(ActivityBlockDto block) {
         Map<String, Object> breakSlide = new java.util.LinkedHashMap<>();
-        breakSlide.put("layout", "standard");
+        breakSlide.put("layout", "break");
         breakSlide.put("title", block.phaseLabel() != null ? block.phaseLabel() : "Break");
         breakSlide.put("subtitle", "Rest and Recharge");
         breakSlide.put("bullets", java.util.List.of("We will resume in " + block.duration() + " minutes."));
@@ -299,6 +296,7 @@ public class PptxExportService {
             welcomeSlide.put("notes", "");
         }
         welcomeSlide.put("group", "welcome");
+        welcomeSlide.put("layout", "welcome");
         welcomeSlide.put("subtitle", block.phaseLabel() != null ? block.phaseLabel() : "Welcome");
         slides.add(welcomeSlide);
 
@@ -312,6 +310,7 @@ public class PptxExportService {
     private Map<String, Object> buildAgendaSlide(String blockLabel, List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
         Map<String, Object> slide = new LinkedHashMap<>();
         slide.put("group", "agenda");
+        slide.put("layout", "agenda");
         slide.put("subtitle", blockLabel != null ? blockLabel : "Agenda");
         slide.put("title", "Agenda");
 
@@ -347,12 +346,13 @@ public class PptxExportService {
                                                               List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Activate Prior Knowledge";
+        String phaseName = "ACTIVATE";
 
         // ── Lecture placeholder (always present for ACTIVATE) ────────────────
         Map<String, Object> placeholder = new LinkedHashMap<>();
         placeholder.put("group", "activate_prior_knowledge");
         placeholder.put("layout", "lecture_placeholder");
-        placeholder.put("subtitle", label);
+        placeholder.put("subtitle", phaseName);
         placeholder.put("title", "[Placeholder] " + label);
         placeholder.put("bullets", List.of("Insert any framing/context lecture content here"));
         placeholder.put("notes", "Instructor's optional lecture/context slides before the activation activity.");
@@ -379,36 +379,39 @@ public class PptxExportService {
                     """;
             
             String method = getPrimaryMethod(block);
+            String actName = getActivityName(method);
             String schemaSnippet;
-            if ("quizpolls".equals(method)) {
+            if ("quizpolls".equals(method) || "quiz".equals(method) || "poll".equals(method)) {
                 schemaSnippet = """
                     {
                       "layout": "live_poll",
-                      "title": "Activate: [Topic]",
+                      "title": "%s: [Topic or previous topics]",
                       "pollQuestion": "the open activation question",
                       "pollOptions": ["A) ...", "B) ...", "C) ..."],
                       "notes": "a PLAIN STRING — expected answers/misconceptions"
                     }
-                    """;
+                    """.formatted(actName);
             } else {
-                String layout = "activity_tiled";
-                if (Set.of("roleplay", "casestudy", "handsonpractice", "qasession", "brainstorming").contains(method)) {
-                    layout = "activity_sidebar";
-                } else if ("thinkpairshare".equals(method)) {
-                    layout = "activity_grid3";
-                }
-                List<String> instructions = FIXED_INSTRUCTIONS.getOrDefault(method, List.of("1. Review the prompt", "2. Formulate your thoughts", "3. Prepare to share"));
+                String layout = switch (method) {
+                    case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
+                    case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_tiled";
+                    case "qasession" -> "activity_q&a";
+                    case "handsonpractice" -> "activity_sidebar";
+                    case "quizpolls", "quiz", "poll" -> "live_poll";
+                    default -> "activity_tiled";
+                };
+                List<String> instructions = FIXED_INSTRUCTIONS.getOrDefault(method, List.of("Review the prompt", "Formulate your thoughts", "Prepare to share"));
                 String instJson = "[\\\"" + String.join("\\\", \\\"", instructions) + "\\\"]";
                 schemaSnippet = """
                     {
                       "layout": "%s",
-                      "title": "Activate: [Topic]",
+                      "title": "%s: [Topic or previous topics]",
                       "activityPrompt": "the open activation question",
                       "activityInstructions": %s,
                       "activityOutputExpectation": "what students should be prepared to share",
                       "notes": "a PLAIN STRING — expected answers/misconceptions"
                     }
-                    """.formatted(layout, instJson);
+                    """.formatted(layout, actName, instJson);
             }
             sysPrompt = sysPrompt.formatted(schemaSnippet);
 
@@ -441,7 +444,9 @@ public class PptxExportService {
                 actSlide.put("notes", "");
             }
             actSlide.put("group", "activate_prior_knowledge");
-            actSlide.put("subtitle", label);
+            actSlide.put("topic", label);
+            actSlide.put("subtitle", "ACTIVATE");
+            actSlide.put("activityName", actName);
             if (!actSlide.containsKey("layout")) actSlide.put("layout", "activity_tiled");
             slides.add(actSlide);
         }
@@ -465,6 +470,7 @@ public class PptxExportService {
                                                                     List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Learning Cycle";
+        String phaseName = "LEARNING CYCLE";
         int lgIndex = block.goalTag() != null ? parseLgIndex(block.goalTag()) : 0;
         String lgText = resolveGoalText(lgIndex, goals, meta);
 
@@ -474,7 +480,7 @@ public class PptxExportService {
         lecturePlaceholder.put("layout", "lecture_placeholder");
         if (lgIndex > 0) lecturePlaceholder.put("lgIndex", lgIndex);
         lecturePlaceholder.put("subtitle", label);
-        lecturePlaceholder.put("title", "[Placeholder] Lecture: " + label);
+        lecturePlaceholder.put("title", label);
         lecturePlaceholder.put("bullets", List.of("Insert instructor's lecture content for: " + label));
         lecturePlaceholder.put("notes", "Instructor's own lecture slides for this learning goal. Replace with actual content.");
         slides.add(lecturePlaceholder);
@@ -492,13 +498,13 @@ public class PptxExportService {
                 
 %s
                 
-                SLIDE 2 — Per-cycle Debrief/Summary slide:
+                SLIDE 2 — Per-cycle Debrief slide:
                   "layout": "debrief"
-                  "title": "Reflect: [Topic]"  (use "Reflect:" or "Debrief:" prefix)
-                  "debriefQuestion": single open-ended reflective question tied to THIS learning goal
-                    (NOT about the activity mechanics — about the concept/skill itself)
-                  Density: single-focus, low-density. NO bullet lists. One question + optional one-line scaffold.
-                  "notes": a PLAIN STRING — expected reasoning, common misconceptions, suggested debrief technique.
+                  "title": "Debrief: [Topic]"
+                  "suggestedAnswer": short, student-facing correct answer. IMPORTANT: If the activity was a poll, explicitly state the correct option letter (e.g., 'Correct Answer: A') followed by a brief explanation.
+                  "commonMisconceptions": ["Misconception 1", "Misconception 2"] (array of EXACTLY 2 short common mistakes/gaps)
+                  "keyTakeaway": "One main insight participants should leave with."
+                  "notes": a PLAIN STRING — suggested debrief facilitation technique.
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
                 
                 Return ONLY a valid JSON array of 2 objects. No prose.
@@ -533,13 +539,16 @@ public class PptxExportService {
 
         // Tag and sanitize LLM output
         String[] expectedLayouts = {"activity_tiled", "debrief"};
-        String[] expectedGroups = {"main_lecture", "main_lecture"};
+        String method = getPrimaryMethod(block);
+        String actName = getActivityName(method);
         for (int i = 0; i < Math.min(llmSlides.size(), 2); i++) {
             Map<String, Object> slide = llmSlides.get(i);
-            slide.put("group", expectedGroups[i]);
-            slide.put("subtitle", label);
-            if (lgIndex > 0) slide.put("lgIndex", lgIndex);
+            slide.put("group", "main_lecture");
+            slide.put("topic", label);
+            slide.put("subtitle", "LECTURE");
             if (!slide.containsKey("layout")) slide.put("layout", expectedLayouts[i]);
+            slide.put("activityName", "debrief".equals(slide.get("layout")) ? "🔄 DEBRIEF" : actName);
+            if (lgIndex > 0) slide.put("lgIndex", lgIndex);
             slides.add(slide);
         }
         // Ensure we always have the debrief slide even if LLM returned only 1
@@ -549,8 +558,10 @@ public class PptxExportService {
             debriefFallback.put("layout", "debrief");
             debriefFallback.put("subtitle", label);
             if (lgIndex > 0) debriefFallback.put("lgIndex", lgIndex);
-            debriefFallback.put("title", "Reflect: " + label);
-            debriefFallback.put("debriefQuestion", "What is the most important insight you gained from this activity?");
+            debriefFallback.put("title", "Debrief: " + label);
+            debriefFallback.put("suggestedAnswer", "The correct answer involves applying the main concept discussed prior to this activity.");
+            debriefFallback.put("commonMisconceptions", List.of("Students often confuse X with Y.", "Students might forget to apply Z."));
+            debriefFallback.put("keyTakeaway", "Always remember to double-check the initial conditions.");
             debriefFallback.put("notes", "Invite 2–3 students to share. Correct misconceptions gently.");
             slides.add(debriefFallback);
         }
@@ -571,10 +582,13 @@ public class PptxExportService {
 
         Map<String, Object> debrief = new LinkedHashMap<>();
         debrief.put("layout", "debrief");
-        debrief.put("title", "Reflect: " + label);
-        debrief.put("debriefQuestion", "What is the most important insight you gained from this activity?");
+        debrief.put("title", "Debrief: " + label);
+        debrief.put("suggestedAnswer", "The correct answer involves applying the main concept discussed prior to this activity.");
+        debrief.put("commonMisconceptions", List.of("Students often confuse X with Y.", "Students might forget to apply Z."));
+        debrief.put("keyTakeaway", "Always remember to double-check the initial conditions.");
         debrief.put("notes", "Invite 2–3 students to share. Correct misconceptions gently.");
         fallback.add(debrief);
+
         return fallback;
     }
 
@@ -595,86 +609,117 @@ public class PptxExportService {
     private List<Map<String, Object>> generateCheckUnderstandingSlides(ActivityBlockDto block,
                                                                          WorkshopInputDto meta,
                                                                          List<LearningGoalPlanDto> goals) throws Exception {
-        // Build the full list of LG strings — source of truth is meta.learningGoals()
-        List<String> lgStrings = buildFullGoalStrings(goals, meta);
-        if (lgStrings.isEmpty()) {
-            log.warn("No learning goals found for Check Understanding block; generating one generic slide");
-            lgStrings = List.of("General understanding of today's session content");
-        }
-
-        String sysPrompt = """
-                You are an expert instructional designer writing Check Understanding poll slides.
-                
-                CONTENT TIERS (strictly enforced):
-                1. Visible slide — student-facing. ONE clear multiple-choice question per slide.
-                2. Speaker notes — correct answer + the lgIndex it maps to + facilitation cue (e.g. "If split: peer discuss").
-                3. Invisible — omit entirely.
-                
-                You will receive a numbered list of session learning goals.
-                Return a JSON ARRAY with EXACTLY ONE slide object per learning goal, in the same order.
-                Do NOT include "(LG1)", "LG", or any learning goal tags in the visible 'title' or 'pollQuestion'.
-                
-                Each slide must follow this schema:
-                {
-                  "title": "Understanding Check",
-                  "layout": "live_poll",
-                  "pollQuestion": "...",
-                  "pollOptions": ["A) ...", "B) ...", "C) ...", "D) ..."],
-                  "notes": "PLAIN STRING — Correct: [X]. LG: [lgIndex]. Facilitation cue (e.g. 'If split: peer discuss')."
-                }
-                CRITICAL: the "notes" field MUST be a flat string, NOT a JSON object or nested structure.
-                
-                Question quality rules:
-                - One concept-level question per LG (test understanding, not recall of a fact)
-                - 4 options: one clearly correct, three plausible distractors
-                - Options are mutually exclusive
-                
-                Return ONLY a valid JSON array. No prose.
-                """;
-
-        StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("Session learning goals (generate exactly one question per goal, in order):\n");
-        for (int i = 0; i < lgStrings.size(); i++) {
-            userPrompt.append("  LG").append(i + 1).append(": ").append(lgStrings.get(i)).append("\n");
-        }
-        appendMaterials(userPrompt, meta, 6000);
-        userPrompt.append("\nTask: Return a JSON array of exactly ").append(lgStrings.size())
-                  .append(" poll slide objects (one per LG, in LG order) as specified.");
-
-        log.info("LLM call: Check Understanding slides ({} LGs)", lgStrings.size());
-        List<Map<String, Object>> llmSlides;
-        try {
-            String raw = llm.callSecondary(sysPrompt, userPrompt.toString());
-            String json = llm.extractJsonArray(raw);
-            llmSlides = normalizeSlides(mapper.readValue(json, new TypeReference<>() {}));
-
-        } catch (Exception e) {
-            log.warn("LLM failed for Check Understanding slides, using fallback: {}", e.getMessage());
-            llmSlides = new ArrayList<>();
-        }
-
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Understanding Check";
-        for (int i = 0; i < lgStrings.size(); i++) {
-            Map<String, Object> slide;
-            if (i < llmSlides.size()) {
-                slide = llmSlides.get(i);
-            } else {
-                // Fallback for missing slides
-                slide = new LinkedHashMap<>();
-                slide.put("layout", "live_poll");
-                slide.put("title", "Understanding Check");
-                slide.put("pollQuestion", "Which statement best describes: " + lgStrings.get(i) + "?");
-                slide.put("pollOptions", List.of("A) Statement A", "B) Statement B", "C) Statement C", "D) Statement D"));
-                slide.put("notes", "Correct: A. LG" + (i + 1) + ". Discuss with neighbor if split.");
+        String phaseName = "CHECK UNDERSTANDING";
+        
+        int lgIndex = block.goalTag() != null ? parseLgIndex(block.goalTag()) : 0;
+        String lgText = resolveGoalText(lgIndex, goals, meta);
+
+        Set<String> allMethods = collectMethods(block);
+        if (!allMethods.isEmpty()) {
+            for (String method : allMethods) {
+                String cleanMethod = method.toLowerCase().replaceAll("[^a-z0-9]", "");
+                String sysPrompt = """
+                        You are an expert instructional designer writing exactly TWO slides for a Check Understanding activity.
+                        
+                        CONTENT TIERS (strictly enforced):
+                        1. Visible slide — student-facing. One check understanding activity.
+                        2. Speaker notes — expected answers/misconceptions.
+                        3. Invisible — omit session-level logistics entirely.
+                        
+                        You must return a JSON ARRAY of exactly 2 slide objects in this order:
+                        
+%s
+                        
+                        SLIDE 2 — Debrief slide:
+                          "layout": "debrief"
+                          "title": "Debrief: [Topic]"
+                          "suggestedAnswer": "short, student-facing correct answer. If a poll, state correct option."
+                          "commonMisconceptions": ["Misconception 1", "Misconception 2"]
+                          "keyTakeaway": "One main insight participants should leave with."
+                          "notes": a PLAIN STRING — suggested debrief facilitation technique.
+                        
+                        Return ONLY a valid JSON array of 2 objects. No prose.
+                        """.formatted(buildActivitySlidePrompt(cleanMethod));
+
+                StringBuilder userPrompt = new StringBuilder();
+                userPrompt.append("Block label: ").append(label).append("\n");
+                userPrompt.append("Duration: ").append(block.duration()).append(" minutes\n");
+                if (lgIndex > 0) userPrompt.append("Learning Goal Index: LG").append(lgIndex).append("\n");
+                if (!lgText.isBlank()) userPrompt.append("Learning Goal: ").append(lgText).append("\n");
+                if (block.objective() != null) userPrompt.append("Objective: ").append(block.objective()).append("\n");
+                userPrompt.append("Teaching method: ").append(method).append("\n");
+                appendSectionSteps(userPrompt, block);
+                appendGoalsList(userPrompt, goals, meta);
+                appendMaterials(userPrompt, meta, 6000);
+                userPrompt.append("\nTask: Return ONLY a JSON array of exactly 2 slide objects (Activity then Debrief) as specified above.");
+
+                log.info("LLM call: Check Understanding slides for '{}' method='{}' (lgIndex={})", label, method, lgIndex);
+                List<Map<String, Object>> llmSlides;
+                try {
+                    String raw = llm.callSecondary(sysPrompt, userPrompt.toString());
+                    String json = llm.extractJsonArray(raw);
+                    llmSlides = normalizeSlides(mapper.readValue(json, new TypeReference<>() {}));
+                } catch (Exception e) {
+                    log.warn("LLM failed for Check Understanding slide, using fallback: {}", e.getMessage());
+                    llmSlides = buildLearningCycleFallback(label);
+                }
+
+                String actName = getActivityName(cleanMethod);
+                for (int i = 0; i < Math.min(llmSlides.size(), 2); i++) {
+                    Map<String, Object> slide = llmSlides.get(i);
+                    slide.put("group", "check_understanding");
+                    slide.put("topic", label);
+                    slide.put("subtitle", "CHECK UNDERSTANDING");
+                    if (!slide.containsKey("layout")) slide.put("layout", i == 0 ? "live_poll" : "debrief");
+                    slide.put("activityName", "debrief".equals(slide.get("layout")) ? "🔄 DEBRIEF" : actName);
+                    if (lgIndex > 0) slide.put("lgIndex", lgIndex);
+                    slides.add(slide);
+                }
+                while (slides.size() < (allMethods.size() * 2) && llmSlides.size() < 2) {
+                    Map<String, Object> debriefFallback = new LinkedHashMap<>();
+                    debriefFallback.put("group", "check_understanding");
+                    debriefFallback.put("layout", "debrief");
+                    debriefFallback.put("subtitle", phaseName);
+                    if (lgIndex > 0) debriefFallback.put("lgIndex", lgIndex);
+                    debriefFallback.put("title", "Debrief: " + label);
+                    debriefFallback.put("suggestedAnswer", "The correct answer involves applying the main concept.");
+                    debriefFallback.put("commonMisconceptions", List.of("Students often confuse X with Y."));
+                    debriefFallback.put("keyTakeaway", "Always remember to double-check the initial conditions.");
+                    debriefFallback.put("notes", "Invite 2–3 students to share. Correct misconceptions gently.");
+                    slides.add(debriefFallback);
+                    break; // Just add one debrief to pad it out
+                }
             }
-            slide.put("group", "check_understanding");
-            slide.put("subtitle", label);
-            slide.put("lgIndex", i + 1);
-            if (!slide.containsKey("layout")) slide.put("layout", "live_poll");
-            result.add(slide);
+        } else {
+            // Fallback if no methods are present: generate one poll slide and one debrief
+            Map<String, Object> fallbackAct = new LinkedHashMap<>();
+            fallbackAct.put("layout", "live_poll");
+            fallbackAct.put("group", "check_understanding");
+            fallbackAct.put("subtitle", phaseName);
+            fallbackAct.put("activityName", "✅ QUIZ");
+            if (lgIndex > 0) fallbackAct.put("lgIndex", lgIndex);
+            fallbackAct.put("title", label);
+            fallbackAct.put("pollQuestion", "What is the most important concept you learned today?");
+            fallbackAct.put("pollOptions", List.of("A) Concept A", "B) Concept B", "C) Concept C", "D) Concept D"));
+            fallbackAct.put("notes", "Discuss with neighbor if split.");
+            slides.add(fallbackAct);
+
+            Map<String, Object> fallbackDebrief = new LinkedHashMap<>();
+            fallbackDebrief.put("layout", "debrief");
+            fallbackDebrief.put("group", "check_understanding");
+            fallbackDebrief.put("subtitle", phaseName);
+            if (lgIndex > 0) fallbackDebrief.put("lgIndex", lgIndex);
+            fallbackDebrief.put("title", "Debrief: " + label);
+            fallbackDebrief.put("suggestedAnswer", "Concept A is the most critical.");
+            fallbackDebrief.put("commonMisconceptions", List.of("Misconception 1", "Misconception 2"));
+            fallbackDebrief.put("keyTakeaway", "Always apply Concept A.");
+            fallbackDebrief.put("notes", "Clarify any remaining doubts.");
+            slides.add(fallbackDebrief);
         }
-        return result;
+
+        return slides;
     }
 
     // ── Group 7: Summary + Thank You ─────────────────────────────────────────
@@ -690,6 +735,7 @@ public class PptxExportService {
                                                               List<LearningGoalPlanDto> goals) throws Exception {
         List<Map<String, Object>> slides = new ArrayList<>();
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Summary & Wrap-up";
+        String phaseName = "SUMMARY";
 
         String sysPrompt = """
                 You are an expert instructional designer writing the Summary & Wrap-up slides for a session.
@@ -706,11 +752,19 @@ public class PptxExportService {
                 
                 Return a JSON ARRAY of 1–2 summary slide objects (NOT the Thank-You slide — that is added separately).
                 
-                Schema per slide:
+                Schema for the Summary slide (if needed):
                 {
                   "title": "Summary & Wrap-Up",
-                  "layout": "concept_map",   // or "default" for a bullets-based slide
+                  "layout": "summary",
                   "bullets": ["Key takeaway 1", "Key takeaway 2", ...],
+                  "notes": "Facilitation steps + time allocation"
+                }
+                
+                Schema for the One-Minute Paper slide:
+                {
+                  "title": "One Minute Paper",
+                  "layout": "activity_q&a",
+                  "activityPrompt": "What is the most important concept you learned today?\\n2. What is your biggest remaining question?",
                   "notes": "Facilitation steps + time allocation"
                 }
                 
@@ -740,35 +794,32 @@ public class PptxExportService {
 
         for (Map<String, Object> slide : llmSlides) {
             slide.put("group", "summary");
-            slide.put("subtitle", label);
-            if (!slide.containsKey("layout")) slide.put("layout", "concept_map");
+            slide.put("topic", label);
+            slide.put("subtitle", phaseName);
+            if (!slide.containsKey("layout")) slide.put("layout", "summary");
+            if ("activity_q&a".equals(slide.get("layout"))) {
+                slide.put("activityName", "🙋 ONE-MINUTE PAPER");
+            }
             slides.add(slide);
         }
 
-        // ── Explicit closing "Thank you" slide (always added, no LLM) ────────
-        Map<String, Object> thankYou = new LinkedHashMap<>();
-        thankYou.put("group", "summary");
-        thankYou.put("layout", "debrief");
-        thankYou.put("subtitle", label);
-        thankYou.put("title", "Thank You");
-        thankYou.put("debriefQuestion", "Any final questions before we close?");
-        thankYou.put("notes", "Wrap up remaining questions. Share contact details if desired. End on time.");
-        slides.add(thankYou);
+        // ── Explicit closing Agenda slide (re-review goals at the end) ────────
+        Map<String, Object> closingAgenda = buildAgendaSlide("Review Learning Goals", goals, meta);
+        closingAgenda.put("group", "summary");
+        closingAgenda.put("isClosingAgenda", true);
+        closingAgenda.put("notes", "Review the agenda / learning goals one last time to ensure all points were covered.");
+        slides.add(closingAgenda);
 
         return slides;
     }
 
     private List<Map<String, Object>> buildSummaryFallback(String label) {
-        Map<String, Object> s = new LinkedHashMap<>();
-        s.put("title", "Summary & Wrap-Up");
-        s.put("layout", "concept_map");
-        s.put("bullets", List.of(
-            "One-Minute Paper:",
-            "1. What is the most important concept you learned today?",
-            "2. What is your biggest remaining question?"
-        ));
-        s.put("notes", "Give 1 min for silent writing. Invite 2–3 to share. Collect papers if desired.");
-        return List.of(s);
+        Map<String, Object> omp = new LinkedHashMap<>();
+        omp.put("title", "One Minute Paper");
+        omp.put("layout", "activity_q&a");
+        omp.put("activityPrompt", "What is the most important concept you learned today?\n2. What is your biggest remaining question?");
+        omp.put("notes", "Give 1 min for silent writing. Invite 2–3 to share. Collect papers if desired.");
+        return List.of(omp);
     }
 
     // =========================================================================
@@ -780,46 +831,73 @@ public class PptxExportService {
         return block.methods().get(0).toLowerCase().replaceAll("[^a-z0-9]", "");
     }
 
+    private String getActivityName(String method) {
+        if (method == null) return "ACTIVITY";
+        return switch (method) {
+            case "thinkpairshare" -> "🧠 THINK-PAIR-SHARE";
+            case "brainstorming" -> "🧠 BRAINSTORMING";
+            case "designsprint", "prototypechallenge" -> "🎨 DESIGN SPRINT";
+            case "groupdiscussion" -> "💬 GROUP DISCUSSION";
+            case "debate" -> "🗣️ DEBATE";
+            case "peerreview" -> "👥 PEER REVIEW";
+            case "roleplay" -> "🎭 ROLE PLAY";
+            case "qasession" -> "🙋 Q&A SESSION";
+            case "handsonpractice" -> "🛠️ HANDS-ON PRACTICE";
+            case "casestudy" -> "💼 CASE STUDY";
+            case "conceptmapping" -> "🗺 CONCEPT MAPPING";
+            case "workedproblem" -> "⚙️ WORKED PROBLEM";
+            case "quizpolls", "quiz", "poll" -> "✅ QUIZ";
+            default -> method.toUpperCase();
+        };
+    }
+
     private String buildActivitySlidePrompt(ActivityBlockDto block) {
-        String method = getPrimaryMethod(block);
-        if ("quizpolls".equals(method)) {
+        return buildActivitySlidePrompt(getPrimaryMethod(block));
+    }
+
+    private String buildActivitySlidePrompt(String method) {
+        String actName = getActivityName(method);
+        
+        if ("quizpolls".equals(method) || "quiz".equals(method) || "poll".equals(method)) {
             return """
                 SLIDE 1 — Activity slide:
                   "layout": "live_poll"
-                  "title": "Quiz / Polls: [Topic]"
+                  "title": "%s: [Learning Goal or Topic]"
                   "pollQuestion": "the student-facing question"
                   "pollOptions": ["A) ...", "B) ...", "C) ...", "D) ..."]
                   "notes": a PLAIN STRING — answer/reasoning, common wrong answers.
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
-                """;
+                """.formatted(actName);
         }
 
-        String layout = "activity_tiled";
-        if (Set.of("roleplay", "casestudy", "handsonpractice", "qasession", "brainstorming").contains(method)) {
-            layout = "activity_sidebar";
-        } else if ("thinkpairshare".equals(method)) {
-            layout = "activity_grid3";
-        }
+        String layout = switch (method) {
+            case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
+            case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_tiled";
+            case "qasession" -> "activity_q&a";
+            case "handsonpractice" -> "activity_sidebar";
+            case "quizpolls", "quiz", "poll" -> "live_poll";
+            default -> "activity_tiled";
+        };
 
-        List<String> instructions = FIXED_INSTRUCTIONS.getOrDefault(method, List.of(
-            "1. Review the provided prompt or scenario",
-            "2. Discuss and formulate your response",
-            "3. Prepare to share your conclusions"
-        ));
-        
-        // Build JSON array string of instructions
-        String instJson = "[\\\"" + String.join("\\\", \\\"", instructions) + "\\\"]";
+        String instJson;
+        if (FIXED_INSTRUCTIONS.containsKey(method)) {
+            instJson = "[\\\"" + String.join("\\\", \\\"", FIXED_INSTRUCTIONS.get(method)) + "\\\"]";
+        } else if ("activity_grid3".equals(layout)) {
+            instJson = "[\\\"[short action 1]\\\", \\\"[short action 2]\\\", \\\"[short action 3]\\\"] (CRITICAL: DO NOT use numbers. Output EXACTLY 3 short actions corresponding to the 3 phases of the activity. Put all details in 'notes')";
+        } else {
+            instJson = "[\\\"[short action phrase e.g. map nodes]\\\", \\\"[short action e.g. read prompt and deliver]\\\"] (CRITICAL: DO NOT use numbers like '1.' or 'Step 1'. DO NOT use generic filler like 'Read the scenario'. Output ONLY 1-2 extremely concise, specific actions. Put all details in the 'notes' field.)";
+        }
 
         return """
                 SLIDE 1 — Activity slide:
                   "layout": "%s"
-                  "title": "[Specific Activity Name]: [Topic]" (e.g. use "Quiz", "Q&A", or "Think Pair Share" instead of "Activity")
+                  "title": "%s: [Learning Goal or Topic]"
+                  "activityPrompt": "the main question/task (MUST be a short 1-2 sentence summary, do NOT include instructions here)",
                   "activityInstructions": %s
-                  "activityPrompt": the student-facing question/task/scenario (do NOT include "LG" or learning goal tags)
-                  "activityOutputExpectation": what students will present/submit (if applicable, else omit)
-                  "notes": a PLAIN STRING — answer/reasoning, debrief technique, common wrong answers.
+                  "activityOutputExpectation": "what students will present/submit (if applicable, else omit)"
+                  "notes": a PLAIN STRING — answer/reasoning, debrief technique, common wrong answers, AND full detailed step-by-step instructions for the instructor.
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
-                """.formatted(layout, instJson);
+                """.formatted(layout, actName, instJson);
     }
 
     /**
@@ -1113,29 +1191,79 @@ public class PptxExportService {
     }
 
     private void safeSetTitleAndSubtitle(XSLFTextShape shape, String title, String subtitle, java.awt.Color subtitleColor) {
-        try {
-            shape.setText(title != null ? title : "Slide");
-            if (subtitle != null && !subtitle.isBlank()) {
-                org.apache.poi.xslf.usermodel.XSLFTextParagraph p = shape.addNewTextParagraph();
-                org.apache.poi.xslf.usermodel.XSLFTextRun r = p.addNewTextRun();
-                r.setText(subtitle);
-                r.setFontColor(subtitleColor);
-                r.setFontSize(16d);
-                p.setSpaceBefore(0d);
+        if (shape == null) return;
+        
+        java.util.List<org.apache.poi.xslf.usermodel.XSLFTextParagraph> paragraphs = shape.getTextParagraphs();
+        
+        // If the template has at least 2 paragraphs, it likely follows the [PHASE] 
+ // [TPS: TOPIC] format
+        if (paragraphs.size() >= 2) {
+            // Paragraph 0 is the subtitle (e.g. [PHASE])
+            org.apache.poi.xslf.usermodel.XSLFTextParagraph p0 = paragraphs.get(0);
+            if (!p0.getTextRuns().isEmpty()) {
+                org.apache.poi.xslf.usermodel.XSLFTextRun r0 = p0.getTextRuns().get(0);
+                r0.setText(subtitle != null ? subtitle : "");
+                // Clear any other runs in this paragraph
+                for (int i = p0.getTextRuns().size() - 1; i > 0; i--) p0.getTextRuns().get(i).setText("");
+            } else {
+                org.apache.poi.xslf.usermodel.XSLFTextRun r = p0.addNewTextRun();
+                r.setText(subtitle != null ? subtitle : "");
             }
-        } catch (IndexOutOfBoundsException e) {
+            
+            // Paragraph 1 is the main title (e.g. [TPS: TOPIC])
+            org.apache.poi.xslf.usermodel.XSLFTextParagraph p1 = paragraphs.get(1);
+            if (!p1.getTextRuns().isEmpty()) {
+                org.apache.poi.xslf.usermodel.XSLFTextRun r1 = p1.getTextRuns().get(0);
+                r1.setText(title != null ? title : "Slide");
+                // Clear any other runs
+                for (int i = p1.getTextRuns().size() - 1; i > 0; i--) p1.getTextRuns().get(i).setText("");
+            } else {
+                org.apache.poi.xslf.usermodel.XSLFTextRun r = p1.addNewTextRun();
+                r.setText(title != null ? title : "Slide");
+            }
+            
+            // Remove any extra dummy paragraphs from XML
+            for (int i = paragraphs.size() - 1; i > 1; i--) {
+                shape.getTextBody().getXmlObject().removeP(i);
+                // paragraphs.remove(i); // Throws UnsupportedOperationException in POI 5.2.5+
+            }
+        } else {
+            // Fallback if template doesn't match expected structure: grab the first run's formatting if any
+            Double defaultFontSize = 28d;
+            String defaultFontFamily = null;
+            boolean defaultBold = true;
+            java.awt.Color defaultColor = java.awt.Color.BLACK;
+            
+            if (!paragraphs.isEmpty() && !paragraphs.get(0).getTextRuns().isEmpty()) {
+                org.apache.poi.xslf.usermodel.XSLFTextRun templateRun = paragraphs.get(0).getTextRuns().get(0);
+                if (templateRun.getFontSize() != null) defaultFontSize = templateRun.getFontSize();
+                if (templateRun.getFontFamily() != null) defaultFontFamily = templateRun.getFontFamily();
+                defaultBold = templateRun.isBold();
+                // Try to get color, fallback to param if not possible
+                // Removed font color reading to avoid PaintStyle cast issues
+            }
+            
             shape.clearText();
-            org.apache.poi.xslf.usermodel.XSLFTextParagraph p1 = shape.addNewTextParagraph();
-            org.apache.poi.xslf.usermodel.XSLFTextRun r1 = p1.addNewTextRun();
-            r1.setText(title != null ? title : "Slide");
+            
+            // Paragraph 1: Subtitle
             if (subtitle != null && !subtitle.isBlank()) {
-                org.apache.poi.xslf.usermodel.XSLFTextParagraph p2 = shape.addNewTextParagraph();
-                org.apache.poi.xslf.usermodel.XSLFTextRun r2 = p2.addNewTextRun();
-                r2.setText(subtitle);
-                r2.setFontColor(subtitleColor);
-                r2.setFontSize(16d);
-                p2.setSpaceBefore(0d);
+                org.apache.poi.xslf.usermodel.XSLFTextParagraph sp = shape.addNewTextParagraph();
+                org.apache.poi.xslf.usermodel.XSLFTextRun sr = sp.addNewTextRun();
+                sr.setText(subtitle);
+                if (defaultFontFamily != null) sr.setFontFamily(defaultFontFamily);
+                sr.setFontSize(defaultFontSize != null ? Math.max(10d, defaultFontSize - 12d) : 16d);
+                sr.setFontColor(subtitleColor != null ? subtitleColor : defaultColor);
+                sr.setBold(true);
             }
+            
+            // Paragraph 2: Title
+            org.apache.poi.xslf.usermodel.XSLFTextParagraph tp = shape.addNewTextParagraph();
+            org.apache.poi.xslf.usermodel.XSLFTextRun tr = tp.addNewTextRun();
+            tr.setText(title != null ? title : "Slide");
+            if (defaultFontFamily != null) tr.setFontFamily(defaultFontFamily);
+            tr.setFontSize(defaultFontSize);
+            tr.setBold(defaultBold);
+            tr.setFontColor(defaultColor);
         }
     }
 
@@ -1188,195 +1316,651 @@ public class PptxExportService {
     // PPTX rendering
     // =========================================================================
 
-    private byte[] buildPptx(WorkshopSessionDto session, WorkshopInputDto meta,
-                              List<Map<String, Object>> slidesData, java.io.InputStream templateStream) throws Exception {
-        try (XMLSlideShow ppt = templateStream != null ? new XMLSlideShow(templateStream) : new XMLSlideShow()) {
-            boolean useTemplate = (templateStream != null);
-            java.awt.Color subtitleColor = useTemplate ? getTemplateAccentColor(ppt) : HESTIA_PRIMARY;
+    
+    private int getTemplateSlideIndex(String layout) {
+        if (layout == null) return 10; // default fallback (generic content slide)
+        return switch (layout) {
+            case "title" -> 0;
+            case "agenda" -> 1;
+            case "welcome" -> 2;
+            case "activity_grid3" -> 3;
+            case "activity_tiled" -> 4;
+            case "activity_sidebar" -> 5;
+            case "activity_q&a", "activity_qanda" -> 6;
+            case "live_poll" -> 7;
+            case "debrief" -> 8;
+            case "lecture_placeholder" -> 9;
+            case "summary", "concept_map" -> 10;
+            case "break" -> 11;
+            default -> 10; // default fallback (generic content slide)
+        };
+    }
 
-            if (useTemplate) {
-                for (int i = ppt.getSlides().size() - 1; i >= 0; i--) ppt.removeSlide(i);
-            } else {
-                ppt.setPageSize(new java.awt.Dimension(960, 540));
-            }
-
-            // ── 1. Title slide ───────────────────────────────────────────────
-            org.apache.poi.xslf.usermodel.XSLFSlideLayout titleLayout = getTitleLayout(ppt);
-            XSLFSlide titleSlide = titleLayout != null ? ppt.createSlide(titleLayout) : ppt.createSlide();
-
-            if (!useTemplate) {
-                titleSlide.getBackground().setFillColor(HESTIA_BG);
-                drawPhaseAccentStripe(titleSlide, PHASE_SETUP);
-            }
-
-            XSLFTextShape titleShape = getShapeByType(titleSlide, "TITLE", "CENTERED_TITLE", "CENTER_TITLE");
-            if (titleShape != null) {
-                if (useTemplate) {
-                    safeSetText(titleShape, session.title() != null ? session.title() : "Workshop Session");
-                } else {
-                    titleShape.clearText();
-                    org.apache.poi.xslf.usermodel.XSLFTextParagraph tp = titleShape.addNewTextParagraph();
-                    tp.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.CENTER);
-                    org.apache.poi.xslf.usermodel.XSLFTextRun tr = tp.addNewTextRun();
-                    tr.setText(session.title() != null ? session.title() : "Workshop Session");
-                    tr.setFontColor(HESTIA_FOREGROUND);
-                    tr.setBold(true);
-                    tr.setFontSize(36d);
-                }
-            }
-
-            XSLFTextShape subtitleShape = getShapeByType(titleSlide, "SUBTITLE", "BODY", "CONTENT");
-            if (subtitleShape != null) {
-                String subtitleText = meta != null && meta.sessionType() != null ? meta.sessionType() : "Lecture Slides";
-                if (useTemplate) {
-                    safeSetText(subtitleShape, subtitleText);
-                } else {
-                    subtitleShape.clearText();
-                    org.apache.poi.xslf.usermodel.XSLFTextParagraph stp = subtitleShape.addNewTextParagraph();
-                    stp.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.CENTER);
-                    org.apache.poi.xslf.usermodel.XSLFTextRun str = stp.addNewTextRun();
-                    str.setText(subtitleText);
-                    str.setFontColor(HESTIA_PRIMARY);
-                    str.setFontSize(20d);
-                }
-            }
-
-            // ── 2. Content slides ────────────────────────────────────────────
-            for (Map<String, Object> slideData : slidesData) {
-                String slideTitle    = (String) slideData.get("title");
-                String slideSubtitle = (String) slideData.get("subtitle");
-                String notesText     = (String) slideData.get("notes");
-                String layout        = (String) slideData.get("layout");
-
-                @SuppressWarnings("unchecked")
-                List<String> bullets = (List<String>) slideData.get("bullets");
-                if (bullets == null) bullets = new ArrayList<>();
-                else bullets = new ArrayList<>(bullets);
-
-                // ── Resolve layout-specific fields into bullet list ───────────
-                if (layout != null && layout.startsWith("activity_")) {
-                    String prompt = (String) slideData.get("activityPrompt");
-                    if (prompt != null) bullets.add("Prompt: " + prompt);
-                    @SuppressWarnings("unchecked")
-                    List<String> instructions = (List<String>) slideData.get("activityInstructions");
-                    if (instructions != null) bullets.addAll(instructions);
-                    String expectation = (String) slideData.get("activityOutputExpectation");
-                    if (expectation != null) bullets.add("Expectation: " + expectation);
-
-                } else if ("live_poll".equals(layout)) {
-                    String pollQuestion = (String) slideData.get("pollQuestion");
-                    if (pollQuestion != null) bullets.add(pollQuestion);
-                    @SuppressWarnings("unchecked")
-                    List<String> options = (List<String>) slideData.get("pollOptions");
-                    if (options != null) bullets.addAll(options);
-
-                } else if ("concept_map".equals(layout)) {
-                    bullets.add("[Visual Concept Map Placeholder]");
-
-                } else if ("lecture_placeholder".equals(layout)) {
-                    // bullets already contain the placeholder text from Java
-
-                } else if ("debrief".equals(layout)) {
-                    // Single centred reflective question — use debriefQuestion field if present
-                    String dq = (String) slideData.get("debriefQuestion");
-                    if (dq != null && !dq.isBlank()) {
-                        bullets.clear();
-                        bullets.add(dq);
-                    }
-                }
-
-                org.apache.poi.xslf.usermodel.XSLFSlideLayout contentLayout = getContentLayout(ppt);
-                XSLFSlide slide = contentLayout != null ? ppt.createSlide(contentLayout) : ppt.createSlide();
-
-                if (!useTemplate) {
-                    slide.getBackground().setFillColor(java.awt.Color.WHITE);
-                    drawPhaseAccentStripe(slide, resolvePhaseAccentColor(slideData));
-                }
-
-                // ── Title shape ──────────────────────────────────────────────
-                XSLFTextShape shapeTitle = getShapeByType(slide, "TITLE", "CENTERED_TITLE", "CENTER_TITLE");
-                XSLFTextShape body       = getShapeByType(slide, "BODY", "CONTENT", "OBJECT");
-
-                if (shapeTitle != null) {
-                    if (useTemplate) {
-                        safeSetTitleAndSubtitle(shapeTitle, slideTitle, slideSubtitle, subtitleColor);
-                    } else {
-                        shapeTitle.clearText();
-
-                        if (slideSubtitle != null && !slideSubtitle.isBlank()) {
-                            org.apache.poi.xslf.usermodel.XSLFTextParagraph breadcrumb = shapeTitle.addNewTextParagraph();
-                            org.apache.poi.xslf.usermodel.XSLFTextRun br = breadcrumb.addNewTextRun();
-                            br.setText(slideSubtitle.toUpperCase());
-                            br.setFontColor(HESTIA_PRIMARY_LIGHT);
-                            br.setFontSize(11d);
-                            breadcrumb.setSpaceAfter(4d);
-                        }
-
-                        org.apache.poi.xslf.usermodel.XSLFTextParagraph ctp = shapeTitle.addNewTextParagraph();
-                        org.apache.poi.xslf.usermodel.XSLFTextRun ctr = ctp.addNewTextRun();
-                        ctr.setText(slideTitle != null ? slideTitle : "Slide");
-                        ctr.setFontColor(HESTIA_FOREGROUND);
-                        ctr.setBold(false);
-                        ctr.setFontSize(20d);
-                        ctp.setSpaceAfter(6d);
-
-                        // Separator line
-                        java.awt.geom.Rectangle2D titleAnchor = shapeTitle.getAnchor();
-                        org.apache.poi.xslf.usermodel.XSLFConnectorShape line = slide.createConnector();
-                        line.setAnchor(new java.awt.geom.Rectangle2D.Double(
-                                titleAnchor.getX(),
-                                titleAnchor.getY() + titleAnchor.getHeight() - 8,
-                                titleAnchor.getWidth(), 0));
-                        line.setLineColor(HESTIA_SEPARATOR);
-                        line.setLineWidth(1.0);
-                    }
-                }
-
-                // ── Body / bullets ───────────────────────────────────────────
-                if (body != null) {
-                    body.clearText();
-                    if (bullets != null && !bullets.isEmpty()) {
-                        boolean isDebrief = "debrief".equals(layout);
-                        for (String bullet : bullets) {
-                            org.apache.poi.xslf.usermodel.XSLFTextParagraph bp = body.addNewTextParagraph();
-                            if (!isDebrief) bp.setBullet(true);
-                            org.apache.poi.xslf.usermodel.XSLFTextRun br = bp.addNewTextRun();
-                            br.setText(bullet);
-                            if (!useTemplate) {
-                                if (!isDebrief) bp.setBulletFontColor(HESTIA_PRIMARY);
-                                br.setFontColor(HESTIA_FOREGROUND);
-                                br.setFontSize(isDebrief ? 24d : 18d);
-                                if (isDebrief) br.setItalic(true);
-                                bp.setSpaceAfter(10d);
-                                if (isDebrief) bp.setTextAlign(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.CENTER);
+    private void replaceTextInSlide(org.apache.poi.xslf.usermodel.XSLFSlide slide, String search, String replacement) {
+        if (search == null) return;
+        if (replacement == null) replacement = "";
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+                if (ts.getText().contains(search)) {
+                    for (org.apache.poi.xslf.usermodel.XSLFTextParagraph p : ts.getTextParagraphs()) {
+                        if (p.getText().contains(search)) {
+                            String fullText = p.getText();
+                            String regex = search.endsWith("]") 
+                                ? java.util.regex.Pattern.quote(search) 
+                                : java.util.regex.Pattern.quote(search) + "[^\\]]*\\]";
+                            String newText = fullText.replaceAll(regex, java.util.regex.Matcher.quoteReplacement(replacement));
+                            if (newText.equals(fullText)) {
+                                // Fallback: no closing bracket found – do a simple substring replace
+                                newText = fullText.replace(search, replacement);
                             }
-                        }
-                    }
-                }
+                            if (!p.getTextRuns().isEmpty()) {
+                                org.apache.poi.sl.usermodel.PaintStyle targetColor = null;
+                                String targetFontFamily = null;
+                                Double targetFontSize = null;
+                                boolean isBold = false;
 
-                // ── Speaker notes ────────────────────────────────────────────
-                if (notesText != null && !notesText.isBlank()) {
-                    try {
-                        org.apache.poi.xslf.usermodel.XSLFNotes notesSlide = ppt.getNotesSlide(slide);
-                        if (notesSlide != null) {
-                            for (XSLFTextShape shape : notesSlide.getPlaceholders()) {
-                                if (shape.getTextType() == org.apache.poi.sl.usermodel.Placeholder.BODY) {
-                                    shape.setText(notesText);
-                                    break;
+                                for (org.apache.poi.xslf.usermodel.XSLFTextRun r : p.getTextRuns()) {
+                                    if (r.getRawText().contains(search)) {
+                                        targetColor = r.getFontColor();
+                                        targetFontFamily = r.getFontFamily();
+                                        targetFontSize = r.getFontSize();
+                                        isBold = r.isBold();
+                                        break;
+                                    }
+                                }
+                                if (targetColor == null && p.getTextRuns().size() > 1) {
+                                    org.apache.poi.xslf.usermodel.XSLFTextRun lastRun = p.getTextRuns().get(p.getTextRuns().size() - 1);
+                                    targetColor = lastRun.getFontColor();
+                                    targetFontFamily = lastRun.getFontFamily();
+                                    targetFontSize = lastRun.getFontSize();
+                                    isBold = lastRun.isBold();
+                                }
+
+                                org.apache.poi.xslf.usermodel.XSLFTextRun firstRun = p.getTextRuns().get(0);
+                                firstRun.setText(newText);
+                                if (targetColor != null) firstRun.setFontColor(targetColor);
+                                if (targetFontFamily != null) firstRun.setFontFamily(targetFontFamily);
+                                if (targetFontSize != null) firstRun.setFontSize(targetFontSize);
+                                firstRun.setBold(isBold);
+
+                                for (int i = p.getTextRuns().size() - 1; i > 0; i--) {
+                                    p.getTextRuns().get(i).setText("");
                                 }
                             }
                         }
-                    } catch (Exception ex) {
-                        // Ignore if notes master is missing
+                    }
+                    // Enable normAutoFit so replaced text shrinks to fit the shape
+                    enableAutoFit(ts);
+                }
+            }
+        }
+    }
+
+    /**
+     * Enable "shrink text on overflow" (normAutoFit) on a text shape so that
+     * long replacement strings never overflow the slide boundary.
+     */
+    private void enableAutoFit(org.apache.poi.xslf.usermodel.XSLFTextShape shape) {
+        try {
+            shape.setTextAutofit(org.apache.poi.sl.usermodel.TextShape.TextAutofit.NORMAL);
+        } catch (Exception e) {
+            log.debug("Could not enable auto-fit on shape: {}", e.getMessage());
+        }
+    }
+
+    private void removeShapeContainingText(org.apache.poi.xslf.usermodel.XSLFSlide slide, String searchString) {
+        if (searchString == null) return;
+        List<org.apache.poi.xslf.usermodel.XSLFShape> toRemove = new ArrayList<>();
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shapeContainsText(shape, searchString, false)) {
+                toRemove.add(shape);
+            }
+        }
+        for (org.apache.poi.xslf.usermodel.XSLFShape s : toRemove) {
+            slide.removeShape(s);
+        }
+    }
+
+    private void removeExactShapeText(org.apache.poi.xslf.usermodel.XSLFSlide slide, String exactMatch) {
+        if (exactMatch == null) return;
+        List<org.apache.poi.xslf.usermodel.XSLFShape> toRemove = new ArrayList<>();
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shapeContainsText(shape, exactMatch, true)) {
+                toRemove.add(shape);
+            }
+        }
+        for (org.apache.poi.xslf.usermodel.XSLFShape s : toRemove) {
+            slide.removeShape(s);
+        }
+    }
+
+    private boolean shapeContainsText(org.apache.poi.xslf.usermodel.XSLFShape shape, String searchString, boolean exact) {
+        if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+            String text = ts.getText();
+            if (exact) {
+                return text.trim().equals(searchString);
+            } else {
+                return text.contains(searchString);
+            }
+        } else if (shape instanceof org.apache.poi.xslf.usermodel.XSLFGroupShape group) {
+            for (org.apache.poi.xslf.usermodel.XSLFShape child : group.getShapes()) {
+                if (shapeContainsText(child, searchString, exact)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void replaceExactShapeText(org.apache.poi.xslf.usermodel.XSLFSlide slide, String exactMatch, String replacement) {
+        if (exactMatch == null) return;
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+                if (ts.getText().trim().equals(exactMatch)) {
+                    ts.clearText();
+                    if (replacement != null && !replacement.isEmpty()) {
+                        ts.setText(replacement);
                     }
                 }
             }
+        }
+    }
 
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
+    private void removeRowShapes(org.apache.poi.xslf.usermodel.XSLFSlide slide, String searchString) {
+        if (searchString == null) return;
+        org.apache.poi.xslf.usermodel.XSLFShape targetShape = null;
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shapeContainsText(shape, searchString, false)) {
+                targetShape = shape;
+                break;
+            }
+        }
+        if (targetShape == null) return;
+
+        java.awt.geom.Rectangle2D targetAnchor = targetShape.getAnchor();
+        double targetMinY = targetAnchor.getY();
+        double targetMaxY = targetMinY + targetAnchor.getHeight();
+
+        List<org.apache.poi.xslf.usermodel.XSLFShape> toRemove = new ArrayList<>();
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            java.awt.geom.Rectangle2D anchor = shape.getAnchor();
+            if (anchor == null) continue;
+            double minY = anchor.getY();
+            double maxY = minY + anchor.getHeight();
+
+            // Check for vertical overlap. We assume slide height is ~540pt.
+            // A background shape covering the whole slide will have height > 500pt.
+            // The row shapes have height around 60-80pt.
+            if (minY <= targetMaxY && maxY >= targetMinY) {
+                if (anchor.getHeight() < 400) {
+                    toRemove.add(shape);
+                }
+            }
+        }
+        for (org.apache.poi.xslf.usermodel.XSLFShape s : toRemove) {
+            slide.removeShape(s);
+        }
+    }
+
+    private void replaceBodyText(org.apache.poi.xslf.usermodel.XSLFSlide slide, List<String> bullets, String... searchStrings) {
+        if (bullets == null || bullets.isEmpty()) return;
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape) {
+                org.apache.poi.xslf.usermodel.XSLFTextShape ts = (org.apache.poi.xslf.usermodel.XSLFTextShape) shape;
+                boolean match = false;
+                for (String search : searchStrings) {
+                    if (ts.getText().contains(search)) {
+                        match = true;
+                        break;
+                    }
+                }
+                if (match) {
+                    // Capture style
+                    String defaultBulletChar = "•";
+                    String defaultBulletFont = null;
+                    Double defaultFontSize = 20d;
+                    String defaultFontFamily = null;
+                    java.awt.Color defaultFontColor = null;
+                    boolean defaultBold = false;
+                    boolean defaultItalic = false;
+                    org.apache.poi.sl.usermodel.TextParagraph.TextAlign defaultAlign = null;
+                    Double defaultLineSpacing = null;
+                    Double defaultSpaceBefore = null;
+                    Double defaultSpaceAfter = null;
+                    Double defaultLeftMargin = null;
+                    Double defaultIndent = null;
+                    
+                    if (!ts.getTextParagraphs().isEmpty()) {
+                        org.apache.poi.xslf.usermodel.XSLFTextParagraph firstPara = ts.getTextParagraphs().get(0);
+                        if (firstPara.isBullet() && firstPara.getBulletCharacter() != null) {
+                            defaultBulletChar = firstPara.getBulletCharacter();
+                        }
+                        if (firstPara.getBulletFont() != null) defaultBulletFont = firstPara.getBulletFont();
+                        
+                        defaultAlign = firstPara.getTextAlign();
+                        defaultLineSpacing = firstPara.getLineSpacing();
+                        defaultSpaceBefore = firstPara.getSpaceBefore();
+                        defaultSpaceAfter = firstPara.getSpaceAfter();
+                        defaultLeftMargin = firstPara.getLeftMargin();
+                        defaultIndent = firstPara.getIndent();
+                        
+                        if (!firstPara.getTextRuns().isEmpty()) {
+                            org.apache.poi.xslf.usermodel.XSLFTextRun firstRun = firstPara.getTextRuns().get(0);
+                            if (firstRun.getFontSize() != null) defaultFontSize = firstRun.getFontSize();
+                            if (firstRun.getFontFamily() != null) defaultFontFamily = firstRun.getFontFamily();
+                            // Eagerly resolve PaintStyle → java.awt.Color BEFORE clearText() disconnects the XML nodes.
+                            // Holding a live PaintStyle/XSLFColor reference after clearText() causes XmlValueDisconnectedException.
+                            org.apache.poi.sl.usermodel.PaintStyle rawColor = firstRun.getFontColor();
+                            if (rawColor instanceof org.apache.poi.sl.usermodel.PaintStyle.SolidPaint) {
+                                java.awt.Color c = ((org.apache.poi.sl.usermodel.PaintStyle.SolidPaint) rawColor)
+                                        .getSolidColor().getColor();
+                                if (c != null) defaultFontColor = c;
+                            }
+                            defaultBold = firstRun.isBold();
+                            defaultItalic = firstRun.isItalic();
+                        }
+                    }
+
+                    ts.clearText();
+                    
+                    for (String bullet : bullets) {
+                        org.apache.poi.xslf.usermodel.XSLFTextParagraph bp = ts.addNewTextParagraph();
+                        bp.setBullet(true);
+                        bp.setBulletCharacter(defaultBulletChar);
+                        if (defaultBulletFont != null) bp.setBulletFont(defaultBulletFont);
+                        if (defaultAlign != null) bp.setTextAlign(defaultAlign);
+                        if (defaultLineSpacing != null) bp.setLineSpacing(defaultLineSpacing);
+                        if (defaultSpaceBefore != null) bp.setSpaceBefore(defaultSpaceBefore);
+                        if (defaultSpaceAfter != null) bp.setSpaceAfter(defaultSpaceAfter);
+                        if (defaultLeftMargin != null) bp.setLeftMargin(defaultLeftMargin);
+                        if (defaultIndent != null) bp.setIndent(defaultIndent);
+                        
+                        org.apache.poi.xslf.usermodel.XSLFTextRun br = bp.addNewTextRun();
+                        br.setText(bullet);
+                        if (defaultFontFamily != null) br.setFontFamily(defaultFontFamily);
+                        br.setFontSize(defaultFontSize);
+                        if (defaultFontColor != null) br.setFontColor(defaultFontColor);
+                        br.setBold(defaultBold);
+                        br.setItalic(defaultItalic);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    private byte[] buildPptx(WorkshopSessionDto session, WorkshopInputDto meta,
+                              List<Map<String, Object>> slidesData, java.io.InputStream templateStream) throws Exception {
+        try (org.apache.poi.xslf.usermodel.XMLSlideShow ppt = templateStream != null
+                ? new org.apache.poi.xslf.usermodel.XMLSlideShow(templateStream)
+                : new org.apache.poi.xslf.usermodel.XMLSlideShow()) {
+
+            boolean useTemplate = (templateStream != null);
+            int originalSlideCount = ppt.getSlides().size();
+            boolean isCloningMode = useTemplate && originalSlideCount >= 11;
+
+            if (!useTemplate) {
+                ppt.setPageSize(new java.awt.Dimension(960, 540));
+            }
+
+            // ── Title slide ─────────────────────────────────────────────────────
+            if (isCloningMode) {
+                org.apache.poi.xslf.usermodel.XSLFSlide titleSlide = ppt.createSlide();
+                titleSlide.importContent(ppt.getSlides().get(0)); // template slide 0 = title
+                replaceTextInSlide(titleSlide, "[Session Title]",
+                        session.title() != null ? session.title() : "Workshop Session");
+                replaceTextInSlide(titleSlide, "[PHASE]",
+                        meta != null && meta.sessionType() != null ? meta.sessionType() : "");
+                clearTemplateTag(titleSlide);
+            } else {
+                ppt.createSlide();
+            }
+
+            // ── Content slides ───────────────────────────────────────────────────
+            for (Map<String, Object> slideData : slidesData) {
+                String slideTitle    = (String) slideData.get("title");
+                String slideSubtitle = (String) slideData.get("subtitle");
+                String layout        = (String) slideData.getOrDefault("layout", "default");
+
+                if (!isCloningMode) continue; // non-template path not supported
+
+                int tplIdx = getTemplateSlideIndex(layout);
+                if (tplIdx >= originalSlideCount) tplIdx = 2; // fallback to generic content slide
+
+                org.apache.poi.xslf.usermodel.XSLFSlide slide = ppt.createSlide();
+                slide.importContent(ppt.getSlides().get(tplIdx));
+
+                // ── Remove "TEMPLATE · <layout>" tag labels baked into template ──────
+                clearTemplateTag(slide);
+
+                // ── Title / topic ────────────────────────────────────────────────
+                // The title from the LLM may look like "Think-Pair-Share: Some Topic".
+                // Template placeholders already contain the activity type label, so we
+                // extract only the topic part when a colon separator is present.
+                String topicOnly = extractTopicOnly(slideTitle, layout);
+
+                // ── Activity Name (from mapped activity method) ──────────────────
+                String activityName = (String) slideData.get("activityName");
+                if (activityName != null) {
+                    replaceTextInSlide(slide, "[ACTIVITY NAME]", activityName.toUpperCase());
+                } else {
+                    replaceTextInSlide(slide, "[ACTIVITY NAME]", "");
+                }
+
+                // ── Phase / Topic (top-left on every slide) ────────────────────────
+                String group = (String) slideData.get("group");
+                String rawTopic = (String) slideData.get("topic");
+                String topicVal = rawTopic != null ? rawTopic.replaceAll("(?i)\\s*-\\s*LG\\s*\\d+", "") : null;
+                boolean isActivity = layout != null && (layout.startsWith("activity_") || layout.equals("live_poll"));
+
+                String phaseOrTopic = slideSubtitle; // Default fallback
+                if ("welcome".equals(group)) {
+                    phaseOrTopic = "WELCOME";
+                } else if ("agenda".equals(group)) {
+                    phaseOrTopic = "AGENDA";
+                } else if ("activate_prior_knowledge".equals(group)) {
+                    phaseOrTopic = isActivity ? "ACTIVATE" : "LECTURE";
+                } else if ("main_lecture".equals(group)) {
+                    if ("debrief".equals(layout)) {
+                        phaseOrTopic = topicVal != null ? topicVal : "DEBRIEF";
+                    } else if (isActivity) {
+                        phaseOrTopic = topicVal != null ? topicVal : "ACTIVITY";
+                    } else {
+                        phaseOrTopic = "LECTURE";
+                    }
+                } else if ("check_understanding".equals(group)) {
+                    phaseOrTopic = "CHECK UNDERSTANDING";
+                } else if ("summary".equals(group)) {
+                    phaseOrTopic = "SUMMARY";
+                }
+                if (phaseOrTopic != null) {
+                    replaceTextInSlide(slide, "[PHASE/TOPIC]", phaseOrTopic.toUpperCase());
+                    replaceTextInSlide(slide, "[PHASE]", phaseOrTopic.toUpperCase());
+                }
+
+                replaceTextInSlide(slide, "[TPS: TOPIC]",   topicOnly);
+                replaceTextInSlide(slide, "[TOPIC]",        topicOnly);
+                replaceTextInSlide(slide, "[Slide Title]",  slideTitle != null ? slideTitle : "");
+                replaceTextInSlide(slide, "[Lecture Topic]", slideTitle != null ? slideTitle : "");
+                replaceTextInSlide(slide, "[Session Title]", session.title() != null ? session.title() : "Workshop Session");
+
+                // ── Layout-specific body content ─────────────────────────────────
+                populateSlideBody(slide, slideData, layout);
+
+                // ── Speaker notes ─────────────────────────────────────────────────
+                String notes = (String) slideData.get("notes");
+                if (notes != null && !notes.isBlank()) {
+                    setSlideNotes(slide, notes);
+                }
+            }
+
+            // ── Remove the original template slides ───────────────────────────────
+            if (isCloningMode) {
+                for (int i = originalSlideCount - 1; i >= 0; i--) {
+                    ppt.removeSlide(i);
+                }
+            }
+
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
             ppt.write(out);
             return out.toByteArray();
         }
     }
+
+    /**
+     * For activity slides whose LLM-generated title contains "ActivityType: Topic",
+     * extract only the topic portion so it can replace "[TOPIC]" in the template
+     * (which already renders the activity type label visually).
+     * For non-activity slides the full title is returned unchanged.
+     */
+    private String extractTopicOnly(String title, String layout) {
+        if (title == null) return "";
+        if (layout != null && (layout.startsWith("activity_") || "live_poll".equals(layout))) {
+            int colonIdx = title.indexOf(':');
+            if (colonIdx > 0 && colonIdx < title.length() - 1) {
+                return title.substring(colonIdx + 1).trim();
+            }
+        }
+        return title;
+    }
+
+    /**
+     * Populate the body shapes of a cloned template slide with the correct data fields
+     * for each layout type. Each layout in the template has distinct placeholder text that
+     * maps to specific JSON fields — this method handles them separately instead of
+     * merging everything into a single bullet list.
+     */
+    @SuppressWarnings("unchecked")
+    private void populateSlideBody(org.apache.poi.xslf.usermodel.XSLFSlide slide,
+                                   Map<String, Object> slideData, String layout) {
+        if (layout == null) layout = "default";
+
+        switch (layout) {
+
+            // ── Think-Pair-Share (activity_grid3) ────────────────────────────────
+            // Template has: one prompt box + 3 phase tiles (THINK/PAIR/SHARE)
+            // Data fields:  activityPrompt only (instructions are fixed in template tiles)
+            case "activity_grid3" -> {
+                String prompt = (String) slideData.get("activityPrompt");
+                if (prompt != null) {
+                    replaceTextInSlide(slide, "[Write the question or task", prompt);
+                    replaceTextInSlide(slide, "[Write the question", prompt);
+                }
+                List<String> instructions = (List<String>) slideData.get("activityInstructions");
+                if (instructions != null) {
+                    if (instructions.size() > 0) replaceTextInSlide(slide, "[THINK (2 min)]", instructions.get(0));
+                    if (instructions.size() > 1) replaceTextInSlide(slide, "[PAIR (2 min)]", instructions.get(1));
+                    if (instructions.size() > 2) replaceTextInSlide(slide, "[SHARE (1 min)]", instructions.get(2));
+                }
+            }
+
+            // ── Group Discussion / Brainstorming (activity_tiled) ────────────────
+            // Template has: one prompt box + two side tiles (LOGISTICS + DELIVERABLE)
+            // Data fields:  activityPrompt, activityInstructions, activityOutputExpectation
+            case "activity_tiled" -> {
+                String prompt = (String) slideData.get("activityPrompt");
+                if (prompt != null) {
+                    replaceTextInSlide(slide, "[Write the discussion prompt", prompt);
+                    replaceTextInSlide(slide, "[Write the discussion", prompt);
+                }
+                List<String> instructions = (List<String>) slideData.get("activityInstructions");
+                if (instructions != null && !instructions.isEmpty()) {
+                    replaceBodyText(slide, instructions, "[Form groups of 4]", "[Assign a note");
+                }
+                String expectation = (String) slideData.get("activityOutputExpectation");
+                if (expectation != null) {
+                    replaceTextInSlide(slide, "[Describe what the group should be ready to share", expectation);
+                    replaceTextInSlide(slide, "[Describe what the group", expectation);
+                }
+            }
+
+            // ── Case Study / Role Play / Hands-on (activity_sidebar) ─────────────
+            // Template has: a numbered instructions column + a time/materials sidebar
+            // Data fields:  activityInstructions, activityPrompt (used as context)
+            case "activity_sidebar" -> {
+                List<String> instructions = (List<String>) slideData.get("activityInstructions");
+                if (instructions != null && !instructions.isEmpty()) {
+                    replaceBodyText(slide, instructions, "[Step 1 — set up your environment", "[Step 1");
+                }
+                String prompt = (String) slideData.get("activityPrompt");
+                if (prompt != null) {
+                    replaceTextInSlide(slide, "[Write the question", prompt);
+                }
+            }
+
+            // ── Q&A / One-Minute Paper (activity_q&a) ────────────────────────────
+            case "activity_q&a", "activity_qanda" -> {
+                String title = (String) slideData.get("title");
+                if (title != null) {
+                    replaceTextInSlide(slide, "[Floor is Open]", title);
+                }
+                String prompt = (String) slideData.get("activityPrompt");
+                if (prompt != null) {
+                    replaceTextInSlide(slide, "[Short supporting note", prompt);
+                }
+            }
+
+            // ── Quiz / Poll (live_poll) ───────────────────────────────────────────
+            // Template has: one question text shape + 4 individual option tile shapes
+            // each labelled [Option A], [Option B], [Option C], [Option D].
+            // We replace them one-by-one so each tile gets exactly one option string.
+            case "live_poll" -> {
+                String question = (String) slideData.get("pollQuestion");
+                if (question != null) {
+                    replaceTextInSlide(slide, "[Poll Question Goes Here?]", question);
+                    replaceTextInSlide(slide, "[Write the question", question);
+                }
+                List<String> options = (List<String>) slideData.get("pollOptions");
+                if (options != null) {
+                    String[] tiles = {"[Option A]", "[Option B]", "[Option C]", "[Option D]"};
+                    for (int i = 0; i < tiles.length; i++) {
+                        if (i < options.size()) {
+                            replaceTextInSlide(slide, tiles[i], options.get(i));
+                        } else {
+                            // Completely remove the entire row of shapes for this option
+                            removeRowShapes(slide, tiles[i]);
+                        }
+                    }
+                }
+            }
+
+            // ── Debrief / Reflect / Thank-You (debrief) ──────────────────────────
+            // Template has: a top question box, a Suggested Answer box, and two smaller tiles
+            // Data fields: suggestedAnswer, commonMisconceptions, keyTakeaway
+            case "debrief" -> {
+                // Clear the reflection prompt placeholders
+                replaceTextInSlide(slide, "[Write the reflection prompt", "");
+                replaceTextInSlide(slide, "[Write the question", "");
+                
+                String suggestedAnswer = (String) slideData.get("suggestedAnswer");
+                if (suggestedAnswer != null) {
+                    replaceTextInSlide(slide, "[Summarize the correct answer", suggestedAnswer);
+                }
+                
+                Object misconceptionsObj = slideData.get("commonMisconceptions");
+                if (misconceptionsObj instanceof List<?> mList && !mList.isEmpty()) {
+                    replaceTextInSlide(slide, "[Misconception participants often have]", mList.get(0).toString());
+                    if (mList.size() > 1) {
+                        replaceTextInSlide(slide, "[A second common mistake or gap]", mList.get(1).toString());
+                    } else {
+                        replaceTextInSlide(slide, "[A second common mistake or gap]", "");
+                    }
+                } else {
+                    replaceTextInSlide(slide, "[Misconception participants often have]", "");
+                    replaceTextInSlide(slide, "[A second common mistake or gap]", "");
+                }
+                replaceTextInSlide(slide, "[Why this misconception happens]", "");
+                
+                String keyTakeaway = (String) slideData.get("keyTakeaway");
+                if (keyTakeaway != null) {
+                    replaceTextInSlide(slide, "[State the one main insight", keyTakeaway);
+                } else {
+                    replaceTextInSlide(slide, "[State the one main insight", "");
+                }
+            }
+
+            // ── Lecture placeholder ───────────────────────────────────────────────
+            // Template has: instructional text telling the instructor to insert slides
+            // We leave it as-is (no dynamic content to inject)
+            case "lecture_placeholder" -> { /* intentionally left blank */ }
+
+            // ── Agenda (bullets) ─────────────────────────────────────────────────
+            case "agenda" -> {
+                List<String> bullets = (List<String>) slideData.get("bullets");
+                if (bullets != null) {
+                    String[] placeholders = {
+                        "[Learning Goal 1]", 
+                        "[Learning Goal 2]", 
+                        "[Learning Goal 3]", 
+                        "[Learning Goal ...]"
+                    };
+                    for (int i = 0; i < placeholders.length; i++) {
+                        if (i < bullets.size()) {
+                            replaceTextInSlide(slide, placeholders[i], bullets.get(i));
+                        } else {
+                            replaceTextInSlide(slide, placeholders[i], "");
+                        }
+                    }
+                    // Handle edge cases where placeholders might just be "[Learning Goal]"
+                    replaceTextInSlide(slide, "[Learning Goal]", "");
+                }
+                
+                if (Boolean.TRUE.equals(slideData.get("isClosingAgenda"))) {
+                    replaceTextInSlide(slide, "What We'll Cover Today", "What We've Covered Today");
+                }
+            }
+
+            // ── Welcome ──────────────────────────────────────────────────────────
+            case "welcome" -> {
+                List<String> bullets = (List<String>) slideData.get("bullets");
+                if (bullets != null && !bullets.isEmpty()) {
+                    replaceBodyText(slide, bullets, "[Welcome message");
+                }
+            }
+
+            // ── Break ────────────────────────────────────────────────────────────
+            case "break" -> {
+                List<String> bullets = (List<String>) slideData.get("bullets");
+                if (bullets != null && !bullets.isEmpty()) {
+                    replaceTextInSlide(slide, "[X] minutes — see you soon!", bullets.get(0));
+                    replaceTextInSlide(slide, "[X] minutes", bullets.get(0));
+                }
+            }
+
+            // ── Default / standard content slides ────────────────────────────────
+            default -> {
+                List<String> bullets = (List<String>) slideData.get("bullets");
+                if (bullets != null && !bullets.isEmpty()) {
+                    replaceBodyText(slide, bullets,
+                        "[First key point", "[Learning Goal", "[Summarize the",
+                        "[Write the question", "Instructor content");
+                }
+            }
+        }
+    }
+
+    /**
+     * Clears the "TEMPLATE · &lt;layout&gt;" tag text that is baked into the bottom-right
+     * corner of every template slide for design reference. On exported slides this
+     * label should not be visible.
+     */
+    private void clearTemplateTag(org.apache.poi.xslf.usermodel.XSLFSlide slide) {
+        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+                String text = ts.getText();
+                if (text != null && text.contains("TEMPLATE")) {
+                    try {
+                        ts.clearText();
+                    } catch (Exception e) {
+                        log.debug("Could not clear TEMPLATE tag: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Sets the speaker notes on a slide, creating the notes slide if needed.
+     */
+    private void setSlideNotes(org.apache.poi.xslf.usermodel.XSLFSlide slide, String notes) {
+        try {
+            org.apache.poi.xslf.usermodel.XSLFNotes notesSlide = slide.getSlideShow().getNotesSlide(slide);
+            if (notesSlide == null) return;
+            for (XSLFTextShape shape : notesSlide.getPlaceholders()) {
+                if (shape.getTextType() == org.apache.poi.sl.usermodel.Placeholder.BODY) {
+                    shape.setText(notes);
+                    return;
+                }
+            }
+            // Fallback: use first text shape if no BODY placeholder found
+            if (notesSlide.getPlaceholders().length > 1) {
+                notesSlide.getPlaceholders()[1].setText(notes);
+            }
+        } catch (Exception e) {
+            log.debug("Could not set slide notes: {}", e.getMessage());
+        }
+    }
+
 
     /**
      * Draws an 8pt phase-accent left-border stripe on the slide (non-template path only).
