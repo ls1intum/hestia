@@ -76,8 +76,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
         const chunk = session.blocks.slice(i, i + concurrencyLimit);
         const promises = chunk.map(async (block, chunkIdx) => {
           const actualIdx = i + chunkIdx;
-          // Skip BUFFER and BREAK blocks — no slides generated for these
-          if (block.phase === "BUFFER" || block.phase === "BREAK") {
+          // Skip BUFFER blocks — no slides generated for these
+          if (block.phase === "BUFFER") {
             return { idx: actualIdx, slides: [] };
           }
           const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/block-slides", {
@@ -232,15 +232,15 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       for (const [key, val] of Object.entries(obj)) {
         const strVal = coerceToString(val);
         if (!strVal) continue;
-        
+
         // Convert camelCase/snake_case to Title Case (e.g., answerKey -> Answer Key)
         let label = key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
         label = label.charAt(0).toUpperCase() + label.slice(1);
-        
+
         lines.push(`${label}: ${strVal}`);
       }
       if (lines.length > 0) return lines.join("\n");
-      
+
       return "";
     }
     return String(value);
@@ -266,18 +266,18 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
 
   const renderSlideHtml = (index: number) => {
     // ── Template colours ─────────────────────────────────────────────────────
-    const CREAM    = '#F8F7F6';
-    const CREAM2   = '#DFDEDD';
-    const DARK     = '#2C2420';
-    const MUTED    = '#6B6663';
-    const GREEN    = '#059669'; // pair / small group
-    const BLUE     = '#2563EB'; // individual / Q&A
-    const ORANGE   = '#EA580C'; // whole class
-    const PURPLE   = '#6D28D9'; // lecture / reflect
-    const BROWN    = '#865C1D'; // title / brand
+    const CREAM = '#F8F7F6';
+    const CREAM2 = '#DFDEDD';
+    const DARK = '#2C2420';
+    const MUTED = '#6B6663';
+    const GREEN = '#059669'; // pair / small group
+    const BLUE = '#2563EB'; // individual / Q&A
+    const ORANGE = '#EA580C'; // whole class
+    const PURPLE = '#6D28D9'; // lecture / reflect
+    const BROWN = '#865C1D'; // title / brand
 
     const titleFont = "'Playfair Display', 'Georgia', serif";
-    const bodyFont  = "'Inter', 'system-ui', sans-serif";
+    const bodyFont = "'Inter', 'system-ui', sans-serif";
 
     // ── Title slide (index 0) ────────────────────────────────────────────────
     if (index === 0) {
@@ -312,27 +312,76 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     else if (layout === 'activity_sidebar' && (titleLow.includes('hands') || titleLow.includes('worked'))) accent = BLUE;
 
     // ── Shared slide shell ──────────────────────────────────────────────────
-    const shell = (children: React.ReactNode, extraBg?: string) => (
-      <div style={{ background: extraBg || CREAM, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
-        {/* left accent stripe */}
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: accent }} />
-        {/* header */}
-        <div style={{ paddingLeft: 20, paddingRight: 16, paddingTop: 12, paddingBottom: 8, borderBottom: `1px solid ${CREAM2}`, flexShrink: 0 }}>
-          {slideData.subtitle && (
-            <div style={{ fontFamily: bodyFont, fontSize: '0.78rem', fontWeight: 600, color: accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-              {slideData.subtitle}
+    const shell = (children: React.ReactNode, extraBg?: string) => {
+      let displayTitle = slideData.title || 'Slide';
+      let activityType: string | null = (slideData as any).activityName || null;
+      let isActivityLayout = false;
+
+      if (layout && (layout.startsWith('activity_') || layout === 'live_poll' || layout === 'debrief')) {
+        isActivityLayout = true;
+        const colonIdx = displayTitle.indexOf(':');
+        if (colonIdx > 0 && colonIdx < displayTitle.length - 1) {
+          if (!activityType) {
+            activityType = displayTitle.substring(0, colonIdx).trim();
+          }
+          displayTitle = displayTitle.substring(colonIdx + 1).trim();
+        }
+      }
+      
+      const group = (slideData as any).group;
+      const rawTopic = (slideData as any).topic || slideData.subtitle || displayTitle;
+      const topicVal = rawTopic.replace(/\s*-\s*LG\s*\d+/i, '').trim();
+
+      if (activityType === 'DEBRIEF') {
+        activityType = '🔄 DEBRIEF';
+      }
+
+      let headerText = slideData.subtitle || 'Phase';
+      if (group === 'welcome') {
+        headerText = '👋 WELCOME';
+      } else if (group === 'agenda') {
+        headerText = '🗂️ AGENDA';
+      } else if (group === 'activate_prior_knowledge') {
+        headerText = isActivityLayout ? 'ACTIVATE' : '📖 LECTURE';
+      } else if (group === 'main_lecture') {
+        if (layout === 'debrief') {
+          headerText = topicVal || 'DEBRIEF';
+        } else if (isActivityLayout) {
+          headerText = topicVal || 'ACTIVITY';
+        } else {
+          headerText = '📖 LECTURE';
+        }
+      } else if (group === 'check_understanding') {
+        headerText = 'CHECK UNDERSTANDING';
+      } else if (group === 'summary') {
+        headerText = '📝 SUMMARY';
+      }
+
+      return (
+        <div style={{ background: extraBg || CREAM, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+          {/* left accent stripe */}
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: accent }} />
+          {/* header */}
+          <div style={{ paddingLeft: 20, paddingRight: 16, paddingTop: 12, paddingBottom: 8, borderBottom: `1px solid ${CREAM2}`, flexShrink: 0 }}>
+            <div style={{ fontFamily: bodyFont, fontSize: '0.65rem', fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
+              {activityType
+                ? <><span style={{ color: accent, fontWeight: 800 }}>{activityType}</span> - {headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
+                : <>{headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
+              }
             </div>
-          )}
-          <h2 style={{ fontFamily: titleFont, fontSize: '1.6rem', fontWeight: 700, color: DARK, lineHeight: 1.2, margin: 0 }}>
-            {slideData.title || 'Slide'}
-          </h2>
+            {!isActivityLayout && (
+              <h2 style={{ fontFamily: titleFont, fontSize: '1.6rem', fontWeight: 700, color: DARK, lineHeight: 1.2, margin: 0 }}>
+                {layout === 'lecture_placeholder' && !displayTitle.includes('[Placeholder]') ? `[Placeholder] ${displayTitle}` : displayTitle}
+              </h2>
+            )}
+          </div>
+          {/* body */}
+          <div style={{ flex: 1, paddingLeft: 20, paddingRight: 16, paddingTop: 10, paddingBottom: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {children}
+          </div>
         </div>
-        {/* body */}
-        <div style={{ flex: 1, paddingLeft: 20, paddingRight: 16, paddingTop: 10, paddingBottom: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {children}
-        </div>
-      </div>
-    );
+      )
+    };
 
     // ── Agenda / content bullets ─────────────────────────────────────────────
     if (layout === 'agenda' || slideData.group === 'agenda') {
@@ -350,22 +399,27 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       );
     }
 
-    // ── Think-Pair-Share ────────────────────────────────────────────────────
+    // ── Think-Pair-Share / Worked Problem (activity_grid3) ──────────────────
     if (layout === 'activity_grid3') {
-      const steps = ['THINK', 'PAIR', 'SHARE'];
+      const steps = slideData.activityInstructions && slideData.activityInstructions.length > 0
+        ? slideData.activityInstructions.slice(0, 3)
+        : ['[THINK (2 min)]', '[PAIR (2 min)]', '[SHARE (1 min)]'];
       return shell(
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
-          <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${accent}` }}>
-            <p style={{ fontFamily: bodyFont, fontSize: '1.05rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+          <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '1.2rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
               {slideData.activityPrompt || 'Activity prompt'}
             </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, flex: 1 }}>
-            {steps.map((step, i) => (
-              <div key={i} style={{ background: accent, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontFamily: bodyFont, fontSize: '1.2rem', fontWeight: 800, color: '#fff', letterSpacing: '0.05em' }}>{step}</span>
-              </div>
-            ))}
+            {steps.map((step, i) => {
+              const cleanStep = step.replace(/^\d+[\.\)]\s*/, '');
+              return (
+                <div key={i} style={{ background: accent, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px', textAlign: 'center' }}>
+                  <span style={{ fontFamily: bodyFont, fontSize: '1.05rem', fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{renderBoldPlaceholders(cleanStep)}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       );
@@ -375,23 +429,24 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     if (layout === 'activity_tiled') {
       return shell(
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: '100%' }}>
-          <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${accent}`, flex: 1 }}>
-            <p style={{ fontFamily: bodyFont, fontSize: '1rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+          <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}`, flex: 1 }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
               {slideData.activityPrompt || 'Discussion prompt'}
             </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 10px' }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 4 }}>LOGISTICS</div>
-              <ul style={{ margin: 0, paddingLeft: 14, listStyle: 'disc' }}>
-                {(slideData.activityInstructions || []).map((inst, i) => (
-                  <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 2 }}>{renderBoldPlaceholders(inst)}</li>
-                ))}
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>LOGISTICS</div>
+              <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                {(slideData.activityInstructions || []).map((inst, i) => {
+                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
+                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, marginBottom: 4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
+                })}
               </ul>
             </div>
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 10px' }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 4 }}>DELIVERABLE</div>
-              <p style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>DELIVERABLE</div>
+              <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
                 {slideData.activityOutputExpectation || ''}
               </p>
             </div>
@@ -403,20 +458,32 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     // ── Hands-on / Case Study (activity_sidebar) ─────────────────────────────
     if (layout === 'activity_sidebar') {
       return shell(
-        <div style={{ display: 'flex', gap: 8, height: '100%' }}>
-          <div style={{ flex: 2, background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${accent}` }}>
-            <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>INSTRUCTIONS</div>
-            <ol style={{ margin: 0, paddingLeft: 16, listStyle: 'decimal' }}>
-              {(slideData.activityInstructions || []).map((inst, i) => (
-                <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, marginBottom: 4, lineHeight: 1.4 }}>{renderBoldPlaceholders(inst)}</li>
-              ))}
-            </ol>
-          </div>
-          <div style={{ flex: 1, background: CREAM2, borderRadius: 4, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: accent, textTransform: 'uppercase' }}>TIME &amp; MATERIALS</div>
-            <p style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: MUTED, lineHeight: 1.4, margin: 0 }}>
-              {slideData.notes || 'Work at your own pace.'}
-            </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
+          {slideData.activityPrompt && (
+            <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+              <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+                {slideData.activityPrompt}
+              </p>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+            <div style={{ flex: 2, background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
+              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 8 }}>INSTRUCTIONS</div>
+              <ol style={{ margin: 0, paddingLeft: 20, listStyle: 'decimal' }}>
+                {(slideData.activityInstructions || []).map((inst, i) => {
+                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
+                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '1.05rem', color: DARK, marginBottom: 6, lineHeight: 1.4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
+                })}
+              </ol>
+            </div>
+            {slideData.activityOutputExpectation && (
+              <div style={{ flex: 1, background: CREAM2, borderRadius: 4, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase' }}>DELIVERABLE</div>
+                <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+                  {slideData.activityOutputExpectation}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -474,33 +541,33 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
 
     // ── Debrief / Reflect ────────────────────────────────────────────────────
     if (layout === 'debrief') {
-      const bullets = slideData.bullets || [];
+      const misconceptions = slideData.commonMisconceptions || [];
       return shell(
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
           {/* Suggested answer */}
           <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${PURPLE}` }}>
             <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>SUGGESTED ANSWER</div>
             <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, lineHeight: 1.4 }}>
-              {slideData.debriefQuestion || ''}
+              {slideData.suggestedAnswer || ''}
             </p>
           </div>
           {/* Misconceptions */}
-          {bullets.length > 1 && (
+          {misconceptions.length > 0 && (
             <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px' }}>
               <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>COMMON MISCONCEPTIONS</div>
               <ul style={{ margin: 0, paddingLeft: 14, listStyle: 'disc' }}>
-                {bullets.slice(0, bullets.length - 1).map((b, i) => (
-                  <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 3 }}>{typeof b === 'string' ? b : String(b)}</li>
+                {misconceptions.map((mc: string, i: number) => (
+                  <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 2 }}>{renderBoldPlaceholders(mc)}</li>
                 ))}
               </ul>
             </div>
           )}
           {/* Key takeaway */}
-          {bullets.length > 0 && (
+          {slideData.keyTakeaway && (
             <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px', borderLeft: `3px solid ${PURPLE}` }}>
               <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 3 }}>KEY TAKEAWAY</div>
-              <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
-                {typeof bullets[bullets.length - 1] === 'string' ? bullets[bullets.length - 1] : String(bullets[bullets.length - 1])}
+              <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, fontStyle: 'italic', lineHeight: 1.4 }}>
+                {slideData.keyTakeaway}
               </p>
             </div>
           )}
@@ -690,7 +757,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                 <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-50 border border-emerald-200">
                   <Check className="h-3 w-3 text-emerald-600" />
                   <span className="text-emerald-700" style={{ fontSize: '0.75rem', fontFamily: 'var(--hestia-font-mono)', fontWeight: 500 }}>
-                    {allCachedSlides.length} slides generated
+                    {allCachedSlides.length + 1} slides generated
                   </span>
                 </div>
               )}

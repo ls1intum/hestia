@@ -439,6 +439,62 @@ public class WorkshopService {
         sb.append("\nTARGET BLOCK TO HYDRATE:\n");
         sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(targetBlock));
 
+        // ── Custom EVALUATE time budget ────────────────────
+        int totalEvalMin = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
+        
+        var evaluateMappingStr = new StringBuilder();
+        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
+            int timePerBox = Math.max(1, totalEvalMin / meta.evaluateMappings().size());
+            int boxIdx = 1;
+            for (var mapping : meta.evaluateMappings()) {
+                evaluateMappingStr.append("Activity Box ").append(boxIdx).append(" (").append(timePerBox).append(" min):\n");
+                evaluateMappingStr.append("  - Activity Method: ").append(mapping.method()).append("\n");
+                evaluateMappingStr.append("  - Assigned Learning Goals:\n");
+                for (String lgId : mapping.lgIds()) {
+                    for (int j = 0; j < goals.size(); j++) {
+                        if (lgId.equals(goals.get(j).id())) {
+                            evaluateMappingStr.append("      LG").append(j + 1).append(": ").append(goals.get(j).goal()).append("\n");
+                        }
+                    }
+                }
+                evaluateMappingStr.append("\n");
+                boxIdx++;
+            }
+        }
+
+        String evaluateRules;
+        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
+            evaluateRules = """
+                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP for each Activity Box requested by the user.
+                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
+                            
+                            REQUESTED ACTIVITY BOXES:
+%s
+                            
+                            For each Activity Box, generate exactly ONE step describing the activity.
+                            Format: "{box_minutes} min — Combined · [{method}]: [unified scenario/task description testing the assigned LGs] (Instructor note: which parts exercise which LGs)"
+                            - If only ONE Learning Goal is assigned to the box, simplify the format to targeting ONLY that LG:
+                              Format: "{box_minutes} min — Prompt LG[N] · [{method}]: [specific question or task targeting ONLY this LG]"
+                            - Strictly follow the requested 'Activity Method' for each box.
+                            - Ignore any Learning Goals that are not assigned to any Activity Box.
+                            - The methods list on the block should include ALL distinct activities used.
+                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
+""".formatted(evaluateMappingStr.toString());
+        } else {
+            evaluateRules = """
+                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP representing an integrative scenario/case/task that naturally requires applying ALL Learning Goals together.
+                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
+                            Do NOT sub-label the task by LG — the scenario itself should be unified.
+                            Format: "%d min — Combined · [ActivityName]: [unified scenario/task description] (Instructor note: which parts exercise which LGs)"
+                            - Pick the activity type from the SELECTED ACTIVITIES list, or choose whichever activity best fits a multi-LG integrative scenario.
+                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
+""".formatted(totalEvalMin);
+        }
+
+        String selectedActivitiesStr = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty())
+                ? String.join(", ", meta.selectedActivities())
+                : "use best pedagogical judgment (e.g. Case Study, Think-Pair-Share, Debate, Design Sprint)";
+
         int totalDur = meta.duration() > 0 ? meta.duration() : 90;
         int minClosingTime = (int) Math.round(totalDur * 0.13);
         int maxClosingTime = (int) Math.round(totalDur * 0.20);
@@ -467,17 +523,8 @@ public class WorkshopService {
                            For all other non-learning-cycle blocks (ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
                         9. The 'phaseLabel' should be a short, topic-focused title.
                         10. Do NOT list "Lecture" or "Presentation" under 'methods'. Furthermore, 'Q&A Session' is strictly reserved for the 'Summary & Wrap-up' block and MUST NOT be generated in any other blocks.
-                        11. When generating an 'Understanding Check' (EVALUATE), generate exactly ONE prompt per learning goal. If SELECTED ACTIVITIES contains exact mappings like "LG1:Quiz/Polls", you MUST use the specified activity for that specific learning goal (1-based index); for any LGs not mapped, infer the best-fit activity using the taxonomy map below. If SELECTED ACTIVITIES is just a list without "LGX:" prefixes, map them to the LGs by best-fit Bloom's/SOLO level using the taxonomy map below. CRITICAL: You must explicitly prioritize VARIETY — do not overuse 'Think-Pair-Share' or 'Group Discussion'. Ensure you pick a uniquely tailored, diverse activity for each learning goal based on its specific verb. Do NOT use 'Q&A Session' in this block under any circumstances, even if it appears in the list. If no list is provided, infer the best-fit activity using ONLY this mapping:
-                            - Bloom's Remember / SOLO Unistructural → Quiz/Polls
-                            - Bloom's Understand / SOLO Multistructural → Think-Pair-Share
-                            - Bloom's Apply (structured) / SOLO Relational → Worked Problem
-                            - Bloom's Apply (open-ended) / SOLO Relational → Hands-on Practice
-                            - Bloom's Analyze / SOLO Relational → Case Study, Group Discussion, or Concept Mapping
-                            - Bloom's Evaluate / SOLO Extended Abstract → Debate or Peer Review
-                            - Bloom's Create / SOLO Extended Abstract → Design Sprint / Prototype Challenge or Role Play
-                            Format each step as: "Prompt LG[N] · [ActivityName]: [specific question or task targeting that LG]"
-                            The methods list on the block should include ALL distinct activities used across all LGs.
-                            Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
+                        %s
+
                         12. When generating a 'Summary & Wrap-up' block:
                             a) Start with one 'Takeaway: [key concept]' step per learning goal (no time prefix, just the text "Takeaway: [concise statement of the main concept]"). These are NOT timed.
                             b) Then choose EXACTLY ONE student-centered closing activity based on the overall complexity of the session: if the content is highly complex, use a 'One-Minute Paper'; if it is simple/foundational, use a 'Q&A Session'.
@@ -520,7 +567,9 @@ public class WorkshopService {
                             }
                           ]
                         }
-                        """, minClosingTime, maxClosingTime));
+                        """,
+                evaluateRules,
+                minClosingTime, maxClosingTime));
 
         return sb.toString();
     }

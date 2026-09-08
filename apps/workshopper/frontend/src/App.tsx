@@ -4,6 +4,7 @@ import WorkshopFormStep1 from "@/components/WorkshopFormStep1";
 import WorkshopFormStep2 from "@/components/WorkshopFormStep2";
 import WorkshopFormStep2b from "@/components/WorkshopFormStep2b";
 import WorkshopGoalEntry from "@/components/WorkshopGoalEntry";
+
 import WorkshopGeneratedTimetable from "@/components/WorkshopGeneratedTimetable";
 
 import WorkshopPreparation from "@/components/WorkshopPreparation";
@@ -372,22 +373,22 @@ export default function App() {
     }
   };
 
-  const handleGoalsEntered = async (goals: LearningGoalPlan[]) => {
+  const handleGoalsEntered = async (goalsWithPriority: LearningGoalPlan[]) => {
     if (isGeneratingRef.current) return;
     isGeneratingRef.current = true;
     setIsFinished(false);
-    setRefinedGoals(goals);
+    setRefinedGoals(goalsWithPriority);
     
     const updatedInput = { ...workshopInput };
 
     setIsLoading(true);
     try {
-      const skeleton = generateDefaultSkeleton(goals, updatedInput.duration || 90);
+      const skeleton = generateDefaultSkeleton(goalsWithPriority, updatedInput.duration || 90);
       setCurrentSkeleton(skeleton);
       
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
-      const initialDraft = buildDraft(updatedInput, goals, skeleton);
-      const currentId = await persistDraft(initialDraft, "goals", sessionIdRef.current, entityType, currentLectureId);
+      const initialDraft = buildDraft(updatedInput, goalsWithPriority, skeleton);
+      const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, entityType, currentLectureId);
       if (!sessionId) setSessionIdSynced(currentId);
       
       const skeletonWithId: SessionSkeleton = {
@@ -395,7 +396,7 @@ export default function App() {
         sessionId: currentId,
       };
       const result = await generateSession(
-        goals,
+        goalsWithPriority,
         updatedInput as WorkshopInput,
         skeletonWithId
       );
@@ -405,7 +406,7 @@ export default function App() {
       setSession(result);
       setOriginalSession(JSON.parse(JSON.stringify(result)));
       
-      const draft = buildDraft(updatedInput, goals, skeleton, result);
+      const draft = buildDraft(updatedInput, goalsWithPriority, skeleton, result);
       await persistDraft(draft, "timeline", currentId, entityType, currentLectureId);
       setStep("timeline");
     } catch (err) {
@@ -465,7 +466,7 @@ export default function App() {
     "input-2b": { title: "Loading…",                    sub: "" },
     "lecture-summary": { title: "Loading…",             sub: "" },
     "goals":    { title: "Loading…",                    sub: "" },
-    "timeline": { title: "Generating your session plan…", sub: "This may take a moment." },
+    "timeline": { title: "Loading…", sub: "" },
     "prepare":  { title: "Loading…",                    sub: "" },
     "final-review": { title: "Loading…",                sub: "" },
   };
@@ -630,13 +631,13 @@ export default function App() {
           />
         )}
 
-
-
         {step === "timeline" && session && (
           <WorkshopGeneratedTimetable
             session={session}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
+            onGoalsChanged={(newGoals: LearningGoalPlan[]) => setRefinedGoals(newGoals)}
+            onMetaChanged={(newMeta: WorkshopInput) => setWorkshopInput(newMeta)}
             onBack={() => {
               // Check if session differs from original
               if (originalSession && JSON.stringify(session) !== JSON.stringify(originalSession)) {

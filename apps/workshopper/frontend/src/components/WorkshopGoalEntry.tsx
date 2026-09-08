@@ -60,6 +60,9 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
   });
   const submittingRef = useRef(false);
 
+  // Priority selection is now handled in a separate step component
+
+
   const updateGoal = useCallback(
     (id: string, patch: Partial<GoalDraft>) =>
       setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g))),
@@ -193,15 +196,19 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       submittingRef.current = false;
     }
 
-    const plans: LearningGoalPlan[] = finalGoalsText.map((text, i) => ({
-      id: validGoals[i]?.id || `g${i}`,
-      goal: text,
-      originalGoal: text,
-      prerequisites: [],
-      achieveActivities: [],
-      assessActivities: [],
-      priority: 0,
-    }));
+    const plans: LearningGoalPlan[] = finalGoalsText.map((text, i) => {
+      const existingDraft = validGoals[i];
+      const existingPlan = initialGoals?.find(g => g.id === existingDraft?.id);
+      return {
+        id: existingDraft?.id || `g${i}`,
+        goal: text,
+        originalGoal: text,
+        prerequisites: [],
+        achieveActivities: [],
+        assessActivities: [],
+        priority: existingPlan?.priority ?? 0,
+      };
+    });
     onContinue(plans);
   };
 
@@ -371,7 +378,10 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             <Plus className="h-4 w-4" /> Add another learning goal
           </Button>
 
+          {/* Removed Priority Selection Panel */}
+
         </CardContent>
+
 
         {/* Floating Footer Bar */}
         <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">

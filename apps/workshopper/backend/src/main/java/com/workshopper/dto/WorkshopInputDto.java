@@ -16,5 +16,6 @@ public record WorkshopInputDto(
         String sourceDocument,
         String interactionLevel,
         List<String> selectedActivities,
-        String uploadedMaterialsText
+        String uploadedMaterialsText,
+        List<EvaluateMappingDto> evaluateMappings
 ) {}
