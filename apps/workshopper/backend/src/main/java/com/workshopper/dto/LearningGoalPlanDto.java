@@ -11,5 +11,9 @@ public record LearningGoalPlanDto(
         List<String> prerequisites,
         List<String> achieveActivities,
         List<String> assessActivities,
-        int priority
+        int priority,
+        String bloomLevel,
+        String soloLevel,
+        String session,
+        List<SubSkillDto> subSkills
 ) {}

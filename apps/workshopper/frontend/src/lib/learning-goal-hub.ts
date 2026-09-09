@@ -5,18 +5,30 @@ export interface Course {
   name: string;
 }
 
+export interface GoalRelationship {
+  type: string;
+  targetGoalId: number;
+  targetText: string;
+  confidence: number;
+  origin: string;
+}
+
 export interface LearningGoal {
   id: number;
   text: string;
   kind: string;
+  role: string;
+  origin?: string;
   status: string;
   bloomLevel?: string;
   soloLevel?: string;
+  lectureOrder?: number;
   hierarchy?: {
     module?: string;
     session?: string;
     exercise?: string;
   };
+  relationships?: GoalRelationship[];
 }
 
 export interface SessionGroup {

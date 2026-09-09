@@ -27,6 +27,13 @@ export interface WorkshopInput {
   evaluateMappings?: { method: string; lgIds: string[] }[];
 }
 
+export interface SubSkill {
+  id: string;
+  text: string;
+  bloomLevel?: string;
+  soloLevel?: string;
+}
+
 /** One learning goal with suggested activities (Plan Review step) */
 export interface LearningGoalPlan {
   id: string;
@@ -37,6 +44,10 @@ export interface LearningGoalPlan {
   assessActivities: string[];
   /** Priority rating 0–5 (0 = no priority set, 5 = highest priority) */
   priority?: number;
+  bloomLevel?: string;
+  soloLevel?: string;
+  session?: string;
+  subSkills?: SubSkill[];
 }
 
 export interface ActivitySection {

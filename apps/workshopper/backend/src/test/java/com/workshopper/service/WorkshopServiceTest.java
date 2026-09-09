@@ -194,7 +194,7 @@ class WorkshopServiceTest {
         var goals = List.of(
                 new com.workshopper.dto.LearningGoalPlanDto(
                         "g1", "original", "Participants will apply X",
-                        List.of(), List.of(), List.of(), 0));
+                        List.of(), List.of(), List.of(), 0, null, null, null, null));
         WorkshopInputDto meta = new WorkshopInputDto("Test Title",
                 List.of(), 60, 20, "workshop", null, null, null, null, null, null, null);
 

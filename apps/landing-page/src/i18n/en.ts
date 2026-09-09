@@ -168,7 +168,7 @@ export const en: Dictionary = {
   info: {
     title: "About Hestia",
     backToHome: "Back to homepage",
-    p1: "Hestia is an AI research initiative at the Technical University of Munich (TUM), developing tools that help university instructors design better teaching with the support of large language models. The project responds to a simple reality: professors have little time for teaching preparation, so well-established practices that improve learning are often underused as a result. Hestia's tools aim to make sound didactic design faster and more accessible.",
+    p1: "Hestia is an AI research initiative at the Chair of Applied Educational Technologies at the Technical University of Munich (TUM), developing tools that help university instructors design better teaching with the support of Large Language Models (LLMs). The project responds to a simple reality: professors have little time for teaching preparation, so well-established practices that improve learning are often underused as a result. Hestia's tools aim to make sound didactic design faster and more accessible.",
     p2: "The initiative includes three tools. LearningGoalHub helps instructors understand, design, and communicate the learning goals of their courses. ExamLense evaluates exams by benchmarking how well AI performs on them, helping instructors see which assessments are vulnerable to AI-assisted completion. Workshopper helps new instructors derive concrete, didactically grounded teaching units — timetable and editable slides included — from their learning goals.",
     p3: "Together, these tools support instructors across the course design process, from setting learning goals to preparing sessions and testing assessments.",
   },
