@@ -8,7 +8,7 @@ import {
   ArrowLeft, Plus, Trash2, Check, X, Loader2,
   Sparkles, ArrowRight, AlertCircle,
 } from "lucide-react";
-import { LGHImport } from "./LGHImport";
+import { LGHImportModal, SelectedSkillData } from "./LGHImportModal";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface GoalDraft {
@@ -18,6 +18,10 @@ interface GoalDraft {
   checking: boolean;
   dirty: boolean;
   looksGood?: boolean;
+  bloomLevel?: string;
+  soloLevel?: string;
+  session?: string;
+  subSkills?: { id: string; text: string; bloomLevel?: string; soloLevel?: string }[];
 }
 
 interface SuggestionItem {
@@ -54,14 +58,15 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         suggestions: [],
         checking: false,
         dirty: false,
+        bloomLevel: g.bloomLevel,
+        soloLevel: g.soloLevel,
+        session: g.session,
+        subSkills: g.subSkills
       }));
     }
     return [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
   });
   const submittingRef = useRef(false);
-
-  // Priority selection is now handled in a separate step component
-
 
   const updateGoal = useCallback(
     (id: string, patch: Partial<GoalDraft>) =>
@@ -70,7 +75,8 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
   );
 
   const triggerCheck = useCallback(
-    async (id: string, text: string) => {
+    async (draft: GoalDraft) => {
+      const { id, text, subSkills } = draft;
       if (text.trim().length < 15) {
         toast({ title: "Goal too short", description: "Please write a bit more before checking.", variant: "destructive" });
         return;
@@ -87,6 +93,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
               duration: initialInput.duration,
               participants: initialInput.participants,
               studentBackground: initialInput.studentBackground,
+              subSkills: subSkills?.map(s => s.text) || []
             },
           }),
         });
@@ -116,9 +123,14 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     } else {
       setGoals((prev) => {
         const idx = prev.findIndex((g) => g.id === goalId);
+        if (idx === -1) return prev;
         const newGoals = [...prev];
-        newGoals[idx] = { ...newGoals[idx], text: suggestion.values[0], suggestions: [], dirty: false };
+        const baseGoal = { ...newGoals[idx] };
+        
+        newGoals[idx] = { ...baseGoal, text: suggestion.values[0], suggestions: [], dirty: false };
+        
         const extraGoals = suggestion.values.slice(1).map((val, i) => ({
+          ...baseGoal, // Preserve bloomLevel, soloLevel, session, subSkills
           id: `g${Date.now()}-${i}`,
           text: val,
           suggestions: [],
@@ -151,20 +163,30 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
   const removeGoal = (id: string) => setGoals((prev) => prev.filter((g) => g.id !== id));
 
-  const handleAddGoalsFromLGH = useCallback((newGoalTexts: string[]) => {
-    const newDrafts: GoalDraft[] = newGoalTexts.map((text, i) => ({
-      id: `lgh-${Date.now()}-${i}`,
-      text: text,
+  const handleAddSkillsFromLGH = useCallback((selectedSkills: SelectedSkillData[]) => {
+    const newDrafts: GoalDraft[] = selectedSkills.map((skill, i) => ({
+      id: skill.id,
+      text: skill.goal,
+      bloomLevel: skill.bloomLevel,
+      soloLevel: skill.soloLevel,
+      session: skill.session,
+      subSkills: skill.subSkills,
       suggestions: [],
-      checking: false,
+      checking: true, // Show loading state immediately
       dirty: false,
     }));
+    
     setGoals((prev) => {
       const nonEmpty = prev.filter((g) => g.text.trim().length > 0);
       const merged = [...nonEmpty, ...newDrafts];
       return merged.length > 0 ? merged : [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
     });
-  }, []);
+
+    // Auto-trigger the AI refine/split check for each imported skill
+    newDrafts.forEach((draft) => {
+      triggerCheck(draft);
+    });
+  }, [triggerCheck]);
 
   const [isFixingGrammar, setIsFixingGrammar] = useState(false);
 
@@ -207,6 +229,10 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         achieveActivities: [],
         assessActivities: [],
         priority: existingPlan?.priority ?? 0,
+        bloomLevel: existingDraft.bloomLevel,
+        soloLevel: existingDraft.soloLevel,
+        session: existingDraft.session,
+        subSkills: existingDraft.subSkills
       };
     });
     onContinue(plans);
@@ -218,7 +244,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
   const manualDrafts = goals.filter((g) => !g.id.startsWith("lgh-"));
 
   const renderGoal = (g: GoalDraft) => (
-    <div key={g.id} className="space-y-2">
+    <div key={g.id} className="space-y-2 border-b border-border/40 pb-4 mb-4 last:border-0 last:pb-0 last:mb-0">
       {/* Header row */}
       <div className="flex gap-2 items-start">
         <div className="flex-1 relative">
@@ -235,7 +261,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             }}
             rows={2}
             className="resize-none h-[60px] min-h-[60px] font-body text-sm leading-relaxed"
-            disabled={isLoading}
+            disabled={isLoading || g.id.startsWith("lgh-")}
           />
           {g.checking && (
             <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -244,18 +270,20 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           )}
         </div>
         <div className="flex flex-col items-stretch gap-1 shrink-0 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => triggerCheck(g.id, g.text)}
-            className="h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 border-primary/20 gap-1.5"
-            disabled={g.checking || isLoading}
-            title="Check with AI"
-          >
-            <Sparkles className="h-3 w-3" />
-            Refine with AI
-          </Button>
+          {!g.id.startsWith("lgh-") && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => triggerCheck(g)}
+              className="h-7 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 border-primary/20 gap-1.5"
+              disabled={g.checking || isLoading}
+              title="Check with AI"
+            >
+              <Sparkles className="h-3 w-3" />
+              Refine with AI
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -269,6 +297,33 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           </Button>
         </div>
       </div>
+      
+      {/* Display session info and subskills if available */}
+      {g.id.startsWith("lgh-") && (g.session || (g.subSkills && g.subSkills.length > 0)) && (
+        <div className="pl-2 pt-1 border-l-2 border-primary/20 space-y-1">
+          {g.session && (
+            <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+              <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider">Session</span>
+              {g.session}
+            </div>
+          )}
+          {g.subSkills && g.subSkills.length > 0 && (
+            <div className="pt-1">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">
+                Sub-skills ({g.subSkills.length})
+              </div>
+              <ul className="space-y-1">
+                {g.subSkills.map((sub, i) => (
+                  <li key={sub.id || i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <span className="opacity-50 mt-0.5">•</span>
+                    <span>{sub.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI suggestions */}
       {g.looksGood && g.suggestions.length === 0 && !g.checking && (
@@ -349,7 +404,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
           <div>
             <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Import from LearningGoalHub</h3>
-            <LGHImport onAddGoals={handleAddGoalsFromLGH} disabled={isLoading} />
+            <LGHImportModal onAddSkills={handleAddSkillsFromLGH} disabled={isLoading} />
             
             {lghDrafts.length > 0 && (
               <div className="mt-4 space-y-4">
@@ -378,10 +433,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             <Plus className="h-4 w-4" /> Add another learning goal
           </Button>
 
-          {/* Removed Priority Selection Panel */}
-
         </CardContent>
-
 
         {/* Floating Footer Bar */}
         <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 transition-all">

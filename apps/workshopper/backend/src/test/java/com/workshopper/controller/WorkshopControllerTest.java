@@ -71,7 +71,7 @@ class WorkshopControllerTest {
         @DisplayName("returns 200 with list of plans on success")
         void returnsPlansOnSuccess() throws Exception {
             var plan = new LearningGoalPlanDto("g1", "original", "Participants will apply X",
-                    List.of(), List.of(), List.of(), 0);
+                    List.of(), List.of(), List.of(), 0, null, null, null, null);
             when(workshopService.generatePlan(any())).thenReturn(List.of(plan));
 
             WorkshopInputDto body = new WorkshopInputDto("Test Title",
