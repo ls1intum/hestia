@@ -91,12 +91,8 @@ class ExtractionRunnerFigureSettingTest {
         LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
         GoalSourceRepository goalSourceRepository = mock(GoalSourceRepository.class);
         GoalRelationshipRepository goalRelationshipRepository = mock(GoalRelationshipRepository.class);
-        ExtractionService extractionService = mock(ExtractionService.class);
-        SessionGoalConsolidator sessionGoalConsolidator = mock(SessionGoalConsolidator.class);
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
-        GoalCandidateRepository goalCandidateRepository = mock(GoalCandidateRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
-        DocumentChunker documentChunker = mock(DocumentChunker.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
@@ -123,7 +119,6 @@ class ExtractionRunnerFigureSettingTest {
         when(hierarchyNodeRepository.save(any(HierarchyNode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(documentSectionRepository.findByDocumentIdOrderByOrdinal(42L)).thenReturn(List.of());
-        when(documentChunker.getChunkSize()).thenReturn(8000);
         when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
@@ -161,14 +156,10 @@ class ExtractionRunnerFigureSettingTest {
                 goalRepository,
                 goalSourceRepository,
                 goalRelationshipRepository,
-                extractionService,
                 sessionExtractionService,
-                sessionGoalConsolidator,
                 auditService,
-                goalCandidateRepository,
                 documentSectionRepository,
                 mock(CompactTaxonomySynthesizer.class),
-                documentChunker,
                 hierarchyNodeRepository,
                 taxonomyService,
                 progressTracker,
