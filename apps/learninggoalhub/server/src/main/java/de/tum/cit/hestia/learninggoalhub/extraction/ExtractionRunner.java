@@ -91,7 +91,8 @@ public class ExtractionRunner {
     private final TransactionOperations extractionTransactions;
     private final int parallelism;
     private final int figureParallelism;
-    private final int directMaxChars;
+    private final int unitMaxChars;
+    private final int skillTargetChars;
     private final String configuredDefaultModel;
     private final int taxonomyBatchSize;
     private final HighlightGeometryService highlightGeometryService;
@@ -114,7 +115,8 @@ public class ExtractionRunner {
                             TransactionOperations extractionTransactions,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
-                            @Value("${hestia.extraction.direct-max-chars:80000}") int directMaxChars,
+                            @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
+                            @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
                             @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
                             HighlightGeometryService highlightGeometryService) {
@@ -136,7 +138,8 @@ public class ExtractionRunner {
         this.extractionTransactions = extractionTransactions;
         this.parallelism = parallelism;
         this.figureParallelism = figureParallelism;
-        this.directMaxChars = directMaxChars;
+        this.unitMaxChars = unitMaxChars;
+        this.skillTargetChars = skillTargetChars;
         this.configuredDefaultModel = configuredDefaultModel;
         this.taxonomyBatchSize = taxonomyBatchSize;
         this.highlightGeometryService = highlightGeometryService;
@@ -443,23 +446,24 @@ public class ExtractionRunner {
                                              String modelOverride) {
         String languageCode = resolveLanguage(course, session.document().getLanguage(), dominantLanguage);
         String languageName = LanguageUtils.englishName(languageCode);
-        List<ExtractedSkill> skills = session.figures().isEmpty()
-                ? sessionExtractionService.extract(
-                        session.title(), session.text(), languageCode, languageName,
-                        modelOverride)
-                : sessionExtractionService.extract(
-                        session.title(), session.text(), languageCode, languageName,
-                        modelOverride, session.figures());
-        if (skills != null && skills.size() > 7) {
-            log.warn("Session '{}' returned {} skills, above the hard cap of seven; keeping them all",
-                    session.title(), skills.size());
+        // The allowance follows the unit's own size, so a one-page problem sheet is not asked for as
+        // many outcomes as a fifty-page lecture. Units are already split at the granularity budget
+        // above, so this only has to scale what is left.
+        int budget = SessionExtractionService.skillBudget(session.text().length(), skillTargetChars);
+        List<ExtractedSkill> skills = sessionExtractionService.extract(
+                session.title(), session.text(), languageCode, languageName,
+                modelOverride, session.figures(), budget);
+        if (skills != null && skills.size() > budget) {
+            log.warn("Session '{}' returned {} skills, above its allowance of {}; keeping them all",
+                    session.title(), skills.size(), budget);
         }
         return new SessionExtraction(session.document(), session.unit(),
                 skills == null ? List.of() : skills, session.figures());
     }
 
     private String runParams(String language, boolean figuresEnabled) {
-        return "{\"direct-max-chars\":" + directMaxChars
+        return "{\"unit-max-chars\":" + unitMaxChars
+                + ",\"skill-target-chars\":" + skillTargetChars
                 + ",\"parallelism\":" + parallelism
                 + ",\"output-language\":\"" + language + "\""
                 + ",\"figures-enabled\":" + figuresEnabled
@@ -1364,14 +1368,20 @@ public class ExtractionRunner {
      * at line boundaries instead. A single page larger than the budget is left whole and logged —
      * cutting inside it would corrupt the line numbering the model grounds its quotes in.
      *
-     * <p>This is a safety net, not a granularity mechanism. Bookmark and lecture-boundary detection
-     * size the sections; on every corpus measured so far no section reaches the budget and this
-     * returns the section unchanged. It exists so that an unsplittable upload still gets the same
-     * two-tier extraction as everything else rather than a second, weaker path.
+     * <p>This IS the granularity mechanism. It was written as a safety net at 80,000 characters,
+     * which no real section ever reached, so every section became exactly one extraction call however
+     * large it was — a fifty-page deck and an eleven-page handout each got one call and one allowance.
+     * At a budget sized to a lecture instead, a long section becomes several units and earns
+     * proportionally more outcomes, while a short one still becomes exactly one.
+     *
+     * <p>Windows never cross a section boundary. A unit holding the tail of one lecture and the head
+     * of the next would be asked for the outcomes of a slice that teaches two unrelated things, which
+     * is how conjunction outcomes ("X und Y") get produced; keeping the boundary hard is what stops
+     * the granularity change from pushing that pressure onto a new seam.
      */
     private List<Unit> windows(HierarchyNode node, Document document, String text,
                                int start, int end, Integer startPage, Integer endPage) {
-        if (directMaxChars <= 0 || end - start <= directMaxChars) {
+        if (unitMaxChars <= 0 || end - start <= unitMaxChars) {
             return List.of(new Unit(node, start, end, startPage, endPage));
         }
         List<Unit> windows = new ArrayList<>();
@@ -1384,7 +1394,7 @@ public class ExtractionRunner {
             int windowStartPage = firstPage;
             for (int page = firstPage; page <= lastPage; page++) {
                 int pageEnd = clamp(pageOffsets[page], start, end);
-                if (pageEnd - windowStart > directMaxChars && page > windowStartPage) {
+                if (pageEnd - windowStart > unitMaxChars && page > windowStartPage) {
                     int cut = clamp(pageOffsets[page - 1], start, end);
                     windows.add(new Unit(node, windowStart, cut, windowStartPage, page - 1));
                     windowStart = cut;
@@ -1394,8 +1404,8 @@ public class ExtractionRunner {
             windows.add(new Unit(node, windowStart, end, windowStartPage, lastPage));
         } else {
             int windowStart = start;
-            while (end - windowStart > directMaxChars) {
-                int limit = windowStart + directMaxChars;
+            while (end - windowStart > unitMaxChars) {
+                int limit = windowStart + unitMaxChars;
                 int newline = text.lastIndexOf('\n', limit);
                 int cut = newline > windowStart ? newline + 1 : limit;
                 windows.add(new Unit(node, windowStart, cut, null, null));
@@ -1406,11 +1416,11 @@ public class ExtractionRunner {
         if (windows.size() == 1) {
             log.warn("Section '{}' spans {} characters, above the {}-character extraction budget, but "
                             + "offers no boundary to split on; extracting it whole",
-                    node.getLabel(), end - start, directMaxChars);
+                    node.getLabel(), end - start, unitMaxChars);
         } else {
             log.info("Section '{}' spans {} characters, above the {}-character extraction budget; "
                             + "split into {} windows sharing its session",
-                    node.getLabel(), end - start, directMaxChars, windows.size());
+                    node.getLabel(), end - start, unitMaxChars, windows.size());
         }
         return List.copyOf(windows);
     }

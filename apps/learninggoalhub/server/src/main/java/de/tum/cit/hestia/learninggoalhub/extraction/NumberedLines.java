@@ -41,6 +41,18 @@ final class NumberedLines {
         return Optional.of(new Span(lines.get(firstLine).start(), lines.get(lastLine).end()));
     }
 
+    /**
+     * Whether this range names real lines but too many of them.
+     *
+     * <p>Separates the one rejection that still tells us where an outcome came from — an ascending,
+     * in-bounds range that is simply wider than {@value #MAX_LINE_DISTANCE} + 1 lines — from ranges
+     * that point nowhere at all (descending, or past the end of the text).
+     */
+    boolean isInBoundsButTooWide(int firstLine, int lastLine) {
+        return firstLine >= 0 && firstLine <= lastLine && lastLine < lines.size()
+                && lastLine - firstLine > MAX_LINE_DISTANCE;
+    }
+
     /** Why {@link #span} rejected this range — mirrors its checks, for the extraction-run log. */
     String rejectionReason(int firstLine, int lastLine) {
         if (firstLine < 0 || firstLine > lastLine) {

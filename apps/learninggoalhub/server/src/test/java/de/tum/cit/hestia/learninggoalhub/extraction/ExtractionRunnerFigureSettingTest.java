@@ -2,6 +2,8 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -166,7 +168,8 @@ class ExtractionRunnerFigureSettingTest {
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,
                 1,
-                80_000,
+                12_000,
+                3_000,
                 null,
                 20,
                 highlightGeometryService);
