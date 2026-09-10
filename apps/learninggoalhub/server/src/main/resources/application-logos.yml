@@ -1,0 +1,26 @@
+# Run against the TUM AET Logos gateway instead of GWDG SAIA. Activate with
+# SPRING_PROFILES_ACTIVE=logos; without it nothing here applies and SAIA stays the default.
+#
+# Both gateways speak the OpenAI API, so only the key and the model ids belong here: the endpoint
+# and the chat/vision defaults come from libs/shared-llm, which reads the same profile. Logos
+# publishes the same weights under provider-prefixed ids, and its catalogue holds exactly two of
+# them — openai/gpt-oss-120b for text and the multimodal Qwen/Qwen3.8-27B, which reads rendered
+# slides. It has no /v1/embeddings endpoint, so the exam-goal similarity search has no model under
+# this profile; extraction does not embed and is unaffected.
+spring:
+  ai:
+    openai:
+      api-key: ${LOGOS_API_KEY:}
+
+hestia:
+  figures:
+    vision-model: Qwen/Qwen3.8-27B
+  title:
+    vision-model: Qwen/Qwen3.8-27B
+  bookmark:
+    judge-model: openai/gpt-oss-120b
+  document-outline:
+    model: openai/gpt-oss-120b
+  extraction:
+    taxonomy-planner-model: openai/gpt-oss-120b
+    taxonomy-partition-model: openai/gpt-oss-120b
