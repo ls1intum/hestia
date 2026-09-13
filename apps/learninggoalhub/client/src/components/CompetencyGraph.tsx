@@ -28,12 +28,12 @@ import {
 // from the layout alone (no DOM measuring): w-40 = 10rem, w-56 = 14rem, w-60 = 15rem,
 // w-80 = 20rem and gap-3 = 0.75rem at a 16px root.
 const BOX_W = 224;
-const COMPACT_W = 160; // dimmed sibling boxes in a focused sub-skill row
+const COMPACT_W = 160; // dimmed sibling boxes in a focused capability row
 const DRILL_W = 320; // drill-path boxes
-const KNOWLEDGE_W = 240; // knowledge boxes under a focused sub-skill
+const KNOWLEDGE_W = 240; // leaf boxes under a focused capability or skill
 const GAP = 12;
 const CONNECTOR_H = 40;
-const MAX_SUB_SKILLS = 5;
+const MAX_TOPIC_CHILDREN = 5;
 type CreationTier = 1 | 2 | 3;
 type CreationState = {
   key: string;
@@ -59,12 +59,12 @@ function childCentres(widths: number[]) {
 
 /**
  * Competency map: a focus-and-context tree. The overview shows every terminal competency as a
- * collapsed tree — a card with sub-skill/knowledge counts and a small root-to-leaves schematic
+ * collapsed tree — a card with child/leaf counts and a small root-to-leaves schematic
  * hinting that three tiers unfold beneath it. Click one and it becomes the focused tree: the
- * card moves to the centre with its sub-skills fanned out below it. A quiet pill above returns
- * to the all-skills overview, and a focused sub-skill keeps its siblings visible as subdued,
+ * card moves to the centre with its capabilities fanned out below it. A quiet pill above returns
+ * to the all-topics overview, and a focused capability keeps its siblings visible as subdued,
  * directly selectable context. The whole tree shares one horizontal scroll container so boxes
- * and connectors stay aligned; each focus change centres the focused sub-skill. Clicking a leaf,
+ * and connectors stay aligned; each focus change centres the focused node. Clicking a leaf,
  * or an already-focused box a second time, opens the goal detail modal.
  */
 export default function CompetencyGraph({
@@ -122,7 +122,7 @@ export default function CompetencyGraph({
       }
     : {};
 
-  // Drill path: [selected competency id, selected sub-skill id]. Empty = overview only.
+  // Drill path: [selected topic id, selected capability id]. Empty = overview only.
   const [path, setPath] = useState<number[]>([]);
   const [creation, setCreation] = useState<CreationState | null>(null);
   const createMutation = useMutation({
@@ -191,7 +191,7 @@ export default function CompetencyGraph({
     () => forest.find((n) => n.goal.id === path[0]) ?? null,
     [forest, path],
   );
-  const subSkill = useMemo(
+  const focused = useMemo(
     () => competency?.children.find((n) => n.goal.id === path[1]) ?? null,
     [competency, path],
   );
@@ -201,8 +201,8 @@ export default function CompetencyGraph({
   useEffect(() => {
     if (path.length === 0) return;
     if (!competency) setPath([]);
-    else if (path.length > 1 && !subSkill) setPath([path[0]]);
-  }, [competency, subSkill, path]);
+    else if (path.length > 1 && !focused) setPath([path[0]]);
+  }, [competency, focused, path]);
 
   // FLIP: `navigate` snapshots every visible box (by goal id) before the path changes; after the
   // new layout is in, each box that survived the transition — the clicked one gliding into its
@@ -224,12 +224,12 @@ export default function CompetencyGraph({
   };
 
   useLayoutEffect(() => {
-    // Centre the active sub-skill, rather than the entire canvas, so its knowledge is immediately
+    // Centre the active node, rather than the entire canvas, so its children are immediately
     // readable even when the expanded sibling row overflows the shared scroller.
     const scroller = scrollRef.current;
-    const focusedBox = subSkill
+    const focusedBox = focused
       ? containerRef.current?.querySelector<HTMLElement>(
-          `[data-goal-id="${subSkill.goal.id}"]`,
+          `[data-goal-id="${focused.goal.id}"]`,
         )
       : null;
     if (scroller && focusedBox) {
@@ -284,7 +284,7 @@ export default function CompetencyGraph({
           { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
         );
       });
-  }, [path, subSkill]);
+  }, [path, focused]);
 
   // The canvas is deterministic, but its rendered width depends on the current tree. Observe both
   // the scrollport and its canvas so the cosmetic affordances only appear when overflow exists;
@@ -316,7 +316,7 @@ export default function CompetencyGraph({
       resizeObserver.disconnect();
       scroller.removeEventListener("scroll", updateScrollEdges);
     };
-  }, [competency, subSkill]);
+  }, [competency, focused]);
 
   // Toggle selection at a tier: re-selecting the active node collapses it (and everything below).
   const pickCompetency = (id: number) =>
@@ -377,7 +377,7 @@ export default function CompetencyGraph({
                   }
                   actions={actions}
                   fluid
-                  deepKnowledge={deep}
+                  deepCount={deep}
                   sequenceLabel={`${index + 1}.`}
                 />
                 {expandable && (
@@ -394,7 +394,7 @@ export default function CompetencyGraph({
           <div key="new-skill" className="grid grid-rows-[1fr_auto]">
             <CreationGhost
               label="New skill"
-              color={COMPETENCY_ROLE_META.competency.color}
+              color={COMPETENCY_ROLE_META.topic.color}
               active={creation?.key === "1:root"}
               fluid
               value={creation?.text ?? ""}
@@ -416,20 +416,20 @@ export default function CompetencyGraph({
     );
   }
 
-  const skillColor = COMPETENCY_ROLE_META.competency.color;
-  const subColor = COMPETENCY_ROLE_META["sub-skill"].color;
+  const skillColor = COMPETENCY_ROLE_META.topic.color;
+  const subColor = COMPETENCY_ROLE_META.skill.color;
   const competencyNumber = forest.findIndex((node) => node.goal.id === competency.goal.id) + 1;
-  const canAddSubSkill = competency.children.length < MAX_SUB_SKILLS;
-  const focusedSubIndex = subSkill
-    ? competency.children.findIndex((node) => node.goal.id === subSkill.goal.id)
+  const canAddCapability = competency.children.length < MAX_TOPIC_CHILDREN;
+  const focusedSubIndex = focused
+    ? competency.children.findIndex((node) => node.goal.id === focused.goal.id)
     : -1;
   // In the focused row, the active box keeps its normal width while dimmed context boxes compact
   // to w-40. Prefix sums keep the row, the parent offset and both connector trunks aligned.
   const siblingWidths = [
     ...competency.children.map((child) =>
-      subSkill && child.goal.id !== subSkill.goal.id ? COMPACT_W : BOX_W,
+      focused && child.goal.id !== focused.goal.id ? COMPACT_W : BOX_W,
     ),
-    ...(canAddSubSkill ? [BOX_W] : []),
+    ...(canAddCapability ? [BOX_W] : []),
   ];
   const siblingRowWidth = rowWidth(siblingWidths);
   const siblingCentres = childCentres(siblingWidths);
@@ -437,10 +437,10 @@ export default function CompetencyGraph({
     focusedSubIndex >= 0 ? siblingCentres[focusedSubIndex] : siblingRowWidth / 2;
   const focusedSubOffset =
     focusedSubIndex >= 0 ? focusedSubCentre - siblingRowWidth / 2 : 0;
-  const knowledgeBranchWidth = subSkill
-    ? rowWidth([...subSkill.children.map(() => KNOWLEDGE_W), KNOWLEDGE_W])
+  const knowledgeBranchWidth = focused
+    ? rowWidth([...focused.children.map(() => KNOWLEDGE_W), KNOWLEDGE_W])
     : 0;
-  // Relative positioning paints the knowledge branch at the focused sub-skill, but does not
+  // Relative positioning paints the leaf branch at the focused node, but does not
   // enlarge the canvas. These layout paddings cover its overhang past the sibling row at either
   // edge, making the full shifted branch part of the horizontal scroll range.
   const knowledgeLeftOverhang = Math.max(
@@ -471,10 +471,10 @@ export default function CompetencyGraph({
         {/* Keyed by the drill path so every navigation remounts the tiers — the connectors
             redraw and the children replay their entrance, while surviving boxes FLIP. */}
         <div
-          key={`tree-${competency.goal.id}-${subSkill?.goal.id ?? "none"}`}
+          key={`tree-${competency.goal.id}-${focused?.goal.id ?? "none"}`}
           className="mx-auto flex w-max min-w-full flex-col items-center"
           style={
-            subSkill
+            focused
               ? {
                   paddingLeft: knowledgeLeftOverhang,
                   paddingRight: knowledgeRightOverhang,
@@ -482,7 +482,7 @@ export default function CompetencyGraph({
               : undefined
           }
         >
-          {subSkill == null ? (
+          {focused == null ? (
             <>
               {/* Already unfolded — a second click opens the goal detail instead. */}
               <Box
@@ -501,7 +501,7 @@ export default function CompetencyGraph({
               <div className="flex justify-center gap-3">
                 {competency.children.map((child, i) => {
                   const expandable = child.children.length > 0;
-                  const isSubSkill = child.role === "sub-skill";
+                  const unfoldable = child.role === "skill" || child.role === "capability";
                   return (
                     // Column cell: the box plus, when knowledge waits beneath, the mini leaf
                     // indicator branching off below it. Stub width < box width, so the cell
@@ -518,13 +518,13 @@ export default function CompetencyGraph({
                         active={false}
                         expandable={expandable}
                         onClick={() =>
-                          isSubSkill
+                          unfoldable
                             ? pickSubSkill(child.goal.id!)
                             : onOpenDetail(child)
                         }
                         actions={actions}
                         sequenceLabel={`${competencyNumber}.${i + 1}`}
-                        title={isSubSkill ? "Focus this sub-skill" : undefined}
+                        title={unfoldable ? "Unfold" : undefined}
                       />
                       {expandable && (
                         <LeafStub count={child.children.length} />
@@ -532,9 +532,9 @@ export default function CompetencyGraph({
                     </div>
                   );
                 })}
-                {canAddSubSkill && (
+                {canAddCapability && (
                   <CreationGhost
-                    label="New sub-skill"
+                    label="New capability"
                     color={subColor}
                     widthClass="w-56 shrink-0"
                     active={creation?.key === `2:${competency.goal.id}`}
@@ -577,9 +577,10 @@ export default function CompetencyGraph({
               />
               <div className="flex justify-center gap-3">
                 {competency.children.map((child, i) => {
-                  const isFocused = child.goal.id === subSkill.goal.id;
-                  // Only a non-focused sub-skill navigates; everything else opens the detail.
-                  const focusable = child.role === "sub-skill" && !isFocused;
+                  const isFocused = child.goal.id === focused.goal.id;
+                  // Only a non-focused branch navigates; everything else opens the detail.
+                  const focusable =
+                    (child.role === "skill" || child.role === "capability") && !isFocused;
                   return (
                     <div
                       key={child.goal.id}
@@ -602,16 +603,16 @@ export default function CompetencyGraph({
                         sequenceLabel={`${competencyNumber}.${i + 1}`}
                         title={
                           focusable
-                            ? "Focus this sub-skill"
+                            ? "Unfold"
                             : "View goal details"
                         }
                       />
                     </div>
                   );
                 })}
-                {canAddSubSkill && (
+                {canAddCapability && (
                   <CreationGhost
-                    label="New sub-skill"
+                    label="New capability"
                     color={subColor}
                     widthClass="w-56 shrink-0"
                     active={creation?.key === `2:${competency.goal.id}`}
@@ -630,23 +631,23 @@ export default function CompetencyGraph({
                   />
                 )}
               </div>
-              {/* The active sub-skill sits at a known fixed position in the sibling row. Moving
+              {/* The active node sits at a known fixed position in the sibling row. Moving
                   this whole knowledge branch by that same offset makes its connector originate
-                  at the focused sub-skill instead of the row centre. */}
+                  at the focused node instead of the row centre. */}
               <div
                 className="relative flex flex-col items-center"
                 style={{ left: focusedSubOffset }}
               >
                 <Connector
                   childWidths={[
-                    ...subSkill.children.map(() => KNOWLEDGE_W),
+                    ...focused.children.map(() => KNOWLEDGE_W),
                     KNOWLEDGE_W,
                   ]}
                   color={subColor}
                 />
                 <div className="flex justify-center gap-3">
-                  {subSkill.children.map((leaf, i) => (
-                    // The knowledge pops in after the focused sub-skill has slid into place.
+                  {focused.children.map((leaf, i) => (
+                    // The leaves pop in after the focused node has slid into place.
                     <div
                       key={leaf.goal.id}
                       className="comp-pop"
@@ -663,19 +664,25 @@ export default function CompetencyGraph({
                     </div>
                   ))}
                   <CreationGhost
-                    label="New knowledge"
-                    color={COMPETENCY_ROLE_META.knowledge.color}
+                    label={
+                      focused.role === "capability" ? "New skill" : "New knowledge"
+                    }
+                    color={
+                      COMPETENCY_ROLE_META[
+                        focused.role === "capability" ? "skill" : "knowledge"
+                      ].color
+                    }
                     widthClass="w-60 shrink-0"
-                    active={creation?.key === `3:${subSkill.goal.id}`}
+                    active={creation?.key === `3:${focused.goal.id}`}
                     value={creation?.text ?? ""}
                     pending={createMutation.isPending}
                     error={
-                      creation?.key === `3:${subSkill.goal.id}` &&
+                      creation?.key === `3:${focused.goal.id}` &&
                       createMutation.isError
                         ? (createMutation.error as Error).message
                         : undefined
                     }
-                    onStart={() => beginCreation(3, subSkill.goal.id!)}
+                    onStart={() => beginCreation(3, focused.goal.id!)}
                     onChange={updateCreationText}
                     onSubmit={submitCreation}
                     onCancel={cancelCreation}
@@ -760,7 +767,7 @@ export default function CompetencyGraph({
   );
 }
 
-/** Total knowledge two tiers down — shown on overview cards so the depth reads at a glance. */
+/** Total nodes two tiers down — shown on overview cards so the depth reads at a glance. */
 function countGrandchildren(node: CompetencyNode) {
   return node.children.reduce((n, child) => n + child.children.length, 0);
 }
@@ -886,7 +893,7 @@ function Connector({
 }: {
   childWidths: number[];
   color: string;
-  /** Keeps a focused sub-skill's parent and knowledge branches aligned to its row position. */
+  /** Keeps a focused node's parent and leaf branches aligned to its row position. */
   focusedIndex?: number;
 }) {
   const count = childWidths.length;
@@ -946,7 +953,7 @@ type GoalActions = {
   onDelete: (goal: LearningGoal) => void;
 };
 
-/** A readable competency/sub-skill/knowledge rectangle. Branch boxes carry a child count and an
+/** A readable topic/capability/skill/knowledge rectangle. Branch boxes carry a child count and an
  * unfold chevron (overview cards add the deep knowledge count and a collapsed-tree schematic);
  * every box carries edit / delete top-right, which fade in on hover. Clicking the body unfolds
  * a branch or opens the goal detail (leaves, and focused boxes on their second click) — the
@@ -967,7 +974,7 @@ function Box({
   knowledge = false,
   clampText = false,
   title,
-  deepKnowledge = null,
+  deepCount = null,
   sequenceLabel,
 }: {
   node: CompetencyNode;
@@ -985,18 +992,18 @@ function Box({
   wide?: boolean;
   /** The drill path's parent box: readable but quieter than the focus node. */
   subdued?: boolean;
-  /** An unfocused sub-skill in the visible sibling row. */
+  /** An unfocused sibling in the visible row. */
   dimmed?: boolean;
   /** Shrinks a dimmed sibling to keep focused context rows compact. */
   compact?: boolean;
   /** Knowledge-row width (w-60), distinct from the wider drill-path boxes. */
   knowledge?: boolean;
-  /** Keeps sibling context compact without truncating the focused sub-skill. */
+  /** Keeps sibling context compact without truncating the focused node. */
   clampText?: boolean;
   /** Overrides the default branch/detail tooltip. */
   title?: string;
-  /** Overview only: total knowledge beneath the sub-skills, appended to the count line. */
-  deepKnowledge?: number | null;
+  /** Overview only: total nodes two tiers down, appended to the count line. */
+  deepCount?: number | null;
   /** Hierarchical lecture-order label, e.g. "2." or "2.3". */
   sequenceLabel?: string;
 }) {
@@ -1108,10 +1115,10 @@ function Box({
         {expandable && (
           <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
             <span className="tabular-nums">
-              {childCount} {node.role === "competency" ? "sub-skill" : "item"}
+              {childCount} item
               {childCount === 1 ? "" : "s"}
-              {deepKnowledge != null && deepKnowledge > 0 && (
-                <> · {deepKnowledge} knowledge</>
+              {deepCount != null && deepCount > 0 && (
+                <> · {deepCount} nested</>
               )}
             </span>
             <svg
@@ -1134,7 +1141,7 @@ function Box({
 
 /**
  * Collapsed-tree schematic hanging under an overview card: connector stubs to unlabelled
- * sub-skill bars, then a fainter row of knowledge dots — a first-glance hint that three tiers
+ * capability bars, then a fainter row of leaf dots — a first-glance hint that three tiers
  * unfold beneath.
  */
 function Stub({
@@ -1146,13 +1153,13 @@ function Stub({
 }) {
   const xs =
     childCount >= 3 ? [26, 60, 94] : childCount === 2 ? [43, 77] : [60];
-  const barColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 45%, var(--hestia-surface))`;
+  const barColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.skill.color} 45%, var(--hestia-surface))`;
   const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 60%, var(--hestia-surface))`;
   return (
     <div className="pointer-events-none" aria-hidden="true">
       <svg width={120} height={14} className="mx-auto block">
         <g
-          stroke={`color-mix(in srgb, ${COMPETENCY_ROLE_META["sub-skill"].color} 55%, transparent)`}
+          stroke={`color-mix(in srgb, ${COMPETENCY_ROLE_META.skill.color} 55%, transparent)`}
           strokeWidth={1.5}
           fill="none"
           strokeLinecap="round"
@@ -1194,7 +1201,7 @@ function Stub({
 }
 
 /**
- * Mini leaf indicator under an unfocused sub-skill box: stub lines branching into a few
+ * Mini leaf indicator under an unfocused branch box: stub lines branching into a few
  * knowledge dots, hinting that another tier unfolds beneath it. Dots = knowledge, the same
  * visual language as the overview schematic; the count is suggestive (capped at three), the
  * exact number already sits in the box's "N items" line.

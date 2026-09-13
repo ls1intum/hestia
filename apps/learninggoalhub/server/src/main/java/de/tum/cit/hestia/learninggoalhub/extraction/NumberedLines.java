@@ -10,8 +10,21 @@ import java.util.stream.Collectors;
  */
 final class NumberedLines {
 
-    /** The prompt permits one contiguous source passage of at most five numbered lines. */
-    private static final int MAX_LINE_DISTANCE = 4;
+    /**
+     * The prompt permits one contiguous source passage of at most ten numbered lines.
+     *
+     * <p>It was five, which sat just below where the model naturally draws a passage: on a measured
+     * 59-unit run, 48 replies cited too widely and the median overshoot was seven lines — 16 of them
+     * missed by exactly one line. Each rejection cost a full re-ask of the whole session, and the
+     * re-ask then complied 43 times out of 48, so the calls bought a boundary the model could hit
+     * but would not choose. Ten covers 77% of that overshoot.
+     *
+     * <p>Ten lines of slide material is about one bullet list, which is a fair claim about where a
+     * broad instructor-level outcome comes from. The genuinely sprawling citations — the 22-, 43- and
+     * 54-line ranges in that run — are still rejected, and still degrade to an unsupported outcome
+     * rather than being narrowed to a passage nobody verified.
+     */
+    private static final int MAX_LINE_DISTANCE = 9;
 
     private final List<Line> lines;
 

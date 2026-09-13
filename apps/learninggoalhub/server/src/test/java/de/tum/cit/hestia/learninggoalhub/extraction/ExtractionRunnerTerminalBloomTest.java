@@ -19,7 +19,7 @@ class ExtractionRunnerTerminalBloomTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL);
 
-        TaxonomyClassification raised = ExtractionRunner.atLeastSubSkillBloom(
+        TaxonomyClassification raised = ExtractionRunner.atLeastChildBloom(
                 classified, List.of(BloomLevel.UNDERSTAND, BloomLevel.ANALYZE, BloomLevel.APPLY));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.ANALYZE);
@@ -31,7 +31,7 @@ class ExtractionRunnerTerminalBloomTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.EVALUATE, SoloLevel.EXTENDED_ABSTRACT);
 
-        assertThat(ExtractionRunner.atLeastSubSkillBloom(
+        assertThat(ExtractionRunner.atLeastChildBloom(
                 classified, List.of(BloomLevel.UNDERSTAND, BloomLevel.APPLY)))
                 .isSameAs(classified);
     }
@@ -39,7 +39,7 @@ class ExtractionRunnerTerminalBloomTest {
     /** Sub-skills carry their levels from extraction, so an unclassified terminal still gets one. */
     @Test
     void fallsBackToTheSubSkillFloorWhenClassificationIsMissing() {
-        TaxonomyClassification raised = ExtractionRunner.atLeastSubSkillBloom(
+        TaxonomyClassification raised = ExtractionRunner.atLeastChildBloom(
                 null, List.of(BloomLevel.APPLY, BloomLevel.ANALYZE));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.ANALYZE);
@@ -52,7 +52,7 @@ class ExtractionRunnerTerminalBloomTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.MULTISTRUCTURAL);
 
-        assertThat(ExtractionRunner.atLeastSubSkillBloom(classified, List.of())).isSameAs(classified);
-        assertThat(ExtractionRunner.atLeastSubSkillBloom(null, List.of())).isNull();
+        assertThat(ExtractionRunner.atLeastChildBloom(classified, List.of())).isSameAs(classified);
+        assertThat(ExtractionRunner.atLeastChildBloom(null, List.of())).isNull();
     }
 }

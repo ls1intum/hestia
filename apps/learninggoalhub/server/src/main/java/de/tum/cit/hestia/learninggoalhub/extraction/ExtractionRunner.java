@@ -43,7 +43,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -84,9 +83,10 @@ public class ExtractionRunner {
     private final SessionExtractionService sessionExtractionService;
     private final ExtractionRunAuditService extractionRunAuditService;
     private final DocumentSectionRepository documentSectionRepository;
-    private final CompactTaxonomySynthesizer compactTaxonomySynthesizer;
+    private final TopicTreeSynthesizer topicTreeSynthesizer;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
+    private final boolean keepEmptyUnits;
     private final ExtractionProgressTracker progressTracker;
     private final TransactionOperations extractionTransactions;
     private final int parallelism;
@@ -94,7 +94,6 @@ public class ExtractionRunner {
     private final int unitMaxChars;
     private final int skillTargetChars;
     private final String configuredDefaultModel;
-    private final int taxonomyBatchSize;
     private final HighlightGeometryService highlightGeometryService;
 
     public ExtractionRunner(CourseRepository courseRepository,
@@ -108,7 +107,7 @@ public class ExtractionRunner {
                             SessionExtractionService sessionExtractionService,
                             ExtractionRunAuditService extractionRunAuditService,
                             DocumentSectionRepository documentSectionRepository,
-                            CompactTaxonomySynthesizer compactTaxonomySynthesizer,
+                            TopicTreeSynthesizer topicTreeSynthesizer,
                             HierarchyNodeRepository hierarchyNodeRepository,
                             TaxonomyService taxonomyService,
                             ExtractionProgressTracker progressTracker,
@@ -117,8 +116,8 @@ public class ExtractionRunner {
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
                             @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
+                            @Value("${hestia.extraction.keep-empty-units:false}") boolean keepEmptyUnits,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
-                            @Value("${hestia.taxonomy.batch-size:20}") int taxonomyBatchSize,
                             HighlightGeometryService highlightGeometryService) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
@@ -131,7 +130,7 @@ public class ExtractionRunner {
         this.sessionExtractionService = sessionExtractionService;
         this.extractionRunAuditService = extractionRunAuditService;
         this.documentSectionRepository = documentSectionRepository;
-        this.compactTaxonomySynthesizer = compactTaxonomySynthesizer;
+        this.topicTreeSynthesizer = topicTreeSynthesizer;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
         this.progressTracker = progressTracker;
@@ -140,8 +139,8 @@ public class ExtractionRunner {
         this.figureParallelism = figureParallelism;
         this.unitMaxChars = unitMaxChars;
         this.skillTargetChars = skillTargetChars;
+        this.keepEmptyUnits = keepEmptyUnits;
         this.configuredDefaultModel = configuredDefaultModel;
-        this.taxonomyBatchSize = taxonomyBatchSize;
         this.highlightGeometryService = highlightGeometryService;
     }
 
@@ -239,31 +238,30 @@ public class ExtractionRunner {
                                                      ExtractionProgressTracker.Run run) {
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
         if (course.isFiguresEnabled()) {
-            // Documents are described concurrently, but at a much lower width than the text phases: each
-            // call carries several rendered pages, so the provider rejects a wide burst of them, and every
-            // document opens its own transaction for the commit-per-document guarantee.
+            // The width is spent on batches, not documents: a document is taken at a time so it keeps
+            // its own transaction and the commit-per-document guarantee, while the executor runs that
+            // document's page batches concurrently. Spreading across documents instead capped a
+            // two-PDF course at two calls in flight however wide the pool.
             run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
             ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
             try {
-                List<CompletableFuture<Void>> futures = documents.stream()
-                        .map(document -> CompletableFuture.runAsync(() -> {
-                            try {
-                                documentContentRepository.findById(document.getId())
-                                        .map(DocumentContent::getBytes)
-                                        .ifPresent(bytes -> {
-                                            String languageCode = resolveLanguage(
-                                                    course, document.getLanguage(), dominantLanguage);
-                                            pageDescriptionService.describeEligiblePages(document, bytes,
-                                                    languageCode, LanguageUtils.englishName(languageCode));
-                                        });
-                            } catch (RuntimeException e) {
-                                log.warn("Could not prepare figure descriptions for document {}: {}",
-                                        document.getId(), e.getMessage());
-                            }
-                            run.increment();
-                        }, figureExecutor))
-                        .toList();
-                futures.forEach(CompletableFuture::join);
+                for (Document document : documents) {
+                    try {
+                        documentContentRepository.findById(document.getId())
+                                .map(DocumentContent::getBytes)
+                                .ifPresent(bytes -> {
+                                    String languageCode = resolveLanguage(
+                                            course, document.getLanguage(), dominantLanguage);
+                                    pageDescriptionService.describeEligiblePages(document, bytes,
+                                            languageCode, LanguageUtils.englishName(languageCode),
+                                            figureExecutor);
+                                });
+                    } catch (RuntimeException e) {
+                        log.warn("Could not prepare figure descriptions for document {}: {}",
+                                document.getId(), e.getMessage());
+                    }
+                    run.increment();
+                }
             } finally {
                 figureExecutor.shutdown();
             }
@@ -464,6 +462,7 @@ public class ExtractionRunner {
     private String runParams(String language, boolean figuresEnabled) {
         return "{\"unit-max-chars\":" + unitMaxChars
                 + ",\"skill-target-chars\":" + skillTargetChars
+                + ",\"keep-empty-units\":" + keepEmptyUnits
                 + ",\"parallelism\":" + parallelism
                 + ",\"output-language\":\"" + language + "\""
                 + ",\"figures-enabled\":" + figuresEnabled
@@ -533,7 +532,8 @@ public class ExtractionRunner {
                         "");
                 goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
                         new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine(),
-                                skill.sourceFigure())));
+                                skill.sourceFigure()),
+                        new TaxonomyClassification(skill.bloom(), skill.solo())));
                 List<ExtractedSkill.Knowledge> orderedKnowledge = skill.knowledge().stream()
                         .sorted(Comparator.comparing(
                                 ExtractedSkill.Knowledge::sourceStartLine,
@@ -545,7 +545,8 @@ public class ExtractionRunner {
                             "");
                     goals.add(new SessionGoal(knowledgeGoal, GoalRole.KNOWLEDGE, skillGoal,
                             new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
-                                    knowledge.sourceFigure())));
+                                    knowledge.sourceFigure()),
+                            new TaxonomyClassification(knowledge.bloom(), knowledge.solo())));
                 }
             }
             if (!goals.isEmpty()) {
@@ -571,6 +572,14 @@ public class ExtractionRunner {
      * references them, so nothing is orphaned; the MODULE root is always kept as the tree's anchor.
      */
     private int pruneEmptyUnits(Course course) {
+        if (keepEmptyUnits) {
+            // A unit that returned no skill is a finding, not debris: whether a lecture teaches any
+            // performance at all is what the APPLY-or-above contract is being measured on, and a
+            // pruned node cannot be told apart from one that was never uploaded.
+            log.info("Keeping empty units in course {} (hestia.extraction.keep-empty-units)",
+                    course.getId());
+            return 0;
+        }
         Set<Long> nodesWithGoals = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
                 .map(g -> g.getHierarchyNode().getId())
                 .collect(Collectors.toSet());
@@ -634,8 +643,7 @@ public class ExtractionRunner {
      * What the competency tree came out as.
      *
      * @param competencies   how many terminal competencies were created.
-     * @param unmatchedGoals source outcomes left outside the tree. Always zero: both synthesis stages
-     *                       are validated as exact partitions, and a non-zero value fails the run.
+     * @param unmatchedGoals source outcomes no topic covers, left outside the tree.
      */
     public record CompetencyTreeResult(int competencies, int unmatchedGoals) {
         static final CompetencyTreeResult NONE = new CompetencyTreeResult(0, 0);
@@ -643,8 +651,8 @@ public class ExtractionRunner {
 
     /**
      * Throws away a course's competency tree and builds a fresh one from the goals it already has,
-     * without re-reading a single document. Only taxonomy planning, batched assignment, semantic
-     * review/repair, and classification run, so iterating on the tree costs less than a full extraction.
+     * without re-reading a single document. Only topic naming, batched assignment, per-topic
+     * structuring and classification run, so iterating on the tree costs less than a full extraction.
      *
      * <p>Refuses by default once the tree contains instructor work — a hand-added skill, a
      * hand-added child, a generated subtree, or an approved terminal — because a rebuild replaces
@@ -836,14 +844,14 @@ public class ExtractionRunner {
     }
 
     /**
-     * Builds the competency-tree view ALONGSIDE the module goals (not a replacement) in a fixed three
-     * tiers — terminal competency → sub-skill → knowledge — under its own {@code COMPETENCY} root.
+     * Builds the competency-tree view ALONGSIDE the module goals (not a replacement) under its own
+     * {@code COMPETENCY} root: topic → capability → extracted skill → knowledge, with skills that
+     * form no capability directly under their topic.
      *
-     * <p>The compact taxonomy is planned, assigned, and audited before anything is written. A failed
+     * <p>Topics are named, skills assigned and topics structured before anything is written. A failed
      * call therefore leaves the source-backed outcomes untouched and available for a tree-only retry.
      *
-     * <p>Source skill outcomes are retained as support provenance; knowledge remains a separate
-     * visible tier. This method runs in a transaction separate from extraction persistence.
+     * <p>This method runs in a transaction separate from extraction persistence.
      */
     private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride,
                                                      String languageName) {
@@ -855,7 +863,7 @@ public class ExtractionRunner {
             return CompetencyTreeResult.NONE;
         }
         persistCompetencyTree(course, plan);
-        log.info("Built compact competency tree for course {}: {} terminal competencies, {} unmatched goal(s)",
+        log.info("Built topic competency tree for course {}: {} topics, {} unmatched goal(s)",
                 course.getId(), plan.competencies().size(), plan.unmatchedGoals());
         return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
     }
@@ -887,66 +895,53 @@ public class ExtractionRunner {
             return null;
         }
 
-        CompactTaxonomySynthesizer.Plan plan;
+        TopicTreeSynthesizer.Plan plan;
         try {
-            List<CompactTaxonomySynthesizer.Candidate> input = candidates.stream()
-                    .map(g -> new CompactTaxonomySynthesizer.Candidate(
-                            g.getText(),
-                            g.getBloomLevel() == null ? null : g.getBloomLevel().name(),
-                            g.getHierarchyNode() == null ? null : g.getHierarchyNode().getLabel()))
-                    .toList();
-            plan = compactTaxonomySynthesizer.synthesize(input, languageName, modelOverride);
+            plan = topicTreeSynthesizer.synthesize(
+                    candidates.stream().map(LearningGoal::getText).toList(), languageName, modelOverride);
         } catch (RuntimeException ex) {
-            throw new IllegalStateException("Compact competency taxonomy synthesis failed: "
-                    + errorMessage(ex), ex);
+            throw new IllegalStateException("Topic tree synthesis failed: " + errorMessage(ex), ex);
         }
-        List<CompactTaxonomySynthesizer.PlannedSkill> compactSkills = plan.skills();
-        // Only the terminal skills carry generated text, so only they need classifying. Every
-        // sub-skill is an extracted outcome that already has its Bloom/SOLO levels from extraction.
-        List<TaxonomyClassification> classifications = safeClassifyBatch(
-                compactSkills.stream().map(CompactTaxonomySynthesizer.PlannedSkill::text).toList(),
-                modelOverride);
+        if (plan.topics().isEmpty()) {
+            throw new IllegalStateException("Topic tree synthesis placed none of the " + candidates.size()
+                    + " source outcomes under a topic. Retry the competency tree.");
+        }
+        // Topics are noun phrases and carry no level of their own; only capability names state a
+        // performance, so only they are classified. Every placed outcome keeps its extracted levels.
+        List<String> capabilityNames = plan.topics().stream()
+                .flatMap(topic -> topic.capabilities().stream())
+                .map(TopicTreeSynthesizer.PlannedCapability::name)
+                .toList();
+        List<TaxonomyClassification> classifications = capabilityNames.isEmpty()
+                ? List.of()
+                : safeClassifyBatch(capabilityNames, modelOverride);
         List<PlannedCompetency> planned = new ArrayList<>();
-        for (int skillIndex = 0; skillIndex < compactSkills.size(); skillIndex++) {
-            CompactTaxonomySynthesizer.PlannedSkill compactSkill = compactSkills.get(skillIndex);
-            List<PlannedSubSkill> subSkills = new ArrayList<>();
-            for (CompactTaxonomySynthesizer.PlannedSubSkill compactSubSkill : compactSkill.subSkills()) {
-                subSkills.add(new PlannedSubSkill(
-                        candidates.get(compactSubSkill.representative()),
-                        compactSubSkill.supporting().stream().map(candidates::get).toList()));
+        int capabilityIndex = 0;
+        for (TopicTreeSynthesizer.PlannedTopic topic : plan.topics()) {
+            List<PlannedCapability> capabilities = new ArrayList<>();
+            for (TopicTreeSynthesizer.PlannedCapability capability : topic.capabilities()) {
+                List<LearningGoal> members = capability.outcomes().stream().map(candidates::get).toList();
+                capabilities.add(new PlannedCapability(capability.name(),
+                        atLeastChildBloom(classifications.get(capabilityIndex++), bloomLevels(members)),
+                        members));
             }
-            List<BloomLevel> subSkillLevels = subSkills.stream()
-                    .map(PlannedSubSkill::representative)
-                    .map(LearningGoal::getBloomLevel)
+            List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
+            List<BloomLevel> childLevels = new ArrayList<>(bloomLevels(direct));
+            capabilities.stream()
+                    .map(PlannedCapability::classification)
                     .filter(java.util.Objects::nonNull)
-                    .toList();
-            planned.add(new PlannedCompetency(
-                    compactSkill.text(), compactSkill.shortLabel(),
-                    atLeastSubSkillBloom(classifications.get(skillIndex), subSkillLevels), subSkills));
+                    .map(TaxonomyClassification::bloom)
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(childLevels::add);
+            planned.add(new PlannedCompetency(topic.label(), atLeastChildBloom(null, childLevels),
+                    capabilities, direct));
         }
         planned.sort(Comparator.comparingInt(ExtractionRunner::medianLectureOrder));
-        long assignedGoals = compactSkills.stream()
-                .flatMap(skill -> skill.subSkills().stream())
-                .flatMap(subSkill -> subSkill.supporting().stream())
-                .distinct()
-                .count();
-        int unmatched = candidates.size() - Math.toIntExact(assignedGoals);
-        // Stage one may SELECT rather than partition, in which case a residue is expected and is a
-        // quality signal rather than a bug: these outcomes are taught but ladder up to no skill.
-        // Reporting the number is the point — an instructor reading it either agrees they are
-        // peripheral or learns that a skill is missing. Under the default policy the residue is
-        // empty (set-aside is off, because how much of a course it swallowed varied run to run),
-        // and this check then simply asserts that every source outcome is reachable.
-        //
-        // What is still enforced (in the synthesizer): every outcome is accounted for exactly once,
-        // and at least half of them become sub-skills.
-        if (unmatched != plan.setAside().size()) {
-            throw new IllegalStateException("The competency tree would leave " + unmatched + " of "
-                    + candidates.size() + " source outcomes unreachable, but the plan set aside only "
-                    + plan.setAside().size() + ". Retry the competency tree.");
-        }
+        int unmatched = plan.unmatched().size();
+        // An outcome no topic covers is left out of the tree rather than forced under the nearest
+        // label. The count is reported so a reviewer can tell how much of the course that is.
         if (unmatched > 0) {
-            log.info("Competency tree for course {} sets aside {} of {} source outcomes as supporting detail",
+            log.info("Competency tree for course {} leaves {} of {} source outcomes under no topic",
                     course.getId(), unmatched, candidates.size());
         }
         return new CompetencyTreePlan(planned, unmatched);
@@ -957,31 +952,32 @@ public class ExtractionRunner {
      * succeeded before the first row is written.
      *
      * @param competencies   one entry per terminal competency, in tree order.
-     * @param unmatchedGoals source goals deliberately left outside the tree as supporting detail.
-     *                       Reported to the caller rather than suppressed; see the selection stage.
+     * @param unmatchedGoals source goals no topic covers, left outside the tree. Reported to the
+     *                       caller rather than suppressed.
      */
     private record CompetencyTreePlan(List<PlannedCompetency> competencies, int unmatchedGoals) {}
 
     /**
-     * One terminal competency with everything that hangs beneath it.
+     * One terminal competency: a topic with the capabilities and outcomes beneath it.
      *
-     * @param text           the competency sentence.
-     * @param shortLabel     its compact verb phrase, or {@code null}.
-     * @param classification its Bloom/SOLO levels.
-     * @param subSkills      at most five direct sub-skills, in lecture order. Each one is an
-     *                       existing extracted goal, never a new node.
+     * @param text           the topic label.
+     * @param classification its Bloom level, the highest among its direct children; no SOLO level.
+     * @param capabilities   generated capabilities, each over at least two extracted outcomes.
+     * @param direct         extracted outcomes that hang directly under the topic.
      */
-    private record PlannedCompetency(String text, String shortLabel, TaxonomyClassification classification,
-                                     List<PlannedSubSkill> subSkills) {}
+    private record PlannedCompetency(String text, TaxonomyClassification classification,
+                                     List<PlannedCapability> capabilities, List<LearningGoal> direct) {}
+
+    /** A generated capability: its name, its levels, and the extracted outcomes beneath it. */
+    private record PlannedCapability(String text, TaxonomyClassification classification,
+                                     List<LearningGoal> members) {}
+
+    private static List<BloomLevel> bloomLevels(List<LearningGoal> goals) {
+        return goals.stream().map(LearningGoal::getBloomLevel).filter(java.util.Objects::nonNull).toList();
+    }
 
     /**
-     * One visible child of a terminal: the elected extracted outcome that becomes the node, plus
-     * every outcome in its group. The representative is itself a member of {@code supportingGoals}.
-     */
-    private record PlannedSubSkill(LearningGoal representative, List<LearningGoal> supportingGoals) {}
-
-    /**
-     * A terminal competency never sits below the sub-skills beneath it.
+     * A tree node never sits below the children beneath it.
      *
      * <p>Its Bloom level is classified from generated text, and that text is the least reliable
      * thing in the tree to read a level off: one run stored a terminal reading "Understanding
@@ -990,11 +986,12 @@ public class ExtractionRunner {
      * curves". Terminals also came back at UNDERSTAND over children at ANALYZE, which inverts the
      * tier the tree is built on. The children's levels are the trustworthy half — each one was
      * classified during extraction with a source passage behind it — so the classified SOLO level is
-     * kept and Bloom is raised to the highest level among the direct sub-skills.
+     * kept and Bloom is raised to the highest level among the direct children. A topic is not
+     * classified at all, so it takes its level purely from the capabilities and skills beneath it.
      */
-    static TaxonomyClassification atLeastSubSkillBloom(TaxonomyClassification classified,
-                                                       List<BloomLevel> subSkillLevels) {
-        BloomLevel floor = subSkillLevels.stream().max(Comparator.naturalOrder()).orElse(null);
+    static TaxonomyClassification atLeastChildBloom(TaxonomyClassification classified,
+                                                       List<BloomLevel> childLevels) {
+        BloomLevel floor = childLevels.stream().max(Comparator.naturalOrder()).orElse(null);
         if (floor == null) {
             return classified;
         }
@@ -1010,8 +1007,13 @@ public class ExtractionRunner {
      * to the top of the tree.
      */
     private static int medianLectureOrder(PlannedCompetency competency) {
-        List<Integer> orders = competency.subSkills().stream()
-                .flatMap(subSkill -> subSkill.supportingGoals().stream())
+        List<LearningGoal> goals = new ArrayList<>(competency.direct());
+        competency.capabilities().forEach(capability -> goals.addAll(capability.members()));
+        return medianOrderOf(goals);
+    }
+
+    private static int medianOrderOf(List<LearningGoal> goals) {
+        List<Integer> orders = goals.stream()
                 .map(LearningGoal::getLectureOrder)
                 .filter(java.util.Objects::nonNull)
                 .sorted()
@@ -1020,123 +1022,71 @@ public class ExtractionRunner {
     }
 
     /**
-     * Writes a planned tree: the {@code COMPETENCY} root, one terminal goal per competency, and the
-     * skill → terminal CONTRIBUTES_TO edges. Knowledge → skill edges were created during extraction.
+     * Writes a planned tree: the {@code COMPETENCY} root, one terminal goal per topic, one generated
+     * goal per capability, and the CONTRIBUTES_TO edges capability → topic, skill →
+     * capability and ungrouped skill → topic. Knowledge → skill edges were created during extraction.
      * All LLM work is already done by the time this runs.
      */
     private void persistCompetencyTree(Course course, CompetencyTreePlan plan) {
         HierarchyNode competencyRoot = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
 
-        List<LearningGoal> terminalGoals = new ArrayList<>();
         for (PlannedCompetency competency : plan.competencies()) {
-            LearningGoal goal = new LearningGoal(course, competency.text(), GoalKind.IMPLICIT);
-            goal.setShortLabel(competency.shortLabel());
-            goal.setOrigin(GoalOrigin.TERMINAL);
-            goal.setHierarchyNode(competencyRoot);
+            LearningGoal terminal = new LearningGoal(course, competency.text(), GoalKind.IMPLICIT);
+            terminal.setShortLabel(competency.text());
+            terminal.setOrigin(GoalOrigin.TERMINAL);
+            terminal.setHierarchyNode(competencyRoot);
             int medianLectureOrder = medianLectureOrder(competency);
-            goal.setLectureOrder(medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder);
-            if (competency.classification() != null) {
-                goal.setBloomLevel(competency.classification().bloom());
-                goal.setSoloLevel(competency.classification().solo());
+            terminal.setLectureOrder(medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder);
+            applyLevels(terminal, competency.classification());
+            goalRepository.saveAndFlush(terminal);
+
+            for (PlannedCapability planned : competency.capabilities()) {
+                // A generated grouping node without a source of its own. Its members keep their
+                // quotes, pages and levels, and each keeps the knowledge extraction hung beneath it.
+                LearningGoal capability = new LearningGoal(course, planned.text(), GoalKind.IMPLICIT);
+                capability.setOrigin(GoalOrigin.SYNTHESIZED);
+                capability.setRole(GoalRole.SKILL);
+                int capabilityOrder = medianOrderOf(planned.members());
+                capability.setLectureOrder(capabilityOrder == Integer.MAX_VALUE ? null : capabilityOrder);
+                applyLevels(capability, planned.classification());
+                goalRepository.saveAndFlush(capability);
+                linkSynthesized(List.of(capability), terminal, RelationshipType.CONTRIBUTES_TO);
+                linkSynthesized(planned.members(), capability, RelationshipType.CONTRIBUTES_TO);
             }
-            goalRepository.saveAndFlush(goal);
-            terminalGoals.add(goal);
+            linkSynthesized(competency.direct(), terminal, RelationshipType.CONTRIBUTES_TO);
         }
+    }
 
-        for (int ci = 0; ci < plan.competencies().size(); ci++) {
-            PlannedCompetency competency = plan.competencies().get(ci);
-            LearningGoal terminal = terminalGoals.get(ci);
-            for (PlannedSubSkill subSkill : competency.subSkills()) {
-                // The node IS one of the course's extracted outcomes, so it keeps its own source
-                // quote, page, Bloom/SOLO levels and grounded flag. Nothing here is generated.
-                LearningGoal elected = subSkill.representative();
-                linkSynthesized(List.of(elected), terminal, RelationshipType.CONTRIBUTES_TO);
-
-                // The rest of the group hangs off it as provenance. linkRelationships skips the
-                // representative's self-edge, so an elected outcome never supports itself.
-                linkSynthesized(subSkill.supportingGoals(), elected, RelationshipType.SUPPORTS);
-
-                // Knowledge from every member gathers under the elected node, so a merged group's
-                // detail layer stays reachable rather than dangling under an invisible sibling.
-                //
-                // Read ONLY the extraction's own knowledge edges. Since sub-skills became elected
-                // real goals, a tree's knowledge edge has the same shape as an extraction one
-                // (knowledge -> SKILL), so an unfiltered read also picks up the knowledge that a
-                // PREVIOUS tree build hung on this mate and re-hangs it here. That compounds: each
-                // rebuild gathers the last one's output as if it were extracted fact, and knowledge
-                // drifts to nodes it was never extracted under. Origin is what separates them.
-                Set<LearningGoal> knowledge = new LinkedHashSet<>();
-                for (LearningGoal supportingGoal : subSkill.supportingGoals()) {
-                    goalRelationshipRepository.findByTargetId(supportingGoal.getId()).stream()
-                            .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                                    && relationship.getOrigin() == RelationshipOrigin.HIERARCHY)
-                            .map(GoalRelationship::getSource)
-                            .filter(source -> source.getRole() == GoalRole.KNOWLEDGE)
-                            .forEach(knowledge::add);
-                }
-                linkSynthesized(new ArrayList<>(knowledge), elected, RelationshipType.CONTRIBUTES_TO);
-            }
+    private static void applyLevels(LearningGoal goal, TaxonomyClassification classification) {
+        if (classification != null) {
+            goal.setBloomLevel(classification.bloom());
+            goal.setSoloLevel(classification.solo());
         }
     }
 
     /**
-     * Classifies every extracted goal along Bloom + SOLO. Goals are flattened into one ordered list
-     * and grouped into fixed-size batches ({@code hestia.taxonomy.batch-size}); each batch is a single
-     * LLM call and the batches run in parallel. Batching instead of one call per goal cuts request
-     * count (and rate-limit pressure) and lets the model grade goals relative to each other.
+     * Pairs every extracted goal with the level extraction already gave it.
+     *
+     * <p>This used to be a phase of its own: goals were flattened, batched and sent back to a model
+     * that read the Bloom level off the finished sentence. Extraction now returns bloom and solo with
+     * the outcome, so the levels are simply carried across — one fewer call per twenty goals, and no
+     * second opinion that can disagree with the verb the writer chose while the material was in view.
+     * The phase is still reported so the progress bar keeps its shape.
      */
     private List<ClassifiedGoal> classifyInParallel(List<UnitExtraction> extractions, String modelOverride,
                                                     ExtractionProgressTracker.Run run) {
-        // Flatten goals while remembering each one's owning unit, so classifications map back to the
-        // right document + extraction unit after the (order-preserving) batch calls.
-        List<UnitExtraction> owners = new ArrayList<>();
-        List<SessionGoal> goals = new ArrayList<>();
-        for (UnitExtraction de : extractions) {
-            for (SessionGoal e : de.goals()) {
-                owners.add(de);
-                goals.add(e);
+        List<ClassifiedGoal> classified = new ArrayList<>();
+        for (UnitExtraction extraction : extractions) {
+            for (SessionGoal goal : extraction.goals()) {
+                classified.add(new ClassifiedGoal(extraction.document(), extraction.unit(),
+                        goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
+                        extraction.figures(), goal.classification()));
             }
         }
-        run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, goals.size());
-        if (goals.isEmpty()) {
-            return List.of();
-        }
-
-        int batchSize = Math.max(1, taxonomyBatchSize);
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
-        try {
-            List<CompletableFuture<List<TaxonomyClassification>>> futures = new ArrayList<>();
-            for (int start = 0; start < goals.size(); start += batchSize) {
-                int from = start;
-                int to = Math.min(start + batchSize, goals.size());
-                List<String> texts = goals.subList(from, to).stream()
-                        .map(e -> e.extracted().text()).toList();
-                futures.add(CompletableFuture.supplyAsync(
-                        () -> {
-                            List<TaxonomyClassification> result = safeClassifyBatch(texts, modelOverride);
-                            run.increment(to - from);
-                            return result;
-                        },
-                        executor));
-            }
-
-            List<ClassifiedGoal> classified = new ArrayList<>(goals.size());
-            int i = 0;
-            for (CompletableFuture<List<TaxonomyClassification>> future : futures) {
-                List<TaxonomyClassification> batch = future.join();
-                for (TaxonomyClassification c : batch) {
-                    SessionGoal goal = goals.get(i);
-                    classified.add(new ClassifiedGoal(owners.get(i).document(), owners.get(i).unit(),
-                            goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
-                            owners.get(i).figures(), c));
-                    i++;
-                }
-            }
-            return classified;
-        } finally {
-            executor.shutdown();
-        }
+        run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, classified.size());
+        run.increment(classified.size());
+        return List.copyOf(classified);
     }
 
     /**
@@ -1456,7 +1406,8 @@ public class ExtractionRunner {
     }
 
     private record SessionGoal(ExtractedGoal extracted, GoalRole role, ExtractedGoal parentSkill,
-                               SourceLineSelection sourceLineSelection) {
+                               SourceLineSelection sourceLineSelection,
+                               TaxonomyClassification classification) {
     }
 
     private record ClassifiedGoal(Document document, Unit unit, ExtractedGoal extracted,

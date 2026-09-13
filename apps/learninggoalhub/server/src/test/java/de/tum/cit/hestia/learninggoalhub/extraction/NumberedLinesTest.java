@@ -40,11 +40,11 @@ class NumberedLinesTest {
     }
 
     @Test
-    void acceptsFiveSourceLinesButRejectsSix() {
-        NumberedLines lines = NumberedLines.of("line\n".repeat(6));
+    void acceptsTenSourceLinesButRejectsEleven() {
+        NumberedLines lines = NumberedLines.of("line\n".repeat(11));
 
-        assertThat(lines.span(0, 4)).isPresent();
-        assertThat(lines.span(0, 5)).isEmpty();
-        assertThat(lines.rejectionReason(0, 5)).contains("more than 5 numbered lines");
+        assertThat(lines.span(0, 9)).isPresent();
+        assertThat(lines.span(0, 10)).isEmpty();
+        assertThat(lines.rejectionReason(0, 10)).contains("more than 10 numbered lines");
     }
 }

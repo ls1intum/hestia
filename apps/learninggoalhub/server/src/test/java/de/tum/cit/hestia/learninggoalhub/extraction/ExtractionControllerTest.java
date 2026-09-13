@@ -115,35 +115,40 @@ class ExtractionControllerTest {
 
 
     @MockitoBean
-    private CompactTaxonomySynthesizer compactTaxonomySynthesizer;
+    private TopicTreeSynthesizer topicTreeSynthesizer;
 
     @BeforeEach
     void stubIdentityTreeSynthesis() {
-        when(compactTaxonomySynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
-            List<CompactTaxonomySynthesizer.Candidate> candidates = inv.getArgument(0);
-            List<Integer> supporting = java.util.stream.IntStream.range(0, candidates.size()).boxed().toList();
-            if (supporting.isEmpty()) {
-                // Matches production: no seeds means no plan, and no representative to elect.
-                return new CompactTaxonomySynthesizer.Plan(List.of(), List.of());
+        when(topicTreeSynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
+            List<String> outcomes = inv.getArgument(0);
+            List<Integer> all = java.util.stream.IntStream.range(0, outcomes.size()).boxed().toList();
+            if (all.isEmpty()) {
+                return new TopicTreeSynthesizer.Plan(List.of(), List.of());
             }
-            return new CompactTaxonomySynthesizer.Plan(List.of(new CompactTaxonomySynthesizer.PlannedSkill(
-                    "Applying the course capability in representative contexts.",
-                    "Apply Course Capability",
-                    List.of(new CompactTaxonomySynthesizer.PlannedSubSkill(
-                            supporting.getFirst(), supporting)))), List.of());
+            return new TopicTreeSynthesizer.Plan(List.of(new TopicTreeSynthesizer.PlannedTopic(
+                    "Course Capability", List.of(), all)), List.of());
         });
     }
 
-    private void stubCompactPlan(String skillLabel, List<List<Integer>> supportingGroups) {
-        when(compactTaxonomySynthesizer.synthesize(anyList(), anyString(), any())).thenReturn(
-                new CompactTaxonomySynthesizer.Plan(List.of(
-                        new CompactTaxonomySynthesizer.PlannedSkill(
-                                "Applying the planned course capability in representative contexts.", skillLabel,
-                                supportingGroups.stream()
-                                        .map(group -> new CompactTaxonomySynthesizer.PlannedSubSkill(
-                                                group.getFirst(), group))
-                                        .toList())),
-                        List.of()));
+    /** One topic: groups of two or more become capabilities, single outcomes hang directly beneath it. */
+    private void stubTopicPlan(String topicLabel, List<List<Integer>> groups) {
+        stubTopicPlan(topicLabel, groups, List.of());
+    }
+
+    private void stubTopicPlan(String topicLabel, List<List<Integer>> groups, List<Integer> unmatched) {
+        List<TopicTreeSynthesizer.PlannedCapability> capabilities = new java.util.ArrayList<>();
+        List<Integer> direct = new java.util.ArrayList<>();
+        for (List<Integer> group : groups) {
+            if (group.size() < 2) {
+                direct.addAll(group);
+            } else {
+                capabilities.add(new TopicTreeSynthesizer.PlannedCapability(
+                        "Apply capability group " + (capabilities.size() + 1) + ".", group));
+            }
+        }
+        when(topicTreeSynthesizer.synthesize(anyList(), anyString(), any())).thenReturn(
+                new TopicTreeSynthesizer.Plan(List.of(
+                        new TopicTreeSynthesizer.PlannedTopic(topicLabel, capabilities, direct)), unmatched));
     }
 
     private static ExtractedSkill skill(ExtractedGoal goal) {
@@ -152,11 +157,12 @@ class ExtractionControllerTest {
 
     private static ExtractedSkill skill(ExtractedGoal goal, int sourceStartLine, int sourceEndLine) {
         return new ExtractedSkill(goal.text(), goal.shortLabel(), goal.kind(),
+                BloomLevel.APPLY, SoloLevel.RELATIONAL,
                 sourceStartLine, sourceEndLine, List.of());
     }
 
     private static ExtractedSkill figureSkill(String text, int sourceFigure) {
-        return new ExtractedSkill(text, text, GoalKind.IMPLICIT, null, null, sourceFigure, List.of());
+        return new ExtractedSkill(text, text, GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, sourceFigure, List.of());
     }
 
     private void startExtraction(Long courseId) throws Exception {
@@ -389,7 +395,7 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("Section"), eq(rawText), eq("en"), eq("English"), eq(null), anyList(), anyInt()))
                 .thenReturn(List.of(
                         new ExtractedSkill("Text outcome", "Text", GoalKind.IMPLICIT,
-                                0, 0, 0, List.of()),
+                                BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of()),
                         figureSkill("Figure outcome", 0),
                         figureSkill("Unsupported outcome", 4)));
         stubEmbedAll(Map.of(
@@ -559,7 +565,7 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubCompactPlan("Terminal Capability", List.of(List.of(0)));
+        stubTopicPlan("Terminal Capability", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
@@ -572,7 +578,7 @@ class ExtractionControllerTest {
     }
 
     @Test
-    void overfullCompetencyIsConsolidatedWithoutDroppingSourceBackedGoals() throws Exception {
+    void topicGroupsItsSkillsUnderGeneratedCapabilities() throws Exception {
         Course course = courseRepository.save(new Course("Consolidated competency"));
         String material = "Apply one. Apply two. Apply three. Apply four. Apply five. Apply six.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
@@ -589,7 +595,7 @@ class ExtractionControllerTest {
                     .map(text -> new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL))
                     .toList();
         });
-        stubCompactPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
+        stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
         stubEmbedAll(java.util.stream.IntStream.rangeClosed(1, 6).boxed()
                 .collect(Collectors.toMap(index -> "Apply capability " + index + ".",
                         index -> orthogonalEmbedding(index - 1))));
@@ -600,23 +606,27 @@ class ExtractionControllerTest {
         LearningGoal terminal = goals.stream()
                 .filter(goal -> goal.getOrigin() == GoalOrigin.TERMINAL)
                 .findFirst().orElseThrow();
-        // The two sub-skills are ELECTED extracted outcomes, not generated nodes: the tree adds no
-        // goal of its own below the terminal, and each elected node keeps its own source.
-        assertThat(goals).noneMatch(goal -> goal.getOrigin() == GoalOrigin.SYNTHESIZED);
+        assertThat(terminal.getText()).isEqualTo("Course Methods");
         // Resolve through the repository: the edge's source is a lazy proxy and this runs outside
         // a session, so navigating it directly would throw.
-        List<LearningGoal> elected = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
+        List<LearningGoal> capabilities = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
                 .map(relationship -> goalRepository.findById(relationship.getSource().getId()).orElseThrow())
                 .toList();
-        assertThat(elected).hasSize(2)
-                .allSatisfy(node -> assertThat(node.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED));
-        // Each elected node carries its two group-mates as SUPPORTS; it never supports itself.
-        assertThat(elected).allSatisfy(node ->
+        // Each group becomes a generated capability without a source or a hierarchy node.
+        assertThat(capabilities).hasSize(2).allSatisfy(node -> {
+            assertThat(node.getOrigin()).isEqualTo(GoalOrigin.SYNTHESIZED);
+            assertThat(node.getRole()).isEqualTo(GoalRole.SKILL);
+            assertThat(node.getHierarchyNode()).isNull();
+            assertThat(goalSourceRepository.findByGoalId(node.getId())).isEmpty();
+        });
+        // Every extracted skill stays a node of its own beneath its capability.
+        assertThat(capabilities).allSatisfy(node ->
                 assertThat(goalRelationshipRepository.findByTargetId(node.getId()))
-                        .hasSize(2)
+                        .hasSize(3)
                         .allSatisfy(relationship -> {
-                            assertThat(relationship.getType()).isEqualTo(RelationshipType.SUPPORTS);
-                            assertThat(relationship.getSource().getId()).isNotEqualTo(node.getId());
+                            assertThat(relationship.getType()).isEqualTo(RelationshipType.CONTRIBUTES_TO);
+                            assertThat(goalRepository.findById(relationship.getSource().getId()).orElseThrow()
+                                    .getOrigin()).isEqualTo(GoalOrigin.EXTRACTED);
                         }));
         assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED).hasSize(6);
     }
@@ -637,7 +647,7 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // The model placed the only goal nowhere.
-        stubCompactPlan("Covered Capability", List.of(List.of(0)));
+        stubTopicPlan("Covered Capability", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
@@ -652,8 +662,7 @@ class ExtractionControllerTest {
                 .filter(g -> g.getOrigin() == GoalOrigin.EXTRACTED)
                 .findFirst()
                 .orElseThrow();
-        // A lone outcome is elected to represent its own group, so it becomes the visible sub-skill
-        // and contributes to the terminal directly. Only its group-mates would carry SUPPORTS.
+        // A lone outcome forms no capability, so it contributes to the topic directly.
         assertThat(goalRelationshipRepository.findBySourceId(extracted.getId()))
                 .singleElement()
                 .satisfies(relationship -> {
@@ -674,7 +683,7 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubCompactPlan("Repaired Capability", List.of(List.of(0)));
+        stubTopicPlan("Repaired Capability", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
@@ -684,6 +693,34 @@ class ExtractionControllerTest {
                 .singleElement()
                 .extracting(LearningGoal::getShortLabel)
                 .isEqualTo("Repaired Capability");
+    }
+
+    /** A skill no topic covers stays out of the tree, and the rebuild reports how many there were. */
+    @Test
+    void skillsNoTopicCoversStayOutOfTheTree() throws Exception {
+        Course course = courseRepository.save(new Course("Unmatched skill"));
+        String material = "Apply one. Apply two.";
+        documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
+        when(sessionExtractionService.extract(eq("session.pdf"), eq(material), eq("en"), eq("English"), eq(null), anyList(), anyInt()))
+                .thenReturn(List.of(
+                        skill(new ExtractedGoal("Apply capability 1.", "Capability 1", GoalKind.EXPLICIT, "...one..."), 0, 0),
+                        skill(new ExtractedGoal("Apply capability 2.", "Capability 2", GoalKind.EXPLICIT, "...two..."), 0, 0)));
+        when(taxonomyService.classifyBatch(anyList(), eq(null)))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
+        stubEmbedAll(Map.of("Apply capability 1.", orthogonalEmbedding(0), "Apply capability 2.", orthogonalEmbedding(1)));
+        stubTopicPlan("Covered", List.of(List.of(0)), List.of(1));
+
+        startExtraction(course.getId());
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.competencies").value(1))
+                .andExpect(jsonPath("$.unmatchedGoals").value(1));
+
+        LearningGoal unmatched = goalRepository.findByCourseId(course.getId()).stream()
+                .filter(g -> "Apply capability 2.".equals(g.getText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(goalRelationshipRepository.findBySourceId(unmatched.getId())).isEmpty();
     }
 
     /**
@@ -701,7 +738,7 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // Everything lands on the first competency; the second is left empty.
-        stubCompactPlan("Claimed", List.of(List.of(0)));
+        stubTopicPlan("Claimed", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
@@ -727,7 +764,7 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubCompactPlan("First Label", List.of(List.of(0)));
+        stubTopicPlan("First Label", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
@@ -748,7 +785,7 @@ class ExtractionControllerTest {
         extractedIdsBefore = java.util.stream.Stream.concat(extractedIdsBefore.stream(),
                 java.util.stream.Stream.of(legacyKnowledge.getId())).toList();
 
-        stubCompactPlan("Second Label", List.of(List.of(0)));
+        stubTopicPlan("Second Label", List.of(List.of(0)));
 
         mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk())
@@ -795,7 +832,7 @@ class ExtractionControllerTest {
                     .map(text -> new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL))
                     .toList();
         });
-        stubCompactPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
+        stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
         startExtraction(course.getId());
 
         List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
@@ -827,8 +864,8 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("session.pdf"), anyString(), eq("en"), eq("English"), eq(null), anyList(), anyInt()))
                 .thenReturn(List.of(
                         new ExtractedSkill("Apply the capability.", "Capability", GoalKind.EXPLICIT,
-                                0, 0, List.of(new ExtractedSkill.Knowledge(
-                                        "Understand the basics.", "Basics", GoalKind.EXPLICIT, 1, 1)))));
+                                BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of(new ExtractedSkill.Knowledge(
+                                        "Understand the basics.", "Basics", GoalKind.EXPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 1, 1)))));
         when(taxonomyService.classifyBatch(anyList(), eq(null))).thenAnswer(inv -> {
             List<String> texts = inv.getArgument(0);
             return texts.stream()
@@ -837,7 +874,7 @@ class ExtractionControllerTest {
                             : new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL))
                     .toList();
         });
-        stubCompactPlan("Capability", List.of(List.of(0)));
+        stubTopicPlan("Capability", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
                 "Understand the basics.", orthogonalEmbedding(1)));
 
@@ -865,7 +902,7 @@ class ExtractionControllerTest {
                 .extracting(r -> r.getTarget().getId())
                 .contains(skillBefore.getId());
 
-        stubCompactPlan("Rebuilt Capability", List.of(List.of(0)));
+        stubTopicPlan("Rebuilt Capability", List.of(List.of(0)));
         mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
@@ -904,13 +941,13 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubCompactPlan("Survivor", List.of(List.of(0)));
+        stubTopicPlan("Survivor", List.of(List.of(0)));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
         // The model goes down before the rebuild can synthesise a replacement.
-        when(compactTaxonomySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+        when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("model unavailable"));
 
         mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
@@ -979,7 +1016,7 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        when(compactTaxonomySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+        when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("HTTP 500 - No response body available"));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
@@ -989,7 +1026,7 @@ class ExtractionControllerTest {
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
                 .contains("The learning goals were saved")
-                .contains("Compact competency taxonomy synthesis failed")
+                .contains("Topic tree synthesis failed")
                 .contains("HTTP 500");
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
@@ -997,7 +1034,7 @@ class ExtractionControllerTest {
         assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.MODULE)).isTrue();
         assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
 
-        stubCompactPlan("Apply Course Capability", List.of(List.of(0)));
+        stubTopicPlan("Apply Course Capability", List.of(List.of(0)));
         mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
@@ -1017,7 +1054,7 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        when(compactTaxonomySynthesizer.synthesize(anyList(), eq("English"), eq(null)))
+        when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("assignment call failed"));
         stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
@@ -1026,7 +1063,7 @@ class ExtractionControllerTest {
         String status = awaitExtraction(course.getId());
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
-                .contains("Compact competency taxonomy synthesis failed")
+                .contains("Topic tree synthesis failed")
                 .contains("assignment call failed");
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
@@ -1037,7 +1074,7 @@ class ExtractionControllerTest {
                 .singleElement()
                 .satisfies(run -> {
                     assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
-                    assertThat(run.getError()).contains("Compact competency taxonomy synthesis failed");
+                    assertThat(run.getError()).contains("Topic tree synthesis failed");
                     assertThat(run.getGoalsCreated()).isEqualTo(1);
                 });
     }

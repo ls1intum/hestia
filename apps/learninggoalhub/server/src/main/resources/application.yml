@@ -40,19 +40,27 @@ spring:
       # 5xx responses are transient provider failures. Retry them alongside rate limiting; the
       # application supplies randomized exponential backoff so concurrent workers do not retry in lockstep.
       on-http-codes: [429, 500, 502, 503, 504]
-      max-attempts: 6
+      # Eight attempts across a ladder capped at a minute rides out roughly two minutes of throttling,
+      # against the thirty seconds six attempts capped at twenty seconds covered. Measured: a run that
+      # met a rate limit spent all six attempts in 43 seconds and lost fifty sessions, while a run in a
+      # fresh window made 107 calls without a single rejection. This buys headroom against a short
+      # throttle; it cannot ride out an exhausted hourly quota, for which the only remedy is making
+      # fewer calls.
+      max-attempts: 8
       backoff:
         initial-interval: 1s
         multiplier: 2
-        max-interval: 20s
+        max-interval: 60s
 
 hestia:
   figures:
     # Vision model used to describe eligible text-poor slide pages during extraction.
     vision-model: qwen3.6-35b-a3b
-    # Below the text phases' parallelism: each call carries several rendered pages, so a wide burst
-    # of them draws 429s and the oversized payloads also provoke 500s. A run at 4 stayed clear of
-    # rate limits, so the phase (which dominates the run) gets the width instead.
+    # Concurrent page-description calls. Below the text phases' width: each call carries several
+    # rendered pages, so a wide burst of them draws 429s and the oversized payloads also provoke
+    # 500s. This is spent on batches within a document, not on documents — spread across documents
+    # it did nothing for a course of two large PDFs, which is how this phase came to be 62% of a
+    # measured run while never once being rate-limited.
     parallelism: 8
   title:
     # Whether to name bookmark-less PDFs with the vision model below. Off → every such document falls
@@ -69,37 +77,31 @@ hestia:
     # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
     # any failure the document is split, the original bookmark behaviour.
     judge-model: openai-gpt-oss-120b
-  document-outline:
-    # Large bookmarkless PDFs may contain an entire course. Inspect compact per-page previews to
-    # recover lecture/chapter boundaries; smaller files remain one session without an extra call.
-    model: openai-gpt-oss-120b
-    min-pages: 8
   extraction:
-    # Large session prompts are provider-intensive. Four concurrent calls keep useful throughput
-    # without sending an entire medium-sized course as one burst.
-    parallelism: 4
+    # Concurrent session calls. Sixteen once burst the provider badly enough to be cut to four, but
+    # that was when a call carried a whole section — up to the old 80,000-character budget. Units are
+    # now capped at unit-max-chars below, so a call is a fraction of that payload and sixteen of them
+    # are a smaller burst than four used to be. Transient 429/5xx also retry with jittered backoff
+    # now, which they did not when four was chosen. Sixteen is the pre-#66 width, restored on the
+    # smaller payload: watch a run's logs for 429s before treating it as settled.
+    parallelism: 16
     # The budget for one extraction call, and the pipeline's granularity knob. A section longer
     # than this is cut into page-aligned windows that share its session; 0 sends every section
     # whole, which makes the tree's size depend on how the uploader split their PDFs.
     unit-max-chars: 12000
     # Characters per skill; a unit's allowance is its length over this, floor 1, ceiling 4.
     skill-target-chars: 3000
+    # Whether a SESSION/EXERCISE node that produced no goals is kept instead of pruned. On, a lecture
+    # that teaches no performance stays visible as an empty unit — which is the measurement when
+    # skills are contracted to APPLY or above. Off, the tree shows only what was extracted.
+    keep-empty-units: false
     # Keep generation consistent across evaluation runs; temperature 0 can make systematic omissions
     # repeat identically, so text generation stays at 0.2 while assignment/classification uses 0.0.
     temperature: 0.2
     assignment-temperature: 0.0
-    # The competency tree is two validated partitions: outcomes into sub-skills, sub-skills into
-    # terminal skills. Both stages measured as an exact 86/86 partition on a real course, but only
-    # GPT-OSS honoured the requested sub-skill count (DeepSeek returned 38 against a range of 18-24,
-    # which the validator can only reject), so both stages default to it. Split them to A/B a model.
+    # Model for the competency tree: naming the course's topics, assigning skills to them, and
+    # structuring each topic into capabilities. All three calls run at assignment-temperature.
     taxonomy-planner-model: openai-gpt-oss-120b
-    taxonomy-partition-model: openai-gpt-oss-120b
-    # Whether stage one may leave outcomes out of the tree as supporting detail. Off, because it is
-    # the least reproducible decision in the pipeline: over five runs of one course it set aside
-    # between 1 and 17 of 34 outcomes (3%-50%), while extraction varied by ~6% and the set of
-    # terminal themes not at all. With it off every outcome is grouped, so two runs of a course can
-    # be compared. The exact-partition accounting is enforced either way.
-    set-aside-outcomes: false
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.

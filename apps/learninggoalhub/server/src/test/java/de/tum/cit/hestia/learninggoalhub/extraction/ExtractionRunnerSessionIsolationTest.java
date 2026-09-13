@@ -118,7 +118,7 @@ class ExtractionRunnerSessionIsolationTest {
                 sessionExtractionService,
                 auditService,
                 documentSectionRepository,
-                mock(CompactTaxonomySynthesizer.class),
+                mock(TopicTreeSynthesizer.class),
                 hierarchyNodeRepository,
                 mock(TaxonomyService.class),
                 progressTracker,
@@ -128,8 +128,8 @@ class ExtractionRunnerSessionIsolationTest {
                 1,
                 12_000,
                 3_000,
+                false,
                 null,
-                20,
                 mock(HighlightGeometryService.class));
     }
 
