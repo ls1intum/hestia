@@ -77,11 +77,6 @@ hestia:
     # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
     # any failure the document is split, the original bookmark behaviour.
     judge-model: openai-gpt-oss-120b
-  document-outline:
-    # Large bookmarkless PDFs may contain an entire course. Inspect compact per-page previews to
-    # recover lecture/chapter boundaries; smaller files remain one session without an extra call.
-    model: openai-gpt-oss-120b
-    min-pages: 8
   extraction:
     # Concurrent session calls. Sixteen once burst the provider badly enough to be cut to four, but
     # that was when a call carried a whole section — up to the old 80,000-character budget. Units are
