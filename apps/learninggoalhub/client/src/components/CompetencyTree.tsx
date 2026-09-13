@@ -31,8 +31,8 @@ import {
  * with a funnel filter (multi-select checkboxes) and hierarchy-preserving sorting (siblings are
  * sorted within their parent).
  *
- * The third tier is deliberately absent. Knowledge is evidence for the sub-skill above it, so it
- * is shown in that sub-skill's detail modal instead of as rows here — the grid stays the review
+ * The knowledge tier is deliberately absent. Knowledge is evidence for the skill above it, so it
+ * is shown in that skill's detail modal instead of as rows here — the grid stays the review
  * list of the things an instructor actually judges. The Items column still counts what hides
  * underneath, and search still reaches the hidden wording (see `evidenceText`). The map keeps
  * rendering all three tiers, because seeing the branch is that view's job.
@@ -56,7 +56,7 @@ type Row = {
   childCount: number;
   /**
    * Every session this row covers, sorted: its own plus all of its descendants'. Skills and
-   * sub-skills are synthesised and carry no hierarchy themselves, so their sessions are exactly
+   * capabilities are synthesised and carry no hierarchy themselves, so their sessions are exactly
    * the ones their grounded children came from.
    */
   sessions: string[];
@@ -87,8 +87,9 @@ const AI_INFERRED_KIND = "AI_INFERRED";
 const MANUAL_KIND = "MANUAL";
 const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
 const ROLE_ORDER: CompetencyRole[] = [
-  "competency",
-  "sub-skill",
+  "topic",
+  "capability",
+  "skill",
   "knowledge",
   "gap",
 ];
@@ -251,21 +252,21 @@ export default function CompetencyTree({
   }, [rows]);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  // Knowledge under a sub-skill is evidence, and it now lives in that sub-skill's detail modal
-  // rather than as rows here — the grid is the review list of skills and sub-skills. Knowledge in
+  // Knowledge under a skill is evidence, and it now lives in that skill's detail modal
+  // rather than as rows here — the grid is the review list of topics, capabilities and skills. Knowledge in
   // any other position (a legacy node hanging straight off a skill) keeps its row, because no
   // modal would show it and the goal would otherwise become unreachable.
   const hiddenIds = useMemo(() => {
     const hidden = new Set<number>();
     for (const row of rows) {
       if (row.role !== "knowledge" || row.parent == null) continue;
-      if (byId.get(row.parent)?.role === "sub-skill") hidden.add(row.id);
+      if (byId.get(row.parent)?.role === "skill") hidden.add(row.id);
     }
     return hidden;
   }, [rows, byId]);
 
   // The wording of the knowledge a row hides, so a search term that only occurs down there still
-  // finds the sub-skill holding it instead of silently matching nothing.
+  // finds the skill holding it instead of silently matching nothing.
   const evidenceText = useMemo(() => {
     const map = new Map<number, string>();
     for (const row of rows) {
@@ -304,7 +305,7 @@ export default function CompetencyTree({
     role: CompetencyRole;
   } | null>(null);
   // The goal the modal was drilled into from, so a knowledge goal opened out of the evidence list
-  // can hand the reader back to its sub-skill instead of dropping them out of the modal entirely.
+  // can hand the reader back to its skill instead of dropping them out of the modal entirely.
   const [detailParent, setDetailParent] = useState<{
     goal: LearningGoal;
     role: CompetencyRole;
@@ -586,11 +587,11 @@ export default function CompetencyTree({
           onOpen={openDetail}
         />,
       );
-      // A childless skill is still walked into so its "Add sub-skill" knob has somewhere to live.
+      // A childless topic is still walked into so its "Add capability" knob has somewhere to live.
       if (
         filtering ||
         expanded.has(row.id) ||
-        ((visibleChildCount.get(row.id) ?? 0) === 0 && row.role === "competency")
+        ((visibleChildCount.get(row.id) ?? 0) === 0 && row.role === "topic")
       )
         walk(
           childrenOf.get(row.id) ?? [],
@@ -600,16 +601,16 @@ export default function CompetencyTree({
           trailing && i === ordered.length - 1,
         );
     }
-    // Only two tiers are addable here — knowledge is added from its sub-skill's evidence list.
+    // Only two tiers are addable here — knowledge is added from its skill's evidence list.
     if (!filtering && depth < 2) {
       const visibleSiblingCount = siblings.filter((row) => !hiddenIds.has(row.id)).length;
       const append =
         depth === 0
-          ? { tier: 1 as const, label: "Add skill", color: "var(--hestia-primary)" }
-          : depth === 1 && parentRole === "competency" && visibleSiblingCount < 5
+          ? { tier: 1 as const, label: "Add topic", color: "var(--hestia-primary)" }
+          : depth === 1 && parentRole === "topic" && visibleSiblingCount < 5
             ? {
                 tier: 2 as const,
-                label: "Add sub-skill",
+                label: "Add capability",
                 color: "var(--hestia-accent)",
               }
             : null;
@@ -840,7 +841,7 @@ export default function CompetencyTree({
 
 /**
  * Flattens the forest depth-first into rows that keep the structure via parent ids. Each walk
- * returns the sessions its subtree covers, which is how a synthesised skill or sub-skill — which
+ * returns the sessions its subtree covers, which is how a synthesised topic or capability — which
  * has no hierarchy of its own — ends up reporting the sessions of its grounded descendants.
  */
 function flattenForest(forest: CompetencyNode[]): Row[] {
@@ -1053,7 +1054,7 @@ function GridRow({
   const interactive = !context;
   const canToggle = childCount > 0 && !filtering;
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
-  // capability tiers (skill / sub-skill) and gaps stand out.
+  // branch tiers (topic / capability / skill) and gaps stand out.
   const railColor =
     row.role === "knowledge"
       ? `color-mix(in srgb, ${meta.color} 55%, transparent)`
@@ -1124,7 +1125,7 @@ function GridRow({
           )}
           <span
             className={`pt-px text-sm leading-relaxed text-hestia-text ${
-              row.role === "competency" ? "font-semibold" : ""
+              row.role === "topic" ? "font-semibold" : ""
             }`}
           >
             <span className="mr-1 tabular-nums text-hestia-text-muted">{row.number}.</span>

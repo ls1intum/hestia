@@ -161,7 +161,7 @@ class ExtractionRunnerFigureSettingTest {
                 sessionExtractionService,
                 auditService,
                 documentSectionRepository,
-                mock(CompactTaxonomySynthesizer.class),
+                mock(TopicTreeSynthesizer.class),
                 hierarchyNodeRepository,
                 taxonomyService,
                 progressTracker,

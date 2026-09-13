@@ -302,7 +302,7 @@ export default function CompetencyGoalModal({
   ).length;
   // Only a sub-skill has an evidence column; every other role keeps the original single column.
   const showEvidence =
-    role === "sub-skill" &&
+    role === "skill" &&
     (knowledge !== undefined || supportingOutcomes !== undefined);
 
   // A terminal skill the pipeline clustered has no wizard subtree to replace — the server refuses
