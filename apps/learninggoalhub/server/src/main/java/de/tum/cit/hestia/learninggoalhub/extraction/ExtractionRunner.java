@@ -26,6 +26,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalStatus;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
@@ -922,7 +923,8 @@ public class ExtractionRunner {
             for (TopicTreeSynthesizer.PlannedCapability capability : topic.capabilities()) {
                 List<LearningGoal> members = capability.outcomes().stream().map(candidates::get).toList();
                 capabilities.add(new PlannedCapability(capability.name(),
-                        atLeastChildBloom(classifications.get(capabilityIndex++), bloomLevels(members)),
+                        atLeastChildLevels(classifications.get(capabilityIndex++),
+                                bloomLevels(members), soloLevels(members)),
                         members));
             }
             List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
@@ -968,12 +970,19 @@ public class ExtractionRunner {
     private record PlannedCompetency(String text, TaxonomyClassification classification,
                                      List<PlannedCapability> capabilities, List<LearningGoal> direct) {}
 
-    /** A generated capability: its name, its levels, and the extracted outcomes beneath it. */
+    /**
+     * A generated capability: its name, its levels, and the extracted outcomes beneath it. Both its
+     * Bloom and its SOLO level are at least the highest among its members.
+     */
     private record PlannedCapability(String text, TaxonomyClassification classification,
                                      List<LearningGoal> members) {}
 
     private static List<BloomLevel> bloomLevels(List<LearningGoal> goals) {
         return goals.stream().map(LearningGoal::getBloomLevel).filter(java.util.Objects::nonNull).toList();
+    }
+
+    private static List<SoloLevel> soloLevels(List<LearningGoal> goals) {
+        return goals.stream().map(LearningGoal::getSoloLevel).filter(java.util.Objects::nonNull).toList();
     }
 
     /**
@@ -985,20 +994,40 @@ public class ExtractionRunner {
      * picked off the clause at the tail, while its own label said "Understanding space-filling
      * curves". Terminals also came back at UNDERSTAND over children at ANALYZE, which inverts the
      * tier the tree is built on. The children's levels are the trustworthy half — each one was
-     * classified during extraction with a source passage behind it — so the classified SOLO level is
-     * kept and Bloom is raised to the highest level among the direct children. A topic is not
-     * classified at all, so it takes its level purely from the capabilities and skills beneath it.
+     * classified during extraction with a source passage behind it — so Bloom is raised to the
+     * highest level among the direct children. A topic is not classified at all, so it takes its
+     * Bloom level purely from the capabilities and skills beneath it, and no SOLO level.
      */
     static TaxonomyClassification atLeastChildBloom(TaxonomyClassification classified,
                                                        List<BloomLevel> childLevels) {
-        BloomLevel floor = childLevels.stream().max(Comparator.naturalOrder()).orElse(null);
-        if (floor == null) {
+        return atLeastChildLevels(classified, childLevels, List.of());
+    }
+
+    /**
+     * Like {@link #atLeastChildBloom}, and SOLO gets the same floor. A capability covers every
+     * outcome beneath it, so its structure is at least as complex as the most complex of them. The
+     * classified SOLO level is kept when it already reaches that floor, since a capability that
+     * relates several simple outcomes can rightly sit above all of them. When classification failed,
+     * the floor is the only SOLO level the capability gets.
+     */
+    static TaxonomyClassification atLeastChildLevels(TaxonomyClassification classified,
+                                                        List<BloomLevel> childBlooms,
+                                                        List<SoloLevel> childSolos) {
+        BloomLevel bloom = atLeast(classified == null ? null : classified.bloom(), childBlooms);
+        SoloLevel solo = atLeast(classified == null ? null : classified.solo(), childSolos);
+        if (classified == null ? bloom == null && solo == null
+                : bloom == classified.bloom() && solo == classified.solo()) {
             return classified;
         }
-        if (classified != null && classified.bloom() != null && classified.bloom().compareTo(floor) >= 0) {
-            return classified;
+        return new TaxonomyClassification(bloom, solo);
+    }
+
+    private static <T extends Comparable<T>> T atLeast(T level, List<T> childLevels) {
+        T floor = childLevels.stream().max(Comparator.naturalOrder()).orElse(null);
+        if (floor == null || (level != null && level.compareTo(floor) >= 0)) {
+            return level;
         }
-        return new TaxonomyClassification(floor, classified == null ? null : classified.solo());
+        return floor;
     }
 
     /**

@@ -55,4 +55,36 @@ class ExtractionRunnerTerminalBloomTest {
         assertThat(ExtractionRunner.atLeastChildBloom(classified, List.of())).isSameAs(classified);
         assertThat(ExtractionRunner.atLeastChildBloom(null, List.of())).isNull();
     }
+
+    @Test
+    void raisesACapabilityToTheHighestSoloLevelAmongItsMembers() {
+        TaxonomyClassification classified =
+                new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL);
+
+        TaxonomyClassification raised = ExtractionRunner.atLeastChildLevels(classified,
+                List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.RELATIONAL));
+
+        assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
+        assertThat(raised.solo()).isEqualTo(SoloLevel.RELATIONAL);
+    }
+
+    /** Relating several simple outcomes is a higher structure than any one of them. */
+    @Test
+    void keepsAClassifiedSoloLevelAboveEveryMember() {
+        TaxonomyClassification classified =
+                new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.RELATIONAL);
+
+        assertThat(ExtractionRunner.atLeastChildLevels(classified,
+                List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.MULTISTRUCTURAL)))
+                .isSameAs(classified);
+    }
+
+    @Test
+    void fallsBackToTheMemberSoloFloorWhenClassificationIsMissing() {
+        TaxonomyClassification raised = ExtractionRunner.atLeastChildLevels(null,
+                List.of(BloomLevel.APPLY), List.of(SoloLevel.MULTISTRUCTURAL, SoloLevel.UNISTRUCTURAL));
+
+        assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
+        assertThat(raised.solo()).isEqualTo(SoloLevel.MULTISTRUCTURAL);
+    }
 }
