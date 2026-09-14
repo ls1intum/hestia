@@ -9,7 +9,8 @@ import Exams from "./pages/exams/Exams.tsx";
 import ExamEdit from "./pages/exam-edit/ExamEdit.tsx";
 import GradeRoute from "./pages/exam-grading/GradeRoute.tsx";
 import ExamResults from "./pages/exam-results/ExamResults.tsx";
-import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
+import { SignInGate } from "./pages/sign-in/SignInGate.tsx";
+import { AdminRoute } from "./pages/admin/AdminRoute.tsx";
 
 const queryClient = new QueryClient();
 
@@ -27,7 +28,7 @@ const AppRoutes = () => {
         <Route path="/exams/:id/edit" element={<ExamEdit />} />
         <Route path="/exams/:id/grade" element={<GradeRoute />} />
         <Route path="/exams/:id/results" element={<ExamResults />} />
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin" element={<AdminRoute />} />
         <Route path="/admin/feedback" element={<Navigate to="/admin" replace />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
@@ -41,7 +42,10 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AppRoutes />
+      {/* Inside the query provider: the gate resolves the session via useMe(). */}
+      <SignInGate>
+        <AppRoutes />
+      </SignInGate>
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -15,6 +15,13 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
 
     Optional<Exam> findByIdAndOwnerId(UUID id, UUID ownerId);
 
+    /**
+     * Just the owner, for routing realtime events to that user's list stream
+     * without loading the whole row. Empty when the exam has been deleted.
+     */
+    @Query("select e.ownerId from Exam e where e.id = :id")
+    Optional<UUID> findOwnerIdById(@Param("id") UUID id);
+
     // --- Targeted control-plane updates (touch only the named columns) ---
     // Ownership is verified up-front in the services before these run, and
     // owner_id is immutable for the life of a parse/solve, so these filter by

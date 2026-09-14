@@ -19,6 +19,7 @@ import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
 import { useToast } from "@/hooks/ui/use-toast";
 import { useParseFailureToasts } from "@/hooks/ui/use-parse-failure-toasts";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
+import { UserMenu } from "@/components/shared/chrome/UserMenu";
 import {
   StartExamDialog,
   type StartExamMode,
@@ -180,7 +181,10 @@ const Exams = () => {
               ExamLense
             </span>
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <UserMenu />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1120px] px-hestia-5 py-hestia-10">

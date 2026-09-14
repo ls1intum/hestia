@@ -8,6 +8,7 @@ import app.ai.ParserStrategy;
 import app.ai.ProviderKind;
 import app.shared.Access;
 import app.error.ApiException;
+import app.user.LlmQuotaService;
 import app.exam.Exam;
 import app.exam.ExamRepository;
 import app.parse.figures.FigureExtractionService;
@@ -53,6 +54,7 @@ public class ParseExamService {
     private final ParseMetricsRecorder metricsRecorder;
     private final ParseProgress progress;
     private final FigureExtractionService figureExtraction;
+    private final LlmQuotaService quota;
 
     public ParseExamService(
         ExamRepository examRepository,
@@ -63,7 +65,8 @@ public class ParseExamService {
         ParsedExamPersister persister,
         ParseMetricsRecorder metricsRecorder,
         ParseProgress progress,
-        FigureExtractionService figureExtraction
+        FigureExtractionService figureExtraction,
+        LlmQuotaService quota
     ) {
         this.examRepository = examRepository;
         this.storage = storage;
@@ -74,6 +77,7 @@ public class ParseExamService {
         this.metricsRecorder = metricsRecorder;
         this.progress = progress;
         this.figureExtraction = figureExtraction;
+        this.quota = quota;
     }
 
     /**
@@ -102,6 +106,12 @@ public class ParseExamService {
         if (strategy.providerKind() == ProviderKind.RETIRED) {
             throw new ApiException(HttpStatus.GONE, ParseErrorMessages.AI_MODEL_RETIRED);
         }
+
+        // Charge the caller's quota here: this is the last synchronous point before
+        // the PDF is rasterized and dispatched, and once queued the spend is
+        // committed. Deliberately after the ownership and retired-model checks so
+        // neither of those costs anyone a run.
+        quota.checkAndRecord(userId, LlmQuotaService.KIND_PARSE);
 
         exam.setStatus("parsing");
         exam.setParseError(null);
