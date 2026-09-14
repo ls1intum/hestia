@@ -318,10 +318,9 @@ export async function getExamLearningGoals(examId: string): Promise<LearningGoal
 // ---------------------------------------------------------------------------
 export const listFigures = (blockId: string) =>
   apiRequest<SectionFigure[]>(`/api/blocks/${blockId}/figures`);
-export function uploadFigure(blockId: string, file: File, position?: number) {
+export function uploadFigure(blockId: string, file: File) {
   const form = new FormData();
   form.append("file", file);
-  if (position !== undefined) form.append("position", String(position));
   return apiRequest<SectionFigure>(`/api/blocks/${blockId}/figures`, { method: "POST", body: form });
 }
 export const patchFigure = (id: string, patch: Record<string, unknown>) =>

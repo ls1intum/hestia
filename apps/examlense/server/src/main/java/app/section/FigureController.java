@@ -68,9 +68,10 @@ public class FigureController {
     @Operation(
         summary = "Upload a figure to a block",
         description = """
-            `multipart/form-data` with a `file` part and an optional `position` (defaults to the \
-            end of the block). The image type is taken from the filename extension, falling back \
-            to the content type; only `png`, `jpg`, `jpeg`, `webp`, and `gif` are accepted.""")
+            `multipart/form-data` with a `file` part. A block holds exactly one image, so this \
+            replaces any figure already on it. The image type is taken from the filename \
+            extension, falling back to the content type; only `png`, `jpg`, `jpeg`, `webp`, and \
+            `gif` are accepted.""")
     @ApiResponse(responseCode = "400", description = "Unsupported image type.")
     @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such block, or `blockId` is not a valid UUID.")
@@ -81,9 +82,6 @@ public class FigureController {
                                  @RequestParam("file")
                                  @Parameter(description = "PNG, JPEG, WebP, or GIF image.")
                                  MultipartFile file,
-                                 @RequestParam(value = "position", required = false)
-                                 @Parameter(description = "Insertion index; appended when omitted.")
-                                 Integer position,
                                  @CurrentUser String userId) throws IOException {
         UUID bid = Access.id(blockId);
         SectionBlock block = requireBlock(bid, userId);
@@ -96,26 +94,40 @@ public class FigureController {
         SectionFigure fig = new SectionFigure();
         fig.setBlockId(bid);
         fig.setSource("upload");
-        fig.setPosition(position != null ? position : figureRepository.findByBlockIdOrderByPositionAsc(bid).size());
+        fig.setPosition(0);
 
         String path = userId + "/" + block.getExamId() + "/" + fig.getId() + "." + ext;
         fig.setStoragePath(path);
-        // Save the row first, then store the object — a failed DB write can't
-        // leave an orphaned file; a failed store leaves a row the delete
-        // endpoint can still clean up.
-        SectionDtos.FigureDto dto = SectionDtos.FigureDto.from(figureRepository.save(fig));
+
+        // A figure block holds exactly one image, so an upload replaces whatever
+        // is there. Store the new bytes before swapping the rows: if the write
+        // fails the caller still has their old figure, which a delete-then-insert
+        // would already have thrown away.
+        List<SectionFigure> replaced = figureRepository.findByBlockIdOrderByPositionAsc(bid);
+        storage.store(FIGURE_BUCKET, path, file.getBytes());
+        SectionDtos.FigureDto dto;
         try {
-            storage.store(FIGURE_BUCKET, path, file.getBytes());
+            figureRepository.deleteAll(replaced);
+            figureRepository.flush();
+            dto = SectionDtos.FigureDto.from(figureRepository.save(fig));
         } catch (RuntimeException e) {
-            figureRepository.delete(fig);
+            storage.delete(FIGURE_BUCKET, path);
             throw e;
+        }
+        for (SectionFigure old : replaced) {
+            try {
+                storage.delete(FIGURE_BUCKET, old.getStoragePath());
+            } catch (RuntimeException ignored) {
+                // The row is gone, so a leftover object is unreachable; it is
+                // swept with the exam's prefix when the exam is deleted.
+            }
         }
         return dto;
     }
 
     @Operation(
         summary = "Update a figure",
-        description = "Sparse update accepting `caption` and `position`. The image bytes are immutable — re-upload to replace one.")
+        description = "Sparse update accepting `caption`. The image bytes are immutable — re-upload to replace one.")
     @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @PatchMapping("/figures/{id}")
@@ -123,7 +135,6 @@ public class FigureController {
                                 @CurrentUser String userId) {
         SectionFigure fig = loadFigure(id, userId);
         if (Patch.has(body, "caption")) fig.setCaption(Patch.str(body.get("caption")));
-        if (Patch.has(body, "position")) fig.setPosition(Patch.intVal(body.get("position")));
         return SectionDtos.FigureDto.from(figureRepository.save(fig));
     }
 
