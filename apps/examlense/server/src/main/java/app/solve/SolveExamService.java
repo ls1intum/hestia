@@ -10,6 +10,7 @@ import app.exam.ExamRepository;
 import app.task.TaskAnswerRepository;
 import app.grading.TaskGradeRepository;
 import app.task.TaskRepository;
+import app.user.LlmQuotaService;
 import app.sse.SseHub;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,7 @@ public class SolveExamService {
     private final Executor solverExecutor;
     private final Access access;
     private final SseHub sse;
+    private final LlmQuotaService quota;
 
     public SolveExamService(
         ExamRepository examRepository,
@@ -59,7 +61,8 @@ public class SolveExamService {
         SolveSectionService sectionService,
         @Qualifier("solverExecutor") Executor solverExecutor,
         Access access,
-        SseHub sse
+        SseHub sse,
+        LlmQuotaService quota
     ) {
         this.examRepository = examRepository;
         this.taskRepository = taskRepository;
@@ -69,6 +72,7 @@ public class SolveExamService {
         this.solverExecutor = solverExecutor;
         this.access = access;
         this.sse = sse;
+        this.quota = quota;
     }
 
     public record DispatchPlan(int sections, int tasks) {}
@@ -82,6 +86,13 @@ public class SolveExamService {
     public DispatchPlan startEvaluation(String examId, String userId) {
         UUID examUuid = Access.id(examId);
         Exam exam = access.requireExam(examUuid, userId);
+
+        // Refuse an over-quota caller before the resets below touch anything: this
+        // method deletes prior answers and auto grades on its way to dispatch, so
+        // a late 429 would leave the exam wiped and stuck in `evaluating`. The
+        // matching record() happens at the actual dispatch, so a no-op CAS or a
+        // task-less exam costs the caller nothing.
+        quota.check(userId, LlmQuotaService.KIND_SOLVE);
 
         // The compare-and-set has to happen BEFORE the destructive resets below, so
         // a stale dispatch bails without wiping answers — see startEvaluating.
@@ -118,6 +129,7 @@ public class SolveExamService {
         // Hand off to the orchestrator and return immediately. Submitted to the
         // executor explicitly — a self-invoked @Async method bypasses Spring's
         // proxy and would run the whole solve on this request thread.
+        quota.record(userId, LlmQuotaService.KIND_SOLVE);
         CompletableFuture.runAsync(
             () -> dispatch(examId, userId, bucketSectionIds, totalTasks, taskRows),
             solverExecutor

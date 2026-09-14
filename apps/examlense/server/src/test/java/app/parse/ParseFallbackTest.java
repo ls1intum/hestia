@@ -1,5 +1,6 @@
 package app.parse;
 
+import app.user.LlmQuotaService;
 import app.ai.AiExceptions;
 import app.ai.AiProvider;
 import app.ai.AiProviderFactory;
@@ -62,7 +63,7 @@ class ParseFallbackTest {
         service = new ParseExamService(
             examRepository, storage, providerFactory, pageCounter,
             inputBuilder, persister, metricsRecorder, progress,
-            mock(app.parse.figures.FigureExtractionService.class)
+            mock(app.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class)
         );
 
         when(storage.download(eq("exam-pdfs"), anyString())).thenReturn(new byte[]{1, 2, 3});

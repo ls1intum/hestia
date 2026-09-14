@@ -27,14 +27,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SchemaIntegrityIT extends AbstractIntegrationTest {
 
     @Autowired ExamRepository exams;
+    @Autowired app.user.UserRepository users;
     @Autowired SectionRepository sections;
     @Autowired TaskRepository tasks;
     @Autowired SectionBlockRepository blocks;
     @Autowired TaskAnswerRepository answers;
 
+    /** A real user, because {@code exams.owner_id} is now a foreign key. */
+    private UUID owner() {
+        if (owner == null) owner = createUser("schema-" + UUID.randomUUID()).id();
+        return owner;
+    }
+
+    private UUID owner;
+
     private Exam newExam(String status) {
         Exam e = new Exam();
-        e.setOwnerId(UUID.randomUUID());
+        e.setOwnerId(owner());
         e.setSource("manual");
         e.setStatus(status);
         return exams.save(e);
@@ -102,11 +111,32 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     @Test
     void invalidStatusIsRejectedByTheCheckConstraint() {
         Exam bad = new Exam();
-        bad.setOwnerId(UUID.randomUUID());
+        bad.setOwnerId(owner()); // a real owner, so the failure can only be the status CHECK
         bad.setSource("manual");
         bad.setStatus("not-a-real-status");
 
         assertThatThrownBy(() -> exams.saveAndFlush(bad))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * The shared bootstrap token resolves to this row and its value is committed to
+     * a public repository, so an admin flag here would be admin for anyone who
+     * reads it.
+     */
+    @Test
+    void theSeededLegacyUserIsNotAnAdmin() {
+        assertThat(users.findById(app.shared.DefaultUser.ID).orElseThrow().isAdmin()).isFalse();
+    }
+
+    @Test
+    void examOwnerMustReferenceARealUser() {
+        Exam orphan = new Exam();
+        orphan.setOwnerId(UUID.randomUUID());
+        orphan.setSource("manual");
+        orphan.setStatus("draft");
+
+        assertThatThrownBy(() -> exams.saveAndFlush(orphan))
             .isInstanceOf(DataIntegrityViolationException.class);
     }
 

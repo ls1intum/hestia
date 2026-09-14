@@ -67,18 +67,60 @@ app:
     enabled: ${API_DOCS_ENABLED:false}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8080,http://localhost:5173}
-  # Simple bot/overload protection (no real user auth yet — single-user backend).
   auth:
+    # Pre-multi-user shared token, kept as a bootstrap/dev path: it authenticates
+    # as the seeded legacy user (see app.shared.DefaultUser). Deployments MUST set
+    # this empty once real users are enrolled — while it is set it is a shared
+    # identity that bypasses per-user isolation. The server logs a warning on boot.
     token: ${API_AUTH_TOKEN:dev-local-token}
+    # Bootstrap credential that grants ADMIN, as the legacy user. Deliberately a
+    # SEPARATE secret from app.auth.token above: that one is committed (it ships in
+    # .env.example and client/.env.production), so admin behind it would be admin
+    # for anyone who reads the repo. No default — unset means the only route to
+    # admin is users.is_admin. Set it once to enrol and promote yourself, then unset.
+    admin-token: ${ADMIN_BOOTSTRAP_TOKEN:}
+    # Lifetime of a minted session token. Interim auth is not meant to outlive SAML.
+    token-ttl-days: ${AUTH_TOKEN_TTL_DAYS:180}
+    # Open registration: a first visit creates an account with nothing asked of the
+    # user. Turn off to freeze the instance to existing token holders.
+    open-registration: ${OPEN_REGISTRATION:true}
+    # New accounts per IP per day. Without a cap, clearing browser storage mints a
+    # fresh account with a fresh LLM quota, which would make per-user metering
+    # pointless and the provider bill unbounded.
+    registrations-per-ip-per-day: ${REGISTRATIONS_PER_IP_PER_DAY:5}
+    # How long a resolved token stays cached in-process. Bounds the database hit
+    # rate (the per-IP limiter admits 300 req/10s, and SSE re-authenticates on
+    # every async re-dispatch); the trade is that a revoke takes this long to bite.
+    principal-cache-seconds: ${AUTH_PRINCIPAL_CACHE_SECONDS:60}
+  # Per-user LLM metering. Rolling 24h windows, counted in the database so a
+  # restart doesn't reset anyone's quota.
+  quota:
+    parse-per-day: ${QUOTA_PARSE_PER_DAY:20}
+    solve-per-day: ${QUOTA_SOLVE_PER_DAY:20}
+    # Instance-wide ceilings, across every account. The per-user quotas above bound
+    # nothing on their own: registration is open, so a used-up account can be traded
+    # for a fresh allowance. These are counted from actual usage, so neither account
+    # churn nor a forged proxy header moves them — this is the real cap on spend.
+    global-parse-per-day: ${QUOTA_GLOBAL_PARSE_PER_DAY:200}
+    global-solve-per-day: ${QUOTA_GLOBAL_SOLVE_PER_DAY:200}
   files:
     # HMAC key for signed file URLs. Keep separate from the auth token; when
     # unset the backend falls back to the token and logs a warning.
     signing-secret: ${FILES_SIGNING_SECRET:}
+  # Coarse per-IP bot/overload protection. Deliberately kept alongside the
+  # per-user quota above: this runs BEFORE authentication, so it is the only
+  # thing that can cheaply reject unauthenticated floods and invite guessing.
   ratelimit:
     requests: ${API_RATELIMIT_REQUESTS:300}
     window-seconds: ${API_RATELIMIT_WINDOW_SECONDS:10}
     # Trust X-Forwarded-For for client IPs only when behind a reverse proxy.
     behind-proxy: ${API_RATELIMIT_BEHIND_PROXY:false}
+    # How many entries our own proxies APPEND to X-Forwarded-For. In the deployed
+    # topology that is 2 (Traefik appends the client's address, then nginx appends
+    # Traefik's). Must match reality: too low reads a client-supplied value and every
+    # per-IP limit becomes evadable; too high reads our own proxy's address, which is
+    # identical for everyone and collapses per-IP limits into global ones.
+    trusted-proxy-hops: ${API_RATELIMIT_TRUSTED_PROXY_HOPS:2}
 
 logging:
   level:

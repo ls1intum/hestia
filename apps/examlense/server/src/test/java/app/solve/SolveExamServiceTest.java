@@ -1,5 +1,6 @@
 package app.solve;
 
+import app.user.LlmQuotaService;
 import app.shared.Access;
 import app.error.ApiException;
 import app.exam.Exam;
@@ -42,7 +43,8 @@ class SolveExamServiceTest {
     private final SseHub sse = mock(SseHub.class);
 
     private final SolveExamService service =
-        new SolveExamService(exams, tasks, answers, grades, sectionService, executor, access, sse);
+        new SolveExamService(exams, tasks, answers, grades, sectionService, executor, access, sse,
+            mock(LlmQuotaService.class));
 
     private static Exam examOwnedBy(UUID owner) {
         Exam e = new Exam();

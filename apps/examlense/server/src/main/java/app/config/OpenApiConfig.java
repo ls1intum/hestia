@@ -54,15 +54,25 @@ public class OpenApiConfig {
                     it carries no compatibility guarantee. Do not treat it as a stable \
                     interface.
 
-                    Authentication is a single static bearer token (`API_AUTH_TOKEN`), \
-                    which authenticates the request as the one seeded user. SSE endpoints \
-                    also accept it as a `token` query parameter, because `EventSource` \
-                    cannot set headers."""))
+                    Authentication is a per-user bearer token. Registration is open: a \
+                    first-time visitor calls `POST /api/auth/register` (unauthenticated) and \
+                    receives an account plus its token, optionally linking a TUM ID later via \
+                    `PATCH /api/me`. Every endpoint is scoped to the caller's own rows; \
+                    `/api/parse-metrics` and `/api/admin/**` additionally require an admin. \
+                    SSE endpoints also accept the token as a `token` query parameter, because \
+                    `EventSource` cannot set headers.
+
+                    Interim scheme, replaced by TUM SAML later — see \
+                    `docs/auth-and-saml-cutover.md`. The shared `API_AUTH_TOKEN` remains as \
+                    a dev/bootstrap credential that authenticates as the seeded legacy user \
+                    and bypasses per-user isolation."""))
             .components(new Components()
                 .addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
                     .type(SecurityScheme.Type.HTTP)
                     .scheme("bearer")
-                    .description("Static bearer token; must match the server's `API_AUTH_TOKEN`.")))
+                    .description(
+                        "Per-user session token from `POST /api/auth/register`, "
+                            + "or the shared bootstrap `API_AUTH_TOKEN`.")))
             .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
     }
 

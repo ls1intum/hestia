@@ -1,5 +1,6 @@
 package app.parse;
 
+import app.user.LlmQuotaService;
 import app.ai.AiProviderFactory;
 import app.error.ApiException;
 import app.exam.Exam;
@@ -39,7 +40,7 @@ class ParseRetiredModelTest {
             examRepository, mock(StorageService.class), mock(AiProviderFactory.class),
             mock(PdfPageCounter.class), inputBuilder, mock(ParsedExamPersister.class),
             mock(ParseMetricsRecorder.class), progress,
-            mock(app.parse.figures.FigureExtractionService.class));
+            mock(app.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class));
     }
 
     private void withExam() {
