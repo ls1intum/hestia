@@ -1,26 +1,31 @@
 /**
  * Typed client for the Spring Boot backend (see `server/`). This is now the
  * single transport for all data, storage, and admin operations — Supabase is
- * gone. Auth is a static bearer token (single-user backend); the matching
- * secret is `app.auth.token` on the server.
+ * gone. Auth is a per-user bearer token held in `token-store.ts`; a user obtains
+ * one by claiming an enrolment invite.
  *
  * Base URL comes from `VITE_API_BASE_URL` (default http://localhost:8081).
  */
 import type { Exam, Section, SectionBlock, SectionFigure, Task } from "@/lib/exam/exam-helpers";
 import type { TaskAnswer, TaskGrade } from "@/lib/grading/grading";
 import type { BloomLevel, LearningGoalResponse, LghCourse, SoloLevel } from "@/lib/learning-goals/learning-goals";
+import { clearToken, getToken, setToken } from "@/lib/api/token-store";
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "") || "http://localhost:8081";
-
-const AUTH_TOKEN = (import.meta.env.VITE_API_AUTH_TOKEN ?? "dev-local-token") as string;
 
 export function apiBaseUrl(): string {
   return BASE_URL;
 }
 
+/**
+ * The single read point for the credential — `sse.ts` uses it too, for the
+ * `?token=` query param an `EventSource` needs (it cannot set headers). Reading
+ * through the store on every call is what lets sign-in and sign-out take effect
+ * without a page reload.
+ */
 export function apiToken(): string {
-  return AUTH_TOKEN;
+  return getToken();
 }
 
 export class ApiClientNotConfiguredError extends Error {
@@ -46,7 +51,8 @@ export function isApiClientConfigured(): boolean {
 }
 
 function authHeader(): Record<string, string> {
-  return AUTH_TOKEN ? { Authorization: `Bearer ${AUTH_TOKEN}` } : {};
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body"> {
@@ -91,6 +97,10 @@ export async function apiRequest<T = unknown>(
     } catch {
       /* not json */
     }
+    // A rejected credential is unrecoverable for this session, so drop it and let
+    // the gate take over rather than leaving every subsequent call to fail too.
+    // `skipAuth` calls are unauthenticated by nature and say nothing about it.
+    if (resp.status === 401 && !skipAuth) clearToken();
     throw new ApiError(resp.status, text, message);
   }
 
@@ -99,6 +109,81 @@ export async function apiRequest<T = unknown>(
   if (ct.includes("application/json")) return (await resp.json()) as T;
   return (await resp.text()) as unknown as T;
 }
+
+// ---------------------------------------------------------------------------
+// Identity and enrolment
+// ---------------------------------------------------------------------------
+
+export interface Quota {
+  parse_remaining: number;
+  parse_limit: number;
+  solve_remaining: number;
+  solve_limit: number;
+}
+
+export interface Me {
+  id: string;
+  /** The TUM ID, or a generated `anon-…` handle if the user hasn't linked one. */
+  external_id: string;
+  display_name: string | null;
+  is_admin: boolean;
+  quota: Quota;
+  /** False until a TUM ID is linked; unlinked accounts don't survive the SAML cutover. */
+  has_tum_id: boolean;
+}
+
+/** Doubles as the token-validity probe: a 200 means the stored token works. */
+export const getMe = () => apiRequest<Me>("/api/me");
+
+export interface Registration {
+  token: string;
+  user: Me;
+}
+
+/**
+ * Create an account for a visitor who has none, and store its token.
+ *
+ * `skipAuth` because the caller has no credential yet — that is the whole point of
+ * the endpoint. On success the token is persisted, so subsequent calls authenticate
+ * normally.
+ */
+export async function register(): Promise<Registration> {
+  const result = await apiRequest<Registration>("/api/auth/register", {
+    method: "POST",
+    skipAuth: true,
+  });
+  setToken(result.token);
+  return result;
+}
+
+/**
+ * Attach a TUM ID to the signed-in account. Optional, but it is what carries the
+ * account's exams across the eventual switch to TUM sign-in.
+ */
+export const linkTumId = (externalId: string) =>
+  apiRequest<Me>("/api/me", { method: "PATCH", json: { external_id: externalId } });
+
+export function signOut(): void {
+  clearToken();
+}
+
+// --- Admin: users and invites -----------------------------------------------
+
+export interface AdminUser {
+  id: string;
+  external_id: string;
+  display_name: string | null;
+  is_admin: boolean;
+  has_active_token: boolean;
+}
+
+export const listAdminUsers = () => apiRequest<AdminUser[]>("/api/admin/users");
+
+export const setUserAdmin = (id: string, isAdmin: boolean) =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`, { method: "PATCH", json: { is_admin: isAdmin } });
+
+export const revokeUserTokens = (id: string) =>
+  apiRequest<void>(`/api/admin/users/${id}/tokens`, { method: "DELETE" });
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
