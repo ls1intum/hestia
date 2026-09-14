@@ -1,5 +1,6 @@
 package app.sse;
 
+import app.exam.ExamRepository;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
@@ -17,11 +18,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * background work changes exam status or writes answers.
  *
  * Topics:
- *   exam:{examId}  — status/phase changes + evaluation progress for one exam
- *   exams          — list-level fan-out (any owned exam changed)
+ *   exam:{examId}   — status/phase changes + evaluation progress for one exam
+ *   exams:{ownerId} — list-level fan-out for one user's own exams
  *
- * TODO(auth): when real multi-user auth lands, scope the `exams` topic per
- * user (`exams:{userId}`) — today every authenticated client shares it.
+ * The list topic is per owner, not shared. A single `exams` topic would tell
+ * every signed-in client the id of every exam anyone touched, and have all of
+ * them refetch whenever anyone did anything. Resolving the owner costs one
+ * indexed lookup per publish, which is cheap next to the work that triggered it.
  *
  * All publish-side methods are guaranteed never to throw: a dead client socket
  * is evicted and logged at debug, so callers don't need defensive try/catch.
@@ -32,6 +35,12 @@ public class SseHub {
     private static final Logger log = LoggerFactory.getLogger(SseHub.class);
 
     private final Map<String, Set<SseEmitter>> topics = new ConcurrentHashMap<>();
+
+    private final ExamRepository exams;
+
+    public SseHub(ExamRepository exams) {
+        this.exams = exams;
+    }
 
     public SseEmitter register(String topic) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — long-lived stream
@@ -99,11 +108,11 @@ public class SseHub {
         log.debug("SSE emitter for topic {} dropped: {}", topic, cause.getMessage());
     }
 
-    /** Exam status/phase changed — notify that exam's subscribers and the list. */
+    /** Exam status/phase changed — notify that exam's subscribers and its owner's list. */
     public void examUpdated(UUID examId) {
         Map<String, Object> data = Map.of("exam_id", examId.toString());
         publish("exam:" + examId, "exam", data);
-        publish("exams", "exam", data);
+        publishToOwnerList(examId, data);
     }
 
     /**
@@ -114,11 +123,28 @@ public class SseHub {
     public void progress(UUID examId) {
         Map<String, Object> data = Map.of("exam_id", examId.toString());
         publish("exam:" + examId, "progress", data);
-        publish("exams", "exam", data);
+        publishToOwnerList(examId, data);
     }
 
     /** Task rows changed server-side (e.g. learning goals were generated). */
     public void tasksUpdated(UUID examId) {
         publish("exam:" + examId, "tasks", Map.of("exam_id", examId.toString()));
+    }
+
+    /**
+     * Route a list-level event to the owning user's stream only.
+     *
+     * <p>Swallows a missing exam rather than throwing: publishes run on background
+     * threads after parse/solve work, the exam may have been deleted in the
+     * meantime, and every publish path on this class is documented as never
+     * throwing.
+     */
+    private void publishToOwnerList(UUID examId, Map<String, Object> data) {
+        try {
+            exams.findOwnerIdById(examId)
+                .ifPresent(ownerId -> publish("exams:" + ownerId, "exam", data));
+        } catch (Exception e) {
+            log.debug("could not resolve owner for exam {}: {}", examId, e.getMessage());
+        }
     }
 }

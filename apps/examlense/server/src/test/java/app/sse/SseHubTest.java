@@ -5,10 +5,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import app.exam.ExamRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * The SSE hub is the realtime backbone (parse/solve progress, list fan-out).
@@ -22,17 +27,34 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SseHubTest {
 
+    private static final UUID OWNER = UUID.randomUUID();
+
+    /** A hub whose exams all belong to {@link #OWNER}. */
+    private static SseHub hub() {
+        return hubWithOwner(OWNER);
+    }
+
+    private static SseHub hubWithOwner(UUID owner) {
+        ExamRepository exams = mock(ExamRepository.class);
+        when(exams.findOwnerIdById(any())).thenReturn(Optional.ofNullable(owner));
+        return new SseHub(exams);
+    }
+
+    private static String listTopic(UUID owner) {
+        return "exams:" + owner;
+    }
+
     @Test
     void registerReturnsAnEmitter() {
-        assertThat(new SseHub().register("exams")).isNotNull();
+        assertThat(hub().register(listTopic(OWNER))).isNotNull();
     }
 
     @Test
     void examUpdatedFansOutToBothTheExamTopicAndTheListTopic() {
-        SseHub hub = new SseHub();
+        SseHub hub = hub();
         UUID examId = UUID.randomUUID();
         CountingEmitter examSub = attach(hub, "exam:" + examId);
-        CountingEmitter listSub = attach(hub, "exams");
+        CountingEmitter listSub = attach(hub, listTopic(OWNER));
 
         hub.examUpdated(examId);
 
@@ -44,10 +66,10 @@ class SseHubTest {
     void progressReachesBothTheExamTopicAndTheListTopic() {
         // Solve progress must also refresh the dashboard list so the "Solving
         // task X of Y…" bar advances live there, not just on the per-exam splash.
-        SseHub hub = new SseHub();
+        SseHub hub = hub();
         UUID examId = UUID.randomUUID();
         CountingEmitter examSub = attach(hub, "exam:" + examId);
-        CountingEmitter listSub = attach(hub, "exams");
+        CountingEmitter listSub = attach(hub, listTopic(OWNER));
 
         hub.progress(examId);
 
@@ -55,16 +77,63 @@ class SseHubTest {
         assertThat(listSub.sends.get()).isEqualTo(1);
     }
 
+    /**
+     * The list stream is per owner. A shared one would tell every signed-in client
+     * the id of every exam anyone touched, and make them all refetch whenever
+     * anyone did anything.
+     */
+    @Test
+    void listEventsReachOnlyTheOwningUsersStream() {
+        UUID alice = UUID.randomUUID();
+        UUID bob = UUID.randomUUID();
+        SseHub hub = hubWithOwner(alice); // every exam in this hub belongs to alice
+        CountingEmitter aliceList = attach(hub, listTopic(alice));
+        CountingEmitter bobList = attach(hub, listTopic(bob));
+
+        hub.examUpdated(UUID.randomUUID());
+        hub.progress(UUID.randomUUID());
+
+        assertThat(aliceList.sends.get()).isEqualTo(2);
+        assertThat(bobList.sends.get()).isZero();
+    }
+
+    /** Nobody subscribed to a shared topic should ever receive anything. */
+    @Test
+    void nothingIsPublishedToAnUnscopedSharedTopic() {
+        SseHub hub = hub();
+        CountingEmitter legacyShared = attach(hub, "exams");
+
+        hub.examUpdated(UUID.randomUUID());
+        hub.progress(UUID.randomUUID());
+
+        assertThat(legacyShared.sends.get()).isZero();
+    }
+
+    /**
+     * Publishes run on background threads after parse/solve work, by which point
+     * the exam may have been deleted. Every publish path is documented as never
+     * throwing, so a missing owner has to be swallowed.
+     */
+    @Test
+    void aDeletedExamDoesNotBreakThePublish() {
+        SseHub hub = hubWithOwner(null); // findOwnerIdById returns empty
+        CountingEmitter listSub = attach(hub, listTopic(OWNER));
+
+        hub.examUpdated(UUID.randomUUID());
+
+        assertThat(listSub.sends.get()).isZero();
+    }
+
     @Test
     void publishToATopicWithNoSubscribersIsANoOp() {
-        SseHub hub = new SseHub();
+        SseHub hub = hub();
         // No one subscribed — must not throw.
         hub.examUpdated(UUID.randomUUID());
     }
 
     @Test
     void aDeadEmitterIsEvictedAndDoesNotBlockDeliveryToHealthyOnes() {
-        SseHub hub = new SseHub();
+        SseHub hub = hub();
         UUID examId = UUID.randomUUID();
         String topic = "exam:" + examId;
         attachRaw(hub, topic, new ThrowingEmitter()); // send() throws — simulates a dropped client
