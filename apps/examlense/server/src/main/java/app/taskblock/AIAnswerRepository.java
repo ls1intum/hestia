@@ -26,5 +26,5 @@ public interface AIAnswerRepository extends JpaRepository<AIAnswer, UUID> {
     void deleteByTaskIdIn(List<UUID> taskIds);
 
     @Query("select count(distinct a.taskId) from AIAnswer a where a.examId = :examId")
-    long countDistinctTaskBlockBlocksAnswered(@Param("examId") UUID examId);
+    long countDistinctTaskBlocksAnswered(@Param("examId") UUID examId);
 }

@@ -4,6 +4,8 @@ import app.ai.AiExceptions;
 import app.ai.SolverStrategies;
 import app.shared.Access;
 import app.examination.Examination;
+import app.examination.EvaluationRun;
+import app.examination.EvaluationRunRepository;
 import app.taskblock.TaskBlock;
 import app.taskblock.AIAnswer;
 import app.examination.ExaminationRepository;
@@ -47,6 +49,7 @@ public class SolveExaminationService {
     private final TaskBlockRepository taskRepository;
     private final AIAnswerRepository taskAnswerRepository;
     private final GradeRepository taskGradeRepository;
+    private final EvaluationRunRepository evaluationRunRepository;
     private final SolveSectionService sectionService;
     private final Executor solverExecutor;
     private final Access access;
@@ -58,6 +61,7 @@ public class SolveExaminationService {
         TaskBlockRepository taskRepository,
         AIAnswerRepository taskAnswerRepository,
         GradeRepository taskGradeRepository,
+        EvaluationRunRepository evaluationRunRepository,
         SolveSectionService sectionService,
         @Qualifier("solverExecutor") Executor solverExecutor,
         Access access,
@@ -68,6 +72,7 @@ public class SolveExaminationService {
         this.taskRepository = taskRepository;
         this.taskAnswerRepository = taskAnswerRepository;
         this.taskGradeRepository = taskGradeRepository;
+        this.evaluationRunRepository = evaluationRunRepository;
         this.sectionService = sectionService;
         this.solverExecutor = solverExecutor;
         this.access = access;
@@ -105,10 +110,11 @@ public class SolveExaminationService {
         // Reset previous answers + auto grades so progress starts at 0/N.
         taskAnswerRepository.deleteByExamId(examUuid);
         taskGradeRepository.deleteByExamIdAndAutoGradedTrue(examUuid);
+        recordRun(exam, solverModel);
 
         List<TaskBlock> taskRows = taskRepository.findByExamIdOrderByPositionAsc(examUuid);
-        int totalTaskBlockBlocks = taskRows.size();
-        if (totalTaskBlockBlocks == 0) {
+        int totalTaskBlocks = taskRows.size();
+        if (totalTaskBlocks == 0) {
             examRepository.updateStatus(examUuid, "grading");
             sse.examUpdated(examUuid);
             return new DispatchPlan(0, 0);
@@ -131,20 +137,38 @@ public class SolveExaminationService {
         // proxy and would run the whole solve on this request thread.
         quota.record(userId, LlmQuotaService.KIND_SOLVE);
         CompletableFuture.runAsync(
-            () -> dispatch(examId, userId, bucketSectionIds, totalTaskBlockBlocks, taskRows),
+            () -> dispatch(examId, userId, bucketSectionIds, totalTaskBlocks, taskRows),
             solverExecutor
         );
 
-        return new DispatchPlan(bucketSectionIds.size(), totalTaskBlockBlocks);
+        return new DispatchPlan(bucketSectionIds.size(), totalTaskBlocks);
+    }
+
+    /**
+     * Record which model is about to answer this examination, how hard it was
+     * asked to think, and when — QA7.
+     *
+     * <p>An examination has at most one run, so this replaces any previous one:
+     * the resets just above threw away the answers a prior run would explain.
+     * ExamLense sends no reasoning parameter, so the level stored is the pinned
+     * model's own documented default.
+     */
+    private void recordRun(Examination exam, String solverModel) {
+        evaluationRunRepository.deleteByExamId(exam.getId());
+        EvaluationRun run = new EvaluationRun();
+        run.setExamId(exam.getId());
+        run.setSolverModel(solverModel);
+        run.setThinkingLevel(SolverStrategies.resolve(solverModel).defaultThinking());
+        evaluationRunRepository.save(run);
     }
 
     private void dispatch(
         String examId, String userId,
-        List<String> sectionIds, int totalTaskBlockBlocks,
+        List<String> sectionIds, int totalTaskBlocks,
         List<TaskBlock> allTaskBlockRows
     ) {
         try {
-            runDispatch(examId, userId, sectionIds, totalTaskBlockBlocks, allTaskBlockRows);
+            runDispatch(examId, userId, sectionIds, totalTaskBlocks, allTaskBlockRows);
         } catch (Exception e) {
             log.error("solve-exam dispatch crashed for {}", examId, e);
             try {
@@ -157,7 +181,7 @@ public class SolveExaminationService {
 
     private void runDispatch(
         String examId, String userId,
-        List<String> sectionIds, int totalTaskBlockBlocks,
+        List<String> sectionIds, int totalTaskBlocks,
         List<TaskBlock> allTaskBlockRows
     ) throws InterruptedException {
         UUID examUuid = Access.id(examId);
@@ -168,7 +192,7 @@ public class SolveExaminationService {
         // Verify completion: some sections may have returned empty or partial
         // answer arrays.
         long answered = taskAnswerRepository.countByExamId(examUuid);
-        if (answered >= totalTaskBlockBlocks) {
+        if (answered >= totalTaskBlocks) {
             // Compare-and-set: a since-cancelled exam sits in `ready`, so this
             // matches no row instead of dragging it into `grading`.
             examRepository.updateStatusIfCurrent(examUuid, "evaluating", "grading");
@@ -197,14 +221,14 @@ public class SolveExaminationService {
         joinAll(dispatchAll(slots, examId, userId, sweepIds));
 
         long finalCount = taskAnswerRepository.countByExamId(examUuid);
-        if (finalCount >= totalTaskBlockBlocks) {
+        if (finalCount >= totalTaskBlocks) {
             // Same compare-and-set guard as above.
             examRepository.updateStatusIfCurrent(examUuid, "evaluating", "grading");
         } else {
             // markSolveFailed is itself guarded on status='evaluating', so a user
             // cancel (now `ready`, error cleared) isn't clobbered back to `failed`.
             examRepository.markSolveFailed(examUuid,
-                "Evaluation incomplete: " + finalCount + "/" + totalTaskBlockBlocks + " tasks answered");
+                "Evaluation incomplete: " + finalCount + "/" + totalTaskBlocks + " tasks answered");
         }
         sse.examUpdated(examUuid);
     }

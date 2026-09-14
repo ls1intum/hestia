@@ -34,7 +34,7 @@ class ParsedExaminationNormalizationTest {
     }
 
     @Test
-    void fillMissingSectionsSynthesizesForTaskBlockBlocksBeforeAnySection() {
+    void fillMissingSectionsSynthesizesForTaskBlocksBeforeAnySection() {
         List<Map<String, Object>> tasks = new ArrayList<>(List.of(
             task(null), task("Part A")
         ));

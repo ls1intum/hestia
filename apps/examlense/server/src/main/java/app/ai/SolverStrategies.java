@@ -22,7 +22,9 @@ public final class SolverStrategies {
             "Google Gemini model for fast exam solving.",
             "gemini-3.5-flash",
             GEMINI,
-            true
+            true,
+            // thinking_level defaults to medium (was high on Gemini 3 Flash Preview).
+            "medium"
         ));
         REGISTRY.register(new SolverStrategy(
             "gpt-5.5",
@@ -30,7 +32,9 @@ public final class SolverStrategies {
             "OpenAI frontier model for complex reasoning and tool-heavy work.",
             "gpt-5.5",
             OPENAI,
-            true
+            true,
+            // reasoning.effort defaults to medium.
+            "medium"
         ));
         REGISTRY.register(new SolverStrategy(
             "claude-opus-4-8",
@@ -38,7 +42,9 @@ public final class SolverStrategies {
             "Anthropic flagship model for complex reasoning and long-context work.",
             "claude-opus-4-8",
             ANTHROPIC,
-            true
+            true,
+            // Omitting `thinking` on Opus 4.8 runs the model without it.
+            "off"
         ));
         // Retired models: exams created before the catalog change still
         // reference these ids, so they stay resolvable but hidden. The GWDG
@@ -50,7 +56,8 @@ public final class SolverStrategies {
             "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
             "qwen3.6-35b-a3b",
             RETIRED,
-            true
+            true,
+            null
         ));
         REGISTRY.legacy(new SolverStrategy(
             "gemini-2.5-flash",
@@ -58,7 +65,9 @@ public final class SolverStrategies {
             "Google Gemini model for fast exam solving.",
             "gemini-2.5-flash",
             GEMINI,
-            true
+            true,
+            // Predates thinking_level: defaults to a self-adjusting budget.
+            "dynamic"
         ));
         REGISTRY.legacy(new SolverStrategy(
             "mistral-large-3-675b-instruct-2512",
@@ -66,7 +75,8 @@ public final class SolverStrategies {
             "GWDG-hosted large reasoning model.",
             "mistral-large-3-675b-instruct-2512",
             RETIRED,
-            true
+            true,
+            null
         ));
         REGISTRY.legacy(new SolverStrategy(
             "gemma-4-31b-it",
@@ -74,7 +84,8 @@ public final class SolverStrategies {
             "GWDG-hosted instruction-tuned model.",
             "gemma-4-31b-it",
             RETIRED,
-            false
+            false,
+            null
         ));
         REGISTRY.legacy(new SolverStrategy(
             "qwen3.5-397b-a17b",
@@ -82,7 +93,8 @@ public final class SolverStrategies {
             "GWDG-hosted Qwen 3.5 large mixture-of-experts model.",
             "qwen3.5-397b-a17b",
             RETIRED,
-            false
+            false,
+            null
         ));
     }
 

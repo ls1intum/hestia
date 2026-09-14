@@ -2,6 +2,7 @@ package app.solve;
 
 import app.user.LlmQuotaService;
 import app.shared.Access;
+import app.examination.EvaluationRunRepository;
 import app.examination.Examination;
 import app.taskblock.TaskBlock;
 import app.examination.ExaminationRepository;
@@ -80,6 +81,7 @@ class SolveExaminationServiceAsyncTest {
 
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository, gradeRepository,
+            mock(EvaluationRunRepository.class),
             sectionService, executor, access, sse, mock(LlmQuotaService.class));
 
         SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString(), ownerId.toString());
@@ -104,7 +106,7 @@ class SolveExaminationServiceAsyncTest {
     }
 
     @Test
-    void examWithNoTaskBlockBlocksIsFinalizedImmediately() {
+    void examWithNoTaskBlocksIsFinalizedImmediately() {
         ExaminationRepository examRepository = mock(ExaminationRepository.class);
         SectionRepository sectionRepository = mock(SectionRepository.class);
         TaskBlockRepository taskRepository = mock(TaskBlockRepository.class);
@@ -125,6 +127,7 @@ class SolveExaminationServiceAsyncTest {
 
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository, gradeRepository,
+            mock(EvaluationRunRepository.class),
             sectionService, executor, access, sse, mock(LlmQuotaService.class));
 
         SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString(), ownerId.toString());

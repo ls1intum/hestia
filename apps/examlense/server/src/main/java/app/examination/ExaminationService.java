@@ -98,7 +98,7 @@ public class ExaminationService {
         blocks.saveAll(newBlocks);
         copyFigures(blockIdMap, userId, copy.getId());
 
-        List<TaskBlock> newTaskBlockBlocks = new ArrayList<>();
+        List<TaskBlock> newTaskBlocks = new ArrayList<>();
         for (TaskBlock t : tasks.findByExamIdOrderByPositionAsc(src.getId())) {
             TaskBlock nt = new TaskBlock();
             nt.setExamId(copy.getId());
@@ -113,9 +113,9 @@ public class ExaminationService {
             nt.setParseConfidence(t.getParseConfidence());
             // Goal ids are NOT copied: they identify LGH goals owned by the
             // source exam's sections — regenerated when the copy is confirmed.
-            newTaskBlockBlocks.add(nt);
+            newTaskBlocks.add(nt);
         }
-        tasks.saveAll(newTaskBlockBlocks);
+        tasks.saveAll(newTaskBlocks);
 
         return exams.save(copy);
     }

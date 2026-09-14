@@ -147,10 +147,10 @@ public final class Prompts {
         lines.add("");
 
         lines.add("Tasks:");
-        List<TaskBlockPromptInfo> sortedTaskBlockBlocks = new ArrayList<>(tasks);
-        sortedTaskBlockBlocks.sort(Comparator.comparingInt(TaskBlockPromptInfo::position));
-        for (int idx = 0; idx < sortedTaskBlockBlocks.size(); idx++) {
-            TaskBlockPromptInfo t = sortedTaskBlockBlocks.get(idx);
+        List<TaskBlockPromptInfo> sortedTaskBlocks = new ArrayList<>(tasks);
+        sortedTaskBlocks.sort(Comparator.comparingInt(TaskBlockPromptInfo::position));
+        for (int idx = 0; idx < sortedTaskBlocks.size(); idx++) {
+            TaskBlockPromptInfo t = sortedTaskBlocks.get(idx);
             List<String> metaParts = new ArrayList<>();
             metaParts.add(t.type());
             metaParts.add("id=" + t.id());

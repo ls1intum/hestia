@@ -24,10 +24,10 @@ public class TaskBlockService {
     @Transactional
     public TaskBlock addTaskBlock(TaskBlock task) {
         if (task.getSectionId() != null) {
-            tasks.shiftTaskBlockBlocksInSection(task.getExamId(), task.getSectionId(), task.getPosition());
+            tasks.shiftTaskBlocksInSection(task.getExamId(), task.getSectionId(), task.getPosition());
             blocks.shiftBlocksInSection(task.getSectionId(), task.getPosition());
         } else {
-            tasks.shiftTaskBlockBlocksNullSection(task.getExamId(), task.getPosition());
+            tasks.shiftTaskBlocksNullSection(task.getExamId(), task.getPosition());
         }
         return tasks.save(task);
     }

@@ -53,7 +53,7 @@ public class SectionService {
     @Transactional
     public SectionBlock addBlock(SectionBlock block) {
         blocks.shiftBlocksInSection(block.getSectionId(), block.getPosition());
-        tasks.shiftTaskBlockBlocksInSection(block.getExamId(), block.getSectionId(), block.getPosition());
+        tasks.shiftTaskBlocksInSection(block.getExamId(), block.getSectionId(), block.getPosition());
         return blocks.save(block);
     }
 
@@ -66,8 +66,8 @@ public class SectionService {
     public void unconfirmSection(Section section) {
         List<UUID> taskIds = new ArrayList<>();
         List<Long> goalIds = new ArrayList<>();
-        List<TaskBlock> sectionTaskBlockBlocks = tasks.findBySectionIdOrderByPositionAsc(section.getId());
-        for (TaskBlock t : sectionTaskBlockBlocks) {
+        List<TaskBlock> sectionTaskBlocks = tasks.findBySectionIdOrderByPositionAsc(section.getId());
+        for (TaskBlock t : sectionTaskBlocks) {
             taskIds.add(t.getId());
             if (t.getLearningGoalIds() != null) {
                 goalIds.addAll(t.getLearningGoalIds());
@@ -75,7 +75,7 @@ public class SectionService {
             }
         }
         if (!taskIds.isEmpty()) answers.deleteByTaskIdIn(taskIds);
-        tasks.saveAll(sectionTaskBlockBlocks);
+        tasks.saveAll(sectionTaskBlocks);
         section.setConfirmedAt(null);
         sections.save(section);
 

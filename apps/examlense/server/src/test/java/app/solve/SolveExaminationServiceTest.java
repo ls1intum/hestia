@@ -3,6 +3,7 @@ package app.solve;
 import app.user.LlmQuotaService;
 import app.shared.Access;
 import app.error.ApiException;
+import app.examination.EvaluationRunRepository;
 import app.examination.Examination;
 import app.taskblock.TaskBlock;
 import app.examination.ExaminationRepository;
@@ -43,7 +44,8 @@ class SolveExaminationServiceTest {
     private final SseHub sse = mock(SseHub.class);
 
     private final SolveExaminationService service =
-        new SolveExaminationService(exams, tasks, answers, grades, sectionService, executor, access, sse,
+        new SolveExaminationService(exams, tasks, answers, grades,
+            mock(EvaluationRunRepository.class), sectionService, executor, access, sse,
             mock(LlmQuotaService.class));
 
     private static Examination examOwnedBy(UUID owner) {

@@ -30,11 +30,11 @@ public interface TaskBlockRepository extends JpaRepository<TaskBlock, UUID> {
     @Transactional
     @Query("update TaskBlock t set t.position = t.position + 1 "
         + "where t.examId = :examId and t.sectionId = :sectionId and t.position >= :fromPos")
-    int shiftTaskBlockBlocksInSection(@Param("examId") UUID examId, @Param("sectionId") UUID sectionId, @Param("fromPos") int fromPos);
+    int shiftTaskBlocksInSection(@Param("examId") UUID examId, @Param("sectionId") UUID sectionId, @Param("fromPos") int fromPos);
 
     @Modifying
     @Transactional
     @Query("update TaskBlock t set t.position = t.position + 1 "
         + "where t.examId = :examId and t.sectionId is null and t.position >= :fromPos")
-    int shiftTaskBlockBlocksNullSection(@Param("examId") UUID examId, @Param("fromPos") int fromPos);
+    int shiftTaskBlocksNullSection(@Param("examId") UUID examId, @Param("fromPos") int fromPos);
 }

@@ -93,7 +93,7 @@ public class SolveSectionService {
         SolveCore.PromptContext ctx =
             core.loadContext(examId, sectionId, strategy.supportsVision());
 
-        // TaskBlockBlocks for this section (or unassigned bucket), ordered by position.
+        // TaskBlocks for this section (or unassigned bucket), ordered by position.
         List<TaskBlock> taskEntities = sectionId != null
             ? taskRepository.findByExamIdAndSectionIdOrderByPositionAsc(examId, sectionId)
             : taskRepository.findByExamIdAndSectionIdIsNullOrderByPositionAsc(examId);

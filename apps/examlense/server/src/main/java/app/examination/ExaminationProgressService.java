@@ -64,16 +64,16 @@ public class ExaminationProgressService {
             gradeByTaskBlock.merge(g.getTaskId(), g, (a, b) -> a.getScore() != null ? a : b);
         }
         // task_ids that have at least one AI answer
-        Set<UUID> answeredTaskBlockBlocks = new HashSet<>();
+        Set<UUID> answeredTaskBlocks = new HashSet<>();
         for (var a : answers.findByExamIdIn(examIds)) {
-            answeredTaskBlockBlocks.add(a.getTaskId());
+            answeredTaskBlocks.add(a.getTaskId());
         }
 
         // Accumulate per exam in one pass over tasks.
         Map<UUID, long[]> acc = new HashMap<>(); // [task, scored, answered, graded]
         for (TaskBlock t : tasks.findByExamIdIn(examIds)) {
             long[] c = acc.computeIfAbsent(t.getExamId(), k -> new long[4]);
-            boolean hasAnswer = answeredTaskBlockBlocks.contains(t.getId());
+            boolean hasAnswer = answeredTaskBlocks.contains(t.getId());
             c[0]++;
             if (t.getPoints() != null && t.getPoints().compareTo(BigDecimal.ZERO) > 0) c[1]++;
             if (hasAnswer) c[2]++;

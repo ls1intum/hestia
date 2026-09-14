@@ -29,6 +29,9 @@ interface Props {
  * Duplicate an exam with an editable title + solver model. The copy defaults to
  * "<title> (Copy)" and the source's solver; the picker falls back to a valid
  * default if the source model is no longer selectable.
+ *
+ * This is how one exam is compared against another model: an exam records a
+ * single evaluation run, so a second model means a second exam.
  */
 export const DuplicateExamDialog = ({ exam, onOpenChange, onConfirm }: Props) => {
   const { data: solverCatalog } = useSolverModels();

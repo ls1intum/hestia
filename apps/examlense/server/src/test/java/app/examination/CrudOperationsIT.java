@@ -117,10 +117,10 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         assertThat(sections.findByExamIdOrderByPositionAsc(copy.getId())).hasSize(1);
         List<SectionBlock> copiedBlocks = blocks.findByExamIdOrderByPositionAsc(copy.getId());
         assertThat(copiedBlocks).hasSize(2); // context + figure block
-        List<TaskBlock> copiedTaskBlockBlocks = tasks.findByExamIdOrderByPositionAsc(copy.getId());
-        assertThat(copiedTaskBlockBlocks).hasSize(1);
+        List<TaskBlock> copiedTaskBlocks = tasks.findByExamIdOrderByPositionAsc(copy.getId());
+        assertThat(copiedTaskBlocks).hasSize(1);
         // Goal ids belong to the source's LGH goals — must NOT be copied.
-        assertThat(copiedTaskBlockBlocks.get(0).getLearningGoalIds()).isNull();
+        assertThat(copiedTaskBlocks.get(0).getLearningGoalIds()).isNull();
 
         // The figure and its image are deep-copied onto the copy's figure block.
         SectionBlock copiedFigBlock = copiedBlocks.stream()
