@@ -1,6 +1,6 @@
-import type { Task, TaskOption } from "@/lib/exam/exam-helpers";
+import type { TaskBlock, AnswerOption } from "@/lib/exam/exam-helpers";
 
-export interface TaskAnswer {
+export interface AIAnswer {
   id: string;
   task_id: string;
   exam_id: string;
@@ -12,7 +12,7 @@ export interface TaskAnswer {
   created_at: string;
 }
 
-export interface TaskGrade {
+export interface Grade {
   id: string;
   task_id: string;
   exam_id: string;
@@ -24,8 +24,8 @@ export interface TaskGrade {
   updated_at: string;
 }
 
-export const correctOptionIds = (task: Task): string[] =>
-  (task.options ?? []).flatMap((o: TaskOption) => (o.is_correct ? [o.id] : []));
+export const correctOptionIds = (task: TaskBlock): string[] =>
+  (task.options ?? []).flatMap((o: AnswerOption) => (o.is_correct ? [o.id] : []));
 
 export interface AutoGradeResult {
   isCorrect: boolean;
@@ -40,8 +40,8 @@ export interface AutoGradeResult {
  * the instructor must grade manually).
  */
 export const autoGradeChoiceTask = (
-  task: Task,
-  answer: TaskAnswer | undefined,
+  task: TaskBlock,
+  answer: AIAnswer | undefined,
 ): AutoGradeResult | null => {
   if (task.type === "text") return null;
   if (task.points == null || task.points <= 0) return null;
@@ -58,9 +58,9 @@ export const autoGradeChoiceTask = (
 
 /** Effective score the UI should display for a task. */
 export const effectiveScore = (
-  task: Task,
-  grade: TaskGrade | undefined,
-  answer: TaskAnswer | undefined,
+  task: TaskBlock,
+  grade: Grade | undefined,
+  answer: AIAnswer | undefined,
 ): { score: number | null; source: "manual" | "auto" | "pending" } => {
   if (grade && grade.score != null) {
     return { score: grade.score, source: grade.auto_graded ? "auto" : "manual" };
@@ -71,9 +71,9 @@ export const effectiveScore = (
 };
 
 export const examTotals = (
-  tasks: Task[],
-  grades: Map<string, TaskGrade>,
-  answers: Map<string, TaskAnswer>,
+  tasks: TaskBlock[],
+  grades: Map<string, Grade>,
+  answers: Map<string, AIAnswer>,
 ) => {
   let earned = 0;
   let max = 0;
@@ -90,9 +90,9 @@ export const examTotals = (
 
 /** Earned/max/pct rollup for an arbitrary subset of tasks. */
 export const scoreRollup = (
-  tasks: Task[],
-  grades: Map<string, TaskGrade>,
-  answers: Map<string, TaskAnswer>,
+  tasks: TaskBlock[],
+  grades: Map<string, Grade>,
+  answers: Map<string, AIAnswer>,
 ) => {
   const max = tasks.reduce((s, tk) => s + (tk.points ?? 0), 0);
   const earned = tasks.reduce((s, tk) => {
@@ -129,11 +129,11 @@ export interface GoalRollup {
  * can't be resolved from LearningGoalHub.
  */
 export const goalRollup = (
-  tasks: Task[],
-  grades: Map<string, TaskGrade>,
-  answers: Map<string, TaskAnswer>,
+  tasks: TaskBlock[],
+  grades: Map<string, Grade>,
+  answers: Map<string, AIAnswer>,
 ): GoalRollup[] => {
-  const tasksByGoal = new Map<number, Task[]>();
+  const tasksByGoal = new Map<number, TaskBlock[]>();
   for (const tk of tasks) {
     const seen = new Set<number>();
     for (const id of tk.learning_goal_ids ?? []) {

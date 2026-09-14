@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Bot, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils/utils";
-import type { Task } from "@/lib/exam/exam-helpers";
-import type { TaskAnswer } from "@/lib/grading/grading";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
+import type { AIAnswer } from "@/lib/grading/grading";
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { ReadOnlyOptionList } from "./ReadOnlyOptionList";
 
 interface Props {
-  task: Task;
-  answer: TaskAnswer;
+  task: TaskBlock;
+  answer: AIAnswer;
 }
 
 /**

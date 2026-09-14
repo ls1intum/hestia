@@ -26,8 +26,8 @@ import { StaticTitle } from "@/components/shared/chrome/InlineTitle";
 import { Button } from "@/components/ui/button";
 import {
   examTotals,
-  type TaskAnswer,
-  type TaskGrade,
+  type AIAnswer,
+  type Grade,
 } from "@/lib/grading/grading";
 import { letterLabel } from "@/lib/exam/exam-helpers";
 import { examModeRedirect } from "@/components/shared/ExamModeRedirect";
@@ -59,13 +59,13 @@ const ExamResults = () => {
   };
 
   const answersById = useMemo(() => {
-    const m = new Map<string, TaskAnswer>();
+    const m = new Map<string, AIAnswer>();
     (answers ?? []).forEach((a) => m.set(a.task_id, a));
     return m;
   }, [answers]);
 
   const gradesById = useMemo(() => {
-    const m = new Map<string, TaskGrade>();
+    const m = new Map<string, Grade>();
     (grades ?? []).forEach((g) => m.set(g.task_id, g));
     return m;
   }, [grades]);

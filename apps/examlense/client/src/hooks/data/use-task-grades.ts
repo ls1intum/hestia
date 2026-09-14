@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listGrades, upsertGrade } from "@/lib/api/api-client";
-import type { TaskGrade } from "@/lib/grading/grading";
+import type { Grade } from "@/lib/grading/grading";
 
 export const taskGradesKey = (examId: string) =>
   ["task-grades", examId] as const;
@@ -9,7 +9,7 @@ export function useTaskGrades(examId: string | undefined) {
   return useQuery({
     queryKey: examId ? taskGradesKey(examId) : ["task-grades", "missing"],
     enabled: !!examId,
-    queryFn: async () => (await listGrades(examId!)) as unknown as TaskGrade[],
+    queryFn: async () => (await listGrades(examId!)) as unknown as Grade[],
   });
 }
 

@@ -6,8 +6,8 @@
  *
  * Base URL comes from `VITE_API_BASE_URL` (default http://localhost:8081).
  */
-import type { Exam, Section, SectionBlock, SectionFigure, Task } from "@/lib/exam/exam-helpers";
-import type { TaskAnswer, TaskGrade } from "@/lib/grading/grading";
+import type { Examination, Section, SectionBlock, SectionFigure, TaskBlock } from "@/lib/exam/exam-helpers";
+import type { AIAnswer, Grade } from "@/lib/grading/grading";
 import type { BloomLevel, LearningGoalResponse, LghCourse, SoloLevel } from "@/lib/learning-goals/learning-goals";
 import { clearToken, getToken, setToken } from "@/lib/api/token-store";
 
@@ -191,11 +191,11 @@ export const revokeUserTokens = (id: string) =>
 // ---------------------------------------------------------------------------
 
 /**
- * Exam row as returned by the list endpoint, augmented with the progress counts
+ * Examination row as returned by the list endpoint, augmented with the progress counts
  * the dashboard table's "Progress" column needs. Counts are relative to
  * `task_count`; see backend `ExamProgressService`.
  */
-export interface ExamListItem extends Exam {
+export interface ExaminationListItem extends Examination {
   task_count: number;
   scored_count: number;
   answered_count: number;
@@ -205,19 +205,19 @@ export interface ExamListItem extends Exam {
   confirmed_section_count: number;
 }
 
-export const listExams = () => apiRequest<ExamListItem[]>("/api/exams");
-export const getExam = (id: string) => apiRequest<Exam>(`/api/exams/${id}`);
+export const listExams = () => apiRequest<ExaminationListItem[]>("/api/exams");
+export const getExam = (id: string) => apiRequest<Examination>(`/api/exams/${id}`);
 export const createExam = (body: Record<string, unknown>) =>
-  apiRequest<Exam>("/api/exams", { method: "POST", json: body });
+  apiRequest<Examination>("/api/exams", { method: "POST", json: body });
 export const patchExam = (id: string, patch: Record<string, unknown>) =>
-  apiRequest<Exam>(`/api/exams/${id}`, { method: "PATCH", json: patch });
+  apiRequest<Examination>(`/api/exams/${id}`, { method: "PATCH", json: patch });
 export const deleteExam = (id: string) =>
   apiRequest<void>(`/api/exams/${id}`, { method: "DELETE" });
 export const duplicateExam = (
   id: string,
   body?: { title?: string; solver_model?: string },
 ) =>
-  apiRequest<Exam>(`/api/exams/${id}/duplicate`, {
+  apiRequest<Examination>(`/api/exams/${id}/duplicate`, {
     method: "POST",
     ...(body ? { json: body } : {}),
   });
@@ -229,7 +229,7 @@ export const duplicateExam = (
  * job from finalizing. See `ExamRepository.cancelEvaluating` for the reasoning.
  */
 export const cancelExam = (id: string) =>
-  apiRequest<Exam>(`/api/exams/${id}/cancel`, { method: "POST" });
+  apiRequest<Examination>(`/api/exams/${id}/cancel`, { method: "POST" });
 
 // ---------------------------------------------------------------------------
 // Sections
@@ -250,11 +250,11 @@ export const unconfirmSection = (id: string) =>
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
-export const listTasks = (examId: string) => apiRequest<Task[]>(`/api/exams/${examId}/tasks`);
+export const listTasks = (examId: string) => apiRequest<TaskBlock[]>(`/api/exams/${examId}/tasks`);
 export const createTask = (body: Record<string, unknown>) =>
-  apiRequest<Task>("/api/tasks", { method: "POST", json: body });
+  apiRequest<TaskBlock>("/api/tasks", { method: "POST", json: body });
 export const patchTask = (id: string, patch: Record<string, unknown>) =>
-  apiRequest<Task>(`/api/tasks/${id}`, { method: "PATCH", json: patch });
+  apiRequest<TaskBlock>(`/api/tasks/${id}`, { method: "PATCH", json: patch });
 export const deleteTask = (id: string) =>
   apiRequest<void>(`/api/tasks/${id}`, { method: "DELETE" });
 export const deleteTasksBySection = (examId: string, sectionId: string) =>
@@ -278,11 +278,11 @@ export const deleteBlocksBySection = (examId: string, sectionId: string) =>
 // Answers / grades
 // ---------------------------------------------------------------------------
 export const listAnswers = (examId: string) =>
-  apiRequest<TaskAnswer[]>(`/api/exams/${examId}/answers`);
+  apiRequest<AIAnswer[]>(`/api/exams/${examId}/answers`);
 export const listGrades = (examId: string) =>
-  apiRequest<TaskGrade[]>(`/api/exams/${examId}/grades`);
+  apiRequest<Grade[]>(`/api/exams/${examId}/grades`);
 export const upsertGrade = (body: Record<string, unknown>) =>
-  apiRequest<TaskGrade>("/api/task-grades", { method: "PUT", json: body });
+  apiRequest<Grade>("/api/task-grades", { method: "PUT", json: body });
 
 // ---------------------------------------------------------------------------
 // LearningGoalHub proxy (backend-mediated; LGH itself is VPN-only)

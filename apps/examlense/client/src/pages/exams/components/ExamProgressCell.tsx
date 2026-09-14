@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { HelpCircle, Info } from "lucide-react";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { examJourney } from "@/lib/exam/exam-progress";
 import {
   parsePhaseLabel,
@@ -24,7 +24,7 @@ import { ParsingProgress } from "./ParsingProgress";
  * a failed exam shows a "Failed" badge with an info icon that reveals the
  * detailed, actionable parse error, and a task-less exam shows a dash.
  */
-export const ExamProgressCell = ({ exam }: { exam: ExamListItem }) => {
+export const ExamProgressCell = ({ exam }: { exam: ExaminationListItem }) => {
   const journey = examJourney(exam);
   // Live, page-count-based estimate while parsing (null → fall back to the
   // phase-based bar below). Hook called unconditionally per the rules of hooks.

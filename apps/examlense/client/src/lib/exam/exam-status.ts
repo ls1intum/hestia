@@ -6,9 +6,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Exam } from "./exam-helpers";
+import type { Examination } from "./exam-helpers";
 
-type ExamStatus = Exam["status"];
+type ExamStatus = Examination["status"];
 
 export interface ExamStatusMeta {
   /** User-facing badge label. */

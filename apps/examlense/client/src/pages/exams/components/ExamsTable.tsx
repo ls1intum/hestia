@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, ListFilter } from "lucide-react";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { fuzzyMatch } from "@/lib/utils/fuzzy";
 import { progressSortValue } from "@/lib/exam/exam-progress";
 import { EXAM_STATUS_META } from "@/lib/exam/exam-status";
@@ -26,7 +26,7 @@ import { ModelLogo } from "@/components/shared/ModelLogo";
 import { cn } from "@/lib/utils/utils";
 import { ExamTableRow, type ExamRowHandlers } from "./ExamTableRow";
 
-type ExamStatus = ExamListItem["status"];
+type ExamStatus = ExaminationListItem["status"];
 
 /** One selectable option in a column filter popover. */
 interface FilterOption {
@@ -109,7 +109,7 @@ const DEFAULT_DIR: Record<SortKey, SortDir> = {
   created: "desc",
 };
 
-const compare = (a: ExamListItem, b: ExamListItem, key: SortKey): number => {
+const compare = (a: ExaminationListItem, b: ExaminationListItem, key: SortKey): number => {
   switch (key) {
     case "title":
       return (a.title || "Untitled exam").localeCompare(b.title || "Untitled exam");
@@ -269,7 +269,7 @@ export const ExamsTable = ({
   handlers,
   query,
 }: {
-  exams: ExamListItem[];
+  exams: ExaminationListItem[];
   handlers: ExamRowHandlers;
   /** Controlled Title search text (the input lives in the page header). */
   query: string;

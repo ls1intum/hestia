@@ -32,7 +32,7 @@ import {
   SectionCarousel,
   type CarouselSlide,
 } from "@/components/shared/exam-content/SectionCarousel";
-import { type Task } from "@/lib/exam/exam-helpers";
+import { type TaskBlock } from "@/lib/exam/exam-helpers";
 import {
   useSectionGroups,
   useCurrentSectionId,
@@ -41,8 +41,8 @@ import { useSectionScrollMemory } from "@/hooks/ui/use-section-scroll-memory";
 import {
   effectiveScore,
   examTotals,
-  type TaskAnswer,
-  type TaskGrade,
+  type AIAnswer,
+  type Grade,
 } from "@/lib/grading/grading";
 import {
   AlertDialog,
@@ -102,7 +102,7 @@ export const GradingView = ({ examId }: Props) => {
   }, [learningGoals]);
 
   /** Falls back to id-only placeholders when LGH is down. */
-  const goalsForTask = (task: Task): TaskGoalDisplay[] =>
+  const goalsForTask = (task: TaskBlock): TaskGoalDisplay[] =>
     (task.learning_goal_ids ?? []).map(
       (gid) => goalsById.get(gid) ?? { id: gid },
     );
@@ -113,13 +113,13 @@ export const GradingView = ({ examId }: Props) => {
   );
 
   const answersById = useMemo(() => {
-    const m = new Map<string, TaskAnswer>();
+    const m = new Map<string, AIAnswer>();
     (answers ?? []).forEach((a) => m.set(a.task_id, a));
     return m;
   }, [answers]);
 
   const gradesById = useMemo(() => {
-    const m = new Map<string, TaskGrade>();
+    const m = new Map<string, Grade>();
     (grades ?? []).forEach((g) => m.set(g.task_id, g));
     return m;
   }, [grades]);
@@ -250,7 +250,7 @@ export const GradingView = ({ examId }: Props) => {
           </div>
         );
       }
-      const task: Task = item.task;
+      const task: TaskBlock = item.task;
       const label = taskLetterById.get(task.id) ?? "";
       return (
         <div key={`t-${task.id}`} id={`grading-task-${task.id}`}>

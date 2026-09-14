@@ -12,14 +12,14 @@ import {
 import { ChromeFooter } from "@/components/shared/chrome/ChromeFooter";
 import { ChromeUtilityCluster } from "@/components/shared/chrome/ChromeUtilityCluster";
 import { SectionProgressButton } from "./SectionProgressButton";
-import type { Exam, Task } from "@/lib/exam/exam-helpers";
+import type { Examination, TaskBlock } from "@/lib/exam/exam-helpers";
 
 interface Props {
-  exam: Exam;
+  exam: Examination;
   onSendToEvaluation: () => void;
   solverModelId: string | null;
   /** Tasks belonging to the currently visible section. */
-  currentSectionTasks: Task[];
+  currentSectionTasks: TaskBlock[];
   /** Lowercase labels (a, b…) for tasks of the visible section. */
   taskLetterById: Map<string, string>;
   /** True when every real section in the exam is ready. */

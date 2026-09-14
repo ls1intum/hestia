@@ -7,10 +7,10 @@ import { useUpsertTaskGrade } from "@/hooks/data/use-task-grades";
 import { usePatchTask } from "@/hooks/data/use-exam";
 import { useClickToEdit } from "@/hooks/ui/use-click-to-edit";
 import { taskAnswersKey } from "@/hooks/data/use-task-answers";
-import { autoGradeChoiceTask, type TaskAnswer, type TaskGrade } from "@/lib/grading/grading";
+import { autoGradeChoiceTask, type AIAnswer, type Grade } from "@/lib/grading/grading";
 import { AiAnswerBlock } from "@/components/shared/exam-content/read-only/AiAnswerBlock";
 import { AnswerCard } from "@/components/shared/exam-content/read-only/AnswerCard";
-import type { Task } from "@/lib/exam/exam-helpers";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
 import { cn, preventNumberWheelChange } from "@/lib/utils/utils";
 import { solveTask } from "@/lib/api/api-solve";
 
@@ -20,10 +20,10 @@ const SCORE_STEP = 0.5;
 const MAX_TICKS = 16;
 
 interface Props {
-  task: Task;
+  task: TaskBlock;
   examId: string;
-  answer: TaskAnswer | undefined;
-  grade: TaskGrade | undefined;
+  answer: AIAnswer | undefined;
+  grade: Grade | undefined;
 }
 
 /**

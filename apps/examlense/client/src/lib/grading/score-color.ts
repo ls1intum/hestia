@@ -1,7 +1,7 @@
 /**
  * Shared performance-color thresholds for score visualizations in the results
  * dashboard. `pct` is a fraction (0–1). Single source of truth so the
- * Score-per-Task chart and the per-task score bars stay in sync.
+ * Score-per-TaskBlock chart and the per-task score bars stay in sync.
  *
  * Polarity is inverted relative to a normal gradebook: the value shown is the
  * LLM's achieved score, and a HIGH LLM score is bad (the exam is exploitable),

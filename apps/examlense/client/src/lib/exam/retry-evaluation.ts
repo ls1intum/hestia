@@ -1,9 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { solveExam } from "@/lib/api/api-solve";
 import { toast } from "@/hooks/ui/use-toast";
 
-type RetryableExam = Pick<ExamListItem, "id">;
+type RetryableExam = Pick<ExaminationListItem, "id">;
 
 /**
  * Re-run evaluation for an exam that failed while solving (or was cancelled
