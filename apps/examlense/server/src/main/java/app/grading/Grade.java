@@ -28,7 +28,6 @@ public class Grade {
     @Column(name = "auto_graded", nullable = false)
     private boolean autoGraded = false;
 
-    private String feedback;
 
     @Column(name = "graded_by")
     private UUID gradedBy;
@@ -51,8 +50,6 @@ public class Grade {
     public void setScore(BigDecimal score) { this.score = score; }
     public boolean isAutoGraded() { return autoGraded; }
     public void setAutoGraded(boolean autoGraded) { this.autoGraded = autoGraded; }
-    public String getFeedback() { return feedback; }
-    public void setFeedback(String feedback) { this.feedback = feedback; }
     public UUID getGradedBy() { return gradedBy; }
     public void setGradedBy(UUID gradedBy) { this.gradedBy = gradedBy; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

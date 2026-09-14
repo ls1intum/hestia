@@ -18,7 +18,6 @@ export interface UpsertGradeInput {
   exam_id: string;
   score: number | null;
   auto_graded: boolean;
-  feedback: string | null;
 }
 
 export function useUpsertTaskGrade(examId: string | undefined) {
@@ -31,7 +30,6 @@ export function useUpsertTaskGrade(examId: string | undefined) {
         exam_id: input.exam_id,
         score: input.score,
         auto_graded: input.auto_graded,
-        feedback: input.feedback,
       });
     },
     onSuccess: () => {

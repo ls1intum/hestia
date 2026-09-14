@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class GradeController {
 
     public record UpsertGradeRequest(String task_id, String exam_id, BigDecimal score,
-                                     boolean auto_graded, String feedback) {}
+                                     boolean auto_graded) {}
 
     private final GradeRepository gradeRepository;
     private final TaskBlockRepository taskRepository;
@@ -85,7 +85,6 @@ public class GradeController {
         g.setExamId(task.getExamId());
         g.setScore(req.score());
         g.setAutoGraded(req.auto_graded());
-        g.setFeedback(req.feedback());
         g.setGradedBy(UUID.fromString(userId));
         return GradeDto.from(gradeRepository.save(g));
     }

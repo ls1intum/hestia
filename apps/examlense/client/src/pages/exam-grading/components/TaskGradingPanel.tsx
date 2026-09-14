@@ -61,7 +61,6 @@ export const TaskGradingPanel = ({ task, examId, answer, grade }: Props) => {
       exam_id: examId,
       score: nextScore,
       auto_graded: autoFlag,
-      feedback: null,
     });
   };
 

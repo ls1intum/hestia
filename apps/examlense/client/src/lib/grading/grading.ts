@@ -18,7 +18,6 @@ export interface Grade {
   exam_id: string;
   score: number | null;
   auto_graded: boolean;
-  feedback: string | null;
   graded_by: string | null;
   created_at: string;
   updated_at: string;
