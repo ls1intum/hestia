@@ -2,9 +2,9 @@ package app.lgh;
 
 import app.shared.Access;
 import app.error.ApiException;
-import app.exam.Exam;
-import app.task.Task;
-import app.task.TaskRepository;
+import app.examination.Examination;
+import app.taskblock.TaskBlock;
+import app.taskblock.TaskBlockRepository;
 import app.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -47,9 +47,9 @@ public class LghController {
 
     private final LearningGoalHubClient client;
     private final Access access;
-    private final TaskRepository taskRepository;
+    private final TaskBlockRepository taskRepository;
 
-    public LghController(LearningGoalHubClient client, Access access, TaskRepository taskRepository) {
+    public LghController(LearningGoalHubClient client, Access access, TaskBlockRepository taskRepository) {
         this.client = client;
         this.access = access;
         this.taskRepository = taskRepository;
@@ -102,11 +102,11 @@ public class LghController {
     @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable; the client falls back to `Goal #id` placeholders.")
     @GetMapping("/exams/{id}/learning-goals")
     public List<LearningGoalDto> examLearningGoals(@PathVariable String id, @CurrentUser String userId) {
-        Exam exam = access.requireExam(Access.id(id), userId);
+        Examination exam = access.requireExamination(Access.id(id), userId);
         if (exam.getLghCourseId() == null) return List.of();
 
         Set<Long> taskGoalIds = new HashSet<>();
-        for (Task t : taskRepository.findByExamIdOrderByPositionAsc(exam.getId())) {
+        for (TaskBlock t : taskRepository.findByExamIdOrderByPositionAsc(exam.getId())) {
             if (t.getLearningGoalIds() != null) taskGoalIds.addAll(t.getLearningGoalIds());
         }
         if (taskGoalIds.isEmpty()) return List.of();

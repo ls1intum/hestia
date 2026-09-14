@@ -1,15 +1,15 @@
 package app;
 
-import app.exam.Exam;
+import app.examination.Examination;
 import app.section.Section;
 import app.section.SectionBlock;
-import app.task.Task;
-import app.task.TaskAnswer;
-import app.exam.ExamRepository;
+import app.taskblock.TaskBlock;
+import app.taskblock.AIAnswer;
+import app.examination.ExaminationRepository;
 import app.section.SectionBlockRepository;
 import app.section.SectionRepository;
-import app.task.TaskAnswerRepository;
-import app.task.TaskRepository;
+import app.taskblock.AIAnswerRepository;
+import app.taskblock.TaskBlockRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,12 +26,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class SchemaIntegrityIT extends AbstractIntegrationTest {
 
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
     @Autowired app.user.UserRepository users;
     @Autowired SectionRepository sections;
-    @Autowired TaskRepository tasks;
+    @Autowired TaskBlockRepository tasks;
     @Autowired SectionBlockRepository blocks;
-    @Autowired TaskAnswerRepository answers;
+    @Autowired AIAnswerRepository answers;
 
     /** A real user, because {@code exams.owner_id} is now a foreign key. */
     private UUID owner() {
@@ -41,8 +41,8 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
 
     private UUID owner;
 
-    private Exam newExam(String status) {
-        Exam e = new Exam();
+    private Examination newExamination(String status) {
+        Examination e = new Examination();
         e.setOwnerId(owner());
         e.setSource("manual");
         e.setStatus(status);
@@ -56,8 +56,8 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
         return sections.save(s);
     }
 
-    private Task newTask(UUID examId, UUID sectionId) {
-        Task t = new Task();
+    private TaskBlock newTaskBlock(UUID examId, UUID sectionId) {
+        TaskBlock t = new TaskBlock();
         t.setExamId(examId);
         t.setSectionId(sectionId);
         t.setPosition(0);
@@ -66,17 +66,17 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void deletingAnExamCascadesToAllItsChildrenIncludingAnswers() {
-        Exam exam = newExam("draft");
+    void deletingAnExaminationCascadesToAllItsChildrenIncludingAnswers() {
+        Examination exam = newExamination("draft");
         Section section = newSection(exam.getId());
-        Task task = newTask(exam.getId(), section.getId());
+        TaskBlock task = newTaskBlock(exam.getId(), section.getId());
         SectionBlock block = new SectionBlock();
         block.setSectionId(section.getId());
         block.setExamId(exam.getId());
         block.setPosition(0);
         block.setContent("ctx");
         blocks.save(block);
-        TaskAnswer answer = new TaskAnswer();
+        AIAnswer answer = new AIAnswer();
         answer.setTaskId(task.getId());
         answer.setExamId(exam.getId());
         answer.setProvider("openai");
@@ -93,10 +93,10 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void deletingATaskCascadesToItsAnswers() {
-        Exam exam = newExam("draft");
-        Task task = newTask(exam.getId(), null);
-        TaskAnswer answer = new TaskAnswer();
+    void deletingATaskBlockCascadesToItsAnswers() {
+        Examination exam = newExamination("draft");
+        TaskBlock task = newTaskBlock(exam.getId(), null);
+        AIAnswer answer = new AIAnswer();
         answer.setTaskId(task.getId());
         answer.setExamId(exam.getId());
         answer.setProvider("openai");
@@ -110,7 +110,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
 
     @Test
     void invalidStatusIsRejectedByTheCheckConstraint() {
-        Exam bad = new Exam();
+        Examination bad = new Examination();
         bad.setOwnerId(owner()); // a real owner, so the failure can only be the status CHECK
         bad.setSource("manual");
         bad.setStatus("not-a-real-status");
@@ -131,7 +131,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
 
     @Test
     void examOwnerMustReferenceARealUser() {
-        Exam orphan = new Exam();
+        Examination orphan = new Examination();
         orphan.setOwnerId(UUID.randomUUID());
         orphan.setSource("manual");
         orphan.setStatus("draft");
@@ -141,9 +141,9 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void invalidTaskTypeIsRejectedByTheCheckConstraint() {
-        Exam exam = newExam("draft");
-        Task bad = new Task();
+    void invalidTaskBlockTypeIsRejectedByTheCheckConstraint() {
+        Examination exam = newExamination("draft");
+        TaskBlock bad = new TaskBlock();
         bad.setExamId(exam.getId());
         bad.setPosition(0);
         bad.setType("essay"); // not in (single_choice, multiple_choice, text)

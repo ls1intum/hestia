@@ -1,8 +1,8 @@
 package app.shared;
 
 import app.error.ApiException;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.section.SectionRepository;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,42 +21,42 @@ import static org.mockito.Mockito.when;
  */
 class AccessTest {
 
-    private final ExamRepository exams = mock(ExamRepository.class);
+    private final ExaminationRepository exams = mock(ExaminationRepository.class);
     private final SectionRepository sections = mock(SectionRepository.class);
     private final Access access = new Access(exams, sections);
 
-    private static Exam ownedBy(UUID owner) {
-        Exam e = new Exam();
+    private static Examination ownedBy(UUID owner) {
+        Examination e = new Examination();
         e.setOwnerId(owner);
         return e;
     }
 
     @Test
-    void returnsExamToItsOwner() {
+    void returnsExaminationToItsOwner() {
         UUID owner = UUID.randomUUID();
         UUID examId = UUID.randomUUID();
-        Exam exam = ownedBy(owner);
+        Examination exam = ownedBy(owner);
         when(exams.findById(examId)).thenReturn(Optional.of(exam));
 
-        assertThat(access.requireExam(examId, owner.toString())).isSameAs(exam);
+        assertThat(access.requireExamination(examId, owner.toString())).isSameAs(exam);
     }
 
     @Test
-    void forbidsAccessToAnotherUsersExam() {
+    void forbidsAccessToAnotherUsersExamination() {
         UUID examId = UUID.randomUUID();
         when(exams.findById(examId)).thenReturn(Optional.of(ownedBy(UUID.randomUUID())));
 
-        assertThatThrownBy(() -> access.requireExam(examId, UUID.randomUUID().toString()))
+        assertThatThrownBy(() -> access.requireExamination(examId, UUID.randomUUID().toString()))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     @Test
-    void unknownExamIs404() {
+    void unknownExaminationIs404() {
         UUID examId = UUID.randomUUID();
         when(exams.findById(examId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> access.requireExam(examId, UUID.randomUUID().toString()))
+        assertThatThrownBy(() -> access.requireExamination(examId, UUID.randomUUID().toString()))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.NOT_FOUND));
     }

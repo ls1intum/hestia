@@ -4,7 +4,7 @@ import app.ai.AiProvider;
 import java.util.UUID;
 
 /**
- * Mutable per-parse accumulator. {@link ParseExamService#runAsync} creates one
+ * Mutable per-parse accumulator. {@link ParseExaminationService#runAsync} creates one
  * at the top of the pipeline and populates fields as it progresses; a
  * try/finally hands it to {@link ParseMetricsRecorder} on every exit path so
  * exactly one {@code parse_metrics} row is written per parse (success or failure).

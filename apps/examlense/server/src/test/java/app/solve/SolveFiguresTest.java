@@ -2,7 +2,7 @@ package app.solve;
 
 import app.ai.AiProvider;
 import app.ai.SolverStrategies;
-import app.grading.TaskGradeRepository;
+import app.grading.GradeRepository;
 import app.prompts.Prompts;
 import app.section.Section;
 import app.section.SectionBlock;
@@ -12,7 +12,7 @@ import app.section.SectionFigureRepository;
 import app.section.SectionRepository;
 import app.sse.SseHub;
 import app.storage.StorageService;
-import app.task.TaskAnswerRepository;
+import app.taskblock.AIAnswerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -61,7 +61,7 @@ class SolveFiguresTest {
         storage = mock(StorageService.class);
         core = new SolveCore(
             sectionRepository, blockRepository, figureRepository, storage,
-            mock(TaskAnswerRepository.class), mock(TaskGradeRepository.class),
+            mock(AIAnswerRepository.class), mock(GradeRepository.class),
             mock(PlatformTransactionManager.class), mock(SseHub.class));
 
         Section section = new Section();

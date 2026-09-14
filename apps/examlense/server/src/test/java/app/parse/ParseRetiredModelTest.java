@@ -3,8 +3,8 @@ package app.parse;
 import app.user.LlmQuotaService;
 import app.ai.AiProviderFactory;
 import app.error.ApiException;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.storage.StorageService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -31,20 +31,20 @@ class ParseRetiredModelTest {
     private static final UUID EXAM_ID = UUID.fromString("00000000-0000-0000-0000-000000000009");
     private static final UUID OWNER = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
 
-    private final ExamRepository examRepository = mock(ExamRepository.class);
+    private final ExaminationRepository examRepository = mock(ExaminationRepository.class);
     private final ParseProgress progress = mock(ParseProgress.class);
     private final ParseInputBuilder inputBuilder = mock(ParseInputBuilder.class);
 
-    private ParseExamService service() {
-        return new ParseExamService(
+    private ParseExaminationService service() {
+        return new ParseExaminationService(
             examRepository, mock(StorageService.class), mock(AiProviderFactory.class),
-            mock(PdfPageCounter.class), inputBuilder, mock(ParsedExamPersister.class),
+            mock(PdfPageCounter.class), inputBuilder, mock(ParsedExaminationPersister.class),
             mock(ParseMetricsRecorder.class), progress,
             mock(app.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class));
     }
 
-    private void withExam() {
-        Exam exam = new Exam();
+    private void withExamination() {
+        Examination exam = new Examination();
         exam.setId(EXAM_ID);
         exam.setOwnerId(OWNER);
         when(examRepository.findById(EXAM_ID)).thenReturn(Optional.of(exam));
@@ -52,7 +52,7 @@ class ParseRetiredModelTest {
 
     @Test
     void preflightRefusesARetiredParserModel() {
-        withExam();
+        withExamination();
 
         assertThatThrownBy(() ->
             service().preflight(EXAM_ID.toString(), OWNER.toString(), "qwen3.6-35b-a3b"))
@@ -64,21 +64,21 @@ class ParseRetiredModelTest {
         // Nothing was started: no status flip, no rasterize, no work queued.
         verify(examRepository, never()).save(any());
         verify(inputBuilder, never()).build(any(), any(), any());
-        verify(progress, never()).notifyExam(any());
+        verify(progress, never()).notifyExamination(any());
     }
 
     @Test
     void preflightStillAcceptsACurrentModel() {
-        withExam();
+        withExamination();
 
         assertThat(service().preflight(EXAM_ID.toString(), OWNER.toString(), "gemini-3.5-flash").id())
             .isEqualTo("gemini-3.5-flash");
-        verify(progress).notifyExam(EXAM_ID);
+        verify(progress).notifyExamination(EXAM_ID);
     }
 
     @Test
     void anUnknownIdStillFallsBackToTheDefaultRatherThanFailing() {
-        withExam();
+        withExamination();
 
         // Unknown ≠ retired: a typo or a client from a newer build should not
         // block a parse, and the registry's default already covers it.

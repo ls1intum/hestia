@@ -5,12 +5,12 @@ import app.ai.AiProviderFactory;
 import app.ai.SolverStrategies;
 import app.ai.SolverStrategy;
 import app.shared.Access;
-import app.exam.Exam;
+import app.examination.Examination;
 import app.section.Section;
-import app.task.Task;
-import app.task.TaskAnswer;
+import app.taskblock.TaskBlock;
+import app.taskblock.AIAnswer;
 import app.section.SectionRepository;
-import app.task.TaskRepository;
+import app.taskblock.TaskBlockRepository;
 import app.prompts.Prompts;
 import org.springframework.stereotype.Service;
 
@@ -44,14 +44,14 @@ public class SolveSectionService {
     private static final long SOLVE_LOCK_TTL_SECONDS = 15 * 60;
 
     private final SectionRepository sectionRepository;
-    private final TaskRepository taskRepository;
+    private final TaskBlockRepository taskRepository;
     private final AiProviderFactory providerFactory;
     private final Access access;
     private final SolveCore core;
 
     public SolveSectionService(
         SectionRepository sectionRepository,
-        TaskRepository taskRepository,
+        TaskBlockRepository taskRepository,
         AiProviderFactory providerFactory,
         Access access,
         SolveCore core
@@ -69,7 +69,7 @@ public class SolveSectionService {
         UUID examUuid = Access.id(examId);
         UUID sectionUuid = sectionId == null ? null : Access.id(sectionId);
 
-        Exam exam = access.requireExam(examUuid, userId);
+        Examination exam = access.requireExamination(examUuid, userId);
 
         // Solve lock for real sections (unassigned bucket is single-shot).
         if (sectionUuid != null) {
@@ -88,17 +88,17 @@ public class SolveSectionService {
         }
     }
 
-    private Result doSolve(UUID examId, UUID sectionId, Exam exam) {
+    private Result doSolve(UUID examId, UUID sectionId, Examination exam) {
         SolverStrategy strategy = SolverStrategies.resolve(exam.getSolverModel());
         SolveCore.PromptContext ctx =
             core.loadContext(examId, sectionId, strategy.supportsVision());
 
-        // Tasks for this section (or unassigned bucket), ordered by position.
-        List<Task> taskEntities = sectionId != null
+        // TaskBlockBlocks for this section (or unassigned bucket), ordered by position.
+        List<TaskBlock> taskEntities = sectionId != null
             ? taskRepository.findByExamIdAndSectionIdOrderByPositionAsc(examId, sectionId)
             : taskRepository.findByExamIdAndSectionIdIsNullOrderByPositionAsc(examId);
-        List<Prompts.TaskPromptInfo> tasks = new ArrayList<>();
-        for (Task t : taskEntities) tasks.add(core.toTaskInfo(t));
+        List<Prompts.TaskBlockPromptInfo> tasks = new ArrayList<>();
+        for (TaskBlock t : taskEntities) tasks.add(core.toTaskBlockInfo(t));
         if (tasks.isEmpty()) {
             return new Result("no_tasks", 0, 0);
         }
@@ -114,8 +114,8 @@ public class SolveSectionService {
         // Second pass: re-ask only for omitted task ids.
         Set<String> answeredIds = new HashSet<>();
         for (Map<String, Object> a : allAnswers) answeredIds.add((String) a.get("task_id"));
-        List<Prompts.TaskPromptInfo> missing = new ArrayList<>();
-        for (Prompts.TaskPromptInfo t : tasks) if (!answeredIds.contains(t.id())) missing.add(t);
+        List<Prompts.TaskBlockPromptInfo> missing = new ArrayList<>();
+        for (Prompts.TaskBlockPromptInfo t : tasks) if (!answeredIds.contains(t.id())) missing.add(t);
         if (!missing.isEmpty()) {
             try {
                 SolveCore.AskResult retry = core.askForAnswers(
@@ -124,7 +124,7 @@ public class SolveSectionService {
                         + " task(s) previously. Provide an answer for every listed task id this time."
                 );
                 Set<String> wanted = new HashSet<>();
-                for (Prompts.TaskPromptInfo t : missing) wanted.add(t.id());
+                for (Prompts.TaskBlockPromptInfo t : missing) wanted.add(t.id());
                 for (Map<String, Object> a : retry.answers()) {
                     String id = (String) a.get("task_id");
                     if (wanted.contains(id) && !answeredIds.contains(id)) {
@@ -146,12 +146,12 @@ public class SolveSectionService {
             }
         }
 
-        Map<String, Prompts.TaskPromptInfo> byId = new HashMap<>();
-        for (Prompts.TaskPromptInfo t : tasks) byId.put(t.id(), t);
+        Map<String, Prompts.TaskBlockPromptInfo> byId = new HashMap<>();
+        for (Prompts.TaskBlockPromptInfo t : tasks) byId.put(t.id(), t);
 
-        List<TaskAnswer> rows = new ArrayList<>();
+        List<AIAnswer> rows = new ArrayList<>();
         for (Map<String, Object> a : allAnswers) {
-            Prompts.TaskPromptInfo task = byId.get((String) a.get("task_id"));
+            Prompts.TaskBlockPromptInfo task = byId.get((String) a.get("task_id"));
             if (task == null) continue;
             rows.add(core.toAnswerRow(task, examId, a, provider.name(), model));
         }

@@ -88,7 +88,7 @@ public class OpenApiConfig {
      * declares no {@code content} the *handler's return type*, so a plain
      * {@code @ApiResponse(responseCode = "409", description = ...)} on
      * {@code PATCH /api/exams/{id}} would otherwise document a 409 as returning an
-     * {@code ExamDto}.
+     * {@code ExaminationDto}.
      *
      * Hence the two cases, which are the inverse of what they look like:
      * <ul>

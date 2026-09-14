@@ -158,7 +158,7 @@ public class FigureController {
     private SectionBlock requireBlock(UUID blockId, String userId) {
         SectionBlock block = blockRepository.findById(blockId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Block not found"));
-        access.requireExam(block.getExamId(), userId);
+        access.requireExamination(block.getExamId(), userId);
         return block;
     }
 

@@ -3,19 +3,19 @@ package app.solve;
 import app.ai.AiExceptions;
 import app.ai.AiProvider;
 import app.error.ApiException;
-import app.exam.Exam;
+import app.examination.Examination;
 import app.section.Section;
 import app.section.SectionBlock;
-import app.task.Task;
-import app.task.TaskAnswer;
-import app.task.TaskOption;
+import app.taskblock.TaskBlock;
+import app.taskblock.AIAnswer;
+import app.taskblock.AnswerOption;
 import app.section.SectionBlockRepository;
 import app.section.SectionFigure;
 import app.section.SectionFigureRepository;
 import app.section.SectionRepository;
 import app.storage.StorageService;
-import app.task.TaskAnswerRepository;
-import app.grading.TaskGradeRepository;
+import app.taskblock.AIAnswerRepository;
+import app.grading.GradeRepository;
 import app.prompts.Prompts;
 import app.sse.SseHub;
 import org.slf4j.Logger;
@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Machinery shared by {@link SolveSectionService} and {@link SolveTaskService}:
+ * Machinery shared by {@link SolveSectionService} and {@link SolveTaskBlockService}:
  * prompt-context assembly, the submit_answers tool call with transient-error
  * retry, answer mapping, and the atomic replace-answers-and-invalidate-grades
  * write. Solving one task is solving a section restricted to a one-task
@@ -59,8 +59,8 @@ class SolveCore {
     private final SectionBlockRepository sectionBlockRepository;
     private final SectionFigureRepository sectionFigureRepository;
     private final StorageService storage;
-    private final TaskAnswerRepository taskAnswerRepository;
-    private final TaskGradeRepository taskGradeRepository;
+    private final AIAnswerRepository taskAnswerRepository;
+    private final GradeRepository taskGradeRepository;
     private final TransactionTemplate txTemplate;
     private final SseHub sse;
 
@@ -69,8 +69,8 @@ class SolveCore {
         SectionBlockRepository sectionBlockRepository,
         SectionFigureRepository sectionFigureRepository,
         StorageService storage,
-        TaskAnswerRepository taskAnswerRepository,
-        TaskGradeRepository taskGradeRepository,
+        AIAnswerRepository taskAnswerRepository,
+        GradeRepository taskGradeRepository,
         PlatformTransactionManager txManager,
         SseHub sse
     ) {
@@ -190,23 +190,23 @@ class SolveCore {
         return "image/png";
     }
 
-    String systemPrompt(Exam exam) {
-        return Prompts.buildSystemPrompt(new Prompts.ExamPromptInfo(
+    String systemPrompt(Examination exam) {
+        return Prompts.buildSystemPrompt(new Prompts.ExaminationPromptInfo(
             exam.getId().toString(),
             exam.getTitle(),
             exam.getCourse()
         ));
     }
 
-    Prompts.TaskPromptInfo toTaskInfo(Task t) {
-        List<Prompts.TaskOptionPromptInfo> opts = null;
+    Prompts.TaskBlockPromptInfo toTaskBlockInfo(TaskBlock t) {
+        List<Prompts.AnswerOptionPromptInfo> opts = null;
         if (t.getOptions() != null) {
             opts = new ArrayList<>();
-            for (TaskOption o : t.getOptions()) {
-                opts.add(new Prompts.TaskOptionPromptInfo(o.id(), o.text()));
+            for (AnswerOption o : t.getOptions()) {
+                opts.add(new Prompts.AnswerOptionPromptInfo(o.id(), o.text()));
             }
         }
-        return new Prompts.TaskPromptInfo(
+        return new Prompts.TaskBlockPromptInfo(
             t.getId().toString(),
             t.getSectionId() == null ? null : t.getSectionId().toString(),
             t.getPosition(),
@@ -224,7 +224,7 @@ class SolveCore {
     @SuppressWarnings("unchecked")
     AskResult askForAnswers(
         AiProvider provider, String systemPrompt,
-        PromptContext ctx, List<Prompts.TaskPromptInfo> subset, String extraInstruction
+        PromptContext ctx, List<Prompts.TaskBlockPromptInfo> subset, String extraInstruction
     ) {
         String base = Prompts.buildSectionUserPrompt(ctx.section(), ctx.blocks(), subset);
         String userPrompt = extraInstruction == null ? base : base + "\n\n" + extraInstruction;
@@ -258,17 +258,17 @@ class SolveCore {
     }
 
     /**
-     * Map one raw model answer onto a {@link TaskAnswer} row, keeping only
+     * Map one raw model answer onto a {@link AIAnswer} row, keeping only
      * option ids that actually exist on the task.
      */
-    TaskAnswer toAnswerRow(
-        Prompts.TaskPromptInfo task, UUID examId,
+    AIAnswer toAnswerRow(
+        Prompts.TaskBlockPromptInfo task, UUID examId,
         Map<String, Object> answer, String providerName, String model
     ) {
         boolean isChoice = !"text".equals(task.type());
         Set<String> validOptionIds = new HashSet<>();
         if (task.options() != null) {
-            for (Prompts.TaskOptionPromptInfo o : task.options()) validOptionIds.add(o.id());
+            for (Prompts.AnswerOptionPromptInfo o : task.options()) validOptionIds.add(o.id());
         }
         List<UUID> selected = new ArrayList<>();
         Object rawSelected = answer.get("selected_option_ids");
@@ -278,7 +278,7 @@ class SolveCore {
             }
         }
 
-        TaskAnswer row = new TaskAnswer();
+        AIAnswer row = new AIAnswer();
         row.setTaskId(UUID.fromString(task.id()));
         row.setExamId(examId);
         row.setSelectedOptionIds(selected);
@@ -294,10 +294,10 @@ class SolveCore {
      * atomically, so a mid-write failure can't leave deleted-but-not-rewritten
      * answers. Emits a progress event afterwards (SseHub never throws).
      */
-    void replaceAnswers(UUID examId, List<TaskAnswer> rows) {
+    void replaceAnswers(UUID examId, List<AIAnswer> rows) {
         if (rows.isEmpty()) return;
         List<UUID> taskIds = new ArrayList<>();
-        for (TaskAnswer r : rows) taskIds.add(r.getTaskId());
+        for (AIAnswer r : rows) taskIds.add(r.getTaskId());
         txTemplate.executeWithoutResult(s -> {
             taskAnswerRepository.deleteByTaskIdIn(taskIds);
             taskAnswerRepository.saveAll(rows);

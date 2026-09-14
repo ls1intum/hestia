@@ -2,8 +2,8 @@ package app.storage;
 
 import app.AbstractIntegrationTest;
 import app.shared.DefaultUser;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,11 +28,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class FileControllerIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
     @Autowired SignedUrls signedUrls;
 
-    private Exam ownExam() {
-        Exam e = new Exam();
+    private Examination ownExamination() {
+        Examination e = new Examination();
         e.setOwnerId(DefaultUser.ID);
         e.setSource("pdf");
         e.setStatus("draft");
@@ -41,7 +41,7 @@ class FileControllerIT extends AbstractIntegrationTest {
 
     @Test
     void uploadThenFetchViaSignedUrlRoundTrips() throws Exception {
-        Exam exam = ownExam();
+        Examination exam = ownExamination();
         byte[] pdf = "%PDF-1.4 fake".getBytes();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", pdf);
 
@@ -63,7 +63,7 @@ class FileControllerIT extends AbstractIntegrationTest {
 
     @Test
     void fetchWithATamperedSignatureIsForbidden() throws Exception {
-        Exam exam = ownExam();
+        Examination exam = ownExamination();
         // Must be a real PDF (magic bytes) or the upload is rejected before we get a path.
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "%PDF-1.4 x".getBytes());
         String storagePath = extractPath(mvc.perform(multipart("/api/exams/" + exam.getId() + "/pdf")
@@ -79,7 +79,7 @@ class FileControllerIT extends AbstractIntegrationTest {
 
     @Test
     void uploadRequiresAToken() throws Exception {
-        Exam exam = ownExam();
+        Examination exam = ownExamination();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
         mvc.perform(multipart("/api/exams/" + exam.getId() + "/pdf").file(file))

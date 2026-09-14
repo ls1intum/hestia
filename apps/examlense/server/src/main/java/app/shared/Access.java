@@ -1,9 +1,9 @@
 package app.shared;
 
 import app.error.ApiException;
-import app.exam.Exam;
+import app.examination.Examination;
 import app.section.Section;
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import app.section.SectionRepository;
 import java.util.UUID;
 import java.util.function.Function;
@@ -19,17 +19,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class Access {
 
-    private final ExamRepository examRepository;
+    private final ExaminationRepository examRepository;
     private final SectionRepository sectionRepository;
 
-    public Access(ExamRepository examRepository, SectionRepository sectionRepository) {
+    public Access(ExaminationRepository examRepository, SectionRepository sectionRepository) {
         this.examRepository = examRepository;
         this.sectionRepository = sectionRepository;
     }
 
     /** Load an exam and verify the caller owns it; 404 if missing, 403 if not owner. */
-    public Exam requireExam(UUID examId, String userId) {
-        Exam exam = examRepository.findById(examId)
+    public Examination requireExamination(UUID examId, String userId) {
+        Examination exam = examRepository.findById(examId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found"));
         if (!exam.getOwnerId().toString().equals(userId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Forbidden");
@@ -48,7 +48,7 @@ public class Access {
     ) {
         T child = repository.findById(id(id))
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, label + " not found"));
-        requireExam(examIdOf.apply(child), userId);
+        requireExamination(examIdOf.apply(child), userId);
         return child;
     }
 
@@ -56,7 +56,7 @@ public class Access {
      * Assert that a section exists and belongs to the given exam — guards
      * cross-exam reassignment when a PATCH moves a task/block between sections.
      */
-    public void requireSectionInExam(UUID sectionId, UUID examId) {
+    public void requireSectionInExamination(UUID sectionId, UUID examId) {
         Section section = sectionRepository.findById(sectionId)
             .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Unknown section"));
         if (!section.getExamId().equals(examId)) {

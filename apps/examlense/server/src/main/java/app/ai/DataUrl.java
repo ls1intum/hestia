@@ -2,7 +2,7 @@ package app.ai;
 
 /**
  * Parsed {@code data:<mime>;base64,<data>} URL. Shared by the provider clients
- * that need to unpack the data URLs {@code ParseExamService} encodes page
+ * that need to unpack the data URLs {@code ParseExaminationService} encodes page
  * images and PDFs into.
  */
 record DataUrl(String mediaType, String data) {

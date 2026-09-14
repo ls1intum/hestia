@@ -2,8 +2,8 @@ package app.storage;
 import app.shared.Access;
 
 import app.error.ApiException;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.parse.DocxToPdfConverter;
 import app.parse.PdfPageCounter;
 import app.security.CurrentUser;
@@ -38,13 +38,13 @@ public class FileController {
     private static final String PDF_BUCKET = "exam-pdfs";
 
     private final StorageService storage;
-    private final ExamRepository examRepository;
+    private final ExaminationRepository examRepository;
     private final Access access;
     private final SignedUrls signedUrls;
     private final DocxToPdfConverter docxConverter;
     private final PdfPageCounter pageCounter;
 
-    public FileController(StorageService storage, ExamRepository examRepository,
+    public FileController(StorageService storage, ExaminationRepository examRepository,
                           Access access, SignedUrls signedUrls,
                           DocxToPdfConverter docxConverter, PdfPageCounter pageCounter) {
         this.storage = storage;
@@ -86,7 +86,7 @@ public class FileController {
                                          @Parameter(description = "The exam PDF or Word .docx.")
                                          MultipartFile file,
                                          @CurrentUser String userId) throws IOException {
-        Exam exam = access.requireExam(Access.id(examId), userId);
+        Examination exam = access.requireExamination(Access.id(examId), userId);
         byte[] bytes = file.getBytes();
         byte[] pdfBytes;
         // ZIP is matched first by its exact byte-0 magic (PK\x03\x04); the PDF check

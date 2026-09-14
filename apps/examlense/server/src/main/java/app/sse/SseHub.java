@@ -1,6 +1,6 @@
 package app.sse;
 
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
@@ -36,9 +36,9 @@ public class SseHub {
 
     private final Map<String, Set<SseEmitter>> topics = new ConcurrentHashMap<>();
 
-    private final ExamRepository exams;
+    private final ExaminationRepository exams;
 
-    public SseHub(ExamRepository exams) {
+    public SseHub(ExaminationRepository exams) {
         this.exams = exams;
     }
 
@@ -108,7 +108,7 @@ public class SseHub {
         log.debug("SSE emitter for topic {} dropped: {}", topic, cause.getMessage());
     }
 
-    /** Exam status/phase changed — notify that exam's subscribers and its owner's list. */
+    /** Examination status/phase changed — notify that exam's subscribers and its owner's list. */
     public void examUpdated(UUID examId) {
         Map<String, Object> data = Map.of("exam_id", examId.toString());
         publish("exam:" + examId, "exam", data);
@@ -126,7 +126,7 @@ public class SseHub {
         publishToOwnerList(examId, data);
     }
 
-    /** Task rows changed server-side (e.g. learning goals were generated). */
+    /** TaskBlock rows changed server-side (e.g. learning goals were generated). */
     public void tasksUpdated(UUID examId) {
         publish("exam:" + examId, "tasks", Map.of("exam_id", examId.toString()));
     }

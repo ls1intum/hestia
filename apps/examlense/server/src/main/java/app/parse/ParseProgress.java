@@ -1,6 +1,6 @@
 package app.parse;
 
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import app.sse.SseHub;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -17,10 +17,10 @@ class ParseProgress {
 
     private static final Logger log = LoggerFactory.getLogger(ParseProgress.class);
 
-    private final ExamRepository examRepository;
+    private final ExaminationRepository examRepository;
     private final SseHub sse;
 
-    ParseProgress(ExamRepository examRepository, SseHub sse) {
+    ParseProgress(ExaminationRepository examRepository, SseHub sse) {
         this.examRepository = examRepository;
         this.sse = sse;
     }
@@ -34,7 +34,7 @@ class ParseProgress {
         }
     }
 
-    void notifyExam(UUID examId) {
+    void notifyExamination(UUID examId) {
         // Guarded like every other method here: this one runs inside `preflight`,
         // on the request thread, BEFORE the parse is dispatched — so anything
         // escaping it would 500 the POST and the parse would never start at all.

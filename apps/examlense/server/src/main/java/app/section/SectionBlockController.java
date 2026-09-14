@@ -50,7 +50,7 @@ public class SectionBlockController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/blocks")
     public List<SectionDtos.BlockDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExam(Access.id(examId), userId);
+        access.requireExamination(Access.id(examId), userId);
         return blockRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
             .stream().map(SectionDtos.BlockDto::from).toList();
     }
@@ -63,7 +63,7 @@ public class SectionBlockController {
     @PostMapping("/blocks")
     public SectionDtos.BlockDto create(@RequestBody CreateBlockRequest req, @CurrentUser String userId) {
         UUID examId = Access.id(req.exam_id());
-        access.requireExam(examId, userId);
+        access.requireExamination(examId, userId);
         SectionBlock b = new SectionBlock();
         b.setExamId(examId);
         b.setSectionId(Access.id(req.section_id()));
@@ -93,7 +93,7 @@ public class SectionBlockController {
         if (Patch.has(body, "section_id")) {
             UUID sectionId = Patch.uuid(body.get("section_id"));
             // Guard cross-exam reassignment: the target section must belong to this block's exam.
-            if (sectionId != null) access.requireSectionInExam(sectionId, b.getExamId());
+            if (sectionId != null) access.requireSectionInExamination(sectionId, b.getExamId());
             b.setSectionId(sectionId);
         }
         return SectionDtos.BlockDto.from(blockRepository.save(b));
@@ -122,7 +122,7 @@ public class SectionBlockController {
                                                  @Parameter(description = "Section whose blocks are removed.")
                                                  String sectionId,
                                                  @CurrentUser String userId) {
-        access.requireExam(Access.id(examId), userId);
+        access.requireExamination(Access.id(examId), userId);
         blockRepository.deleteByExamIdAndSectionId(Access.id(examId), Access.id(sectionId));
         return ResponseEntity.noContent().build();
     }
