@@ -68,6 +68,41 @@ The library registers an `EnvironmentPostProcessor` that fills in low-priority d
 | `spring.ai.openai.embedding.options.model`     | `e5-mistral-7b-instruct`                 |
 | `spring.ai.openai.chat.options.vision-model`   | `qwen3.5-27b`                            |
 
+### Logos instead of SAIA
+
+The library also knows the [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway run by TUM
+AET, which speaks the same OpenAI API. Start the app with the `logos` profile and the defaults above
+change to Logos's endpoint and its model ids:
+
+| Property                                       | Default under `logos`                    |
+|------------------------------------------------|------------------------------------------|
+| `spring.ai.openai.base-url`                    | `https://logos.aet.cit.tum.de`           |
+| `spring.ai.openai.chat.options.model`          | `openai/gpt-oss-120b`                    |
+| `spring.ai.openai.chat.options.vision-model`   | `Qwen/Qwen3.8-27B`                       |
+
+```bash
+SPRING_PROFILES_ACTIVE=logos ./gradlew :apps:<app>:server:bootRun
+```
+
+Supply the key the same way as for SAIA — the library sets no key for either provider — and point
+`spring.ai.openai.api-key` at your own variable in the profile's `application-logos.yml`:
+
+```yaml
+spring:
+  ai:
+    openai:
+      api-key: ${LOGOS_API_KEY:}
+```
+
+Two caveats. Logos publishes the same weights under provider-prefixed ids, so an app that names
+models of its own (a vision model per pipeline phase, say) must map those ids in its own
+`application-logos.yml` as well. And Logos exposes **no `/v1/embeddings` endpoint**: the embedding
+default is left pointing at SAIA, so any code path that embeds needs SAIA regardless of the profile.
+
+The profile is read from `spring.profiles.active` (or `spring.profiles.include`) as the process
+starts — an environment variable, a `-D` system property or the command line. A profile activated
+from inside a configuration file is too late for this library and selects nothing.
+
 To override, just set the same key in your `application.yml`:
 
 ```yaml
