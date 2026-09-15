@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { API_PREFIX, type GoalSource } from "../api/client.ts";
 
@@ -139,10 +139,13 @@ export default function SourcePdfPane({
   courseId,
   source,
   onClose,
+  headerExtra,
 }: {
   courseId: number | string;
   source: GoalSource;
   onClose: () => void;
+  /** Extra lines under the document name and page, such as the source's session. */
+  headerExtra?: ReactNode;
 }) {
   const contentUrl =
     source.documentId == null
@@ -287,13 +290,16 @@ export default function SourcePdfPane({
             {source.displayName ?? source.filename ?? "Source document"}
           </p>
           <p className="text-xs text-hestia-text-muted">p. {pageNumber}</p>
+          {headerExtra}
           {source.evidenceKind === "FIGURE" && (
             <div className="mt-1.5 max-w-[22rem]">
               <span className="inline-flex rounded-full border border-hestia-primary/40 bg-hestia-primary-muted px-1.5 py-0.5 text-[10px] font-medium text-hestia-primary">
                 Figure-derived (AI description)
               </span>
               {source.figureDescription && (
-                <p className="mt-1 line-clamp-2 text-xs leading-snug text-hestia-text-muted">
+                // The description is the whole evidence for a figure source, so it is shown in full;
+                // a long one scrolls rather than pushing the page off the pane.
+                <p className="mt-1 max-h-28 overflow-y-auto text-xs leading-snug text-hestia-text-muted">
                   {source.figureDescription}
                 </p>
               )}

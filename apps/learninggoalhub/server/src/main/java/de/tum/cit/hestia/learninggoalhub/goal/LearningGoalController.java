@@ -368,7 +368,9 @@ public class LearningGoalController {
         terminal.setHierarchyNode(competencyRoot(course));
 
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
-        applyClassifications(allNodes(terminal, generatedNodes), model);
+        // The terminal is a topic, a noun phrase with no level of its own; only the nodes beneath it
+        // state a performance.
+        applyClassifications(generatedNodes.nodes(), model);
         persistGeneratedNodes(terminal, generatedNodes);
         return LearningGoalResponse.from(terminal, List.of(), List.of());
     }
@@ -420,9 +422,11 @@ public class LearningGoalController {
     }
 
     /**
-     * Adds one sub-skill or knowledge item an instructor typed, as a {@code USER_CREATED} child that
-     * CONTRIBUTES_TO {@code goalId}. Additive by design: it is allowed under extracted goals too,
+     * Adds one skill, sub-skill or knowledge item an instructor typed, as a {@code USER_CREATED} child
+     * that CONTRIBUTES_TO {@code goalId}. Additive by design: it is allowed under extracted goals too,
      * because it destroys nothing. Only the tier is constrained — see {@link #rejectIfKnowledgeTier}.
+     * The optional {@code role} states what the child is: a childless node's tier cannot be read off
+     * its position, since a skill and a sub-skill both hang directly under a topic.
      * Like a typed skill, it stays unclassified: Bloom/SOLO are the instructor's to set, and skipping
      * the model keeps the add instant.
      */
@@ -438,15 +442,11 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
         }
         rejectIfKnowledgeTier(parent);
-        if (parent.getOrigin() == GoalOrigin.TERMINAL
-                && directChildCount(parent) >= SubtreeSynthesizer.MAX_SUB_SKILLS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A terminal skill cannot have more than five sub-skills");
-        }
 
         Course course = parent.getCourse();
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
+        child.setRole(request.role());
         child.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(child);
         goalRepository.flush();
@@ -455,23 +455,32 @@ public class LearningGoalController {
     }
 
     /**
-     * Rejects a parent that already sits on the knowledge tier. The competency forest is capped at
-     * three tiers (skill → sub-skill → knowledge), so a child below knowledge would be persisted but
-     * never rendered in any view. A parent is eligible when it is a terminal skill (tier 1) or
-     * contributes to one (tier 2); anything else — including a goal outside the competency tree
-     * altogether — cannot take children.
+     * Rejects a parent that sits on the knowledge tier. The competency forest is capped at four
+     * tiers (topic → skill → sub-skill → knowledge), so a child below knowledge would be persisted
+     * but never rendered in any view. A parent is eligible when it is a topic, contributes to one, or
+     * is a {@link GoalRole#SKILL} beneath a goal that contributes to one. A knowledge goal, and
+     * anything outside the competency tree altogether, cannot take children.
      */
     private void rejectIfKnowledgeTier(LearningGoal parent) {
         if (parent.getOrigin() == GoalOrigin.TERMINAL) {
             return;
         }
-        boolean contributesToTerminal = goalRelationshipRepository.findBySourceId(parent.getId()).stream()
-                .anyMatch(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                        && relationship.getTarget().getOrigin() == GoalOrigin.TERMINAL);
-        if (!contributesToTerminal) {
+        boolean eligible = parent.getRole() != GoalRole.KNOWLEDGE
+                && parentsOf(parent).stream().anyMatch(above -> above.getOrigin() == GoalOrigin.TERMINAL
+                        || (parent.getRole() == GoalRole.SKILL && parentsOf(above).stream()
+                                .anyMatch(top -> top.getOrigin() == GoalOrigin.TERMINAL)));
+        if (!eligible) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only a skill or a sub-skill can take children");
+                    "Only a topic, a skill or a sub-skill can take children");
         }
+    }
+
+    /** The goals {@code goal} CONTRIBUTES_TO, one tier up in the competency tree. */
+    private List<LearningGoal> parentsOf(LearningGoal goal) {
+        return goalRelationshipRepository.findBySourceId(goal.getId()).stream()
+                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
+                .map(relationship -> relationship.getTarget())
+                .toList();
     }
 
     private GeneratedNodes buildGeneratedNodes(Course course, GeneratedSubtree generated) {
@@ -526,12 +535,6 @@ public class LearningGoalController {
     private record GeneratedNodes(List<LearningGoal> subSkills,
                                   List<List<LearningGoal>> knowledgeBySubSkill,
                                   List<LearningGoal> nodes) {
-    }
-
-    private long directChildCount(LearningGoal parent) {
-        return goalRelationshipRepository.findByTargetId(parent.getId()).stream()
-                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
-                .count();
     }
 
     private int nextLectureOrder(Course course) {
@@ -729,11 +732,27 @@ public class LearningGoalController {
         deleteDescendants(root, Set.of(GoalCreationProvenance.WIZARD_AI_SUBTREE), false);
     }
 
-    /** DELETE removes both AI-generated and manually added descendants, but never pipeline goals. */
+    /**
+     * DELETE removes AI-generated and manually added descendants, and a topic's pipeline skills, but
+     * never an extracted goal.
+     */
     private void deleteOwnedDescendants(LearningGoal root) {
         deleteDescendants(root, Set.of(
                 GoalCreationProvenance.WIZARD_AI_SUBTREE,
                 GoalCreationProvenance.USER_CREATED), true);
+    }
+
+    /**
+     * Whether {@code source} is a skill the pipeline grouped directly under the topic being deleted.
+     * Such a skill is a generated node with no source of its own and means nothing without its topic,
+     * so it goes with it. The sub-skills beneath it were extracted from the materials and stay; they
+     * only leave the tree.
+     */
+    private static boolean isPipelineSkillOf(LearningGoal source, LearningGoal target, LearningGoal root) {
+        return target.getId().equals(root.getId())
+                && root.getOrigin() == GoalOrigin.TERMINAL
+                && source.getOrigin() == GoalOrigin.SYNTHESIZED
+                && source.getRole() == GoalRole.SKILL;
     }
 
     /**
@@ -756,12 +775,14 @@ public class LearningGoalController {
             LearningGoal target = pending.removeFirst();
             boolean targetDeleted = rootDeleted || !target.getId().equals(root.getId());
             for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
-                // A null provenance marks a pipeline/extracted goal, which is never owned. Test it
-                // explicitly: ownedProvenances is a Set.of(...), and those throw on contains(null).
+                // A null provenance marks a pipeline or extracted goal, owned only when it is a skill
+                // of the topic being deleted. Test it explicitly: ownedProvenances is a Set.of(...),
+                // and those throw on contains(null).
                 GoalCreationProvenance provenance = relationship.getSource().getCreationProvenance();
                 boolean owned = relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                        && provenance != null
-                        && ownedProvenances.contains(provenance);
+                        && (provenance != null
+                                ? ownedProvenances.contains(provenance)
+                                : rootDeleted && isPipelineSkillOf(relationship.getSource(), target, root));
                 // An edge dies with either endpoint: its source is an owned goal we delete, or its
                 // target is going away. Anything else stays and keeps its surviving goal attached.
                 if (owned || targetDeleted) {
@@ -868,7 +889,7 @@ public class LearningGoalController {
     public record CreateGeneratedTerminalSkillRequest(String text, String shortLabel) {
     }
 
-    public record AddChildRequest(String text, String shortLabel) {
+    public record AddChildRequest(String text, String shortLabel, GoalRole role) {
     }
 
     /** One hierarchy node (module/session/exercise) and its goals; all-null node fields = ungrouped. */
