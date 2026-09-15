@@ -1,20 +1,20 @@
-export type TaskType = "single_choice" | "multiple_choice" | "text";
+export type TaskBlockType = "single_choice" | "multiple_choice" | "text";
 
-export interface TaskOption {
+export interface AnswerOption {
   id: string;
   text: string;
   is_correct: boolean;
 }
 
-export interface Task {
+export interface TaskBlock {
   id: string;
   exam_id: string;
   position: number;
   section: string | null;
   section_id: string | null;
-  type: TaskType;
+  type: TaskBlockType;
   prompt: string;
-  options: TaskOption[] | null;
+  options: AnswerOption[] | null;
   reference_answer: string | null;
   points: number | null;
   parse_confidence: "high" | "medium" | "low" | null;
@@ -55,16 +55,16 @@ export interface SectionBlock {
   updated_at: string;
 }
 
-export type BlockItem =
-  | { kind: "task"; position: number; created_at: string; task: Task }
+export type Block =
+  | { kind: "task"; position: number; created_at: string; task: TaskBlock }
   | { kind: "context"; position: number; created_at: string; block: SectionBlock }
   | { kind: "figure"; position: number; created_at: string; block: SectionBlock };
 
 export const mergeSectionItems = (
-  tasks: Task[],
+  tasks: TaskBlock[],
   blocks: SectionBlock[],
-): BlockItem[] => {
-  const items: BlockItem[] = [
+): Block[] => {
+  const items: Block[] = [
     ...tasks.map((task) => ({
       kind: "task" as const,
       position: task.position,
@@ -100,7 +100,7 @@ export const mergeSectionItems = (
   return items;
 };
 
-export interface Exam {
+export interface Examination {
   id: string;
   title: string;
   course: string | null;
@@ -147,7 +147,7 @@ export interface Exam {
  * would misclassify those as evaluation failures.
  */
 export const isParseFailure = (
-  exam: Pick<Exam, "status" | "source" | "parsed_at">,
+  exam: Pick<Examination, "status" | "source" | "parsed_at">,
 ): boolean =>
   exam.status === "failed" && exam.source === "pdf" && !exam.parsed_at;
 
@@ -172,16 +172,16 @@ export const examModeSlug = (status: string | null | undefined): ExamModeSlug =>
 export const examModePath = (id: string, status: string | null | undefined): string =>
   `/exams/${id}/${examModeSlug(status)}`;
 
-export const TASK_TYPES: TaskType[] = ["single_choice", "multiple_choice", "text"];
+export const TASK_TYPES: TaskBlockType[] = ["single_choice", "multiple_choice", "text"];
 
-export const newOption = (overrides: Partial<TaskOption> = {}): TaskOption => ({
+export const newOption = (overrides: Partial<AnswerOption> = {}): AnswerOption => ({
   id: crypto.randomUUID(),
   text: "",
   is_correct: false,
   ...overrides,
 });
 
-export const totalPoints = (tasks: Task[]): number =>
+export const totalPoints = (tasks: TaskBlock[]): number =>
   tasks.reduce((sum, t) => sum + (Number(t.points) || 0), 0);
 
 /**
@@ -190,17 +190,17 @@ export const totalPoints = (tasks: Task[]): number =>
  * the carousel-based editor.
  */
 /** A task still needs a score (no positive point value assigned yet). */
-export const taskMissingScore = (task: Task): boolean =>
+export const taskMissingScore = (task: TaskBlock): boolean =>
   task.points == null || task.points <= 0;
 
-export const isSectionReady = (tasks: Task[]): boolean =>
+export const isSectionReady = (tasks: TaskBlock[]): boolean =>
   tasks.length > 0 && tasks.every((t) => !taskMissingScore(t));
 
 export interface MCWarning {
   kind: "noCorrect" | "allCorrect";
 }
 
-export const mcWarning = (task: Task): MCWarning | null => {
+export const mcWarning = (task: TaskBlock): MCWarning | null => {
   if (task.type === "text") return null;
   const opts = task.options ?? [];
   if (opts.length === 0) return null;
@@ -213,9 +213,9 @@ export const mcWarning = (task: Task): MCWarning | null => {
 };
 
 export const convertTaskType = (
-  task: Task,
-  toType: TaskType
-): Partial<Task> => {
+  task: TaskBlock,
+  toType: TaskBlockType
+): Partial<TaskBlock> => {
   if (task.type === toType) return {};
 
   // text → SC/MC
@@ -255,7 +255,7 @@ export const convertTaskType = (
   return { type: toType, options };
 };
 /** Stable id for a block item (used for keys, dnd, collapse state). */
-export const itemId = (item: BlockItem): string =>
+export const itemId = (item: Block): string =>
   item.kind === "task"
     ? `task:${item.task.id}`
     : item.kind === "figure"
@@ -267,7 +267,7 @@ export const itemId = (item: BlockItem): string =>
  * read by the editor's scroll-to helpers). Single source of truth so the two
  * sides can't drift.
  */
-export const blockDomId = (item: BlockItem): string =>
+export const blockDomId = (item: Block): string =>
   item.kind === "task"
     ? `task-${item.task.id}`
     : item.kind === "figure"
@@ -283,8 +283,8 @@ export const isTextEmpty = (text: string | null | undefined): boolean =>
  * blank context block, or a figure block with no uploaded image (its id present
  * in `emptyFigureBlockIds`). Shared by the confirm-gating hook.
  */
-export const isBlockItemEmpty = (
-  item: BlockItem,
+export const isBlockEmpty = (
+  item: Block,
   emptyFigureBlockIds: ReadonlySet<string>,
 ): boolean => {
   if (item.kind === "task") return isTextEmpty(item.task.prompt);

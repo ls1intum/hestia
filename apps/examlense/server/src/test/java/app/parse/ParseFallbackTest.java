@@ -6,7 +6,7 @@ import app.ai.AiProvider;
 import app.ai.AiProviderFactory;
 import app.ai.ParserStrategies;
 import app.ai.ParserStrategy;
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import app.storage.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,33 +34,33 @@ class ParseFallbackTest {
 
     private static final UUID EXAM_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    private ExamRepository examRepository;
+    private ExaminationRepository examRepository;
     private StorageService storage;
     private AiProviderFactory providerFactory;
     private PdfPageCounter pageCounter;
     private ParseInputBuilder inputBuilder;
-    private ParsedExamPersister persister;
+    private ParsedExaminationPersister persister;
     private ParseMetricsRecorder metricsRecorder;
     private ParseProgress progress;
-    private ParseExamService service;
+    private ParseExaminationService service;
 
     private AiProvider geminiProvider;
     private AiProvider gptProvider;
 
     @BeforeEach
     void setup() {
-        examRepository = mock(ExamRepository.class);
+        examRepository = mock(ExaminationRepository.class);
         storage = mock(StorageService.class);
         providerFactory = mock(AiProviderFactory.class);
         pageCounter = mock(PdfPageCounter.class);
         inputBuilder = mock(ParseInputBuilder.class);
-        persister = mock(ParsedExamPersister.class);
+        persister = mock(ParsedExaminationPersister.class);
         metricsRecorder = mock(ParseMetricsRecorder.class);
         progress = mock(ParseProgress.class);
         geminiProvider = mock(AiProvider.class);
         gptProvider = mock(AiProvider.class);
 
-        service = new ParseExamService(
+        service = new ParseExaminationService(
             examRepository, storage, providerFactory, pageCounter,
             inputBuilder, persister, metricsRecorder, progress,
             mock(app.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class)
@@ -71,7 +71,7 @@ class ParseFallbackTest {
         when(inputBuilder.build(any(), any(), any()))
             .thenReturn(new AiProvider.TextContent("pdf-stub"));
         when(persister.persist(any(), any(), any()))
-            .thenReturn(new ParsedExamPersister.PersistResult(true, java.util.List.of()));
+            .thenReturn(new ParsedExaminationPersister.PersistResult(true, java.util.List.of()));
 
         // Route each ParserStrategy to its provider mock.
         when(providerFactory.forParser(any())).thenAnswer(inv -> {

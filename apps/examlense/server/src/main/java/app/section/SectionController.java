@@ -3,7 +3,7 @@ import app.shared.Patch;
 import app.shared.Access;
 
 import app.error.ApiException;
-import app.lgh.TaskGoalGenerationService;
+import app.lgh.TaskBlockGoalGenerationService;
 import app.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -34,10 +34,10 @@ public class SectionController {
     private final SectionRepository sectionRepository;
     private final Access access;
     private final SectionService sectionService;
-    private final TaskGoalGenerationService goalGeneration;
+    private final TaskBlockGoalGenerationService goalGeneration;
 
     public SectionController(SectionRepository sectionRepository, Access access, SectionService sectionService,
-                             TaskGoalGenerationService goalGeneration) {
+                             TaskBlockGoalGenerationService goalGeneration) {
         this.sectionRepository = sectionRepository;
         this.access = access;
         this.sectionService = sectionService;
@@ -49,7 +49,7 @@ public class SectionController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/sections")
     public List<SectionDtos.SectionDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExam(Access.id(examId), userId);
+        access.requireExamination(Access.id(examId), userId);
         return sectionRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
             .stream().map(SectionDtos.SectionDto::from).toList();
     }
@@ -62,7 +62,7 @@ public class SectionController {
     @PostMapping("/sections")
     public SectionDtos.SectionDto create(@RequestBody CreateSectionRequest req, @CurrentUser String userId) {
         UUID examId = Access.id(req.exam_id());
-        access.requireExam(examId, userId);
+        access.requireExamination(examId, userId);
         Section s = new Section();
         s.setExamId(examId);
         s.setPosition(req.position() == null ? 0 : req.position());

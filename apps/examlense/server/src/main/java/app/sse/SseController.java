@@ -52,7 +52,7 @@ public class SseController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/events")
     public SseEmitter examEvents(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExam(Access.id(examId), userId);
+        access.requireExamination(Access.id(examId), userId);
         return hub.register("exam:" + examId);
     }
 

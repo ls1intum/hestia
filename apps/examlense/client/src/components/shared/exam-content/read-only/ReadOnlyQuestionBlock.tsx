@@ -7,7 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { BLOOM_LABELS, SOLO_LABELS } from "@/lib/exam/labels";
-import type { Task } from "@/lib/exam/exam-helpers";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
 import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals";
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
@@ -21,7 +21,7 @@ export interface TaskGoalDisplay {
 }
 
 interface Props {
-  task: Task;
+  task: TaskBlock;
   label: string;
   goals?: TaskGoalDisplay[];
 }

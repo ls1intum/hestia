@@ -1,8 +1,8 @@
 package app.parse.figures;
 
 import app.AbstractIntegrationTest;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.section.Section;
 import app.section.SectionBlock;
 import app.section.SectionBlockRepository;
@@ -40,18 +40,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class FigureExtractionIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
     @Autowired SectionRepository sections;
     @Autowired SectionBlockRepository blocks;
     @Autowired SectionFigureRepository figures;
     @Autowired StorageService storage;
     @Autowired FigureExtractionService extraction;
 
-    private record Fixture(Exam exam, SectionBlock block, String pdfPath) {}
+    private record Fixture(Examination exam, SectionBlock block, String pdfPath) {}
 
     /** An exam whose page 1 holds one pasted image, plus an empty figure block for it. */
     private Fixture seed() {
-        Exam exam = new Exam();
+        Examination exam = new Examination();
         exam.setOwnerId(DefaultUser.ID);
         exam.setSource("pdf");
         exam.setStatus("draft");

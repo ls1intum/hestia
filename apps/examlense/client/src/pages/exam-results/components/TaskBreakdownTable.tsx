@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 import { ArrowUpDown, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils/utils";
-import type { Task } from "@/lib/exam/exam-helpers";
-import type { TaskGrade, TaskAnswer } from "@/lib/grading/grading";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
+import type { Grade, AIAnswer } from "@/lib/grading/grading";
 import { effectiveScore } from "@/lib/grading/grading";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 
 interface Props {
-  tasks: Task[];
-  grades: Map<string, TaskGrade>;
-  answers: Map<string, TaskAnswer>;
+  tasks: TaskBlock[];
+  grades: Map<string, Grade>;
+  answers: Map<string, AIAnswer>;
   labelById: Map<string, string>;
   /** Open this task in the "All tasks" view (jumps to its section + scrolls). */
   onOpenTask: (taskId: string) => void;
@@ -79,7 +79,7 @@ export const TaskBreakdownTable = ({ tasks, grades, answers, labelById, onOpenTa
   return (
     <div className="hestia-card overflow-x-auto">
       <h2 className="mb-hestia-3 hestia-eyebrow text-hestia-text-muted">
-        Task Breakdown
+        TaskBlock Breakdown
       </h2>
       <table className="w-full text-sm">
         <thead>

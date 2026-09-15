@@ -5,16 +5,16 @@ import {
   mergeSectionItems,
   sectionIndexSlug,
   UNASSIGNED_SLUG,
-  type BlockItem,
+  type Block,
   type Section,
   type SectionBlock,
-  type Task,
+  type TaskBlock,
 } from "@/lib/exam/exam-helpers";
 
 export interface SectionGroup {
   section: Section | null;
-  tasks: Task[];
-  items: BlockItem[];
+  tasks: TaskBlock[];
+  items: Block[];
   slug: string;
 }
 
@@ -35,14 +35,14 @@ interface SectionGroupsOptions {
  */
 export function computeSectionGroups(
   sections: Section[] | undefined,
-  tasks: Task[] | undefined,
+  tasks: TaskBlock[] | undefined,
   blocks: SectionBlock[] | undefined,
   includeEmpty: boolean,
 ): SectionGroup[] {
   const sortedSections = (sections ?? [])
     .slice()
     .sort((a, b) => a.position - b.position);
-  const tasksBySection = new Map<string | null, Task[]>();
+  const tasksBySection = new Map<string | null, TaskBlock[]>();
   for (const task of tasks ?? []) {
     const key = task.section_id ?? null;
     const arr = tasksBySection.get(key) ?? [];
@@ -100,7 +100,7 @@ export function computeTaskLetters(grouped: SectionGroup[]): Map<string, string>
  */
 export function useSectionGroups(
   sections: Section[] | undefined,
-  tasks: Task[] | undefined,
+  tasks: TaskBlock[] | undefined,
   blocks: SectionBlock[] | undefined,
   { includeEmpty }: SectionGroupsOptions,
 ): {

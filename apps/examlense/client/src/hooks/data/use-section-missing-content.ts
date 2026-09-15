@@ -3,8 +3,8 @@ import { useQueries } from "@tanstack/react-query";
 import { listFigures } from "@/lib/api/api-client";
 import { figuresKey } from "@/hooks/data/use-sections";
 import {
-  isBlockItemEmpty,
-  type BlockItem,
+  isBlockEmpty,
+  type Block,
   type SectionFigure,
 } from "@/lib/exam/exam-helpers";
 
@@ -16,7 +16,7 @@ import {
  * once its query has resolved to []; while a query is still pending we treat the
  * block as complete to avoid a false "Content missing" flash.
  */
-export function useSectionMissingContent(items: BlockItem[] | undefined) {
+export function useSectionMissingContent(items: Block[] | undefined) {
   const figureBlockIds = useMemo(
     () =>
       (items ?? []).flatMap((it) => (it.kind === "figure" ? [it.block.id] : [])),
@@ -42,7 +42,7 @@ export function useSectionMissingContent(items: BlockItem[] | undefined) {
   }, [figureBlockIds, figureQueries]);
 
   const missingItems = useMemo(
-    () => (items ?? []).filter((it) => isBlockItemEmpty(it, emptyFigureBlockIds)),
+    () => (items ?? []).filter((it) => isBlockEmpty(it, emptyFigureBlockIds)),
     [items, emptyFigureBlockIds],
   );
 

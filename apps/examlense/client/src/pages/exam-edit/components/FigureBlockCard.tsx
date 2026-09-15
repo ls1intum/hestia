@@ -74,24 +74,16 @@ export const FigureBlockCard = ({
     }
     setUploading(true);
     try {
-      // Upload the replacement first, then drop the previous figure so the
-      // block keeps its single-figure invariant. The backend assigns the
-      // storage path + id.
-      const uploaded = await uploadFigure(block.id, file, 0);
-      if (figure) {
-        // The caption describes the figure, not the file, so replacing the
-        // image must not silently discard what the author wrote.
-        if (figure.caption) {
-          try {
-            await patchFigure(uploaded.id, { caption: figure.caption });
-          } catch {
-            /* the image is what matters; a lost caption can be retyped */
-          }
-        }
+      // The server replaces the block's single figure, so the row id changes.
+      // The caption describes the figure rather than the file, so carry it
+      // across instead of discarding what the author wrote.
+      const previousCaption = figure?.caption ?? null;
+      const uploaded = await uploadFigure(block.id, file);
+      if (previousCaption) {
         try {
-          await deleteFigure(figure.id);
+          await patchFigure(uploaded.id, { caption: previousCaption });
         } catch {
-          /* best-effort cleanup of the old figure */
+          /* the image is what matters; a lost caption can be retyped */
         }
       }
       refresh();

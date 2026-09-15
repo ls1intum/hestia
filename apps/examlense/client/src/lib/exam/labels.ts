@@ -4,9 +4,9 @@
  * `grading.source.*`); the app is English-only, so they are plain constants.
  */
 import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals";
-import type { TaskType } from "@/lib/exam/exam-helpers";
+import type { TaskBlockType } from "@/lib/exam/exam-helpers";
 
-export const TASK_TYPE_LABELS: Record<TaskType, string> = {
+export const TASK_TYPE_LABELS: Record<TaskBlockType, string> = {
   single_choice: "Single Choice",
   multiple_choice: "Multiple Choice",
   text: "Free Text",

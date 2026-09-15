@@ -1,7 +1,7 @@
 package app;
 
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,14 +27,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Both identities are genuine here (their own {@code users} row and their own
  * {@code user_tokens} row), so this exercises the whole path from bearer token
  * through principal resolution to the ownership check. That is the guard against
- * a controller forgetting its {@code access.requireExam(...)} call, and against a
+ * a controller forgetting its {@code access.requireExamination(...)} call, and against a
  * regression in the filter handing out the wrong principal.
  */
 @AutoConfigureMockMvc
 class OwnershipIsolationIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
 
     private TestUser alice;
     private TestUser bob;
@@ -45,8 +45,8 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         bob = createUser("bob-" + UUID.randomUUID());
     }
 
-    private Exam seedExam(UUID owner, String title) {
-        Exam e = new Exam();
+    private Examination seedExamination(UUID owner, String title) {
+        Examination e = new Examination();
         e.setOwnerId(owner);
         e.setTitle(title);
         e.setSource("manual");
@@ -64,8 +64,8 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void ownerCanReadTheirOwnExam() throws Exception {
-        Exam mine = seedExam(alice.id(), "mine");
+    void ownerCanReadTheirOwnExamination() throws Exception {
+        Examination mine = seedExamination(alice.id(), "mine");
 
         mvc.perform(asAlice(get("/api/exams/" + mine.getId())))
             .andExpect(status().isOk())
@@ -73,16 +73,16 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void readingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(alice.id(), "alice's");
+    void readingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
         mvc.perform(asBob(get("/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void patchingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(alice.id(), "alice's");
+    void patchingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
         mvc.perform(asBob(patch("/api/exams/" + foreign.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -91,16 +91,16 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void deletingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(alice.id(), "alice's");
+    void deletingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
         mvc.perform(asBob(delete("/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void uploadingAPdfToAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(alice.id(), "alice's");
+    void uploadingAPdfToAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
         mvc.perform(asBob(multipart("/api/exams/" + foreign.getId() + "/pdf").file(file)))
@@ -108,15 +108,15 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void unknownExamIsNotFound() throws Exception {
+    void unknownExaminationIsNotFound() throws Exception {
         mvc.perform(asBob(get("/api/exams/" + UUID.randomUUID())))
             .andExpect(status().isNotFound());
     }
 
     @Test
-    void listReturnsOnlyMyExamsNeverAnotherUsers() throws Exception {
-        Exam alices = seedExam(alice.id(), "alice-" + UUID.randomUUID());
-        Exam bobs = seedExam(bob.id(), "bob-" + UUID.randomUUID());
+    void listReturnsOnlyMyExaminationsNeverAnotherUsers() throws Exception {
+        Examination alices = seedExamination(alice.id(), "alice-" + UUID.randomUUID());
+        Examination bobs = seedExamination(bob.id(), "bob-" + UUID.randomUUID());
 
         mvc.perform(asBob(get("/api/exams")))
             .andExpect(status().isOk())
@@ -131,8 +131,8 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
      * would not have caught.
      */
     @Test
-    void freshUserSeesNoExamsAtAll() throws Exception {
-        seedExam(alice.id(), "alice-" + UUID.randomUUID());
+    void freshUserSeesNoExaminationsAtAll() throws Exception {
+        seedExamination(alice.id(), "alice-" + UUID.randomUUID());
         TestUser newcomer = createUser("newcomer-" + UUID.randomUUID());
 
         mvc.perform(get("/api/exams").header("Authorization", "Bearer " + newcomer.token()))

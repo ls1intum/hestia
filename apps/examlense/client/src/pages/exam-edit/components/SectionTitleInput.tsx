@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Editable section title used in the Exam Edit view. Click-to-edit:
+ * Editable section title used in the Examination Edit view. Click-to-edit:
  * displays the name with a pencil affordance; clicking flips to an
  * inline input that commits on blur / Enter and reverts on Escape.
  */

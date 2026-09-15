@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import {
   examModePath,
   examModeSlug,
-  type Exam,
+  type Examination,
   type ExamModeSlug,
 } from "@/lib/exam/exam-helpers";
 
@@ -15,7 +15,7 @@ import {
  * `examModeSlug`); visiting another mode's URL redirects instead of silently
  * transitioning the exam.
  */
-export function examModeRedirect(exam: Exam, expected: ExamModeSlug) {
+export function examModeRedirect(exam: Examination, expected: ExamModeSlug) {
   return examModeSlug(exam.status) !== expected ? (
     <Navigate to={examModePath(exam.id, exam.status)} replace />
   ) : null;
