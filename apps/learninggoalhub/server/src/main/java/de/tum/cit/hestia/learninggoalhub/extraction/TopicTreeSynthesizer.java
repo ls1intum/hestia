@@ -32,12 +32,16 @@ import org.springframework.stereotype.Service;
  *       covers is left out of the tree.</li>
  *   <li>Structure each topic on its own: group its skills into capabilities, each with a written
  *       name, and leave the rest directly under the topic.</li>
+ *   <li>Shorten every capability name into a label, in one call over all of them. This is a call of
+ *       its own so the structuring prompt stays as it was validated; a failure here only leaves the
+ *       capabilities without a short label.</li>
  * </ol>
  *
  * <p>The model's answers are normalised rather than validated: an index that is invented or repeated
  * is ignored, a skill the assignment omits is left out like an unmatched one, and a skill the
  * structuring omits stays directly under its topic. Nothing is retried, so a run costs exactly one
- * naming call, one call per assignment batch and one call per topic with at least two skills.
+ * naming call, one call per assignment batch, one call per topic with at least two skills and one
+ * short-label call when any capability was formed.
  */
 @Service
 public class TopicTreeSynthesizer {
@@ -178,6 +182,33 @@ public class TopicTreeSynthesizer {
             ---
             """;
 
+    /** Word limit a short label may reach; a longer answer did not shorten the name and is dropped. */
+    static final int SHORT_LABEL_MAX_WORDS = 8;
+
+    static final String SHORT_LABEL_PROMPT = """
+            Write a short label for each capability name below. The labels are shown on the boxes of a
+            course's competency tree, where the full names do not fit.
+
+            - A label is two to six words naming the action and what it acts on, reusing the verb of the
+              name, such as "Compute the cost of capital".
+            - Keep the meaning of the name. Do not add anything the name does not state.
+            - Write every label in %s, in that language's natural word order (German puts the infinitive
+              last: "Kapitalkosten berechnen"), and do not end it with a period.
+
+            OUTPUT
+
+            Return only JSON:
+            {"labels":[{"index":0,"shortLabel":"..."}]}
+
+            - Every index below appears exactly once.
+            - Do not return explanations or additional fields.
+
+            Capability names:
+            ---
+            %s
+            ---
+            """;
+
     /** The finished tree, in course-index space. */
     public record Plan(List<PlannedTopic> topics, List<Integer> unmatched) {
         public Plan {
@@ -194,10 +225,18 @@ public class TopicTreeSynthesizer {
         }
     }
 
-    /** One capability: a written name over at least two of the topic's skills. */
-    public record PlannedCapability(String name, List<Integer> outcomes) {
+    /**
+     * One capability: a written name over at least two of the topic's skills.
+     *
+     * @param shortLabel the name shortened for display, or null when none could be generated.
+     */
+    public record PlannedCapability(String name, String shortLabel, List<Integer> outcomes) {
         public PlannedCapability {
             outcomes = List.copyOf(outcomes);
+        }
+
+        public PlannedCapability(String name, List<Integer> outcomes) {
+            this(name, null, outcomes);
         }
     }
 
@@ -213,6 +252,10 @@ public class TopicTreeSynthesizer {
 
     record TopicStructure(@JsonProperty("subCapabilities") List<CapabilityGroup> capabilities,
                           List<Integer> direct) {}
+
+    record ShortLabel(Integer index, String shortLabel) {}
+
+    record ShortLabels(List<ShortLabel> labels) {}
 
     private final ChatClient chatClient;
     private final String model;
@@ -282,6 +325,7 @@ public class TopicTreeSynthesizer {
                 }
                 planned.add(structureTopic(topics.get(topic), topicMembers, join(structures.get(topic))));
             }
+            planned = withShortLabels(planned, languageName, effectiveModel);
             List<Integer> unmatched = unmatched(assignment, outcomes.size());
             log.info("Topic tree assigned {} of {} skills to {} topics with {} capabilities",
                     outcomes.size() - unmatched.size(), outcomes.size(), planned.size(),
@@ -395,6 +439,72 @@ public class TopicTreeSynthesizer {
             }
         }
         return new PlannedTopic(label, capabilities, direct);
+    }
+
+    /**
+     * Shortens every capability name in one call. A short label only saves space on screen, so a
+     * failed call leaves the tree as it is rather than failing it.
+     */
+    private List<PlannedTopic> withShortLabels(List<PlannedTopic> topics, String languageName, String model) {
+        List<String> names = topics.stream()
+                .flatMap(topic -> topic.capabilities().stream())
+                .map(PlannedCapability::name)
+                .toList();
+        if (names.isEmpty()) {
+            return topics;
+        }
+        try {
+            List<String> labels = normalizeShortLabels(call(
+                    SHORT_LABEL_PROMPT.formatted(languageName, numbered(names, 0, names.size())),
+                    model, new ParameterizedTypeReference<ShortLabels>() {}), names.size());
+            return applyShortLabels(topics, labels);
+        } catch (RuntimeException ex) {
+            log.warn("Capability short labels failed, keeping the full names: {}", ex.getMessage());
+            return topics;
+        }
+    }
+
+    /**
+     * The answer as one label per capability, in the order the names were listed. An index outside
+     * the list or answered twice is ignored after its first answer, a trailing period is dropped, and
+     * a blank label or one over {@link #SHORT_LABEL_MAX_WORDS} words leaves that capability without one.
+     */
+    static List<String> normalizeShortLabels(ShortLabels answer, int count) {
+        List<String> result = new ArrayList<>(java.util.Collections.nCopies(count, (String) null));
+        if (answer == null || answer.labels() == null) {
+            return result;
+        }
+        Set<Integer> answered = new HashSet<>();
+        for (ShortLabel label : answer.labels()) {
+            if (label == null || label.index() == null || label.index() < 0 || label.index() >= count
+                    || !answered.add(label.index())) {
+                continue;
+            }
+            String text = label.shortLabel() == null ? "" : label.shortLabel().strip();
+            if (text.endsWith(".")) {
+                text = text.substring(0, text.length() - 1).strip();
+            }
+            if (!text.isEmpty() && text.split("\\s+").length <= SHORT_LABEL_MAX_WORDS) {
+                result.set(label.index(), text);
+            }
+        }
+        return result;
+    }
+
+    /** Hands each capability its label, walking the topics in the order the names were listed. */
+    static List<PlannedTopic> applyShortLabels(List<PlannedTopic> topics, List<String> labels) {
+        List<PlannedTopic> result = new ArrayList<>();
+        int index = 0;
+        for (PlannedTopic topic : topics) {
+            List<PlannedCapability> capabilities = new ArrayList<>();
+            for (PlannedCapability capability : topic.capabilities()) {
+                String label = index < labels.size() ? labels.get(index) : null;
+                index++;
+                capabilities.add(new PlannedCapability(capability.name(), label, capability.outcomes()));
+            }
+            result.add(new PlannedTopic(topic.label(), capabilities, topic.direct()));
+        }
+        return result;
     }
 
     private <T> T call(String prompt, String model, ParameterizedTypeReference<T> type) {

@@ -93,4 +93,44 @@ class TopicTreeSynthesizerTest {
         assertThat(TopicTreeSynthesizer.structureTopic("Topic", List.of(1, 2), null).direct())
                 .containsExactly(1, 2);
     }
+
+    @Test
+    void shortLabelsAlignToTheNamesAndDropWhatDidNotShorten() {
+        List<String> labels = TopicTreeSynthesizer.normalizeShortLabels(new TopicTreeSynthesizer.ShortLabels(
+                Arrays.asList(
+                        new TopicTreeSynthesizer.ShortLabel(2, " Compute the cost of capital. "),
+                        new TopicTreeSynthesizer.ShortLabel(0, "Explain boosting"),
+                        new TopicTreeSynthesizer.ShortLabel(0, "Explain boosting again"),
+                        new TopicTreeSynthesizer.ShortLabel(1, "Analyse and adjust the equity beta using CAPM and the Hamada equation"),
+                        new TopicTreeSynthesizer.ShortLabel(7, "Out of range"),
+                        new TopicTreeSynthesizer.ShortLabel(3, " "),
+                        null)),
+                4);
+
+        // Index 0 keeps its first answer, 1 is longer than a short label may be, 3 is blank.
+        assertThat(labels).containsExactly("Explain boosting", null, "Compute the cost of capital", null);
+        assertThat(TopicTreeSynthesizer.normalizeShortLabels(null, 2)).containsExactly(null, null);
+    }
+
+    @Test
+    void shortLabelsFollowTheCapabilitiesAcrossTopics() {
+        List<TopicTreeSynthesizer.PlannedTopic> topics = List.of(
+                new TopicTreeSynthesizer.PlannedTopic("Valuation", List.of(
+                        new TopicTreeSynthesizer.PlannedCapability("Estimate free cash flows for a DCF", List.of(0, 1)),
+                        new TopicTreeSynthesizer.PlannedCapability("Derive values from DCF results", List.of(2, 3))),
+                        List.of(4)),
+                new TopicTreeSynthesizer.PlannedTopic("Direct only", List.of(), List.of(5, 6)),
+                new TopicTreeSynthesizer.PlannedTopic("Options", List.of(
+                        new TopicTreeSynthesizer.PlannedCapability("Price options with basic models", List.of(7, 8))),
+                        List.of()));
+
+        List<TopicTreeSynthesizer.PlannedTopic> labelled = TopicTreeSynthesizer.applyShortLabels(topics,
+                Arrays.asList("Estimate free cash flows", null, "Price options"));
+
+        assertThat(labelled).flatExtracting(TopicTreeSynthesizer.PlannedTopic::capabilities)
+                .extracting(TopicTreeSynthesizer.PlannedCapability::shortLabel)
+                .containsExactly("Estimate free cash flows", null, "Price options");
+        assertThat(labelled.getFirst().capabilities().getFirst().outcomes()).containsExactly(0, 1);
+        assertThat(labelled.getFirst().direct()).containsExactly(4);
+    }
 }
