@@ -8,6 +8,7 @@ import app.taskblock.TaskBlock;
 import app.taskblock.AnswerOption;
 import app.examination.ExaminationRepository;
 import app.section.SectionBlockRepository;
+import app.section.FigureCleanupService;
 import app.section.SectionRepository;
 import app.taskblock.TaskBlockRepository;
 import java.math.BigDecimal;
@@ -50,6 +51,7 @@ class ParsedExaminationPersister {
     private final SectionRepository sectionRepository;
     private final TaskBlockRepository taskRepository;
     private final SectionBlockRepository sectionBlockRepository;
+    private final FigureCleanupService figureCleanup;
     private final TransactionTemplate txTemplate;
     private final ParseProgress progress;
 
@@ -58,6 +60,7 @@ class ParsedExaminationPersister {
         SectionRepository sectionRepository,
         TaskBlockRepository taskRepository,
         SectionBlockRepository sectionBlockRepository,
+        FigureCleanupService figureCleanup,
         PlatformTransactionManager txManager,
         ParseProgress progress
     ) {
@@ -65,6 +68,7 @@ class ParsedExaminationPersister {
         this.sectionRepository = sectionRepository;
         this.taskRepository = taskRepository;
         this.sectionBlockRepository = sectionBlockRepository;
+        this.figureCleanup = figureCleanup;
         this.txTemplate = new TransactionTemplate(txManager);
         this.progress = progress;
     }
@@ -148,6 +152,7 @@ class ParsedExaminationPersister {
         // can never produce duplicate sections/tasks.
         try {
             txTemplate.executeWithoutResult(status -> {
+                figureCleanup.scheduleForExam(examId);
                 taskRepository.deleteByExamId(examId);
                 sectionRepository.deleteByExamId(examId); // blocks cascade via FK
                 if (!sectionRows.isEmpty()) sectionRepository.saveAll(sectionRows);

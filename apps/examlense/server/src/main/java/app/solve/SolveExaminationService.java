@@ -10,7 +10,6 @@ import app.taskblock.TaskBlock;
 import app.taskblock.AIAnswer;
 import app.examination.ExaminationRepository;
 import app.taskblock.AIAnswerRepository;
-import app.grading.GradeRepository;
 import app.taskblock.TaskBlockRepository;
 import app.user.LlmQuotaService;
 import app.sse.SseHub;
@@ -48,7 +47,6 @@ public class SolveExaminationService {
     private final ExaminationRepository examRepository;
     private final TaskBlockRepository taskRepository;
     private final AIAnswerRepository taskAnswerRepository;
-    private final GradeRepository taskGradeRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final SolveSectionService sectionService;
     private final Executor solverExecutor;
@@ -60,7 +58,6 @@ public class SolveExaminationService {
         ExaminationRepository examRepository,
         TaskBlockRepository taskRepository,
         AIAnswerRepository taskAnswerRepository,
-        GradeRepository taskGradeRepository,
         EvaluationRunRepository evaluationRunRepository,
         SolveSectionService sectionService,
         @Qualifier("solverExecutor") Executor solverExecutor,
@@ -71,7 +68,6 @@ public class SolveExaminationService {
         this.examRepository = examRepository;
         this.taskRepository = taskRepository;
         this.taskAnswerRepository = taskAnswerRepository;
-        this.taskGradeRepository = taskGradeRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.sectionService = sectionService;
         this.solverExecutor = solverExecutor;
@@ -93,7 +89,7 @@ public class SolveExaminationService {
         Examination exam = access.requireExamination(examUuid, userId);
 
         // Refuse an over-quota caller before the resets below touch anything: this
-        // method deletes prior answers and auto grades on its way to dispatch, so
+        // method deletes prior answers (and their cascading grades) on its way to dispatch, so
         // a late 429 would leave the exam wiped and stuck in `evaluating`. The
         // matching record() happens at the actual dispatch, so a no-op CAS or a
         // task-less exam costs the caller nothing.
@@ -107,9 +103,9 @@ public class SolveExaminationService {
         }
         sse.examUpdated(examUuid);
 
-        // Reset previous answers + auto grades so progress starts at 0/N.
+        // Reset previous answers so progress starts at 0/N. Their grades cascade
+        // because each grade belongs to the answer it evaluated.
         taskAnswerRepository.deleteByExamId(examUuid);
-        taskGradeRepository.deleteByExamIdAndAutoGradedTrue(examUuid);
         recordRun(exam, solverModel);
 
         List<TaskBlock> taskRows = taskRepository.findByExamIdOrderByPositionAsc(examUuid);

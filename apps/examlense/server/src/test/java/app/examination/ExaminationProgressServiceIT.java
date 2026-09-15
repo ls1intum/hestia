@@ -57,19 +57,19 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
         return tasks.save(t);
     }
 
-    private void addAnswer(Examination e, TaskBlock t) {
+    private AIAnswer addAnswer(Examination e, TaskBlock t) {
         AIAnswer a = new AIAnswer();
         a.setTaskId(t.getId());
         a.setExamId(e.getId());
         a.setProvider("openai");
         a.setModel("gpt-5.5");
-        answers.save(a);
+        return answers.save(a);
     }
 
     private void addGrade(Examination e, TaskBlock t, BigDecimal score) {
+        AIAnswer answer = answers.findByTaskId(t.getId()).orElseGet(() -> addAnswer(e, t));
         Grade g = new Grade();
-        g.setTaskId(t.getId());
-        g.setExamId(e.getId());
+        g.setAnswer(answer);
         g.setScore(score);
         g.setAutoGraded(false);
         grades.save(g);
@@ -84,7 +84,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
         List<AnswerOption> noCorrect = List.of(
             new AnswerOption(UUID.randomUUID().toString(), "a", false));
 
-        // 1: text task with a persisted manual grade -> scored + graded (not answered)
+        // 1: answered text task with a persisted manual grade -> scored + answered + graded
         TaskBlock t1 = addTaskBlock(e, 0, "text", new BigDecimal("2"), null);
         addGrade(e, t1, new BigDecimal("1.5"));
         // 2: auto-resolvable MC (points, correct option, answered) -> scored + answered + graded
@@ -103,7 +103,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
 
         assertThat(counts.taskCount()).isEqualTo(5);
         assertThat(counts.scoredCount()).isEqualTo(4);   // t1,t2,t4,t5
-        assertThat(counts.answeredCount()).isEqualTo(3); // t2,t3,t4
+        assertThat(counts.answeredCount()).isEqualTo(4); // t1,t2,t3,t4
         assertThat(counts.gradedCount()).isEqualTo(2);   // t1 (manual), t2 (auto)
     }
 

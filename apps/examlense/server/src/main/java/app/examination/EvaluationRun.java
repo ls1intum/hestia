@@ -14,7 +14,7 @@ import org.hibernate.generator.EventType;
  * asked to think, and when.
  *
  * <p>At most one row per examination. Starting an evaluation wipes the previous
- * answers and auto grades, so there is never a second live answer set that a
+ * answers and their grades, so there is never a second live answer set that a
  * second run could explain; re-solving replaces this row rather than adding to
  * it. Comparing two models is done by duplicating the examination.
  */

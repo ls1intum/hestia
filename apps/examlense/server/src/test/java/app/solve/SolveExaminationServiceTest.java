@@ -8,7 +8,6 @@ import app.examination.Examination;
 import app.taskblock.TaskBlock;
 import app.examination.ExaminationRepository;
 import app.taskblock.AIAnswerRepository;
-import app.grading.GradeRepository;
 import app.taskblock.TaskBlockRepository;
 import app.sse.SseHub;
 import java.util.List;
@@ -37,14 +36,13 @@ class SolveExaminationServiceTest {
     private final ExaminationRepository exams = mock(ExaminationRepository.class);
     private final TaskBlockRepository tasks = mock(TaskBlockRepository.class);
     private final AIAnswerRepository answers = mock(AIAnswerRepository.class);
-    private final GradeRepository grades = mock(GradeRepository.class);
     private final SolveSectionService sectionService = mock(SolveSectionService.class);
     private final Executor executor = mock(Executor.class);
     private final Access access = mock(Access.class);
     private final SseHub sse = mock(SseHub.class);
 
     private final SolveExaminationService service =
-        new SolveExaminationService(exams, tasks, answers, grades,
+        new SolveExaminationService(exams, tasks, answers,
             mock(EvaluationRunRepository.class), sectionService, executor, access, sse,
             mock(LlmQuotaService.class));
 

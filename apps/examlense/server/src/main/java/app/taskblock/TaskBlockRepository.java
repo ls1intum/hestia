@@ -1,8 +1,11 @@
 package app.taskblock;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +20,16 @@ public interface TaskBlockRepository extends JpaRepository<TaskBlock, UUID> {
 
     /** Bulk load for dashboard progress aggregation across many exams (avoids N+1). */
     List<TaskBlock> findByExamIdIn(List<UUID> examIds);
+
+    /** Serialize answer replacement and grading for one task. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from TaskBlock t where t.id = :id")
+    Optional<TaskBlock> findByIdForUpdate(@Param("id") UUID id);
+
+    /** Lock a replacement batch in stable order so overlapping batches cannot deadlock. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from TaskBlock t where t.id in :ids order by t.id")
+    List<TaskBlock> findAllByIdInForUpdate(@Param("ids") List<UUID> ids);
 
     @Transactional
     void deleteByExamIdAndSectionId(UUID examId, UUID sectionId);

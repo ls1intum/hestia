@@ -8,7 +8,6 @@ import app.taskblock.TaskBlock;
 import app.examination.ExaminationRepository;
 import app.section.SectionRepository;
 import app.taskblock.AIAnswerRepository;
-import app.grading.GradeRepository;
 import app.taskblock.TaskBlockRepository;
 import app.sse.SseHub;
 import org.junit.jupiter.api.AfterEach;
@@ -50,7 +49,6 @@ class SolveExaminationServiceAsyncTest {
         SectionRepository sectionRepository = mock(SectionRepository.class);
         TaskBlockRepository taskRepository = mock(TaskBlockRepository.class);
         AIAnswerRepository answerRepository = mock(AIAnswerRepository.class);
-        GradeRepository gradeRepository = mock(GradeRepository.class);
         SolveSectionService sectionService = mock(SolveSectionService.class);
         SseHub sse = mock(SseHub.class);
         Access access = new Access(examRepository, sectionRepository);
@@ -80,7 +78,7 @@ class SolveExaminationServiceAsyncTest {
         when(examRepository.startEvaluating(any(), any())).thenReturn(1);
 
         SolveExaminationService service = new SolveExaminationService(
-            examRepository, taskRepository, answerRepository, gradeRepository,
+            examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
             sectionService, executor, access, sse, mock(LlmQuotaService.class));
 
@@ -102,7 +100,6 @@ class SolveExaminationServiceAsyncTest {
         assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
         verify(examRepository).updateStatusIfCurrent(examId, "evaluating", "grading");
         verify(answerRepository).deleteByExamId(examId);
-        verify(gradeRepository).deleteByExamIdAndAutoGradedTrue(examId);
     }
 
     @Test
@@ -111,7 +108,6 @@ class SolveExaminationServiceAsyncTest {
         SectionRepository sectionRepository = mock(SectionRepository.class);
         TaskBlockRepository taskRepository = mock(TaskBlockRepository.class);
         AIAnswerRepository answerRepository = mock(AIAnswerRepository.class);
-        GradeRepository gradeRepository = mock(GradeRepository.class);
         SolveSectionService sectionService = mock(SolveSectionService.class);
         SseHub sse = mock(SseHub.class);
         Access access = new Access(examRepository, sectionRepository);
@@ -126,7 +122,7 @@ class SolveExaminationServiceAsyncTest {
         when(examRepository.startEvaluating(any(), any())).thenReturn(1);
 
         SolveExaminationService service = new SolveExaminationService(
-            examRepository, taskRepository, answerRepository, gradeRepository,
+            examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
             sectionService, executor, access, sse, mock(LlmQuotaService.class));
 

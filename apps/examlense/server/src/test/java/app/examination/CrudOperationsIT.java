@@ -10,6 +10,7 @@ import app.taskblock.AIAnswer;
 import app.section.SectionBlockRepository;
 import app.section.SectionFigureRepository;
 import app.section.SectionRepository;
+import app.section.FigureCleanupService;
 import app.taskblock.AIAnswerRepository;
 import app.taskblock.TaskBlockRepository;
 import app.storage.StorageService;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +44,8 @@ class CrudOperationsIT extends AbstractIntegrationTest {
     @Autowired SectionFigureRepository figures;
     @Autowired AIAnswerRepository answers;
     @Autowired StorageService storage;
+    @Autowired FigureCleanupService figureCleanup;
+    @Autowired PlatformTransactionManager txManager;
 
     private Examination seedExaminationWithContent() {
         Examination exam = new Examination();
@@ -187,5 +192,74 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         assertThat(reloaded.getConfirmedAt()).isNull();
         assertThat(answers.findByTaskId(task.getId())).isEmpty();
         assertThat(tasks.findById(task.getId()).orElseThrow().getLearningGoalIds()).isNull();
+    }
+
+    @Test
+    void deletingABlockRemovesItsFigureObjectAfterCommit() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "block-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteBlock(blocks.findById(figure.getBlockId()).orElseThrow());
+
+        assertThat(figures.findById(figure.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingAllBlocksInASectionRemovesTheirFigureObjects() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "bulk-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteBlocks(exam.getId(), section.getId());
+
+        assertThat(blocks.findBySectionIdOrderByPositionAsc(section.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingASectionRemovesItsFigureObjects() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "section-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteSection(section);
+
+        assertThat(sections.findById(section.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingAFigureRemovesItsObjectAfterCommit() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "figure-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        figureCleanup.deleteFigure(figure);
+
+        assertThat(figures.findById(figure.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void rollbackPreservesFigureRowAndObject() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "rollback-image".getBytes(StandardCharsets.UTF_8));
+        SectionBlock block = blocks.findById(figure.getBlockId()).orElseThrow();
+
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            sectionService.deleteBlock(block);
+            status.setRollbackOnly();
+        });
+
+        assertThat(blocks.findById(block.getId())).isPresent();
+        assertThat(figures.findById(figure.getId())).isPresent();
+        assertThat(storage.download(FIGURE_BUCKET, figure.getStoragePath())).isNotNull();
     }
 }

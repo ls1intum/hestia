@@ -43,14 +43,17 @@ public class FigureController {
     private final Access access;
     private final StorageService storage;
     private final SignedUrls signedUrls;
+    private final FigureCleanupService figureCleanup;
 
     public FigureController(SectionFigureRepository figureRepository, SectionBlockRepository blockRepository,
-                            Access access, StorageService storage, SignedUrls signedUrls) {
+                            Access access, StorageService storage, SignedUrls signedUrls,
+                            FigureCleanupService figureCleanup) {
         this.figureRepository = figureRepository;
         this.blockRepository = blockRepository;
         this.access = access;
         this.storage = storage;
         this.signedUrls = signedUrls;
+        this.figureCleanup = figureCleanup;
     }
 
     @Operation(
@@ -147,8 +150,7 @@ public class FigureController {
     @DeleteMapping("/figures/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
         SectionFigure fig = loadFigure(id, userId);
-        try { storage.delete(FIGURE_BUCKET, fig.getStoragePath()); } catch (RuntimeException ignored) {}
-        figureRepository.delete(fig);
+        figureCleanup.deleteFigure(fig);
         return ResponseEntity.noContent().build();
     }
 

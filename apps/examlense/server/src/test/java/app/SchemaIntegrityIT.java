@@ -1,6 +1,8 @@
 package app;
 
 import app.examination.Examination;
+import app.grading.Grade;
+import app.grading.GradeRepository;
 import app.section.Section;
 import app.section.SectionBlock;
 import app.taskblock.TaskBlock;
@@ -32,6 +34,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     @Autowired TaskBlockRepository tasks;
     @Autowired SectionBlockRepository blocks;
     @Autowired AIAnswerRepository answers;
+    @Autowired GradeRepository grades;
 
     /** A real user, because {@code exams.owner_id} is now a foreign key. */
     private UUID owner() {
@@ -106,6 +109,50 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
         tasks.delete(task);
 
         assertThat(answers.findByTaskId(task.getId())).isEmpty();
+    }
+
+    @Test
+    void aTaskBlockHasAtMostOneCurrentAnswer() {
+        Examination exam = newExamination("draft");
+        TaskBlock task = newTaskBlock(exam.getId(), null);
+        answers.saveAndFlush(answerFor(exam, task));
+
+        assertThatThrownBy(() -> answers.saveAndFlush(answerFor(exam, task)))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void deletingAnAnswerCascadesToItsGrade() {
+        Examination exam = newExamination("grading");
+        TaskBlock task = newTaskBlock(exam.getId(), null);
+        AIAnswer answer = answers.saveAndFlush(answerFor(exam, task));
+        Grade grade = new Grade();
+        grade.setAnswer(answer);
+        grade.setScore(java.math.BigDecimal.ONE);
+        grades.saveAndFlush(grade);
+
+        answers.delete(answer);
+        answers.flush();
+
+        assertThat(grades.findById(grade.getId())).isEmpty();
+    }
+
+    @Test
+    void aGradeRequiresAnAnswer() {
+        Grade grade = new Grade();
+        grade.setScore(java.math.BigDecimal.ONE);
+
+        assertThatThrownBy(() -> grades.saveAndFlush(grade))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private static AIAnswer answerFor(Examination exam, TaskBlock task) {
+        AIAnswer answer = new AIAnswer();
+        answer.setTaskId(task.getId());
+        answer.setExamId(exam.getId());
+        answer.setProvider("openai");
+        answer.setModel("gpt-5.5");
+        return answer;
     }
 
     @Test

@@ -106,7 +106,7 @@ public class SectionBlockController {
     @DeleteMapping("/blocks/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
         SectionBlock b = load(id, userId);
-        blockRepository.delete(b);
+        sectionService.deleteBlock(b);
         return ResponseEntity.noContent().build();
     }
 
@@ -123,7 +123,7 @@ public class SectionBlockController {
                                                  String sectionId,
                                                  @CurrentUser String userId) {
         access.requireExamination(Access.id(examId), userId);
-        blockRepository.deleteByExamIdAndSectionId(Access.id(examId), Access.id(sectionId));
+        sectionService.deleteBlocks(Access.id(examId), Access.id(sectionId));
         return ResponseEntity.noContent().build();
     }
 

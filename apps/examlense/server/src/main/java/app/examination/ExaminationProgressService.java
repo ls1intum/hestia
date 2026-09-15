@@ -61,7 +61,8 @@ public class ExaminationProgressService {
         // task_id -> grade (score-bearing wins so a scored grade isn't masked by a null one)
         Map<UUID, Grade> gradeByTaskBlock = new HashMap<>();
         for (Grade g : grades.findByExamIdIn(examIds)) {
-            gradeByTaskBlock.merge(g.getTaskId(), g, (a, b) -> a.getScore() != null ? a : b);
+            gradeByTaskBlock.merge(g.getAnswer().getTaskId(), g,
+                (a, b) -> a.getScore() != null ? a : b);
         }
         // task_ids that have at least one AI answer
         Set<UUID> answeredTaskBlocks = new HashSet<>();

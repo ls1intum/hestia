@@ -1,18 +1,12 @@
 package app.grading;
 import app.shared.Access;
 
-import app.error.ApiException;
-import app.examination.Examination;
-import app.taskblock.TaskBlock;
-import app.taskblock.TaskBlockRepository;
 import app.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,20 +16,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Grades", description = "Scores for AI answers — one grade per task, auto or manual.")
+@Tag(name = "Grades", description = "Scores for AI answers — one grade per current answer, auto or manual.")
 public class GradeController {
 
     public record UpsertGradeRequest(String task_id, String exam_id, BigDecimal score,
                                      boolean auto_graded) {}
 
     private final GradeRepository gradeRepository;
-    private final TaskBlockRepository taskRepository;
     private final Access access;
+    private final GradeService gradeService;
 
-    public GradeController(GradeRepository gradeRepository, TaskBlockRepository taskRepository, Access access) {
+    public GradeController(GradeRepository gradeRepository, Access access, GradeService gradeService) {
         this.gradeRepository = gradeRepository;
-        this.taskRepository = taskRepository;
         this.access = access;
+        this.gradeService = gradeService;
     }
 
     @Operation(
@@ -51,7 +45,7 @@ public class GradeController {
     }
 
     /**
-     * Upsert on task_id (one grade per task), stamping graded_by = caller.
+     * Resolve the task's current answer and upsert its grade, stamping graded_by = caller.
      * Ownership is checked on the TASK (and exam_id derived from it) — trusting
      * the body's exam_id would let a caller grade or hijack a grade row for a
      * task in someone else's exam.
@@ -59,7 +53,8 @@ public class GradeController {
     @Operation(
         summary = "Create or update a task's grade",
         description = """
-            Upserts on `task_id` — one grade per task — and stamps the caller as `graded_by`.
+            Resolves the task's current AI answer, upserts that answer's grade, and stamps the \
+            caller as `graded_by`.
 
             The body's `exam_id` is **ignored**: ownership and the exam are derived from the \
             task, so a caller can't graft a grade onto someone else's exam. Grades are only \
@@ -67,25 +62,10 @@ public class GradeController {
             first, which keeps its results from silently drifting.""")
     @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such task, or `task_id` is not a valid UUID.")
-    @ApiResponse(responseCode = "409", description = "The exam is not in the `grading` status.")
+    @ApiResponse(responseCode = "409", description = "The exam is not in `grading`, or the task has no AI answer.")
     @PutMapping("/task-grades")
     public GradeDto upsert(@RequestBody UpsertGradeRequest req, @CurrentUser String userId) {
-        TaskBlock task = access.requireOwnedChild(taskRepository, req.task_id(), userId, TaskBlock::getExamId, "Task");
-        // Grades are only editable while the exam is being graded. A finished exam
-        // must first be re-opened (status → grading) before any score changes; this
-        // keeps its "final" (live-derived) results from silently drifting.
-        Examination exam = access.requireExamination(task.getExamId(), userId);
-        if (!"grading".equals(exam.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT,
-                "Grades can only be changed while the exam is being graded.");
-        }
-        UUID taskId = task.getId();
-        Grade g = gradeRepository.findByTaskId(taskId).orElseGet(Grade::new);
-        g.setTaskId(taskId);
-        g.setExamId(task.getExamId());
-        g.setScore(req.score());
-        g.setAutoGraded(req.auto_graded());
-        g.setGradedBy(UUID.fromString(userId));
-        return GradeDto.from(gradeRepository.save(g));
+        return GradeDto.from(gradeService.upsert(
+            req.task_id(), req.score(), req.auto_graded(), userId));
     }
 }

@@ -15,7 +15,7 @@ import app.section.SectionFigureRepository;
 import app.section.SectionRepository;
 import app.storage.StorageService;
 import app.taskblock.AIAnswerRepository;
-import app.grading.GradeRepository;
+import app.taskblock.TaskBlockRepository;
 import app.prompts.Prompts;
 import app.sse.SseHub;
 import org.slf4j.Logger;
@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,7 +61,7 @@ class SolveCore {
     private final SectionFigureRepository sectionFigureRepository;
     private final StorageService storage;
     private final AIAnswerRepository taskAnswerRepository;
-    private final GradeRepository taskGradeRepository;
+    private final TaskBlockRepository taskRepository;
     private final TransactionTemplate txTemplate;
     private final SseHub sse;
 
@@ -70,7 +71,7 @@ class SolveCore {
         SectionFigureRepository sectionFigureRepository,
         StorageService storage,
         AIAnswerRepository taskAnswerRepository,
-        GradeRepository taskGradeRepository,
+        TaskBlockRepository taskRepository,
         PlatformTransactionManager txManager,
         SseHub sse
     ) {
@@ -79,7 +80,7 @@ class SolveCore {
         this.sectionFigureRepository = sectionFigureRepository;
         this.storage = storage;
         this.taskAnswerRepository = taskAnswerRepository;
-        this.taskGradeRepository = taskGradeRepository;
+        this.taskRepository = taskRepository;
         this.txTemplate = new TransactionTemplate(txManager);
         this.sse = sse;
     }
@@ -290,18 +291,24 @@ class SolveCore {
     }
 
     /**
-     * Replace existing answers for the given tasks + invalidate their auto-grades
-     * atomically, so a mid-write failure can't leave deleted-but-not-rewritten
-     * answers. Emits a progress event afterwards (SseHub never throws).
+     * Replace existing answers for the given tasks atomically. Task-row locks
+     * serialize overlapping task/section solves, while disjoint sections remain
+     * parallel. Deleting the old answer cascades its grade.
      */
     void replaceAnswers(UUID examId, List<AIAnswer> rows) {
         if (rows.isEmpty()) return;
-        List<UUID> taskIds = new ArrayList<>();
-        for (AIAnswer r : rows) taskIds.add(r.getTaskId());
+        Map<UUID, AIAnswer> replacementByTask = new LinkedHashMap<>();
+        for (AIAnswer row : rows) replacementByTask.putIfAbsent(row.getTaskId(), row);
+        List<AIAnswer> replacements = List.copyOf(replacementByTask.values());
+        List<UUID> lockedTaskIds = replacementByTask.keySet().stream().sorted().toList();
         txTemplate.executeWithoutResult(s -> {
-            taskAnswerRepository.deleteByTaskIdIn(taskIds);
-            taskAnswerRepository.saveAll(rows);
-            taskGradeRepository.deleteByTaskIdInAndAutoGradedTrue(taskIds);
+            List<TaskBlock> locked = taskRepository.findAllByIdInForUpdate(lockedTaskIds);
+            if (locked.size() != lockedTaskIds.size()) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "Task not found");
+            }
+            taskAnswerRepository.deleteByTaskIdIn(lockedTaskIds);
+            taskAnswerRepository.flush();
+            taskAnswerRepository.saveAll(replacements);
         });
         sse.progress(examId);
     }

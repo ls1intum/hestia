@@ -14,6 +14,7 @@ export interface AIAnswer {
 
 export interface Grade {
   id: string;
+  answer_id: string;
   task_id: string;
   exam_id: string;
   score: number | null;
