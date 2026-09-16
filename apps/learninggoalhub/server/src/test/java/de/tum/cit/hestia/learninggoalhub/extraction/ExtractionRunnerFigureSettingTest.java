@@ -158,7 +158,7 @@ class ExtractionRunnerFigureSettingTest {
                 goalRepository,
                 goalSourceRepository,
                 goalRelationshipRepository,
-                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000),
+                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
                 mock(TopicTreeSynthesizer.class),

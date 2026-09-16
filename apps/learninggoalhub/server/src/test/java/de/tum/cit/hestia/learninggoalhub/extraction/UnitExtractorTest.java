@@ -1,14 +1,20 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.learninggoalhub.document.Document;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService.FigureDescription;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.ResolvedSource;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SessionUnit;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SourceLineSelection;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.Window;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
@@ -20,7 +26,7 @@ class UnitExtractorTest {
 
     private static UnitExtractor extractor(int unitMaxChars) {
         return new UnitExtractor(mock(SessionExtractionService.class), mock(DocumentContentRepository.class),
-                mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), unitMaxChars, 3_000);
+                mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), unitMaxChars, 3_000, 3_000);
     }
 
     private static Document document(String text, int[] pageOffsets) {
@@ -90,5 +96,32 @@ class UnitExtractorTest {
                 figures, "");
         assertThat(unsupported.evidenceKind()).isEqualTo(EvidenceKind.UNSUPPORTED);
         assertThat(unsupported.resolution().page()).isNull();
+    }
+
+    /** The kind picks the prompt, and each kind scales its allowance by its own characters-per-skill. */
+    @Test
+    void extractPicksThePromptAndBudgetByTheDocumentKind() {
+        SessionExtractionService service = mock(SessionExtractionService.class);
+        UnitExtractor extractor = new UnitExtractor(service, mock(DocumentContentRepository.class),
+                mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 0, 3_000, 1_000);
+        String text = "x".repeat(3_000);
+
+        extractor.extract(null, unit(DocumentKind.EXERCISE, text), "en", null);
+        verify(service).extract(eq("Unit"), eq(text), eq("en"), eq("English"), isNull(), anyList(), eq(3),
+                eq(DocumentKind.EXERCISE));
+
+        extractor.extract(null, unit(DocumentKind.LECTURE, text), "en", null);
+        verify(service).extract(eq("Unit"), eq(text), eq("en"), eq("English"), isNull(), anyList(), eq(1),
+                eq(DocumentKind.LECTURE));
+
+        extractor.extract(null, unit(null, text), "en", null);
+        verify(service).extract(eq("Unit"), eq(text), eq("en"), eq("English"), isNull(), anyList(), eq(1),
+                isNull());
+    }
+
+    private static SessionUnit<Void> unit(DocumentKind kind, String text) {
+        Document document = document(text, null);
+        when(document.getKind()).thenReturn(kind);
+        return new SessionUnit<>(null, document, new Window(0, text.length(), null, null), "Unit", text, List.of());
     }
 }

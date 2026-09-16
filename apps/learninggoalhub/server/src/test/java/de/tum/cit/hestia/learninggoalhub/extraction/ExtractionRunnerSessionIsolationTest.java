@@ -115,7 +115,7 @@ class ExtractionRunnerSessionIsolationTest {
                 goalRepository,
                 mock(GoalSourceRepository.class),
                 mock(GoalRelationshipRepository.class),
-                new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000),
+                new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
                 mock(TopicTreeSynthesizer.class),

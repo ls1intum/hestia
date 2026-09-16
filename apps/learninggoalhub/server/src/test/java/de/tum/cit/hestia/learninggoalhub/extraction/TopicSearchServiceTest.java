@@ -67,7 +67,7 @@ class TopicSearchServiceTest {
     private TopicSearchService service(int maxPages) {
         when(courseRepository.findById(COURSE_ID)).thenReturn(Optional.of(new Course("Machine Learning")));
         UnitExtractor unitExtractor = new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class),
-                mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000);
+                mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000, 3_000);
         return new TopicSearchService(courseRepository, documentRepository, sectionRepository,
                 mock(PageDescriptionRepository.class), goalRepository, goalSourceRepository,
                 mock(GoalRelationshipRepository.class), mock(HierarchyNodeRepository.class), unitExtractor,
@@ -181,7 +181,7 @@ class TopicSearchServiceTest {
                 "Out-of-bag error estimates generalisation");
         when(documentRepository.findByCourseId(COURSE_ID)).thenReturn(List.of(lecture));
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
-                nullable(String.class), anyList(), anyInt()))
+                nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("Explain bagging.", 0), skill("Estimate the out-of-bag error.", 1)));
         LearningGoal existing = mock(LearningGoal.class);
         when(existing.getId()).thenReturn(90L);
@@ -218,7 +218,7 @@ class TopicSearchServiceTest {
         Document lecture = document(41L, "lecture.pdf", "one", "two", "three", "four");
         when(documentRepository.findByCourseId(COURSE_ID)).thenReturn(List.of(lecture));
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
-                nullable(String.class), anyList(), anyInt()))
+                nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("A.", 0), skill("B.", 1), skill("C.", 2), skill("D.", 3)));
         when(goalRepository.findByCourseIdAndOriginIn(eq(COURSE_ID), any())).thenReturn(List.of());
         when(treeSynthesizer.structure(eq("Random forest"), eq(List.of("A.", "B.", "C.", "D.")), anyString(),
@@ -246,7 +246,7 @@ class TopicSearchServiceTest {
         Document lecture = document(41L, "lecture.pdf", "one", "two");
         when(documentRepository.findByCourseId(COURSE_ID)).thenReturn(List.of(lecture));
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
-                nullable(String.class), anyList(), anyInt()))
+                nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("A.", 0)));
         when(goalRepository.findByCourseIdAndOriginIn(eq(COURSE_ID), any())).thenReturn(List.of());
         TopicSearchService service = service(80);

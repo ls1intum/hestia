@@ -3,6 +3,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
@@ -50,19 +51,23 @@ public class UnitExtractor {
     private final GoalSourceRepository goalSourceRepository;
     private final int unitMaxChars;
     private final int skillTargetChars;
+    private final int exerciseSkillTargetChars;
 
     public UnitExtractor(SessionExtractionService sessionExtractionService,
                          DocumentContentRepository documentContentRepository,
                          HighlightGeometryService highlightGeometryService,
                          GoalSourceRepository goalSourceRepository,
                          @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
-                         @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars) {
+                         @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
+                         @Value("${hestia.extraction.exercise-skill-target-chars:${hestia.extraction.skill-target-chars:3000}}")
+                         int exerciseSkillTargetChars) {
         this.sessionExtractionService = sessionExtractionService;
         this.documentContentRepository = documentContentRepository;
         this.highlightGeometryService = highlightGeometryService;
         this.goalSourceRepository = goalSourceRepository;
         this.unitMaxChars = unitMaxChars;
         this.skillTargetChars = skillTargetChars;
+        this.exerciseSkillTargetChars = exerciseSkillTargetChars;
     }
 
     int unitMaxChars() {
@@ -71,6 +76,10 @@ public class UnitExtractor {
 
     int skillTargetChars() {
         return skillTargetChars;
+    }
+
+    int exerciseSkillTargetChars() {
+        return exerciseSkillTargetChars;
     }
 
     /**
@@ -145,7 +154,10 @@ public class UnitExtractor {
         return Math.max(low, Math.min(value, high));
     }
 
-    /** Runs the session extraction prompt over one unit. */
+    /**
+     * Runs the extraction prompt over one unit: the exercise prompt and skill budget for a unit of a
+     * document uploaded as an exercise, the lecture prompt and budget for everything else.
+     */
     public <T> SessionExtraction<T> extract(Course course, SessionUnit<T> session, String dominantLanguage,
                                             String modelOverride) {
         String languageCode = ExtractionRunner.resolveLanguage(
@@ -154,10 +166,12 @@ public class UnitExtractor {
         // The allowance follows the unit's own size, so a one-page problem sheet is not asked for as
         // many outcomes as a fifty-page lecture. Units are already split at the granularity budget
         // above, so this only has to scale what is left.
-        int budget = SessionExtractionService.skillBudget(session.text().length(), skillTargetChars);
+        DocumentKind kind = session.document().getKind();
+        int budget = SessionExtractionService.skillBudget(session.text().length(),
+                kind == DocumentKind.EXERCISE ? exerciseSkillTargetChars : skillTargetChars);
         List<ExtractedSkill> skills = sessionExtractionService.extract(
                 session.title(), session.text(), languageCode, languageName,
-                modelOverride, session.figures(), budget);
+                modelOverride, session.figures(), budget, kind);
         if (skills != null && skills.size() > budget) {
             log.warn("Session '{}' returned {} skills, above its allowance of {}; keeping them all",
                     session.title(), skills.size(), budget);

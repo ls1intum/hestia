@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SessionExtractionService {
 
-    static final String PROMPT_VERSION = "direct-v18";
+    static final String PROMPT_VERSION = "direct-v19";
 
     /**
      * How many broad skills one session may yield.
@@ -191,6 +192,116 @@ public class SessionExtractionService {
             ---
             """;
 
+    /**
+     * The prompt for a unit of a document uploaded as an exercise.
+     *
+     * <p>The lecture prompt asks what a student should be able to do after working through the
+     * material, and has to talk the model down from escalating demonstrated derivations into student
+     * actions. A task sheet answers a different question — what the student does in each task — and
+     * its instruction verbs already say it. Everything the pipeline relies on stays as in the lecture
+     * prompt: the placeholders and their order, the JSON contract, source-line grounding, the Bloom
+     * and SOLO definitions, the skill/knowledge tiers and the wording invariant, so the same
+     * validation, retry and salvage apply unchanged.
+     */
+    static final String EXERCISE_PROMPT_TEMPLATE = """
+            You analyse one part of a university exercise sheet, tutorial or assignment to identify what
+            the student does in its tasks.
+
+            Write every generated text and shortLabel value in %s. Keep the JSON property names
+            text, shortLabel, kind, bloom, solo, sourceStartLine, sourceEndLine and knowledge exactly
+            as written, and keep kind values exactly EXPLICIT or IMPLICIT. The source line indices
+            refer to the numbered non-blank lines shown below; never translate the source text.
+
+            Bloom's revised taxonomy (cognitive process an outcome targets):
+              - REMEMBER: recall facts and basic concepts.
+              - UNDERSTAND: explain ideas or concepts.
+              - APPLY: use information in new situations.
+              - ANALYZE: draw connections among ideas; break material into parts.
+              - EVALUATE: justify a stance or decision.
+              - CREATE: produce new or original work.
+
+            SOLO taxonomy (structure of the observed learning outcome):
+              - PRESTRUCTURAL: misses the point.
+              - UNISTRUCTURAL: identifies one relevant aspect.
+              - MULTISTRUCTURAL: identifies several relevant aspects without integrating them.
+              - RELATIONAL: integrates aspects into a coherent whole.
+              - EXTENDED_ABSTRACT: generalises beyond the given context.
+
+            Bloom is carried by the outcome's VERB, and only by the verb. Every outcome is written in
+            the action-noun form that names what the student does with the material — "Computing
+            ...", "Applying ...", "Analysing ..." — so the verb you choose IS the level you report. Do
+            not re-derive the level from the rest of the sentence. The topic an outcome covers is not
+            its cognitive level, and a long outcome is not a higher one. SOLO is the opposite — it
+            describes how the whole statement is structured, so read all of it.
+
+            SKILLS are what the student DOES in the tasks: outcomes at APPLY, ANALYZE, EVALUATE or
+            CREATE. One skill stands for one kind of performance the tasks ask for. Several tasks or
+            subtasks that practise the same performance on different inputs are one skill, not one
+            skill each; a skill is not a list of task numbers. Return at most %d.
+
+            KNOWLEDGE is what the student must know to carry out the skill above it: every fact,
+            definition, method, rule or distinction the tasks state, recall or rely on, each as its own
+            item. Knowledge sits at REMEMBER or UNDERSTAND — it is what the student knows, never what
+            they do. Include what the material itself names; leave out numbers, sample data and
+            formatting instructions of individual tasks.
+
+            Every knowledge item is itself a learning outcome and MUST use the expanded action-noun
+            form naming what the student does with it — "Explaining", "Describing", "Identifying",
+            "Naming", "Recalling", "Stating". Never state a bare fact, and never use a verb above
+            UNDERSTAND ("Distinguishing", "Comparing", "Deriving", "Evaluating", "Constructing") for a
+            knowledge item: if the student genuinely performs that action, it is a skill, not knowledge.
+              WRONG: "The optimal variable ordering problem is NP-complete"
+              RIGHT: "Explaining why finding the optimal variable ordering is NP-complete"
+
+            READ THE VERB OF EACH TASK. A task's instruction — compute, prove, implement, construct,
+            compare, decide, design — states what the student does, so choose the outcome's verb from
+            it. Do not lower a task to "Understanding ..." because the sheet also explains its
+            background, and do not raise it above what the task asks: a task that only asks the
+            student to state, name or recall something yields knowledge, not a skill. Hints, sample
+            solutions and worked examples show how a task is done; they are not further tasks.
+            Return an empty list only when the material contains no task at all, such as a cover page
+            or organisational notes.
+
+            Classify each skill and knowledge item as:
+              - EXPLICIT: stated directly as a task instruction or goal in the text (e.g. "Compute ...",
+                "Prove that ...", "in this exercise you will ...").
+              - IMPLICIT: an outcome a task clearly requires but does not phrase as an instruction.
+
+            Return the list of skills, each with:
+              - text: an expanded action-noun outcome following the wording invariant.
+              - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
+                verb of the text above, such as "Compute the bias-variance decomposition". Phrase it
+                in the natural word order of the output language (German puts the infinitive last:
+                "Bias-Varianz-Zerlegung berechnen") and do not end it with a period.
+              - kind: EXPLICIT or IMPLICIT.
+              - bloom: APPLY, ANALYZE, EVALUATE or CREATE, matching the verb of text.
+              - solo: one of the SOLO enum names above.
+              - sourceStartLine and sourceEndLine: the inclusive zero-based index range of the numbered
+                lines shown below that best supports the outcome, selected from ONE contiguous place
+                in the text — usually the task instruction itself. Usually select 1-3 lines; never
+                select more than 10 lines and never combine separate passages. A task heading and the
+                subtasks beneath it are SEPARATE passages: pick one, never combine them. The indices
+                MUST come from the numbered lines shown below.
+              - knowledge: every knowledge item underpinning this skill, each with its own text,
+                shortLabel, kind, bloom (REMEMBER or UNDERSTAND), solo, sourceStartLine and
+                sourceEndLine. The wording invariant and every source-line rule above apply to
+                knowledge items exactly as they do to skills.
+
+            Do not invent outcomes that are not supported by the text. Return skills in the order in
+            which their first task appears in the material below; order each skill's knowledge the
+            same way.
+
+            Exercise title:
+            ---
+            %s
+            ---
+
+            Numbered non-blank exercise lines:
+            ---
+            %s
+            ---
+            """;
+
     private static final String FIGURE_PROMPT_SUFFIX = """
 
             Figure descriptions (AI-generated from rendered slides — NOT verbatim text):
@@ -250,18 +361,29 @@ public class SessionExtractionService {
                 figureDescriptions, MAX_SKILLS_PER_SESSION);
     }
 
-    /**
-     * @param skillBudget the most skills this unit may yield, from {@link #skillBudget(int, int)}.
-     */
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
                                         String languageName, String modelOverride,
                                         List<PageDescriptionService.FigureDescription> figureDescriptions,
                                         int skillBudget) {
+        return extract(sessionTitle, sessionText, expectedLanguageCode, languageName, modelOverride,
+                figureDescriptions, skillBudget, null);
+    }
+
+    /**
+     * @param skillBudget  the most skills this unit may yield, from {@link #skillBudget(int, int)}.
+     * @param documentKind the kind of the document the unit was cut from: EXERCISE selects
+     *                     {@link #EXERCISE_PROMPT_TEMPLATE}, LECTURE or null the lecture prompt.
+     */
+    public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String expectedLanguageCode,
+                                        String languageName, String modelOverride,
+                                        List<PageDescriptionService.FigureDescription> figureDescriptions,
+                                        int skillBudget, DocumentKind documentKind) {
         int budget = Math.max(1, Math.min(MAX_SKILLS_PER_SESSION, skillBudget));
         String title = sessionTitle == null || sessionTitle.isBlank() ? "(untitled session)" : sessionTitle;
         NumberedLines numberedLines = NumberedLines.of(sessionText);
         String numberedSessionText = numberedLines.render();
-        String prompt = PROMPT_TEMPLATE.formatted(
+        String template = documentKind == DocumentKind.EXERCISE ? EXERCISE_PROMPT_TEMPLATE : PROMPT_TEMPLATE;
+        String prompt = template.formatted(
                 languageName, budget, title, numberedSessionText);
         if (figureDescriptions != null && !figureDescriptions.isEmpty()) {
             StringBuilder figures = new StringBuilder();

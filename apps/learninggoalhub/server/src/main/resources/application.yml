@@ -91,6 +91,8 @@ hestia:
     unit-max-chars: 12000
     # Characters per skill; a unit's allowance is its length over this, floor 1, ceiling 4.
     skill-target-chars: 3000
+    # The same for units of documents uploaded as exercises, calibrated apart from lectures.
+    exercise-skill-target-chars: 3000
     # Whether a SESSION/EXERCISE node that produced no goals is kept instead of pruned. On, a lecture
     # that teaches no performance stays visible as an empty unit — which is the measurement when
     # skills are contracted to APPLY or above. Off, the tree shows only what was extracted.
