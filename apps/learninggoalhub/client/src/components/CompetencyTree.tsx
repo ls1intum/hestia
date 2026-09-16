@@ -16,6 +16,7 @@ import type { LearningGoal } from "../api/client.ts";
 import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
 import CapabilityModal from "./CapabilityModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import TopicSearchDialog from "./TopicSearchDialog.tsx";
 import { createTopic } from "../lib/createTopic.ts";
 import AnchoredPopover from "./AnchoredPopover.tsx";
 import Button from "./Button.tsx";
@@ -260,6 +261,8 @@ export default function CompetencyTree({
 }) {
   const queryClient = useQueryClient();
   const [creation, setCreation] = useState<CreationState | null>(null);
+  // The typed topic being looked up in the slides; the creation field stays open behind the dialog.
+  const [finding, setFinding] = useState<string | null>(null);
   const createMutation = useMutation({
     mutationFn: async (vars: CreationState) => {
       if (vars.tier === 1) {
@@ -914,6 +917,14 @@ export default function CompetencyTree({
             // Only a topic can be generated; the tiers below it are added by hand.
             onGenerate={append.tier === 1 ? () => submitCreation(true) : undefined}
             generating={createMutation.variables?.generate === true}
+            onFind={
+              append.tier === 1
+                ? () => {
+                    const text = creation?.text.trim() ?? "";
+                    if (text !== "") setFinding(text);
+                  }
+                : undefined
+            }
           />,
         );
       }
@@ -1192,6 +1203,17 @@ export default function CompetencyTree({
             : undefined
         }
       />
+      {finding != null && (
+        <TopicSearchDialog
+          courseId={courseId}
+          topic={finding}
+          onClose={() => setFinding(null)}
+          onCreated={() => {
+            setFinding(null);
+            setCreation(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1309,6 +1331,7 @@ function AppendKnob({
   onCancel,
   onGenerate,
   generating,
+  onFind,
 }: {
   depth: number;
   label: string;
@@ -1326,6 +1349,7 @@ function AppendKnob({
   onCancel: () => void;
   onGenerate?: () => void;
   generating?: boolean;
+  onFind?: () => void;
 }) {
   const left = `calc(0.625rem + ${depth * 20}px + 0.25rem + 1.5px - 1.2rem)`;
   return (
@@ -1347,6 +1371,7 @@ function AppendKnob({
           onCancel={onCancel}
           onGenerate={onGenerate}
           generating={generating}
+          onFind={onFind}
           className="competency-append-form"
           style={{ marginLeft: `calc(0.625rem + ${depth * 20}px)` }}
         />
