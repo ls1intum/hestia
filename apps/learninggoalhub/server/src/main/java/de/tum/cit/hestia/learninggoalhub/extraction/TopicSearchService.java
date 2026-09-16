@@ -63,6 +63,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -187,14 +188,16 @@ public class TopicSearchService {
         } catch (RuntimeException ex) {
             log.warn("Search terms for topic '{}' failed, searching for the topic alone: {}", topic, ex.getMessage());
         }
-        List<String> needles = terms.stream()
+        List<Pattern> needles = terms.stream()
                 .map(TopicSearchService::normalize)
                 .filter(term -> !term.isEmpty())
                 .distinct()
+                .map(TopicSearchService::termPattern)
                 .toList();
 
         Map<Long, Map<Integer, String>> descriptions = teachingDescriptions(documents);
         List<PageRun> runs = new ArrayList<>();
+        List<PageRun> singlePages = new ArrayList<>();
         for (Document document : documents) {
             int[] offsets = document.getPageOffsets();
             String text = document.getRawText();
@@ -206,14 +209,24 @@ public class TopicSearchService {
             for (int page = 1; page < offsets.length; page++) {
                 String pageText = normalize(pageText(text, offsets, page) + " "
                         + pageDescriptions.getOrDefault(page, ""));
-                if (needles.stream().anyMatch(pageText::contains)) {
+                if (needles.stream().anyMatch(needle -> needle.matcher(pageText).find())) {
                     hits.add(page);
                 }
             }
+            if (hits.isEmpty()) {
+                continue;
+            }
             List<DocumentSection> sections = documentSectionRepository.findByDocumentIdOrderByOrdinal(document.getId());
             for (int[] run : mergeRuns(hits)) {
-                runs.add(new PageRun(document.getId(), rangeLabel(document, sections, run[0]), run[0], run[1]));
+                runs.add(new PageRun(document.getId(), rangeLabel(document, sections, run[0], run[1]), run[0], run[1]));
             }
+            for (int page : hits) {
+                singlePages.add(new PageRun(document.getId(), rangeLabel(document, sections, page, page), page, page));
+            }
+        }
+        // A topic taught on scattered single slides forms no run. Offering its pages beats offering nothing.
+        if (runs.isEmpty()) {
+            runs = singlePages;
         }
         int totalPages = runs.stream().mapToInt(run -> run.endPage() - run.startPage() + 1).sum();
         return new PagePlan(List.copyOf(terms), runs, totalPages, maxPages);
@@ -266,8 +279,8 @@ public class TopicSearchService {
             int[] offsets = document.getPageOffsets();
             int start = Math.min(offsets[range.startPage() - 1], text.length());
             int end = Math.max(start, Math.min(offsets[range.endPage()], text.length()));
-            String label = rangeLabel(document,
-                    documentSectionRepository.findByDocumentIdOrderByOrdinal(document.getId()), range.startPage());
+            String label = rangeLabel(document, documentSectionRepository.findByDocumentIdOrderByOrdinal(
+                    document.getId()), range.startPage(), range.endPage());
             List<FigureDescription> figures = course.isFiguresEnabled()
                     ? figuresByDocument.computeIfAbsent(document.getId(), id -> figureDescriptions(document))
                     : List.of();
@@ -743,6 +756,14 @@ public class TopicSearchService {
                 ExtractionRunner.resolveLanguage(course, null, ExtractionRunner.dominantLanguage(documents)));
     }
 
+    /**
+     * Matches a normalised term where a word starts. Without the boundary a short term hits inside
+     * unrelated words ("rf" in "performance"); the end stays open so plurals and compounds still match.
+     */
+    static Pattern termPattern(String normalizedTerm) {
+        return Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(normalizedTerm));
+    }
+
     /** Lower-cased with every run of whitespace, including line breaks, collapsed to one space. */
     static String normalize(String text) {
         return text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
@@ -778,13 +799,24 @@ public class TopicSearchService {
                 .toList();
     }
 
-    /** The bookmark title of the section holding {@code page}, else the document's name. */
-    static String rangeLabel(Document document, List<DocumentSection> sections, int page) {
-        return sections.stream()
-                .filter(section -> covers(section, page))
-                .map(DocumentSection::getTitle)
-                .findFirst()
-                .orElse(displayName(document));
+    /**
+     * The bookmark title of the section covering most of the pages, else the document's name. A run
+     * often starts a page or two before its section, on the previous section's closing slides.
+     */
+    static String rangeLabel(Document document, List<DocumentSection> sections, int startPage, int endPage) {
+        DocumentSection best = null;
+        int bestOverlap = 0;
+        for (DocumentSection section : sections) {
+            if (section.getStartPage() == null || section.getEndPage() == null) {
+                continue;
+            }
+            int overlap = Math.min(endPage, section.getEndPage()) - Math.max(startPage, section.getStartPage()) + 1;
+            if (overlap > bestOverlap) {
+                best = section;
+                bestOverlap = overlap;
+            }
+        }
+        return best != null ? best.getTitle() : displayName(document);
     }
 
     private static boolean covers(DocumentSection section, int page) {

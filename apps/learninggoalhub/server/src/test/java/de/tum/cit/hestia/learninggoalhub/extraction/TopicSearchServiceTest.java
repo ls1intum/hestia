@@ -98,6 +98,15 @@ class TopicSearchServiceTest {
     }
 
     @Test
+    void aTermMatchesOnlyWhereAWordStarts() {
+        assertThat(TopicSearchService.termPattern("rf").matcher("rf trains many trees").find()).isTrue();
+        assertThat(TopicSearchService.termPattern("rf").matcher("(rf) and bagging").find()).isTrue();
+        assertThat(TopicSearchService.termPattern("rf").matcher("the model's performance").find()).isFalse();
+        assertThat(TopicSearchService.termPattern("random forest").matcher("random forests").find()).isTrue();
+        assertThat(TopicSearchService.termPattern("kapital").matcher("die kapitalstruktur").find()).isTrue();
+    }
+
+    @Test
     void runsAreLabelledByBookmarkOrFileNameAndTheTopicIsSearchedWhenTermsFail() {
         Document bookmarked = document(41L, "lecture.pdf",
                 "Introduction", "Random forest basics", "Bagging", "Random\nForest out-of-bag", "Other", "random forest");
@@ -120,6 +129,17 @@ class TopicSearchServiceTest {
     }
 
     @Test
+    void aRunIsLabelledByTheSectionCoveringMostOfItsPages() {
+        Document lecture = document(41L, "lecture.pdf", "a", "b", "c", "d", "e", "f");
+        List<DocumentSection> sections = List.of(
+                new DocumentSection(lecture, 0, "Trees", 0, 1, 1, 2),
+                new DocumentSection(lecture, 1, "Random forests", 1, 2, 3, 6));
+
+        assertThat(TopicSearchService.rangeLabel(lecture, sections, 2, 6)).isEqualTo("Random forests");
+        assertThat(TopicSearchService.rangeLabel(lecture, List.of(), 2, 6)).isEqualTo("lecture.pdf");
+    }
+
+    @Test
     void generatedTermsWidenTheSearch() {
         Document lecture = document(41L, "lecture.pdf", "Intro", "Bagging", "Bootstrap samples", "Other");
         when(documentRepository.findByCourseId(COURSE_ID)).thenReturn(List.of(lecture));
@@ -130,6 +150,18 @@ class TopicSearchServiceTest {
 
         assertThat(plan.terms()).containsExactly("Random forest", "bagging", "Bootstrap");
         assertThat(plan.runs()).containsExactly(new PageRun(41L, "lecture.pdf", 2, 3));
+    }
+
+    @Test
+    void scatteredSinglePagesAreOfferedWhenNoRunFormed() {
+        Document lecture = document(41L, "lecture.pdf", "Buybacks", "Other", "Other", "Buybacks again", "Other");
+        when(documentRepository.findByCourseId(COURSE_ID)).thenReturn(List.of(lecture));
+        when(searchSynthesizer.searchTerms(anyString(), anyString(), nullable(String.class))).thenReturn(List.of());
+
+        PagePlan plan = service(80).planPages(COURSE_ID, "Buybacks", null);
+
+        assertThat(plan.runs()).containsExactly(
+                new PageRun(41L, "lecture.pdf", 1, 1), new PageRun(41L, "lecture.pdf", 4, 4));
     }
 
     @Test

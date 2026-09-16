@@ -27,6 +27,9 @@ public class TopicSearchSynthesizer {
 
             - Return two to six terms: the topic's own name, its common synonyms and abbreviations, and
               the names of its central methods or concepts.
+            - Slides often use a short form on its own. Include the distinctive head word of a
+              multi-word name in its singular form ("tariff" for "import tariffs") when that
+              word alone still points to this topic.
             - Write each term as it would appear on a slide, in %s. Add the English term as well when
               slides in that language commonly use it.
             - Each term is one to three words. Do not return sentences, and do not return generic words
