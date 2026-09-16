@@ -158,7 +158,7 @@ class ExtractionRunnerFigureSettingTest {
                 goalRepository,
                 goalSourceRepository,
                 goalRelationshipRepository,
-                sessionExtractionService,
+                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000),
                 auditService,
                 documentSectionRepository,
                 mock(TopicTreeSynthesizer.class),
@@ -168,11 +168,8 @@ class ExtractionRunnerFigureSettingTest {
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,
                 1,
-                12_000,
-                3_000,
                 false,
-                null,
-                highlightGeometryService);
+                null);
         return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
     }
 
