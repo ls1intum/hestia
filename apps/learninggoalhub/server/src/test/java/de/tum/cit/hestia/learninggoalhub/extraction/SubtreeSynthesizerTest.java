@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSkill;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubSkill;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubtree;
 import java.util.List;
@@ -15,18 +16,42 @@ class SubtreeSynthesizerTest {
         return new GeneratedKnowledge(text, "Deployment Stages");
     }
 
+    private static GeneratedSubSkill subSkill(String text, String knowledgeText) {
+        return new GeneratedSubSkill(text, "Config", List.of(knowledge(knowledgeText)));
+    }
+
+    private static GeneratedSkill skill(String text, GeneratedSubSkill... subSkills) {
+        return new GeneratedSkill(text, "Deploy", List.of(subSkills));
+    }
+
     @Test
     void rejectsEmptySubtree() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of())))
-                .withMessageContaining("at least one sub-skill");
+                .withMessageContaining("at least one skill");
+    }
+
+    @Test
+    void rejectsBlankSkill() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
+                        skill("  ", subSkill("Configure deployments.", "Explain deployment stages."))))))
+                .withMessageContaining("blank skill");
+    }
+
+    @Test
+    void rejectsSkillWithoutSubSkills() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
+                        skill("Automate deployments")))))
+                .withMessageContaining("needs sub-skills");
     }
 
     @Test
     void rejectsBlankSubSkill() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
-                        new GeneratedSubSkill("  ", "Config", List.of(knowledge("Knowledge")))))))
+                        skill("Automate deployments", subSkill("  ", "Knowledge"))))))
                 .withMessageContaining("blank sub-skill");
     }
 
@@ -34,42 +59,44 @@ class SubtreeSynthesizerTest {
     void rejectsSubSkillWithoutKnowledge() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
-                        new GeneratedSubSkill("Configure deployments.", "Config", List.of())))))
+                        skill("Automate deployments",
+                                new GeneratedSubSkill("Configure deployments.", "Config", List.of()))))))
                 .withMessageContaining("knowledge items");
     }
 
     @Test
-    void rejectsMoreThanFiveSubSkillsWithoutTruncatingTheResponse() {
-        List<GeneratedSubSkill> subSkills = java.util.stream.IntStream.rangeClosed(1, 6)
-                .mapToObj(index -> new GeneratedSubSkill(
-                        "Apply capability " + index + ".", "Capability " + index,
-                        List.of(knowledge("Explain concept " + index + "."))))
+    void rejectsMoreThanFiveSkillsWithoutTruncatingTheResponse() {
+        List<GeneratedSkill> skills = java.util.stream.IntStream.rangeClosed(1, 6)
+                .mapToObj(index -> skill("Apply capability " + index,
+                        subSkill("Configure part " + index + ".", "Explain concept " + index + ".")))
                 .toList();
 
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(subSkills)))
-                .withMessageContaining("more than five sub-skills");
+                .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(skills)))
+                .withMessageContaining("more than five skills");
     }
 
     @Test
-    void rejectsDuplicateNodeText() {
+    void rejectsDuplicateNodeTextAcrossLevels() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
-                        new GeneratedSubSkill("Configure deployments.", "Config",
-                                List.of(knowledge("Explain deployment stages."))),
-                        new GeneratedSubSkill(" configure DEPLOYMENTS. ", "Config2",
-                                List.of(knowledge("Identify release criteria.")))))))
+                        skill("Configure deployments.",
+                                subSkill(" configure DEPLOYMENTS. ", "Explain deployment stages."))))))
                 .withMessageContaining("duplicate node text");
     }
 
     @Test
     void trimsTextsAndKeepsShortLabels() {
-        GeneratedSubtree result = SubtreeSynthesizer.validate(
-                new GeneratedSubtree(List.of(
+        GeneratedSubtree result = SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
+                new GeneratedSkill(" Automate deployments ", " Deployment Automation ", List.of(
                         new GeneratedSubSkill(" Configure deployments. ", "  Deployment Config  ",
-                                List.of(new GeneratedKnowledge(" Explain deployment stages. ", " Deployment Stages "))))));
+                                List.of(new GeneratedKnowledge(" Explain deployment stages. ",
+                                        " Deployment Stages "))))))));
 
-        GeneratedSubSkill subSkill = result.subSkills().get(0);
+        GeneratedSkill skill = result.skills().get(0);
+        assertThat(skill.text()).isEqualTo("Automate deployments");
+        assertThat(skill.shortLabel()).isEqualTo("Deployment Automation");
+        GeneratedSubSkill subSkill = skill.subSkills().get(0);
         assertThat(subSkill.text()).isEqualTo("Configure deployments.");
         assertThat(subSkill.shortLabel()).isEqualTo("Deployment Config");
         assertThat(subSkill.knowledge()).singleElement().satisfies(k -> {
@@ -80,12 +107,14 @@ class SubtreeSynthesizerTest {
 
     @Test
     void blankShortLabelBecomesNull() {
-        GeneratedSubtree result = SubtreeSynthesizer.validate(
-                new GeneratedSubtree(List.of(
+        GeneratedSubtree result = SubtreeSynthesizer.validate(new GeneratedSubtree(List.of(
+                new GeneratedSkill("Automate deployments", " ", List.of(
                         new GeneratedSubSkill("Configure deployments.", "  ",
-                                List.of(new GeneratedKnowledge("Explain deployment stages.", null))))));
+                                List.of(new GeneratedKnowledge("Explain deployment stages.", null))))))));
 
-        assertThat(result.subSkills().get(0).shortLabel()).isNull();
-        assertThat(result.subSkills().get(0).knowledge().get(0).shortLabel()).isNull();
+        GeneratedSkill skill = result.skills().get(0);
+        assertThat(skill.shortLabel()).isNull();
+        assertThat(skill.subSkills().get(0).shortLabel()).isNull();
+        assertThat(skill.subSkills().get(0).knowledge().get(0).shortLabel()).isNull();
     }
 }

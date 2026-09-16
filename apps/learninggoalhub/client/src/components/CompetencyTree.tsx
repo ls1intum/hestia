@@ -16,6 +16,7 @@ import type { LearningGoal } from "../api/client.ts";
 import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
 import CapabilityModal from "./CapabilityModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import { createTopic } from "../lib/createTopic.ts";
 import AnchoredPopover from "./AnchoredPopover.tsx";
 import Button from "./Button.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
@@ -84,6 +85,8 @@ type CreationState = {
   tier: CreationTier;
   parentGoalId: number | null;
   text: string;
+  /** A topic created together with AI-written skills beneath it, instead of on its own. */
+  generate?: boolean;
 };
 
 // Shared grid template so the sticky header row and every body row line their columns up: a
@@ -260,18 +263,7 @@ export default function CompetencyTree({
   const createMutation = useMutation({
     mutationFn: async (vars: CreationState) => {
       if (vars.tier === 1) {
-        const result = await api.POST(
-          "/api/courses/{courseId}/learning-goals/terminal",
-          { params: { path: { courseId } }, body: { text: vars.text } },
-        );
-        if (!result.data) {
-          throw new Error(
-            result.response.status === 409
-              ? "A topic with that wording already exists."
-              : "Could not add the topic.",
-          );
-        }
-        return result.data;
+        return createTopic(courseId, vars.text, vars.generate === true);
       }
       const result = await api.POST(
         "/api/courses/{courseId}/learning-goals/{goalId}/children",
@@ -313,10 +305,10 @@ export default function CompetencyTree({
     if (createMutation.isError) createMutation.reset();
     setCreation((current) => (current ? { ...current, text } : current));
   };
-  const submitCreation = () => {
+  const submitCreation = (generate = false) => {
     if (!creation || creation.text.trim() === "") return;
     createMutation.mutate(
-      { ...creation, text: creation.text.trim() },
+      { ...creation, text: creation.text.trim(), generate },
       { onSuccess: () => setCreation(null) },
     );
   };
@@ -917,8 +909,11 @@ export default function CompetencyTree({
             }
             onStart={() => beginCreation(append.tier, parentGoalId)}
             onChange={updateCreationText}
-            onSubmit={submitCreation}
+            onSubmit={() => submitCreation()}
             onCancel={cancelCreation}
+            // Only a topic can be generated; the tiers below it are added by hand.
+            onGenerate={append.tier === 1 ? () => submitCreation(true) : undefined}
+            generating={createMutation.variables?.generate === true}
           />,
         );
       }
@@ -1312,6 +1307,8 @@ function AppendKnob({
   onChange,
   onSubmit,
   onCancel,
+  onGenerate,
+  generating,
 }: {
   depth: number;
   label: string;
@@ -1327,6 +1324,8 @@ function AppendKnob({
   onChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onGenerate?: () => void;
+  generating?: boolean;
 }) {
   const left = `calc(0.625rem + ${depth * 20}px + 0.25rem + 1.5px - 1.2rem)`;
   return (
@@ -1346,6 +1345,8 @@ function AppendKnob({
           onChange={onChange}
           onSubmit={onSubmit}
           onCancel={onCancel}
+          onGenerate={onGenerate}
+          generating={generating}
           className="competency-append-form"
           style={{ marginLeft: `calc(0.625rem + ${depth * 20}px)` }}
         />

@@ -208,8 +208,8 @@ export function supportingOutcomesOf(
 }
 
 /**
- * How many wizard-generated sub-skills hang under the terminal skill `goalId` — the nodes a
- * regeneration would replace. `undefined` means the goal is not a terminal skill at all, which is
+ * How many AI-generated skills hang under the topic `goalId` — the nodes a regeneration would
+ * replace, with everything beneath them. `undefined` means the goal is not a topic at all, which is
  * what tells the goal modal to leave the regeneration action out entirely.
  */
 export function generatedChildCount(

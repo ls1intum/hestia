@@ -13,6 +13,7 @@ import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
+import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSkill;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubSkill;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubtree;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
@@ -252,13 +253,12 @@ public class LearningGoalController {
     }
 
     /**
-     * Adds a terminal skill (competency root) an instructor typed in the post-extraction review. It is
-     * NOT part of the ordinary pipeline: created directly as an {@code origin=TERMINAL},
-     * {@code status=PENDING} goal with no source snippet, tagged {@code USER_CREATED} so it stays
-     * distinguishable from clustered terminals. Bloom/SOLO stay empty — a typed skill is the
-     * instructor's own wording, so the levels are theirs to set in the review rather than a model's
-     * guess; only generated nodes are classified. The AI subtree is best-effort: a failure still
-     * creates the skill and can be retried later.
+     * Adds a topic (competency root) exactly as an instructor typed it. It is NOT part of the ordinary
+     * pipeline: created directly as an {@code origin=TERMINAL}, {@code status=PENDING} goal with no
+     * source snippet, tagged {@code USER_CREATED} so it stays distinguishable from pipeline topics.
+     * Nothing is generated beneath it and no model is called: adding by hand stays manual, and
+     * generating skills is a choice of its own ({@code /terminal/generated}). Bloom/SOLO stay empty,
+     * since a topic carries no level.
      * No embedding is computed, matching the pipeline's terminal competencies.
      * The goal is attached to the course's COMPETENCY root, reusing it or creating it on first use.
      */
@@ -286,20 +286,6 @@ public class LearningGoalController {
         goal.setHierarchyNode(competencyRoot(course));
         goal.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(goal);
-        String languageName = courseLanguageName(course);
-        GeneratedSubtree generated = null;
-        try {
-            generated = SubtreeSynthesizer.validate(
-                    subtreeSynthesizer.generateSubtree(text, languageName, null));
-        } catch (RuntimeException ignored) {
-            // The instructor's skill is still useful without an AI subtree; the review can retry it later.
-        }
-        if (generated != null) {
-            GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
-            // Only the generated nodes: the skill itself was already classified above.
-            applyClassifications(generatedNodes.nodes(), null);
-            persistGeneratedNodes(goal, generatedNodes);
-        }
         return LearningGoalResponse.from(goal, List.of(), List.of());
     }
 
@@ -342,7 +328,10 @@ public class LearningGoalController {
                 .toList();
     }
 
-    /** Generates and atomically persists a complete terminal → sub-skill → knowledge subtree. */
+    /**
+     * Generates and atomically persists a topic with a complete skill → sub-skill → knowledge subtree,
+     * written from the topic's name alone, so no generated node has a source.
+     */
     @PostMapping("/terminal/generated")
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
@@ -402,15 +391,6 @@ public class LearningGoalController {
         Course course = terminal.getCourse();
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
                 subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), model));
-        long retainedChildren = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
-                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
-                .filter(relationship -> relationship.getSource().getCreationProvenance()
-                        != GoalCreationProvenance.WIZARD_AI_SUBTREE)
-                .count();
-        if (retainedChildren + generated.subSkills().size() > SubtreeSynthesizer.MAX_SUB_SKILLS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "The generated subtree and existing children would exceed five sub-skills");
-        }
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         applyClassifications(generatedNodes.nodes(), model);
 
@@ -483,25 +463,39 @@ public class LearningGoalController {
                 .toList();
     }
 
+    /**
+     * Turns a generated subtree into unsaved goals and the edges between them. Every node states its
+     * role: a childless generated node's tier could not be read off its position otherwise.
+     */
     private GeneratedNodes buildGeneratedNodes(Course course, GeneratedSubtree generated) {
-        List<LearningGoal> subSkills = new ArrayList<>();
-        List<List<LearningGoal>> knowledgeBySubSkill = new ArrayList<>();
         List<LearningGoal> nodes = new ArrayList<>();
-        for (GeneratedSubSkill generatedSubSkill : generated.subSkills()) {
-            LearningGoal subSkill = newGeneratedGoal(course, generatedSubSkill.text(), GoalOrigin.SYNTHESIZED);
-            subSkill.setShortLabel(trimToNull(generatedSubSkill.shortLabel()));
-            subSkills.add(subSkill);
-            nodes.add(subSkill);
-            List<LearningGoal> subSkillKnowledge = new ArrayList<>();
-            for (GeneratedKnowledge generatedKnowledge : generatedSubSkill.knowledge()) {
-                LearningGoal knowledgeGoal = newGeneratedGoal(course, generatedKnowledge.text(), GoalOrigin.SYNTHESIZED);
-                knowledgeGoal.setShortLabel(trimToNull(generatedKnowledge.shortLabel()));
-                subSkillKnowledge.add(knowledgeGoal);
-                nodes.add(knowledgeGoal);
+        List<GeneratedEdge> edges = new ArrayList<>();
+        for (GeneratedSkill generatedSkill : generated.skills()) {
+            LearningGoal skill = newGeneratedNode(course, generatedSkill.text(), generatedSkill.shortLabel(),
+                    GoalRole.SKILL);
+            nodes.add(skill);
+            edges.add(new GeneratedEdge(skill, null));
+            for (GeneratedSubSkill generatedSubSkill : generatedSkill.subSkills()) {
+                LearningGoal subSkill = newGeneratedNode(course, generatedSubSkill.text(),
+                        generatedSubSkill.shortLabel(), GoalRole.SKILL);
+                nodes.add(subSkill);
+                edges.add(new GeneratedEdge(subSkill, skill));
+                for (GeneratedKnowledge generatedKnowledge : generatedSubSkill.knowledge()) {
+                    LearningGoal knowledge = newGeneratedNode(course, generatedKnowledge.text(),
+                            generatedKnowledge.shortLabel(), GoalRole.KNOWLEDGE);
+                    nodes.add(knowledge);
+                    edges.add(new GeneratedEdge(knowledge, subSkill));
+                }
             }
-            knowledgeBySubSkill.add(subSkillKnowledge);
         }
-        return new GeneratedNodes(subSkills, knowledgeBySubSkill, nodes);
+        return new GeneratedNodes(nodes, edges);
+    }
+
+    private LearningGoal newGeneratedNode(Course course, String text, String shortLabel, GoalRole role) {
+        LearningGoal goal = newGeneratedGoal(course, text, GoalOrigin.SYNTHESIZED);
+        goal.setShortLabel(trimToNull(shortLabel));
+        goal.setRole(role);
+        return goal;
     }
 
     private List<LearningGoal> allNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
@@ -522,19 +516,17 @@ public class LearningGoalController {
         }
         goalRepository.saveAll(allNodes(terminal, generatedNodes));
         goalRepository.flush();
-        for (int i = 0; i < generatedNodes.subSkills().size(); i++) {
-            for (LearningGoal knowledgeGoal : generatedNodes.knowledgeBySubSkill().get(i)) {
-                linkContributors(List.of(knowledgeGoal), generatedNodes.subSkills().get(i));
-            }
-        }
-        for (LearningGoal subSkill : generatedNodes.subSkills()) {
-            linkContributors(List.of(subSkill), terminal);
+        for (GeneratedEdge edge : generatedNodes.edges()) {
+            linkContributors(List.of(edge.child()), edge.parent() == null ? terminal : edge.parent());
         }
     }
 
-    private record GeneratedNodes(List<LearningGoal> subSkills,
-                                  List<List<LearningGoal>> knowledgeBySubSkill,
-                                  List<LearningGoal> nodes) {
+    /** Generated goals in tree order, and the CONTRIBUTES_TO edges between them. */
+    private record GeneratedNodes(List<LearningGoal> nodes, List<GeneratedEdge> edges) {
+    }
+
+    /** One generated edge; a null parent stands for the topic the subtree hangs under. */
+    private record GeneratedEdge(LearningGoal child, LearningGoal parent) {
     }
 
     private int nextLectureOrder(Course course) {

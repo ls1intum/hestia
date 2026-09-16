@@ -67,9 +67,9 @@ export default function CompetencyGoalModal({
   /** Source-backed lecture outcomes used to synthesize this sub-skill. */
   supportingOutcomes?: LearningGoal[];
   /**
-   * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
-   * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
-   * is not one and the action stays out of the modal.
+   * AI-generated skills under this goal, which enables the subtree action: a number means the goal
+   * is a topic (0 = its generation failed or was never run), `undefined` means it is not one and
+   * the action stays out of the modal.
    */
   generatedChildCount?: number;
   onClose: () => void;
@@ -516,7 +516,7 @@ export default function CompetencyGoalModal({
             <div className="flex flex-col gap-1.5">
               {staleSubtree && (
                 <p className="text-xs leading-snug text-hestia-text-muted">
-                  The sub-skills were generated from the previous wording.
+                  The skills were generated from the previous wording.
                 </p>
               )}
               <div className="flex items-center gap-2">
@@ -533,8 +533,8 @@ export default function CompetencyGoalModal({
                   {regenerateMutation.isPending
                     ? "Generating…"
                     : generatedChildCount! > 0
-                      ? "Regenerate AI sub-skills"
-                      : "Generate AI sub-skills"}
+                      ? "Regenerate AI skills"
+                      : "Generate AI skills"}
                 </button>
                 {staleSubtree && (
                   <button
