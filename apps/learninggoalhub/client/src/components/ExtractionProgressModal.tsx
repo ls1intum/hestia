@@ -4,6 +4,7 @@ import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import { api } from "../api/client.ts";
 import { EXTRACTION_PHASES } from "../lib/extraction.ts";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
+import { createTopic } from "../lib/createTopic.ts";
 import {
   buildCompetencyForest,
   COMPETENCY_ROLE_META,
@@ -13,6 +14,7 @@ import { useTheme } from "../theme/context.ts";
 import iconLight from "../assets/logos/icon-light.svg";
 import iconDark from "../assets/logos/icon-dark.svg";
 import Button from "./Button.tsx";
+import CompetencyCreationField from "./CompetencyCreationField.tsx";
 
 type Props = {
   open: boolean;
@@ -45,9 +47,12 @@ export default function ExtractionProgressModal({
   const { resolved } = useTheme();
   const flame = resolved === "dark" ? iconDark : iconLight;
   const queryClient = useQueryClient();
-  // The topic whose dismissal waits for a second click, and the topics folded shut.
-  const [confirmingTopic, setConfirmingTopic] = useState<number | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  // The topic or skill whose dismissal waits for a second click, and the topics folded open. Topics
+  // start folded shut, so the review opens on the course's outline.
+  const [confirmingGoal, setConfirmingGoal] = useState<number | null>(null);
+  const [expandedTopics, setExpandedTopics] = useState<Set<number>>(() => new Set());
+  // The wording of a topic being added, or null while the add field is closed.
+  const [newTopic, setNewTopic] = useState<string | null>(null);
   const treeOnlyRetry = status?.status === "FAILED"
     && status.phase === "SYNTHESIZING"
     && (status.summary?.goalsCreated ?? 0) > 0
@@ -107,7 +112,8 @@ export default function ExtractionProgressModal({
 
   useEffect(() => {
     if (!open) {
-      setConfirmingTopic(null);
+      setConfirmingGoal(null);
+      setNewTopic(null);
       retryMutation.reset();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- reset modal-local mutations on close
@@ -168,12 +174,31 @@ export default function ExtractionProgressModal({
       if (deleteError) throw new Error("Could not remove it.");
     },
     onSuccess: async () => {
-      setConfirmingTopic(null);
+      setConfirmingGoal(null);
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
     },
   });
+
+  // A topic the run missed can be named here, before the review closes. It opens straight away, so
+  // skills generated beneath it come up for review like every other skill.
+  const createTopicMutation = useMutation({
+    mutationFn: (vars: { text: string; generate: boolean }) =>
+      createTopic(courseId as number, vars.text, vars.generate),
+    onSuccess: async (topic) => {
+      setNewTopic(null);
+      const topicId = topic.id;
+      if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
+      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+  const submitNewTopic = (generate: boolean) => {
+    const text = (newTopic ?? "").trim();
+    if (text !== "") createTopicMutation.mutate({ text, generate });
+  };
 
   if (!open) return null;
 
@@ -364,7 +389,7 @@ export default function ExtractionProgressModal({
                             .filter((item) => item.goal.status !== "APPROVED")
                             .map((item) => item.goal.id)
                             .filter((id): id is number => id != null);
-                          const expanded = topicId == null || !collapsed.has(topicId);
+                          const expanded = topicId == null || expandedTopics.has(topicId);
                           return (
                             <li key={topicId ?? topic.goal.text}>
                               <TopicHeader
@@ -384,22 +409,22 @@ export default function ExtractionProgressModal({
                                   }
                                 }}
                                 expanded={expanded}
-                                confirming={topicId != null && confirmingTopic === topicId}
+                                confirming={topicId != null && confirmingGoal === topicId}
                                 dismissing={
                                   deleteGoalMutation.isPending
                                   && deleteGoalMutation.variables === topicId
                                 }
                                 onToggle={() => {
                                   if (topicId == null) return;
-                                  setCollapsed((current) => {
+                                  setExpandedTopics((current) => {
                                     const next = new Set(current);
                                     if (next.has(topicId)) next.delete(topicId);
                                     else next.add(topicId);
                                     return next;
                                   });
                                 }}
-                                onDismiss={() => setConfirmingTopic(topicId ?? null)}
-                                onCancelDismiss={() => setConfirmingTopic(null)}
+                                onDismiss={() => setConfirmingGoal(topicId ?? null)}
+                                onCancelDismiss={() => setConfirmingGoal(null)}
                                 onConfirmDismiss={() => {
                                   if (topicId != null) deleteGoalMutation.mutate(topicId);
                                 }}
@@ -415,6 +440,9 @@ export default function ExtractionProgressModal({
                                         approveMutation.isPending
                                         && approveMutation.variables?.goalId === skill.goal.id
                                       }
+                                      confirming={
+                                        skill.goal.id != null && confirmingGoal === skill.goal.id
+                                      }
                                       dismissing={
                                         deleteGoalMutation.isPending
                                         && deleteGoalMutation.variables === skill.goal.id
@@ -424,7 +452,9 @@ export default function ExtractionProgressModal({
                                           approveMutation.mutate({ goalId: skill.goal.id, approved });
                                         }
                                       }}
-                                      onDismiss={() => {
+                                      onDismiss={() => setConfirmingGoal(skill.goal.id ?? null)}
+                                      onCancelDismiss={() => setConfirmingGoal(null)}
+                                      onConfirmDismiss={() => {
                                         if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
                                       }}
                                     />
@@ -437,6 +467,43 @@ export default function ExtractionProgressModal({
                       </ul>
                     )}
                   </div>
+                  {!goalsQuery.isLoading && !goalsQuery.isError && courseId != null && (
+                    <div className="border-t border-hestia-border px-4 py-3">
+                      {newTopic != null ? (
+                        <CompetencyCreationField
+                          value={newTopic}
+                          placeholder="Name a topic that is missing…"
+                          error={
+                            createTopicMutation.isError
+                              ? (createTopicMutation.error as Error).message
+                              : undefined
+                          }
+                          pending={createTopicMutation.isPending}
+                          onChange={(value) => {
+                            if (createTopicMutation.isError) createTopicMutation.reset();
+                            setNewTopic(value);
+                          }}
+                          onSubmit={() => submitNewTopic(false)}
+                          onCancel={() => {
+                            if (createTopicMutation.isPending) return;
+                            createTopicMutation.reset();
+                            setNewTopic(null);
+                          }}
+                          onGenerate={() => submitNewTopic(true)}
+                          generating={createTopicMutation.variables?.generate === true}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setNewTopic("")}
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-hestia-primary transition hover:underline"
+                        >
+                          <span aria-hidden="true">+</span>
+                          Add topic
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
@@ -513,8 +580,8 @@ export default function ExtractionProgressModal({
 
 /**
  * A topic's row: its name, how many skills it groups, and what an instructor can do to a topic —
- * accept all of its skills at once, or dismiss it. Dismissing takes the topic's skills with it, so
- * it asks once more in place. Clicking the name folds the group.
+ * accept all of its skills at once, or dismiss it. Dismissing deletes everything beneath the topic
+ * with it, so it asks once more in place. Clicking the name folds the group.
  */
 function TopicHeader({
   topic,
@@ -538,7 +605,7 @@ function TopicHeader({
   number: string;
   /** Items up for review in this topic: its skills, or its sub-skills when it has no skills. */
   skillCount: number;
-  /** Skills grouped under the topic, which a dismissal removes with it. */
+  /** Skills grouped under the topic. */
   groupedSkillCount: number;
   /** Sub-skills reviewed in place of skills; non-zero only for a topic without skills. */
   subSkillCount: number;
@@ -594,7 +661,7 @@ function TopicHeader({
       {confirming ? (
         <div className="flex shrink-0 items-center gap-1">
           <span className="mr-1 text-xs text-hestia-text-muted">
-            {groupedSkillCount === 0 ? "Remove this topic?" : `Remove it and its ${groupedSkillWord}?`}
+            {topic.children.length === 0 ? "Remove this topic?" : "Remove it and everything beneath it?"}
           </span>
           <Button variant="neutral" size="sm" disabled={dismissing} onClick={onCancelDismiss}>
             Cancel
@@ -624,7 +691,7 @@ function TopicHeader({
           <Button
             variant="neutral"
             size="sm"
-            title="Remove this topic and its skills from the course"
+            title="Remove this topic and everything beneath it from the course"
             onClick={onDismiss}
           >
             Dismiss
@@ -646,15 +713,18 @@ function reviewItemsOf(topic: CompetencyNode): CompetencyNode[] {
 
 /**
  * One skill under its topic, or a sub-skill standing in for a topic without skills: Accept marks it
- * reviewed, Dismiss deletes it.
+ * reviewed, Dismiss deletes it after asking once more in place, like a topic.
  */
 function SkillRow({
   skill,
   number,
   accepting,
+  confirming,
   dismissing,
   onAccept,
   onDismiss,
+  onCancelDismiss,
+  onConfirmDismiss,
 }: {
   skill: CompetencyNode;
   /**
@@ -663,9 +733,12 @@ function SkillRow({
    */
   number: string;
   accepting: boolean;
+  confirming: boolean;
   dismissing: boolean;
   onAccept: (approved: boolean) => void;
   onDismiss: () => void;
+  onCancelDismiss: () => void;
+  onConfirmDismiss: () => void;
 }) {
   const approved = skill.goal.status === "APPROVED";
   const noun = COMPETENCY_ROLE_META[skill.role].label.toLowerCase();
@@ -701,41 +774,56 @@ function SkillRow({
           </span>
         )}
       </span>
-      <div className="flex shrink-0 items-center gap-1">
-        {approved ? (
+      {confirming ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="mr-1 text-xs text-hestia-text-muted">
+            {skill.children.length > 0
+              ? `Remove this ${noun} and everything beneath it?`
+              : `Remove this ${noun}?`}
+          </span>
+          <Button variant="neutral" size="sm" disabled={dismissing} onClick={onCancelDismiss}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" disabled={dismissing} onClick={onConfirmDismiss}>
+            {dismissing ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          {approved ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={accepting}
+              title="Accepted — click to undo"
+              aria-label="Undo accept"
+              onClick={() => onAccept(false)}
+              className="text-hestia-primary"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
+                <path
+                  fillRule="evenodd"
+                  d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Accepted
+            </Button>
+          ) : (
+            <Button size="sm" disabled={accepting} onClick={() => onAccept(true)}>
+              {accepting ? "Accepting…" : "Accept"}
+            </Button>
+          )}
           <Button
-            variant="ghost"
+            variant="neutral"
             size="sm"
-            disabled={accepting}
-            title="Accepted — click to undo"
-            aria-label="Undo accept"
-            onClick={() => onAccept(false)}
-            className="text-hestia-primary"
+            title={`Remove this ${noun} from the course`}
+            onClick={onDismiss}
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
-              <path
-                fillRule="evenodd"
-                d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Accepted
+            Dismiss
           </Button>
-        ) : (
-          <Button size="sm" disabled={accepting} onClick={() => onAccept(true)}>
-            {accepting ? "Accepting…" : "Accept"}
-          </Button>
-        )}
-        <Button
-          variant="neutral"
-          size="sm"
-          title={`Remove this ${noun} from the course`}
-          disabled={dismissing}
-          onClick={onDismiss}
-        >
-          {dismissing ? "Dismissing…" : "Dismiss"}
-        </Button>
-      </div>
+        </div>
+      )}
     </li>
   );
 }
