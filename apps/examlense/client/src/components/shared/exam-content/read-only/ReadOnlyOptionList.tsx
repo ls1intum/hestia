@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils/utils";
-import type { Task } from "@/lib/exam/exam-helpers";
-import type { TaskAnswer } from "@/lib/grading/grading";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
+import type { AIAnswer } from "@/lib/grading/grading";
 
 interface Props {
-  task: Task;
-  answer: TaskAnswer | undefined;
+  task: TaskBlock;
+  answer: AIAnswer | undefined;
 }
 
 /**

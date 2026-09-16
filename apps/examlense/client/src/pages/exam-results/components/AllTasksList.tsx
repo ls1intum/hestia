@@ -20,22 +20,22 @@ import {
   mergeSectionItems,
   type Section,
   type SectionBlock,
-  type Task,
+  type TaskBlock,
 } from "@/lib/exam/exam-helpers";
 import {
   effectiveScore,
   scoreRollup,
-  type TaskAnswer,
-  type TaskGrade,
+  type AIAnswer,
+  type Grade,
 } from "@/lib/grading/grading";
 import { ScoreBar } from "./ScoreBar";
 
 interface Props {
-  tasks: Task[];
+  tasks: TaskBlock[];
   sections: Section[];
   blocks: SectionBlock[];
-  answersById: Map<string, TaskAnswer>;
-  gradesById: Map<string, TaskGrade>;
+  answersById: Map<string, AIAnswer>;
+  gradesById: Map<string, Grade>;
   /** When set (e.g. deep-linked from the breakdown table), open this task's
    *  section and scroll to it on mount. */
   scrollToTaskId?: string;

@@ -1,9 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { patchExam, type ExamListItem } from "@/lib/api/api-client";
+import { patchExam, type ExaminationListItem } from "@/lib/api/api-client";
 import { parseExamPdf } from "@/lib/api/api-parse";
 import { toast } from "@/hooks/ui/use-toast";
 
-type RetryableExam = Pick<ExamListItem, "id" | "source_file_url">;
+type RetryableExam = Pick<ExaminationListItem, "id" | "source_file_url">;
 
 /**
  * Re-run parsing for an existing/failed exam: reset it to "parsing" (clearing

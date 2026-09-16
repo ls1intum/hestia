@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { useSolverModels } from "@/lib/api/api-models";
 import { resolveSelectableDefault, selectableModels } from "@/lib/exam/llm-models";
 import { Field } from "@/pages/exams/start-exam/Field";
@@ -20,7 +20,7 @@ import { SolverModelStep } from "@/pages/exams/start-exam/SolverModelStep";
 interface Props {
   /** `null` keeps the dialog closed. Mount with `key={exam?.id}` so the form
    *  re-seeds from a fresh row each time it opens. */
-  exam: ExamListItem | null;
+  exam: ExaminationListItem | null;
   onOpenChange: (open: boolean) => void;
   onConfirm: (payload: { title: string; solver_model: string }) => Promise<void>;
 }
@@ -29,6 +29,9 @@ interface Props {
  * Duplicate an exam with an editable title + solver model. The copy defaults to
  * "<title> (Copy)" and the source's solver; the picker falls back to a valid
  * default if the source model is no longer selectable.
+ *
+ * This is how one exam is compared against another model: an exam records a
+ * single evaluation run, so a second model means a second exam.
  */
 export const DuplicateExamDialog = ({ exam, onOpenChange, onConfirm }: Props) => {
   const { data: solverCatalog } = useSolverModels();

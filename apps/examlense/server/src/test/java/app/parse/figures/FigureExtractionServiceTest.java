@@ -1,7 +1,7 @@
 package app.parse.figures;
 
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.section.SectionFigure;
 import app.section.SectionFigureRepository;
 import app.sse.SseHub;
@@ -46,7 +46,7 @@ class FigureExtractionServiceTest {
     private static final OffsetDateTime PARSED_AT = OffsetDateTime.now();
     private static final String CAPTION = "Abbildung 1 — Der Ablauf des Verfahrens";
 
-    private ExamRepository examRepository;
+    private ExaminationRepository examRepository;
     private SectionFigureRepository figureRepository;
     private StorageService storage;
     private SseHub sse;
@@ -54,12 +54,12 @@ class FigureExtractionServiceTest {
 
     @BeforeEach
     void setUp() {
-        examRepository = mock(ExamRepository.class);
+        examRepository = mock(ExaminationRepository.class);
         figureRepository = mock(SectionFigureRepository.class);
         storage = mock(StorageService.class);
         sse = mock(SseHub.class);
         service = newService(true);
-        Exam exam = new Exam();
+        Examination exam = new Examination();
         exam.setParsedAt(PARSED_AT);
         when(examRepository.findById(EXAM)).thenReturn(Optional.of(exam));
     }
@@ -247,9 +247,9 @@ class FigureExtractionServiceTest {
     }
 
     @Test
-    void stopsWhenTheExamHasBeenReParsedUnderneathIt() {
+    void stopsWhenTheExaminationHasBeenReParsedUnderneathIt() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
-        Exam reParsed = new Exam();
+        Examination reParsed = new Examination();
         reParsed.setParsedAt(PARSED_AT.plusMinutes(1));
         when(examRepository.findById(EXAM))
             .thenReturn(Optional.of(examAt(PARSED_AT)))   // snapshot at start
@@ -270,8 +270,8 @@ class FigureExtractionServiceTest {
         verify(storage, never()).download(anyString(), anyString());
     }
 
-    private static Exam examAt(OffsetDateTime parsedAt) {
-        Exam e = new Exam();
+    private static Examination examAt(OffsetDateTime parsedAt) {
+        Examination e = new Examination();
         e.setParsedAt(parsedAt);
         return e;
     }

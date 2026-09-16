@@ -1,8 +1,8 @@
 package app.user;
 
 import app.AbstractIntegrationTest;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired UserRepository users;
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
 
     /** Distinct source addresses, so one test's registrations don't exhaust another's cap. */
     private String uniqueIp() {
@@ -81,7 +81,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
             mvc.perform(get("/api/me").header("Authorization", "Bearer " + first))
                 .andReturn().getResponse().getContentAsString(), "$.id");
 
-        Exam theirs = new Exam();
+        Examination theirs = new Examination();
         theirs.setOwnerId(UUID.fromString(firstId));
         theirs.setTitle("private");
         theirs.setSource("manual");
@@ -204,7 +204,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void linkingKeepsTheAccountAndItsExams() throws Exception {
+    void linkingKeepsTheAccountAndItsExaminations() throws Exception {
         String token = registerFrom(uniqueIp());
         String id = JsonPath.read(
             mvc.perform(get("/api/me").header("Authorization", "Bearer " + token))

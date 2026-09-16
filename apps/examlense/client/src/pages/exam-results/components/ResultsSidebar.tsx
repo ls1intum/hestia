@@ -15,7 +15,7 @@ interface Props {
   /** Key of the active view. */
   currentView: string;
   onSelectView: (key: string) => void;
-  /** Exam title node (StaticTitle). */
+  /** Examination title node (StaticTitle). */
   title: ReactNode;
   /** Optional pinned bottom content (e.g. a "Back to Grading" button). */
   footer?: ReactNode;

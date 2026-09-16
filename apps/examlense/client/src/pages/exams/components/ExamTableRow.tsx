@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { enUS } from "date-fns/locale";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { examModePath, isParseFailure } from "@/lib/exam/exam-helpers";
 import { cn } from "@/lib/utils/utils";
 import { ExamStatusBadge } from "@/pages/exams/components/ExamStatusBadge";
@@ -14,24 +14,24 @@ import { ExamActionsMenu } from "./ExamActionsMenu";
 import { ExamTitleCell } from "./ExamTitleCell";
 
 /** Where a row navigates on click — the exam's canonical mode for its status. */
-const examHref = (e: ExamListItem): string => examModePath(e.id, e.status);
+const examHref = (e: ExaminationListItem): string => examModePath(e.id, e.status);
 
 export interface ExamRowHandlers {
   /** Re-parse a PDF that failed during parsing. */
-  onRetry: (exam: ExamListItem) => void;
+  onRetry: (exam: ExaminationListItem) => void;
   /** Re-run evaluation for an exam that failed while solving / was cancelled. */
-  onRetryEvaluation: (exam: ExamListItem) => void;
-  onCancel: (exam: ExamListItem) => void;
-  onDuplicate: (exam: ExamListItem) => void;
-  onDelete: (exam: ExamListItem) => void;
-  onRename: (exam: ExamListItem, title: string) => void;
+  onRetryEvaluation: (exam: ExaminationListItem) => void;
+  onCancel: (exam: ExaminationListItem) => void;
+  onDuplicate: (exam: ExaminationListItem) => void;
+  onDelete: (exam: ExaminationListItem) => void;
+  onRename: (exam: ExaminationListItem, title: string) => void;
 }
 
 export const ExamTableRow = ({
   exam,
   handlers,
 }: {
-  exam: ExamListItem;
+  exam: ExaminationListItem;
   handlers: ExamRowHandlers;
 }) => {
   const navigate = useNavigate();

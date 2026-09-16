@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -35,7 +35,7 @@ class SseHubTest {
     }
 
     private static SseHub hubWithOwner(UUID owner) {
-        ExamRepository exams = mock(ExamRepository.class);
+        ExaminationRepository exams = mock(ExaminationRepository.class);
         when(exams.findOwnerIdById(any())).thenReturn(Optional.ofNullable(owner));
         return new SseHub(exams);
     }
@@ -50,7 +50,7 @@ class SseHubTest {
     }
 
     @Test
-    void examUpdatedFansOutToBothTheExamTopicAndTheListTopic() {
+    void examUpdatedFansOutToBothTheExaminationTopicAndTheListTopic() {
         SseHub hub = hub();
         UUID examId = UUID.randomUUID();
         CountingEmitter examSub = attach(hub, "exam:" + examId);
@@ -63,7 +63,7 @@ class SseHubTest {
     }
 
     @Test
-    void progressReachesBothTheExamTopicAndTheListTopic() {
+    void progressReachesBothTheExaminationTopicAndTheListTopic() {
         // Solve progress must also refresh the dashboard list so the "Solving
         // task X of Y…" bar advances live there, not just on the per-exam splash.
         SseHub hub = hub();
@@ -115,7 +115,7 @@ class SseHubTest {
      * throwing, so a missing owner has to be swallowed.
      */
     @Test
-    void aDeletedExamDoesNotBreakThePublish() {
+    void aDeletedExaminationDoesNotBreakThePublish() {
         SseHub hub = hubWithOwner(null); // findOwnerIdById returns empty
         CountingEmitter listSub = attach(hub, listTopic(OWNER));
 

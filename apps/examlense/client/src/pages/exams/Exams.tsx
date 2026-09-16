@@ -11,7 +11,7 @@ import {
   deleteExam,
   duplicateExam as apiDuplicateExam,
   patchExam,
-  type ExamListItem,
+  type ExaminationListItem,
 } from "@/lib/api/api-client";
 import { subscribeExamsList } from "@/lib/api/sse";
 import { useLghCourses } from "@/hooks/data/use-learning-goals";
@@ -50,11 +50,11 @@ const Exams = () => {
     setDialogSeq((s) => s + 1);
     setDialogMode(mode);
   };
-  const [pendingDelete, setPendingDelete] = useState<ExamListItem | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ExaminationListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [pendingCancel, setPendingCancel] = useState<ExamListItem | null>(null);
+  const [pendingCancel, setPendingCancel] = useState<ExaminationListItem | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [duplicateTarget, setDuplicateTarget] = useState<ExamListItem | null>(null);
+  const [duplicateTarget, setDuplicateTarget] = useState<ExaminationListItem | null>(null);
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -145,10 +145,10 @@ const Exams = () => {
 
   // Writes the new title into the cache before the patch lands, so the cell
   // doesn't flicker back to the old value; a failure rolls back by invalidating.
-  const renameExam = async (exam: ExamListItem, title: string) => {
+  const renameExam = async (exam: ExaminationListItem, title: string) => {
     const next = title.trim();
     if (!next || next === exam.title) return;
-    queryClient.setQueryData<ExamListItem[]>(["exams-list"], (old) =>
+    queryClient.setQueryData<ExaminationListItem[]>(["exams-list"], (old) =>
       old?.map((e) => (e.id === exam.id ? { ...e, title: next } : e)),
     );
     try {
@@ -228,7 +228,7 @@ const Exams = () => {
               onClick={() => openDialog("pdf")}
               className="inline-flex items-center gap-1 rounded-hestia-md bg-hestia-primary px-hestia-4 py-hestia-2 text-sm font-semibold text-primary-foreground shadow-hestia-sm transition-colors hover:bg-hestia-primary-hover"
             >
-              <FileUp size={14} /> Import Exam
+              <FileUp size={14} /> Import Examination
             </button>
           </div>
         </div>
@@ -244,7 +244,7 @@ const Exams = () => {
                 onClick={() => openDialog("pdf")}
                 className="inline-flex items-center gap-1 text-hestia-primary hover:underline underline-offset-4"
               >
-                <FileUp size={14} /> Import Exam
+                <FileUp size={14} /> Import Examination
               </button>
               <button
                 type="button"

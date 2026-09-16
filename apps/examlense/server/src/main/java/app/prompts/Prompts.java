@@ -15,17 +15,17 @@ public final class Prompts {
 
     private Prompts() {}
 
-    public record ExamPromptInfo(String id, String title, String course) {}
+    public record ExaminationPromptInfo(String id, String title, String course) {}
     public record SectionPromptInfo(String id, int position, String name) {}
     public record BlockPromptInfo(String id, String sectionId, int position, String kind, String content) {}
-    public record TaskOptionPromptInfo(String id, String text) {}
-    public record TaskPromptInfo(
+    public record AnswerOptionPromptInfo(String id, String text) {}
+    public record TaskBlockPromptInfo(
         String id,
         String sectionId,
         int position,
         String type,                // single_choice | multiple_choice | text
         String prompt,
-        List<TaskOptionPromptInfo> options, // nullable
+        List<AnswerOptionPromptInfo> options, // nullable
         Double points               // nullable
     ) {}
 
@@ -83,7 +83,7 @@ public final class Prompts {
         return schema;
     }
 
-    public static String buildSystemPrompt(ExamPromptInfo exam) {
+    public static String buildSystemPrompt(ExaminationPromptInfo exam) {
         String title = exam.title() == null ? "Untitled" : exam.title();
         String courseSuffix = exam.course() != null ? " · Course: " + exam.course() : "";
         return String.join("\n",
@@ -112,7 +112,7 @@ public final class Prompts {
     public static String buildSectionUserPrompt(
         SectionPromptInfo section,
         List<BlockPromptInfo> blocks,
-        List<TaskPromptInfo> tasks
+        List<TaskBlockPromptInfo> tasks
     ) {
         List<String> lines = new ArrayList<>();
         String secName = section.name() == null ? "" : section.name().trim();
@@ -147,10 +147,10 @@ public final class Prompts {
         lines.add("");
 
         lines.add("Tasks:");
-        List<TaskPromptInfo> sortedTasks = new ArrayList<>(tasks);
-        sortedTasks.sort(Comparator.comparingInt(TaskPromptInfo::position));
-        for (int idx = 0; idx < sortedTasks.size(); idx++) {
-            TaskPromptInfo t = sortedTasks.get(idx);
+        List<TaskBlockPromptInfo> sortedTaskBlocks = new ArrayList<>(tasks);
+        sortedTaskBlocks.sort(Comparator.comparingInt(TaskBlockPromptInfo::position));
+        for (int idx = 0; idx < sortedTaskBlocks.size(); idx++) {
+            TaskBlockPromptInfo t = sortedTaskBlocks.get(idx);
             List<String> metaParts = new ArrayList<>();
             metaParts.add(t.type());
             metaParts.add("id=" + t.id());
@@ -158,7 +158,7 @@ public final class Prompts {
             lines.add("[t" + (idx + 1) + "] (" + String.join(", ", metaParts) + ") " + t.prompt().trim());
             if (!"text".equals(t.type()) && t.options() != null) {
                 for (int i = 0; i < t.options().size(); i++) {
-                    TaskOptionPromptInfo opt = t.options().get(i);
+                    AnswerOptionPromptInfo opt = t.options().get(i);
                     char letter = (char) ('a' + i);
                     lines.add("  " + letter + ") id=" + opt.id() + ": " + opt.text());
                 }

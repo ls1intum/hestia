@@ -13,7 +13,7 @@ export const ManualIntroSlide = () => {
         <div className="mb-hestia-4 inline-flex h-12 w-12 items-center justify-center rounded-hestia-md bg-hestia-primary-muted text-hestia-primary">
           <Sparkles size={22} />
         </div>
-        <p className="hestia-eyebrow text-hestia-text-muted">New Exam</p>
+        <p className="hestia-eyebrow text-hestia-text-muted">New Examination</p>
         <h2 className="mt-1 font-display text-3xl font-semibold text-hestia-text">
           Start building your exam
         </h2>

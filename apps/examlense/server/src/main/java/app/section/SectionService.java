@@ -1,12 +1,12 @@
 package app.section;
 
-import app.exam.Exam;
-import app.exam.ExamRepository;
-import app.lgh.TaskGoalGenerationService;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
+import app.lgh.TaskBlockGoalGenerationService;
 import app.sse.SseHub;
-import app.task.Task;
-import app.task.TaskAnswerRepository;
-import app.task.TaskRepository;
+import app.taskblock.TaskBlock;
+import app.taskblock.AIAnswerRepository;
+import app.taskblock.TaskBlockRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -22,22 +22,25 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SectionService {
 
-    private final ExamRepository exams;
+    private final ExaminationRepository exams;
     private final SectionRepository sections;
-    private final TaskRepository tasks;
+    private final TaskBlockRepository tasks;
     private final SectionBlockRepository blocks;
-    private final TaskAnswerRepository answers;
-    private final TaskGoalGenerationService goalGeneration;
+    private final AIAnswerRepository answers;
+    private final FigureCleanupService figureCleanup;
+    private final TaskBlockGoalGenerationService goalGeneration;
     private final SseHub sse;
 
-    public SectionService(ExamRepository exams, SectionRepository sections, TaskRepository tasks,
-                          SectionBlockRepository blocks, TaskAnswerRepository answers,
-                          TaskGoalGenerationService goalGeneration, SseHub sse) {
+    public SectionService(ExaminationRepository exams, SectionRepository sections, TaskBlockRepository tasks,
+                          SectionBlockRepository blocks, AIAnswerRepository answers,
+                          FigureCleanupService figureCleanup,
+                          TaskBlockGoalGenerationService goalGeneration, SseHub sse) {
         this.exams = exams;
         this.sections = sections;
         this.tasks = tasks;
         this.blocks = blocks;
         this.answers = answers;
+        this.figureCleanup = figureCleanup;
         this.goalGeneration = goalGeneration;
         this.sse = sse;
     }
@@ -53,8 +56,22 @@ public class SectionService {
     @Transactional
     public SectionBlock addBlock(SectionBlock block) {
         blocks.shiftBlocksInSection(block.getSectionId(), block.getPosition());
-        tasks.shiftTasksInSection(block.getExamId(), block.getSectionId(), block.getPosition());
+        tasks.shiftTaskBlocksInSection(block.getExamId(), block.getSectionId(), block.getPosition());
         return blocks.save(block);
+    }
+
+    /** Delete one block and remove its stored figure objects after commit. */
+    @Transactional
+    public void deleteBlock(SectionBlock block) {
+        figureCleanup.scheduleForBlock(block.getId());
+        blocks.delete(block);
+    }
+
+    /** Delete a section's blocks and remove their stored figure objects after commit. */
+    @Transactional
+    public void deleteBlocks(UUID examId, UUID sectionId) {
+        figureCleanup.scheduleForSection(examId, sectionId);
+        blocks.deleteByExamIdAndSectionId(examId, sectionId);
     }
 
     /**
@@ -66,8 +83,8 @@ public class SectionService {
     public void unconfirmSection(Section section) {
         List<UUID> taskIds = new ArrayList<>();
         List<Long> goalIds = new ArrayList<>();
-        List<Task> sectionTasks = tasks.findBySectionIdOrderByPositionAsc(section.getId());
-        for (Task t : sectionTasks) {
+        List<TaskBlock> sectionTaskBlocks = tasks.findBySectionIdOrderByPositionAsc(section.getId());
+        for (TaskBlock t : sectionTaskBlocks) {
             taskIds.add(t.getId());
             if (t.getLearningGoalIds() != null) {
                 goalIds.addAll(t.getLearningGoalIds());
@@ -75,12 +92,12 @@ public class SectionService {
             }
         }
         if (!taskIds.isEmpty()) answers.deleteByTaskIdIn(taskIds);
-        tasks.saveAll(sectionTasks);
+        tasks.saveAll(sectionTaskBlocks);
         section.setConfirmedAt(null);
         sections.save(section);
 
         if (!goalIds.isEmpty()) {
-            Exam exam = exams.findById(section.getExamId()).orElse(null);
+            Examination exam = exams.findById(section.getExamId()).orElse(null);
             if (exam != null && exam.getLghCourseId() != null) {
                 try {
                     goalGeneration.dispatchCleanup(exam.getLghCourseId(), goalIds);
@@ -100,6 +117,7 @@ public class SectionService {
      */
     @Transactional
     public void deleteSection(Section section) {
+        figureCleanup.scheduleForSection(section.getExamId(), section.getId());
         if (section.getConfirmedAt() != null) {
             unconfirmSection(section);
         }

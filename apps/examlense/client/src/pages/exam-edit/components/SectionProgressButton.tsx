@@ -1,9 +1,9 @@
 import { AlertTriangle, ArrowDown, ArrowRight, Check } from "lucide-react";
-import { taskMissingScore, type Task } from "@/lib/exam/exam-helpers";
+import { taskMissingScore, type TaskBlock } from "@/lib/exam/exam-helpers";
 import { ProgressCtaButton } from "@/components/shared/chrome/ProgressCtaButton";
 
 interface Props {
-  currentSectionTasks: Task[];
+  currentSectionTasks: TaskBlock[];
   /** Lowercase letter labels (a, b, c…) keyed by task id, for "missing" hints. */
   taskLetterById: Map<string, string>;
   /** True when every section across the exam is ready. */
@@ -24,7 +24,7 @@ interface Props {
   onStartSolving: () => void;
 }
 
-const firstUnscoredTaskId = (tasks: Task[]): string | null => {
+const firstUnscoredTaskId = (tasks: TaskBlock[]): string | null => {
   const sorted = tasks.slice().sort((a, b) => a.position - b.position);
   for (const t of sorted) {
     if (taskMissingScore(t)) return t.id;

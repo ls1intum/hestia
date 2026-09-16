@@ -98,9 +98,9 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
         assertThat(spec.path("components").path("schemas").has("ErrorResponse")).isTrue();
 
         // 401 is synthesized for every authenticated operation...
-        JsonNode listExams = operation(spec, "/api/exams", "get").path("responses");
-        assertThat(listExams.has("401")).isTrue();
-        assertThat(listExams.path("401").toString()).contains("ErrorResponse");
+        JsonNode listExaminations = operation(spec, "/api/exams", "get").path("responses");
+        assertThat(listExaminations.has("401")).isTrue();
+        assertThat(listExaminations.path("401").toString()).contains("ErrorResponse");
 
         // ...and a controller-declared code gets the same body filled in.
         assertThat(operation(spec, "/api/exams/{id}", "patch").path("responses").path("409").toString())
