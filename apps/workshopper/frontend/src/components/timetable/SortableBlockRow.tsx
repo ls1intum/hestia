@@ -111,7 +111,7 @@ export function SortableBlockRow({
             {/* Fixed-Width Time Column */}
             <div className="w-[52px] shrink-0 flex items-center justify-start">
               <div
-                className="px-2 py-0.5 rounded-md text-[11px] font-mono whitespace-nowrap"
+                className="px-2 py-0.5 rounded-md text-xs font-mono whitespace-nowrap"
                 style={{
                   backgroundColor: block.duration >= 10 ? 'rgba(134,92,29,0.10)' : 'rgba(0,0,0,0.05)',
                   color: block.duration >= 10 ? 'var(--hestia-primary)' : 'var(--hestia-text-muted)',
@@ -148,7 +148,7 @@ export function SortableBlockRow({
                   />
                 </div>
                 {needsEvaluatePriority && (
-                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
+                  <span className="ml-2 text-xs font-bold uppercase tracking-wider text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
                     Input Needed
                   </span>
                 )}
@@ -386,7 +386,7 @@ export function SortableBlockRow({
 
                 return (
                   <div className="pl-4 space-y-1.5">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
                     {goals.map((g: string, i: number) => {
                       const origStep = allSteps.find(s => s.includes(g)) || g;
                       return (
@@ -409,7 +409,7 @@ export function SortableBlockRow({
                 const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
                 return (
                   <div className="pl-4 space-y-1.5">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
                     <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
                       style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
                       {renderEditable(promptStep, clean || block.objective, "w-full")}
@@ -438,7 +438,7 @@ export function SortableBlockRow({
                   <div className="pl-4 space-y-3">
                     {contentSteps.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
                         <div className="space-y-1">
                           {contentSteps.map((s, i) => {
                             const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
@@ -455,7 +455,7 @@ export function SortableBlockRow({
                     )}
                     {(cleanActivity || block.objective) && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                         </p>
                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
@@ -485,7 +485,7 @@ export function SortableBlockRow({
                   <div className="pl-4 space-y-3">
                     {takeawaySteps.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
                         <div className="space-y-1">
                           {takeawaySteps.map((s, i) => {
                             const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
@@ -502,7 +502,7 @@ export function SortableBlockRow({
                     )}
                     {(cleanActivity || block.objective) && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                         </p>
                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
@@ -528,15 +528,17 @@ export function SortableBlockRow({
 
                   return (
                     <div className="pl-4 space-y-4 pt-2">
-                      <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 mb-4">
-                        <div className="flex-1">
-                          <h4 className="text-sm font-semibold text-destructive uppercase tracking-widest mb-1 font-mono">Action Required</h4>
-                          <p className="text-sm text-foreground/80 leading-relaxed">
-                            You have {validGoals.length} learning goals. To fit them in a {block.duration}-minute check understanding block,
-                            please group them into activities. Drag your learning goals on the left into the activity boxes on the right.
-                          </p>
+                      {needsEvaluatePriority && (
+                        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 mb-4">
+                          <div className="flex-1">
+                            <h4 className="text-sm font-semibold text-destructive uppercase tracking-widest mb-1 font-mono">Action Required</h4>
+                            <p className="text-sm text-foreground/80 leading-relaxed">
+                              You have {validGoals.length} learning goals. To fit them in a {block.duration}-minute check understanding block,
+                              please group them into activities. Drag your learning goals on the left into the activity boxes on the right.
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       <div className="flex gap-4 items-start">
                         {/* LEFT: Draggable LGs */}
@@ -617,7 +619,7 @@ export function SortableBlockRow({
                               <div className="bg-muted/30 px-3 py-2 flex items-center justify-between border-b">
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors">
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase tracking-wider rounded bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors">
                                       {box.method} <ChevronDown className="h-3 w-3 opacity-50" />
                                     </div>
                                   </DropdownMenuTrigger>
@@ -703,7 +705,7 @@ export function SortableBlockRow({
 
                 return (
                   <div className="pl-4 space-y-2">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                       Understanding Check
                     </p>
                     {allSteps.map((s: string, i: number) => {
@@ -809,8 +811,8 @@ export function SortableBlockRow({
                               <div key={stIdx} className={`flex items-start gap-3 group px-3 py-2 ${contentText.toLowerCase().startsWith('activity') ? 'rounded-3xl' : 'rounded-lg'}`}
                                 style={{ backgroundColor: 'var(--hestia-surface)', borderWidth: '1px', borderStyle: contentText.toLowerCase().startsWith('prompt') ? 'dashed' : 'solid', borderColor: 'color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeftWidth: '2px', borderLeftColor: stepColors.border }}>
                                 <div className="w-[42px] shrink-0 flex items-center justify-start opacity-80 group-hover:opacity-100 transition-opacity mt-0.5">
-                                  <span className="w-6 text-right text-[11px] font-mono">{timeVal || "0"}</span>
-                                  <span className="text-[10px] text-muted-foreground font-mono ml-0.5">m</span>
+                                  <span className="w-6 text-right text-xs font-mono">{timeVal || "0"}</span>
+                                  <span className="text-xs text-muted-foreground font-mono ml-0.5">m</span>
                                 </div>
                                 <span className="text-sm mt-0.5 shrink-0" title="Activity Type">{subEmoji}</span>
                                 <div className="flex items-center flex-1 min-w-0">

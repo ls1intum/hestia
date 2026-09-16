@@ -103,7 +103,6 @@ export interface SlideData {
   pollQuestion?: string;
   pollOptions?: string[];
   /** Single centred reflective question for debrief slides */
-  debriefQuestion?: string;
   /** Student-facing correct answer for debrief slides */
   suggestedAnswer?: string;
   /** Common misconceptions for debrief slides */

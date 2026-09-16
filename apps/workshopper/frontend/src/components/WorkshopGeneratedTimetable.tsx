@@ -71,6 +71,16 @@ interface Props {
 
 // ── Main component ─────────────────────────────────────────────────
 export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged }: Props) {
+  const onSaveSessionRef = useRef(onSaveSession);
+  useEffect(() => {
+    onSaveSessionRef.current = onSaveSession;
+  }, [onSaveSession]);
+
+  const onNextRef = useRef(onNext);
+  useEffect(() => {
+    onNextRef.current = onNext;
+  }, [onNext]);
+
   const [blocks, setBlocks] = useState<DndActivityBlock[]>(() =>
     (initialSession.blocks || []).map((b, i) => ({
       ...b,
@@ -159,7 +169,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       const next = prev.map(b => b.dndId === dndId ? { ...b, duration: num } : b);
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -184,7 +194,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         
         if (!isEditMode && onSaveSession) {
           setTimeout(() => {
-            onSaveSession({
+            onSaveSessionRef.current?.({
               ...initialSession,
               title: sessionTitle,
               blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -224,7 +234,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -255,7 +265,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -282,7 +292,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -301,7 +311,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       const next = prev.filter(b => b.dndId !== dndId);
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -335,7 +345,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       });
       if (!isEditMode && onSaveSession) {
         setTimeout(() => {
-          onSaveSession({
+          onSaveSessionRef.current?.({
             ...initialSession,
             title: sessionTitle,
             blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -364,6 +374,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
       // Generate a fresh set of sections for the new activity
       const singleBlockSkeleton = {
+        sessionId: initialSession.id,
         learningGoal: initialSession.learningGoal,
         omittedGoalIndices: [],
         blocks: [{
@@ -413,7 +424,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           
           if (!isEditMode && onSaveSession) {
             setTimeout(() => {
-              onSaveSession({
+              onSaveSessionRef.current?.({
                 ...initialSession,
                 title: sessionTitle,
                 blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -440,7 +451,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         const next = arrayMove(items, oldIndex, newIndex);
         if (!isEditMode && onSaveSession) {
           setTimeout(() => {
-            onSaveSession({
+            onSaveSessionRef.current?.({
               ...initialSession,
               title: sessionTitle,
               blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -459,7 +470,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
   const saveEditMode = () => {
     const latest = buildSession();
-    onSaveSession?.(latest);
+    onSaveSessionRef.current?.(latest);
     setIsEditMode(false);
     setOriginalBlocks(null);
   };
@@ -476,7 +487,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       onBack();
     } else if (pendingNavigation === "next") {
       const latest = buildSession();
-      onNext(latest);
+      onNextRef.current?.(latest);
     }
     setPendingNavigation(null);
   };
@@ -499,8 +510,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       setPendingNavigation("next");
     } else {
       const latest = buildSession();
-      onSaveSession?.(latest);
-      onNext(latest);
+      onSaveSessionRef.current?.(latest);
+      onNextRef.current?.(latest);
     }
   };
 
@@ -521,6 +532,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       }
 
       const singleBlockSkeleton = {
+        sessionId: initialSession.id,
         learningGoal: initialSession.learningGoal,
         omittedGoalIndices: [],
         blocks: [{
@@ -569,7 +581,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           
           if (!isEditMode && onSaveSession) {
             setTimeout(() => {
-              onSaveSession({
+              onSaveSessionRef.current?.({
                 ...initialSession,
                 title: sessionTitle,
                 blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -597,11 +609,12 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     try {
       const block = blocks.find(b => b.dndId === dndId);
       if (!block) return;
-      
       const newMeta = { ...meta, evaluateMappings: mappings };
       onMetaChanged?.(newMeta);
+      setHasConfirmedEvaluatePriorities(true);
 
       const singleBlockSkeleton = {
+        sessionId: initialSession.id,
         learningGoal: initialSession.learningGoal,
         omittedGoalIndices: [],
         blocks: [{
@@ -643,7 +656,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
             if (!isEditMode && onSaveSession) {
               setTimeout(() => {
                 const sessionTitle = initialSession.title || meta.title || "Workshop Session";
-                onSaveSession({
+                onSaveSessionRef.current?.({
                   ...initialSession,
                   title: sessionTitle,
                   blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -694,6 +707,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
 
       const singleBlockSkeleton = {
+        sessionId: initialSession.id,
         learningGoal: initialSession.learningGoal,
         omittedGoalIndices: [],
         blocks: [{
@@ -735,7 +749,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           });
           if (!isEditMode && onSaveSession) {
             setTimeout(() => {
-              onSaveSession({
+              onSaveSessionRef.current?.({
                 ...initialSession,
                 title: sessionTitle,
                 blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
@@ -797,7 +811,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                     needsEvaluatePriority={isNeedsPriority}
                     onConfirmEvaluateMappings={(mappings) => confirmEvaluateMappings(block.dndId, mappings)}
                     onResetEvaluatePriority={() => setHasConfirmedEvaluatePriorities(false)}
-                  isExpanded={expandedBlocks[block.dndId] ?? false}
+                  isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
                   editing={editing}
                   meta={meta}
                   isRegenerating={regeneratingBlockId === block.dndId}
@@ -892,9 +906,19 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               Preparation <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button size="sm" onClick={handleNext} disabled={evaluateBlockNeedsPrioritySelection} className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150">
-              Preparation <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div 
+              title={evaluateBlockNeedsPrioritySelection ? "please review Understanding Check first" : undefined}
+              className={evaluateBlockNeedsPrioritySelection ? "shrink-0 cursor-help" : "shrink-0"}
+            >
+              <Button 
+                size="sm" 
+                onClick={handleNext} 
+                disabled={evaluateBlockNeedsPrioritySelection} 
+                className={`gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150 ${evaluateBlockNeedsPrioritySelection ? "pointer-events-none" : ""}`}
+              >
+                Preparation <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </div>
       </Card>

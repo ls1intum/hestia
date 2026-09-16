@@ -25,6 +25,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   const [isEditMode, setIsEditMode] = useState(false);
   const [editableCache, setEditableCache] = useState<Record<number, SlideData[]>>({});
   const [isSavingEdits, setIsSavingEdits] = useState(false);
+  const [showSlidesGenerated, setShowSlidesGenerated] = useState(false);
 
   const hasSlides = Object.keys(slidesCache).length > 0;
   const allCachedSlides = (() => {
@@ -103,6 +104,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       });
 
       toast({ title: "Slides Generated!", description: "Scroll right to preview your deck." });
+      setShowSlidesGenerated(true);
+      setTimeout(() => setShowSlidesGenerated(false), 4000);
     } catch (e) {
       toast({ title: "Generation failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -190,12 +193,23 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   const nextSlide = () => setCurrentSlideIndex(i => Math.min(totalSlides - 1, i + 1));
   const prevSlide = () => setCurrentSlideIndex(i => Math.max(0, i - 1));
 
+  const [completedSlideTasks, setCompletedSlideTasks] = useState<Set<string>>(new Set());
+  const toggleSlideTask = (taskId: string) => {
+    setCompletedSlideTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
   let currentBlockIndex = -1;
   let currentSlideWithinBlock = -1;
-  if (isEditMode && currentSlideIndex > 0) {
+  if (currentSlideIndex > 0) {
     let flatIndex = 0;
     for (let i = 0; i < session.blocks.length; i++) {
-      const blockSlides = editableCache[i] || [];
+      const cacheToUse = isEditMode ? editableCache : slidesCache;
+      const blockSlides = cacheToUse[i] || [];
       const contentSlideIndex = currentSlideIndex - 1;
       if (contentSlideIndex >= flatIndex && contentSlideIndex < flatIndex + blockSlides.length) {
         currentBlockIndex = i;
@@ -327,12 +341,12 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
           displayTitle = displayTitle.substring(colonIdx + 1).trim();
         }
       }
-      
+
       const group = (slideData as any).group;
       const rawTopic = (slideData as any).topic || slideData.subtitle || displayTitle;
       const topicVal = rawTopic.replace(/\s*-\s*LG\s*\d+/i, '').trim();
 
-      if (activityType === 'DEBRIEF') {
+      if (layout === 'debrief' || activityType === 'DEBRIEF' || activityType === 'REFLECT') {
         activityType = '🔄 DEBRIEF';
       }
 
@@ -425,65 +439,27 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       );
     }
 
-    // ── Group Discussion / Debate (activity_tiled) ───────────────────────────
-    if (layout === 'activity_tiled') {
+            // ── Activity (activity_sidebar) ──────────────────────────────────────────
+    if (layout === 'activity_sidebar') {
       return shell(
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: '100%' }}>
-          <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}`, flex: 1 }}>
-            <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+        <div style={{ display: 'flex', gap: 12, height: '100%' }}>
+          {/* Main Area (Prompt) */}
+          <div style={{ flex: 2, display: 'flex', alignItems: 'center', background: CREAM2, borderRadius: 4, padding: '16px 24px', borderLeft: `3px solid ${accent}` }}>
+            <p style={{ fontFamily: bodyFont, fontSize: '1.4rem', color: DARK, lineHeight: 1.5, margin: 0, fontWeight: 500 }}>
               {slideData.activityPrompt || 'Discussion prompt'}
             </p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>LOGISTICS</div>
-              <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
-                {(slideData.activityInstructions || []).map((inst, i) => {
-                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
-                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, marginBottom: 4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
-                })}
-              </ul>
+          {/* Sidebar (Logistics) */}
+          <div style={{ flex: 1, background: CREAM2, borderRadius: 4, padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontFamily: bodyFont, fontSize: '0.9rem', fontWeight: 700, color: accent, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>🛠️</span> LOGISTICS
             </div>
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px' }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 6 }}>DELIVERABLE</div>
-              <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
-                {slideData.activityOutputExpectation || ''}
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ── Hands-on / Case Study (activity_sidebar) ─────────────────────────────
-    if (layout === 'activity_sidebar') {
-      return shell(
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
-          {slideData.activityPrompt && (
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
-              <p style={{ fontFamily: bodyFont, fontSize: '1.15rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
-                {slideData.activityPrompt}
-              </p>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, flex: 1 }}>
-            <div style={{ flex: 2, background: CREAM2, borderRadius: 4, padding: '10px 14px', borderLeft: `3px solid ${accent}` }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase', marginBottom: 8 }}>INSTRUCTIONS</div>
-              <ol style={{ margin: 0, paddingLeft: 20, listStyle: 'decimal' }}>
-                {(slideData.activityInstructions || []).map((inst, i) => {
-                  const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
-                  return <li key={i} style={{ fontFamily: bodyFont, fontSize: '1.05rem', color: DARK, marginBottom: 6, lineHeight: 1.4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
-                })}
-              </ol>
-            </div>
-            {slideData.activityOutputExpectation && (
-              <div style={{ flex: 1, background: CREAM2, borderRadius: 4, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontFamily: bodyFont, fontSize: '0.8rem', fontWeight: 700, color: accent, textTransform: 'uppercase' }}>DELIVERABLE</div>
-                <p style={{ fontFamily: bodyFont, fontSize: '0.95rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
-                  {slideData.activityOutputExpectation}
-                </p>
-              </div>
-            )}
+            <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'disc' }}>
+              {(slideData.activityInstructions || []).map((inst, i) => {
+                const cleanInst = inst.replace(/^\d+[\.\)]\s*/, '');
+                return <li key={i} style={{ fontFamily: bodyFont, fontSize: '1.1rem', color: DARK, marginBottom: 8, lineHeight: 1.4 }}>{renderBoldPlaceholders(cleanInst)}</li>;
+              })}
+            </ul>
           </div>
         </div>
       );
@@ -542,35 +518,42 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     // ── Debrief / Reflect ────────────────────────────────────────────────────
     if (layout === 'debrief') {
       const misconceptions = slideData.commonMisconceptions || [];
+      
       return shell(
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
-          {/* Suggested answer */}
-          <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${PURPLE}` }}>
-            <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>SUGGESTED ANSWER</div>
-            <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, lineHeight: 1.4 }}>
-              {slideData.suggestedAnswer || ''}
-            </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+          
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Suggested answer */}
+            {slideData.suggestedAnswer && (
+              <div style={{ background: CREAM2, borderRadius: 4, padding: '8px 12px', borderLeft: `3px solid ${PURPLE}` }}>
+                <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>SUGGESTED ANSWER</div>
+                <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, lineHeight: 1.4 }}>
+                  {slideData.suggestedAnswer}
+                </p>
+              </div>
+            )}
+            {/* Misconceptions */}
+            {misconceptions.length > 0 && (
+              <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px' }}>
+                <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>COMMON MISCONCEPTIONS</div>
+                <ul style={{ margin: 0, paddingLeft: 14, listStyle: 'disc' }}>
+                  {misconceptions.map((mc: string, i: number) => (
+                    <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 2 }}>{renderBoldPlaceholders(mc)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Key takeaway */}
+            {slideData.keyTakeaway && (
+              <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px', borderLeft: `3px solid ${PURPLE}` }}>
+                <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 3 }}>KEY TAKEAWAY</div>
+                <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, fontStyle: 'italic', lineHeight: 1.4 }}>
+                  {slideData.keyTakeaway}
+                </p>
+              </div>
+            )}
           </div>
-          {/* Misconceptions */}
-          {misconceptions.length > 0 && (
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px' }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 4 }}>COMMON MISCONCEPTIONS</div>
-              <ul style={{ margin: 0, paddingLeft: 14, listStyle: 'disc' }}>
-                {misconceptions.map((mc: string, i: number) => (
-                  <li key={i} style={{ fontFamily: bodyFont, fontSize: '0.85rem', color: DARK, marginBottom: 2 }}>{renderBoldPlaceholders(mc)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {/* Key takeaway */}
-          {slideData.keyTakeaway && (
-            <div style={{ background: CREAM2, borderRadius: 4, padding: '6px 12px', borderLeft: `3px solid ${PURPLE}` }}>
-              <div style={{ fontFamily: bodyFont, fontSize: '0.75rem', fontWeight: 700, color: PURPLE, textTransform: 'uppercase', marginBottom: 3 }}>KEY TAKEAWAY</div>
-              <p style={{ fontFamily: bodyFont, fontSize: '0.9rem', color: DARK, margin: 0, fontStyle: 'italic', lineHeight: 1.4 }}>
-                {slideData.keyTakeaway}
-              </p>
-            </div>
-          )}
         </div>
       );
     }
@@ -655,28 +638,92 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
               </span>
             )}
           </div>
-          <p style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '0.75rem', color: 'var(--hestia-text-muted)', marginTop: '2px' }}>
-            {hasSlides ? "Ready to preview and download" : "Generate presentation slides for this session"}
-          </p>
+
         </div>
-        {hasSlides && (
+        <div className="flex items-center gap-2 mr-2">
+          {hasSlides && showSlidesGenerated && (
+            <div className="hidden lg:flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 mr-1 transition-opacity duration-500">
+              <Check className="h-3 w-3 text-emerald-600" />
+              <span className="text-emerald-700" style={{ fontSize: '0.75rem', fontFamily: 'var(--hestia-font-mono)', fontWeight: 500 }}>
+                {allCachedSlides.length + 1} slides
+              </span>
+            </div>
+          )}
+
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (isEditMode) setIsEditMode(false);
-              else handleEditSlide();
-              if (!isOpen && !isEditMode) setIsOpen(true);
+              handleGenerate();
             }}
-            disabled={isGenerating || isUploading || isSavingEdits}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 mr-2"
-            style={{ fontFamily: 'var(--hestia-font-body)' }}
+            disabled={isGenerating || isUploading}
+            className={
+              hasSlides
+                ? "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50"
+                : "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50 text-white"
+            }
+            style={
+              hasSlides
+                ? {
+                    background: 'transparent',
+                    border: '1px solid var(--hestia-border)',
+                    color: 'var(--hestia-text)',
+                    fontFamily: 'var(--hestia-font-body)'
+                  }
+                : { fontFamily: 'var(--hestia-font-body)', background: 'var(--hestia-primary)' }
+            }
+            onMouseEnter={(e) => {
+              if (hasSlides) e.currentTarget.style.background = 'var(--hestia-primary-muted)';
+            }}
+            onMouseLeave={(e) => {
+              if (hasSlides) e.currentTarget.style.background = 'transparent';
+            }}
           >
-            <Code className="h-4 w-4" />
+            {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              {isEditMode ? "View Slides" : "Edit Slides"}
+              {isGenerating ? "Generating…" : hasSlides ? "Regenerate" : "Generate"}
             </span>
           </button>
-        )}
+
+          {hasSlides && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownload();
+              }}
+              disabled={isSaving}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50 text-white"
+              style={{
+                background: 'var(--hestia-primary)',
+                border: 'none',
+                fontFamily: 'var(--hestia-font-body)'
+              }}
+            >
+              {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                {isSaving ? "Exporting…" : "Download"}
+              </span>
+            </button>
+          )}
+
+          {hasSlides && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEditMode) setIsEditMode(false);
+                else handleEditSlide();
+                if (!isOpen && !isEditMode) setIsOpen(true);
+              }}
+              disabled={isGenerating || isUploading || isSavingEdits}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50"
+              style={{ fontFamily: 'var(--hestia-font-body)' }}
+            >
+              <Code className="h-4 w-4" />
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                {isEditMode ? "View" : "Edit"}
+              </span>
+            </button>
+          )}
+        </div>
         <div
           className="flex items-center justify-center transition-colors"
           style={{
@@ -731,8 +778,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                       <div className="h-8 w-8 rounded-md flex items-center justify-center mb-1" style={{ background: 'color-mix(in srgb, var(--hestia-accent) 12%, var(--hestia-surface))' }}>
                         <FileIcon className="h-4 w-4" style={{ color: 'var(--hestia-accent)' }} />
                       </div>
-                      <span className="text-[11px] font-medium text-center truncate w-full px-1" style={{ color: 'var(--hestia-accent)', fontFamily: 'var(--hestia-font-body)' }}>{template.name}</span>
-                      <span className="text-[9px]" style={{ color: 'color-mix(in srgb, var(--hestia-accent) 70%, transparent)', fontFamily: 'var(--hestia-font-body)' }}>Click to replace</span>
+                      <span className="text-xs font-medium text-center truncate w-full px-1" style={{ color: 'var(--hestia-accent)', fontFamily: 'var(--hestia-font-body)' }}>{template.name}</span>
+                      <span className="text-xs" style={{ color: 'color-mix(in srgb, var(--hestia-accent) 70%, transparent)', fontFamily: 'var(--hestia-font-body)' }}>Click to replace</span>
                     </>
                   ) : (
                     <>
@@ -745,72 +792,73 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
               </div>
             </div>
 
-            <div style={{ height: '1px', background: 'var(--hestia-border)' }} />
 
-            {/* Actions */}
-            <div className="space-y-3">
-              <h4 style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--hestia-text-muted)' }}>
-                Actions
-              </h4>
 
-              {hasSlides && (
-                <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-50 border border-emerald-200">
-                  <Check className="h-3 w-3 text-emerald-600" />
-                  <span className="text-emerald-700" style={{ fontSize: '0.75rem', fontFamily: 'var(--hestia-font-mono)', fontWeight: 500 }}>
-                    {allCachedSlides.length + 1} slides generated
-                  </span>
+            {hasSlides && (
+              <>
+                <div style={{ height: '1px', background: 'var(--hestia-border)', margin: '12px 0' }} />
+                <div className="space-y-3">
+                  <h4 style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--hestia-text-muted)' }}>
+                    Slide Prep Tasks
+                  </h4>
+                  {(() => {
+                    if (currentSlideIndex === 0) {
+                      return <p style={{ fontSize: '0.875rem', color: 'var(--hestia-text-muted)' }}>No specific preparation tasks for this slide.</p>;
+                    }
+
+                    const slide = allCachedSlides[currentSlideIndex - 1];
+                    if (!slide) return null;
+
+                    const isLecture = slide.layout === 'lecture_placeholder' || slide.layout === 'content' || slide.group === 'activate_prior_knowledge' || slide.group === 'main_lecture';
+                    const isActivity = slide.layout?.startsWith('activity_') || slide.layout === 'live_poll' || slide.layout === 'debrief';
+
+                    const tasks = [];
+
+                    if (isActivity) {
+                      tasks.push({ id: 'review-instructions', text: 'Review activity instructions and prompt' });
+
+                      if (currentBlockIndex !== -1) {
+                        const block = session.blocks[currentBlockIndex];
+                        const materials = [...(block.materials || []), ...(block.sections || []).flatMap(s => s.materials || [])]
+                          .filter(Boolean)
+                          .map(m => String(m).trim())
+                          .filter(m => !m.toLowerCase().includes("slide"));
+
+                        const uniqueMaterials = Array.from(new Set(materials));
+                        if (uniqueMaterials.length > 0) {
+                          tasks.push({ id: 'prepare-material', text: `Prepare material: ${uniqueMaterials.join(', ')}` });
+                        }
+                      }
+                    } else if (isLecture) {
+                      tasks.push({ id: 'replace-slide', text: 'Replace slide with your own lecture slide' });
+                    }
+
+                    if (tasks.length === 0) {
+                      return <p style={{ fontSize: '0.875rem', color: 'var(--hestia-text-muted)' }}>No specific preparation tasks for this slide.</p>;
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {tasks.map(task => {
+                          const taskId = `slide-${currentSlideIndex}-${task.id}`;
+                          const isDone = completedSlideTasks.has(taskId);
+                          return (
+                            <div key={task.id} className="flex items-start gap-3 cursor-pointer group" onClick={() => toggleSlideTask(taskId)}>
+                              <div className={`mt-0.5 shrink-0 flex items-center justify-center w-4 h-4 rounded border transition-colors ${isDone ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-[var(--hestia-border)] bg-transparent group-hover:border-[var(--hestia-primary)]'}`}>
+                                {isDone && <Check className="w-3 h-3" />}
+                              </div>
+                              <span className={`text-[0.875rem] leading-snug transition-colors ${isDone ? 'text-[var(--hestia-text-muted)] line-through' : 'text-[var(--hestia-text)]'}`}>
+                                {task.text}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
-              )}
-
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating || isUploading}
-                className="w-full flex items-center justify-center gap-2 transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50"
-                style={{
-                  background: 'var(--hestia-primary)',
-                  color: 'white',
-                  borderRadius: 'var(--hestia-radius-md)',
-                  padding: '8px',
-                  fontFamily: 'var(--hestia-font-body)',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hestia-primary-hover)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--hestia-primary)'}
-              >
-                {isGenerating
-                  ? <RefreshCw className="h-4 w-4 animate-spin" />
-                  : <Sparkles className="h-4 w-4" />
-                }
-                {isGenerating ? "Generating…" : hasSlides ? "Regenerate Slides" : "Generate Slides"}
-              </button>
-
-              {hasSlides && (
-                <button
-                  onClick={handleDownload}
-                  disabled={isSaving}
-                  className="w-full flex items-center justify-center gap-2 transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--hestia-border)',
-                    color: 'var(--hestia-text)',
-                    borderRadius: 'var(--hestia-radius-md)',
-                    padding: '8px',
-                    fontFamily: 'var(--hestia-font-body)',
-                    fontSize: '0.875rem',
-                    fontWeight: 500
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hestia-primary-muted)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  {isSaving
-                    ? <RefreshCw className="h-4 w-4 animate-spin" />
-                    : <Download className="h-4 w-4" />
-                  }
-                  {isSaving ? "Exporting…" : "Download PPTX"}
-                </button>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* RIGHT: Preview */}
@@ -852,7 +900,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                       onMouseLeave={(e) => e.currentTarget.style.background = 'var(--hestia-primary)'}
                     >
                       {isSavingEdits ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save & Update
+                      Save
                     </button>
                   </div>
                 </div>
@@ -995,21 +1043,38 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                           )}
 
                           {layout === 'debrief' && (
-                            <div className="space-y-2">
-                              <label style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--hestia-text-muted)', textTransform: 'uppercase' }}>REFLECTION QUESTION</label>
-                              <textarea
-                                className="w-full h-24 focus:outline-none transition-all resize-y"
-                                style={{ background: 'var(--hestia-surface)', border: '1.5px solid var(--hestia-border)', borderRadius: 'var(--hestia-radius-sm)', padding: '10px 12px', fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', color: 'var(--hestia-text)' }}
-                                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--hestia-primary-muted)' }}
-                                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-border)'; e.currentTarget.style.boxShadow = 'none' }}
-                                value={slide?.debriefQuestion || ""}
-                                onChange={e => {
-                                  const newCache = { ...editableCache };
-                                  newCache[currentBlockIndex][currentSlideWithinBlock].debriefQuestion = e.target.value;
-                                  setEditableCache(newCache);
-                                }}
-                              />
-                            </div>
+                            <>
+                              <div className="space-y-2 mt-4">
+                                <label style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--hestia-text-muted)', textTransform: 'uppercase' }}>SUGGESTED ANSWER</label>
+                                <textarea
+                                  className="w-full h-24 focus:outline-none transition-all resize-y"
+                                  style={{ background: 'var(--hestia-surface)', border: '1.5px solid var(--hestia-border)', borderRadius: 'var(--hestia-radius-sm)', padding: '10px 12px', fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', color: 'var(--hestia-text)' }}
+                                  onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--hestia-primary-muted)' }}
+                                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-border)'; e.currentTarget.style.boxShadow = 'none' }}
+                                  value={slide?.suggestedAnswer || ""}
+                                  onChange={e => {
+                                    const newCache = { ...editableCache };
+                                    newCache[currentBlockIndex][currentSlideWithinBlock].suggestedAnswer = e.target.value;
+                                    setEditableCache(newCache);
+                                  }}
+                                />
+                              </div>
+                              <div className="space-y-2 mt-4">
+                                <label style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--hestia-text-muted)', textTransform: 'uppercase' }}>COMMON MISCONCEPTIONS (ONE PER LINE)</label>
+                                <textarea
+                                  className="w-full h-24 focus:outline-none transition-all resize-y"
+                                  style={{ background: 'var(--hestia-surface)', border: '1.5px solid var(--hestia-border)', borderRadius: 'var(--hestia-radius-sm)', padding: '10px 12px', fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', color: 'var(--hestia-text)' }}
+                                  onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--hestia-primary-muted)' }}
+                                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--hestia-border)'; e.currentTarget.style.boxShadow = 'none' }}
+                                  value={(slide?.commonMisconceptions || []).join("\n")}
+                                  onChange={e => {
+                                    const newCache = { ...editableCache };
+                                    newCache[currentBlockIndex][currentSlideWithinBlock].commonMisconceptions = e.target.value.split("\n");
+                                    setEditableCache(newCache);
+                                  }}
+                                />
+                              </div>
+                            </>
                           )}
 
                           {(!layout.startsWith('activity_') && layout !== 'live_poll' && layout !== 'debrief') && (
