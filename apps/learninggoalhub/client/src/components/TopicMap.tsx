@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -8,12 +9,13 @@ import {
 } from "react";
 import type { LearningGoal } from "../api/client.ts";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import CoverageBadge from "./CoverageBadge.tsx";
 import {
   RoleBadge,
   AiInferredBadge,
   ManualBadge,
 } from "./CompetencyGoalModal.tsx";
-import { COMPETENCY_ROLE_META, type CompetencyNode } from "../lib/goals.ts";
+import { COMPETENCY_ROLE_META, levelFlags, type CompetencyNode } from "../lib/goals.ts";
 
 // Box geometry, kept in sync with the Tailwind classes below so the SVG connectors can be drawn
 // from the layout alone (no DOM measuring): w-40 = 10rem, w-56 = 14rem, w-60 = 15rem and
@@ -99,6 +101,7 @@ export default function TopicMap({
   suspendEscape: boolean;
 }) {
   const actions = { onEdit, onDelete };
+  const flags = useMemo(() => levelFlags([topic]), [topic]);
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const focused =
     topic.children.find((node) => node.goal.id === focusedId) ?? null;
@@ -345,6 +348,7 @@ export default function TopicMap({
                       compact={focused != null && !isFocused}
                       clampText={focused != null && !isFocused}
                       sequenceLabel={`${sequence}.${i + 1}`}
+                      levelFlag={flags.get(child.goal.id!)}
                       title={
                         isCapability
                           ? isFocused
@@ -404,6 +408,7 @@ export default function TopicMap({
                         actions={actions}
                         leaf
                         sequenceLabel={`${sequence}.${focusedSubIndex + 1}.${i + 1}`}
+                        levelFlag={flags.get(leaf.goal.id!)}
                       />
                     </div>
                   ))}
@@ -655,6 +660,7 @@ function Box({
   clampText = false,
   title,
   sequenceLabel,
+  levelFlag,
 }: {
   node: CompetencyNode;
   /** The box is the focused, unfolded node. */
@@ -676,6 +682,8 @@ function Box({
   title?: string;
   /** Hierarchical lecture-order label, e.g. "2.3". */
   sequenceLabel?: string;
+  /** Why this sub-skill's exercise level looks abnormal against its topic's lectures, if it does. */
+  levelFlag?: string;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
@@ -794,6 +802,7 @@ function Box({
         {node.goal.shortLabel ?? node.goal.text}
       </p>
       <div className="mt-auto flex items-center gap-1 pt-1">
+        {node.role === "skill" && <CoverageBadge goal={node.goal} flag={levelFlag} />}
         {expandable && (
           <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
             <span className="tabular-nums">

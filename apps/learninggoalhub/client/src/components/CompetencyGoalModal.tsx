@@ -18,6 +18,16 @@ import {
   type CompetencyRole,
 } from "../lib/goals.ts";
 
+const SOURCE_GROUPS: {
+  key: string;
+  kind: GoalSource["documentKind"] | null;
+  heading: string | null;
+}[] = [
+  { key: "lecture", kind: "LECTURE", heading: "Lectures" },
+  { key: "exercise", kind: "EXERCISE", heading: "Exercises" },
+  { key: "other", kind: null, heading: "Other documents" },
+];
+
 /**
  * Goal detail overlay shared by the map, tree and list views, styled like the sibling-picker: no
  * panel chrome, the pieces float over the blurred backdrop. Top row names the dialog and carries
@@ -267,6 +277,15 @@ export default function CompetencyGoalModal({
     onUpdate!(goal.id!, changes);
   };
   const sources = goal.sources ?? [];
+  // Sources are listed by the kind of document they quote. Headings only appear once a document has
+  // a kind, so goals of courses uploaded before kinds existed read exactly as before.
+  const sourceGroups = SOURCE_GROUPS.map((group) => ({
+    ...group,
+    heading: sources.some((source) => source.documentKind != null) ? group.heading : null,
+    entries: sources
+      .map((source, index) => ({ source, index }))
+      .filter(({ source }) => (source.documentKind ?? null) === group.kind),
+  })).filter((group) => group.entries.length > 0);
   // `kind` describes how a goal relates to the source material, which says nothing true about a node
   // the wizard generated or the instructor typed: both are stored as IMPLICIT with no source at all,
   // so the plain kind tile would claim they were "inferred from the content". Provenance is the more
@@ -671,170 +690,179 @@ export default function CompetencyGoalModal({
               <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
                 Source
               </span>
-              <ul className="mt-2 space-y-2.5">
-                {sources.map((source, i) => {
-                  const shown = source.displayName ?? source.filename ?? "";
-                  const editing = editingSourceIndex === i;
-                  const trimmed = sourceDraft.trim();
-                  const canSave =
-                    trimmed !== "" &&
-                    trimmed !== shown &&
-                    !renameMutation.isPending;
-                  const saveSource = () => {
-                    if (canSave) {
-                      renameMutation.mutate({
-                        documentId: source.documentId!,
-                        displayName: trimmed,
-                      });
-                    }
-                  };
+              {sourceGroups.map((group) => (
+                <div key={group.key} className="mt-2">
+                  {group.heading && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-hestia-text-muted">
+                      {group.heading}
+                    </p>
+                  )}
+                  <ul className={`${group.heading ? "mt-1" : ""} space-y-2.5`}>
+                    {group.entries.map(({ source, index: i }) => {
+                      const shown = source.displayName ?? source.filename ?? "";
+                      const editing = editingSourceIndex === i;
+                      const trimmed = sourceDraft.trim();
+                      const canSave =
+                        trimmed !== "" &&
+                        trimmed !== shown &&
+                        !renameMutation.isPending;
+                      const saveSource = () => {
+                        if (canSave) {
+                          renameMutation.mutate({
+                            documentId: source.documentId!,
+                            displayName: trimmed,
+                          });
+                        }
+                      };
 
-                  return (
-                    <li key={i} className="text-xs text-hestia-text">
-                      {editing ? (
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            saveSource();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") {
-                              e.stopPropagation();
-                              renameMutation.reset();
-                              setEditingSourceIndex(null);
-                            }
-                          }}
-                          className="flex flex-col gap-2"
-                        >
-                          <input
-                            value={sourceDraft}
-                            onChange={(e) => setSourceDraft(e.target.value)}
-                            autoFocus
-                            className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-xs text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-                          />
-                          {renameMutation.isError && (
-                            <p className="text-xs text-hestia-danger">
-                              {(renameMutation.error as Error).message}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between gap-2">
-                            {source.displayName ? (
-                              <button
-                                type="button"
-                                disabled={renameMutation.isPending}
-                                onClick={() =>
-                                  renameMutation.mutate({
-                                    documentId: source.documentId!,
-                                    displayName: null,
-                                  })
-                                }
-                                className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text disabled:opacity-50"
-                              >
-                                Reset to filename
-                              </button>
-                            ) : (
-                              <span />
-                            )}
-                            <div className="flex gap-2">
-                              <Button
-                                variant="neutral"
-                                size="sm"
-                                onClick={() => {
+                      return (
+                        <li key={i} className="text-xs text-hestia-text">
+                          {editing ? (
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                saveSource();
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") {
+                                  e.stopPropagation();
                                   renameMutation.reset();
                                   setEditingSourceIndex(null);
-                                }}
-                                disabled={renameMutation.isPending}
-                              >
-                                Cancel
-                              </Button>
-                              <Button type="submit" size="sm" disabled={!canSave}>
-                                {renameMutation.isPending ? "Saving…" : "Save"}
-                              </Button>
-                            </div>
-                          </div>
-                        </form>
-                      ) : (
-                        <div className="group/source flex min-w-0 items-start gap-2">
-                          <div className="min-w-0 flex-1">
-                            {shown && source.contentAvailable ? (
+                                }
+                              }}
+                              className="flex flex-col gap-2"
+                            >
+                              <input
+                                value={sourceDraft}
+                                onChange={(e) => setSourceDraft(e.target.value)}
+                                autoFocus
+                                className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-xs text-hestia-text transition focus:border-hestia-primary focus:outline-none"
+                              />
+                              {renameMutation.isError && (
+                                <p className="text-xs text-hestia-danger">
+                                  {(renameMutation.error as Error).message}
+                                </p>
+                              )}
+                              <div className="flex items-center justify-between gap-2">
+                                {source.displayName ? (
+                                  <button
+                                    type="button"
+                                    disabled={renameMutation.isPending}
+                                    onClick={() =>
+                                      renameMutation.mutate({
+                                        documentId: source.documentId!,
+                                        displayName: null,
+                                      })
+                                    }
+                                    className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text disabled:opacity-50"
+                                  >
+                                    Reset to filename
+                                  </button>
+                                ) : (
+                                  <span />
+                                )}
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="neutral"
+                                    size="sm"
+                                    onClick={() => {
+                                      renameMutation.reset();
+                                      setEditingSourceIndex(null);
+                                    }}
+                                    disabled={renameMutation.isPending}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button type="submit" size="sm" disabled={!canSave}>
+                                    {renameMutation.isPending ? "Saving…" : "Save"}
+                                  </Button>
+                                </div>
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="group/source flex min-w-0 items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                {shown && source.contentAvailable ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      showSource(source, e.currentTarget, "attributes");
+                                    }}
+                                    className="flex min-w-0 items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
+                                    title="View source in the PDF preview"
+                                  >
+                                    <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
+                                      {shown}
+                                    </span>
+                                    {source.page && (
+                                      <span className="shrink-0 text-hestia-text-muted">
+                                        p. {source.page}
+                                      </span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <p className="truncate font-medium">{shown}</p>
+                                )}
+                                {source.displayName && (
+                                  <p className="mt-0.5 truncate text-xs text-hestia-text-muted">
+                                    {source.filename}
+                                  </p>
+                                )}
+                              </div>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  showSource(source, e.currentTarget, "attributes");
+                                title="Rename source document"
+                                aria-label={`Rename ${shown}`}
+                                onClick={() => {
+                                  renameMutation.reset();
+                                  setSourceDraft(shown);
+                                  setEditingSourceIndex(i);
                                 }}
-                                className="flex min-w-0 items-baseline gap-1.5 font-medium text-hestia-text transition hover:text-hestia-primary"
-                                title="View source in the PDF preview"
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
                               >
-                                <span className="truncate underline decoration-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] underline-offset-[3px] group-hover/source:decoration-hestia-primary">
-                                  {shown}
-                                </span>
-                                {source.page && (
-                                  <span className="shrink-0 text-hestia-text-muted">
-                                    p. {source.page}
-                                  </span>
-                                )}
+                                <svg
+                                  viewBox="0 0 20 20"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="h-4 w-4"
+                                >
+                                  <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+                                </svg>
                               </button>
-                            ) : (
-                              <p className="truncate font-medium">{shown}</p>
-                            )}
-                            {source.displayName && (
-                              <p className="mt-0.5 truncate text-xs text-hestia-text-muted">
-                                {source.filename}
-                              </p>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            title="Rename source document"
-                            aria-label={`Rename ${shown}`}
-                            onClick={() => {
-                              renameMutation.reset();
-                              setSourceDraft(shown);
-                              setEditingSourceIndex(i);
-                            }}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
-                          >
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="h-4 w-4"
-                            >
-                              <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
-                            </svg>
-                          </button>
-                          {source.grounded === false && source.evidenceKind !== "FIGURE" && (
-                            <span
-                              title="Snippet could not be located in the document"
-                              className="shrink-0 pt-1 text-xs font-normal text-hestia-text-muted"
-                            >
-                              unverified
-                            </span>
+                              {source.grounded === false && source.evidenceKind !== "FIGURE" && (
+                                <span
+                                  title="Snippet could not be located in the document"
+                                  className="shrink-0 pt-1 text-xs font-normal text-hestia-text-muted"
+                                >
+                                  unverified
+                                </span>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
-                      {source.evidenceKind === "FIGURE" ? (
-                        <div className="mt-1.5 border-l-2 border-hestia-primary pl-2.5 leading-relaxed text-hestia-text-muted">
-                          <span className="inline-flex rounded-full border border-hestia-primary/40 bg-hestia-primary-muted px-1.5 py-0.5 text-[10px] font-medium text-hestia-primary">
-                            Figure-derived (AI description)
-                          </span>
-                          {source.figureDescription && (
-                            <p className="mt-1 italic">{source.figureDescription}</p>
-                          )}
-                        </div>
-                      ) : source.snippet ? (
-                        <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
-                          “{source.snippet}”
-                        </p>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+                          {source.evidenceKind === "FIGURE" ? (
+                            <div className="mt-1.5 border-l-2 border-hestia-primary pl-2.5 leading-relaxed text-hestia-text-muted">
+                              <span className="inline-flex rounded-full border border-hestia-primary/40 bg-hestia-primary-muted px-1.5 py-0.5 text-[10px] font-medium text-hestia-primary">
+                                Figure-derived (AI description)
+                              </span>
+                              {source.figureDescription && (
+                                <p className="mt-1 italic">{source.figureDescription}</p>
+                              )}
+                            </div>
+                          ) : source.snippet ? (
+                            <p className="mt-1 line-clamp-3 border-l-2 border-hestia-border pl-2.5 italic leading-relaxed text-hestia-text-muted">
+                              “{source.snippet}”
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
             </div>
           )}
           {/* An editable modal always shows both scales: a manually added goal starts unclassified,
