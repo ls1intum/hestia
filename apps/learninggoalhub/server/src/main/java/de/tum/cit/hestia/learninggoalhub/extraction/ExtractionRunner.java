@@ -5,6 +5,7 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentOrder;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -1039,13 +1040,13 @@ public class ExtractionRunner {
             int start = Math.max(0, Math.min(s.getStartOffset(), text.length()));
             int end = Math.max(start, Math.min(s.getEndOffset(), text.length()));
             HierarchyNode node = hierarchyNodeRepository.save(
-                    new HierarchyNode(course, moduleRoot, levelFor(s.getTitle()), s.getTitle(), document));
+                    new HierarchyNode(course, moduleRoot, levelFor(document, s.getTitle()), s.getTitle(), document));
             unitExtractor.windows(node.getLabel(), document, text, start, end, s.getStartPage(), s.getEndPage())
                     .forEach(window -> units.add(new Unit(node, window)));
         }
         if (units.isEmpty()) {
             HierarchyNode node = hierarchyNodeRepository.save(new HierarchyNode(
-                    course, moduleRoot, levelFor(document.getFilename()), document.getFilename(), document));
+                    course, moduleRoot, levelFor(document, document.getFilename()), document.getFilename(), document));
             int pageCount = document.getPageOffsets() == null ? 0 : document.getPageOffsets().length - 1;
             unitExtractor.windows(node.getLabel(), document, text, 0, text.length(), pageCount > 0 ? 1 : null,
                             pageCount > 0 ? pageCount : null)
@@ -1055,11 +1056,18 @@ public class ExtractionRunner {
     }
 
     /**
-     * Deterministic level from a title/filename: exercise sheets, tutorials and assignments become
-     * EXERCISE; everything else is a SESSION (lecture/chapter). Bookmarks and filenames carry no
-     * reliable module signal, so the only MODULE node is the course root.
+     * The hierarchy level of a unit cut from {@code document}: EXERCISE for a document uploaded as an
+     * exercise, SESSION for one uploaded as a lecture. Bookmarks and filenames carry no reliable
+     * module signal, so the only MODULE node is the course root.
+     *
+     * <p>Only a document without a kind, uploaded before the choice existed, still has its level
+     * guessed from the title/filename: exercise sheets, tutorials and assignments become EXERCISE,
+     * everything else a SESSION. That keeps existing courses exactly as they were.
      */
-    static HierarchyLevel levelFor(String title) {
+    static HierarchyLevel levelFor(Document document, String title) {
+        if (document != null && document.getKind() != null) {
+            return document.getKind() == DocumentKind.EXERCISE ? HierarchyLevel.EXERCISE : HierarchyLevel.SESSION;
+        }
         String t = title == null ? "" : title.toLowerCase(Locale.ROOT);
         if (t.contains("exercise") || t.contains("übung") || t.contains("uebung")
                 || t.contains("tutorial") || t.contains("assignment")) {

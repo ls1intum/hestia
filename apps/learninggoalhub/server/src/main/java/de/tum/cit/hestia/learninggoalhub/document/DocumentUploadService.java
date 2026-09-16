@@ -28,9 +28,10 @@ public class DocumentUploadService {
 
     @Transactional
     public Document persist(Course course, String filename, String contentType,
-                            DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
+                            DocumentKind kind, DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
         String storedContentType = contentType != null ? contentType : "application/octet-stream";
         Document document = new Document(course, filename, storedContentType, parsed.rawText());
+        document.setKind(kind);
         document.setLanguage(languageDetectionService.detect(parsed.rawText()));
         document = documentRepository.save(document);
         document.setPageOffsets(parsed.pageOffsets());

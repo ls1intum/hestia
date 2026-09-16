@@ -424,6 +424,8 @@ export interface components {
             documentId?: number;
             filename?: string;
             displayName?: string;
+            /** @enum {string|null} */
+            documentKind?: "LECTURE" | "EXERCISE" | null;
             snippet?: string;
             /** Format: int32 */
             page?: number;
@@ -550,6 +552,8 @@ export interface components {
             filename?: string;
             displayName?: string;
             contentType?: string;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
             /** Format: date-time */
             uploadedAt?: string;
         };
@@ -586,7 +590,9 @@ export interface components {
             label?: string;
         };
         UpdateDocumentRequest: {
-            displayName?: string;
+            displayName?: string | null;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
         };
         CourseSummaryResponse: {
             /** Format: int64 */
@@ -1043,6 +1049,8 @@ export interface operations {
         parameters: {
             query: {
                 files: string[];
+                /** @description Optional kind of every file in this upload: LECTURE or EXERCISE. Omit to upload without a kind, which keeps the title-based hierarchy level. */
+                kind?: "LECTURE" | "EXERCISE";
             };
             header?: never;
             path: {
