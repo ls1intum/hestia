@@ -504,8 +504,9 @@ class LearningGoalControllerTest {
         LearningGoal unitTests = goalRepository.save(
                 new LearningGoal(course, "Understand unit testing.", GoalKind.EXPLICIT));
         goalSourceRepository.save(new GoalSource(tdd, lecture, "...failing test first..."));
+        // SUPPORTS is not a tree edge, so the supporting goal is not beneath the deleted one and survives.
         goalRelationshipRepository.save(new GoalRelationship(
-                unitTests, tdd, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+                unitTests, tdd, RelationshipType.SUPPORTS, 1.0, RelationshipOrigin.HIERARCHY));
 
         mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), tdd.getId()))
                 .andExpect(status().isNoContent());
@@ -1181,7 +1182,7 @@ class LearningGoalControllerTest {
     }
 
     @Test
-    void deletingGeneratedTerminalSkillRemovesOwnedDescendants() throws Exception {
+    void deletingGeneratedTopicRemovesEverythingBeneathIt() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         HierarchyNode rootNode = hierarchyRepository.save(
@@ -1214,8 +1215,8 @@ class LearningGoalControllerTest {
         assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
         assertThat(goalRepository.findById(knowledge.getId())).isEmpty();
         assertThat(goalRepository.findById(manualChild.getId())).isEmpty();
-        assertThat(goalRepository.findById(extracted.getId())).isPresent();
-        assertThat(goalSourceRepository.findByGoalId(extracted.getId())).hasSize(1);
+        assertThat(goalRepository.findById(extracted.getId())).isEmpty();
+        assertThat(goalSourceRepository.findByGoalId(extracted.getId())).isEmpty();
         assertThat(goalRelationshipRepository.findBySourceId(extracted.getId())).isEmpty();
     }
 
@@ -1237,8 +1238,9 @@ class LearningGoalControllerTest {
     }
 
     @Test
-    void deletingPipelineTopicRemovesItsSkillsButKeepsExtractedSubSkills() throws Exception {
+    void deletingPipelineTopicRemovesItsSkillsAndExtractedGoals() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
+        Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
         LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         skill.setOrigin(GoalOrigin.SYNTHESIZED);
@@ -1246,28 +1248,29 @@ class LearningGoalControllerTest {
         skill = goalRepository.saveAndFlush(skill);
         LearningGoal subSkill = goalRepository.saveAndFlush(
                 new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        LearningGoal knowledge = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
         LearningGoal directSubSkill = goalRepository.saveAndFlush(
                 new LearningGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
+        goalSourceRepository.save(new GoalSource(subSkill, lecture, "deployment pipeline evidence"));
         goalRelationshipRepository.save(new GoalRelationship(
                 skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
         goalRelationshipRepository.save(new GoalRelationship(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
+        goalRelationshipRepository.save(new GoalRelationship(
+                knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 directSubSkill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
         mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
                 .andExpect(status().isNoContent());
 
-        assertThat(goalRepository.findById(topic.getId())).isEmpty();
-        assertThat(goalRepository.findById(skill.getId())).isEmpty();
-        assertThat(goalRepository.findById(subSkill.getId())).isPresent();
-        assertThat(goalRepository.findById(directSubSkill.getId())).isPresent();
-        assertThat(goalRelationshipRepository.findBySourceId(subSkill.getId())).isEmpty();
-        assertThat(goalRelationshipRepository.findBySourceId(directSubSkill.getId())).isEmpty();
+        assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
+        assertThat(goalSourceRepository.findByGoalId(subSkill.getId())).isEmpty();
     }
 
     @Test
-    void deletingPipelineSkillKeepsItsExtractedSubSkills() throws Exception {
+    void deletingPipelineSkillRemovesItsExtractedSubSkills() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
         LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
@@ -1276,8 +1279,12 @@ class LearningGoalControllerTest {
         skill = goalRepository.saveAndFlush(skill);
         LearningGoal subSkill = goalRepository.saveAndFlush(
                 new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        LearningGoal sibling = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
         goalRelationshipRepository.save(new GoalRelationship(
                 skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
+        goalRelationshipRepository.save(new GoalRelationship(
+                sibling, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
@@ -1285,8 +1292,36 @@ class LearningGoalControllerTest {
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(topic.getId())).isPresent();
+        assertThat(goalRepository.findById(sibling.getId())).isPresent();
         assertThat(goalRepository.findById(skill.getId())).isEmpty();
-        assertThat(goalRepository.findById(subSkill.getId())).isPresent();
+        assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
+    }
+
+    @Test
+    void deletingKeepsADescendantThatStillContributesElsewhere() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
+        LearningGoal otherTopic = goalRepository.saveAndFlush(terminalGoal(course, "Release management", null));
+        LearningGoal shared = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        LearningGoal knowledge = goalRepository.saveAndFlush(
+                new LearningGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.save(new GoalRelationship(
+                shared, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
+        goalRelationshipRepository.save(new GoalRelationship(
+                shared, otherTopic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
+        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+                knowledge, shared, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
+                .andExpect(status().isNoContent());
+
+        assertThat(goalRepository.findById(topic.getId())).isEmpty();
+        assertThat(goalRepository.findById(shared.getId())).isPresent();
+        assertThat(goalRepository.findById(knowledge.getId())).isPresent();
+        assertThat(goalRelationshipRepository.findBySourceId(shared.getId()))
+                .extracting(relationship -> relationship.getTarget().getId())
+                .containsExactly(otherTopic.getId());
     }
 
     /** A generated subtree with one skill, one sub-skill beneath it and one knowledge item beneath that. */

@@ -34,6 +34,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -715,49 +716,88 @@ public class LearningGoalController {
     public void delete(@PathVariable Long courseId, @PathVariable Long goalId) {
         // The DB cascades the delete to goal_source rows and to relationships in both directions.
         LearningGoal goal = findGoal(courseId, goalId);
-        deleteOwnedDescendants(goal);
+        deleteSubtree(goal);
         goalRepository.delete(goal);
     }
 
     /** Regeneration owns only the descendants created by the AI subtree wizard; the root survives. */
     private void deleteWizardGeneratedDescendants(LearningGoal root) {
-        deleteDescendants(root, Set.of(GoalCreationProvenance.WIZARD_AI_SUBTREE), false);
+        deleteDescendants(root, Set.of(GoalCreationProvenance.WIZARD_AI_SUBTREE));
     }
 
     /**
-     * DELETE removes AI-generated and manually added descendants, and a topic's pipeline skills, but
-     * never an extracted goal.
+     * DELETE removes everything beneath the goal in the competency tree: generated, hand-added and
+     * extracted goals alike. Dismissing a goal rejects it, and a rejected goal is deleted (see
+     * {@link GoalStatus}), so nothing beneath a dismissed goal lingers outside the tree, where the
+     * instructor can no longer see it but other consumers of the API still would. A descendant that
+     * also contributes to a goal outside the removed subtree keeps that parent and stays, with
+     * everything beneath it.
      */
-    private void deleteOwnedDescendants(LearningGoal root) {
-        deleteDescendants(root, Set.of(
-                GoalCreationProvenance.WIZARD_AI_SUBTREE,
-                GoalCreationProvenance.USER_CREATED), true);
-    }
+    private void deleteSubtree(LearningGoal root) {
+        Map<Long, LearningGoal> reachable = new LinkedHashMap<>();
+        Map<Long, List<Long>> parentIds = new HashMap<>();
+        Map<Long, GoalRelationship> loadedEdges = new LinkedHashMap<>();
+        Deque<LearningGoal> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            LearningGoal target = pending.removeFirst();
+            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
+                loadedEdges.put(relationship.getId(), relationship);
+                LearningGoal source = relationship.getSource();
+                if (relationship.getType() != RelationshipType.CONTRIBUTES_TO
+                        || source.getId().equals(root.getId())
+                        || reachable.putIfAbsent(source.getId(), source) != null) {
+                    continue;
+                }
+                List<Long> parents = new ArrayList<>();
+                for (GoalRelationship outgoing : goalRelationshipRepository.findBySourceId(source.getId())) {
+                    loadedEdges.put(outgoing.getId(), outgoing);
+                    if (outgoing.getType() == RelationshipType.CONTRIBUTES_TO) {
+                        parents.add(outgoing.getTarget().getId());
+                    }
+                }
+                parentIds.put(source.getId(), parents);
+                pending.addLast(source);
+            }
+        }
 
-    /**
-     * Whether {@code source} is a skill the pipeline grouped directly under the topic being deleted.
-     * Such a skill is a generated node with no source of its own and means nothing without its topic,
-     * so it goes with it. The sub-skills beneath it were extracted from the materials and stay; they
-     * only leave the tree.
-     */
-    private static boolean isPipelineSkillOf(LearningGoal source, LearningGoal target, LearningGoal root) {
-        return target.getId().equals(root.getId())
-                && root.getOrigin() == GoalOrigin.TERMINAL
-                && source.getOrigin() == GoalOrigin.SYNTHESIZED
-                && source.getRole() == GoalRole.SKILL;
+        // Spare every descendant with a parent outside the removed set, repeating until nothing changes:
+        // sparing one goal gives its own children a surviving parent too.
+        Set<Long> doomed = new HashSet<>(reachable.keySet());
+        doomed.add(root.getId());
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (Long id : reachable.keySet()) {
+                if (doomed.contains(id) && parentIds.get(id).stream().anyMatch(parent -> !doomed.contains(parent))) {
+                    doomed.remove(id);
+                    changed = true;
+                }
+            }
+        }
+
+        // Delete the loaded edge entities first: they are managed in the persistence context, so
+        // deleting the goals they reference while they linger would fail the flush with a
+        // TransientObjectException.
+        goalRelationshipRepository.deleteAll(loadedEdges.values().stream()
+                .filter(edge -> doomed.contains(edge.getSource().getId())
+                        || doomed.contains(edge.getTarget().getId()))
+                .toList());
+        goalRelationshipRepository.flush();
+        List<LearningGoal> descendants = new ArrayList<>(reachable.values());
+        for (int i = descendants.size() - 1; i >= 0; i--) {
+            if (doomed.contains(descendants.get(i).getId())) {
+                goalRepository.delete(descendants.get(i));
+            }
+        }
     }
 
     /**
      * Collects and removes the descendants of {@code root} whose creation provenance marks them as
-     * owned, together with every edge that would outlive one of its endpoints.
-     *
-     * @param rootDeleted whether {@code root} itself is being removed by the caller. DELETE removes it,
-     *                    so all of its incoming edges go; regeneration keeps it, so only the edges from
-     *                    owned descendants go and manual or extracted contributors stay attached.
+     * owned, together with every edge from them. The root survives, and manual or extracted
+     * contributors stay attached to it.
      */
-    private void deleteDescendants(LearningGoal root,
-                                   Set<GoalCreationProvenance> ownedProvenances,
-                                   boolean rootDeleted) {
+    private void deleteDescendants(LearningGoal root, Set<GoalCreationProvenance> ownedProvenances) {
         List<LearningGoal> descendants = new ArrayList<>();
         List<GoalRelationship> loadedEdges = new ArrayList<>();
         Set<Long> visited = new HashSet<>();
@@ -765,16 +805,13 @@ public class LearningGoalController {
         pending.add(root);
         while (!pending.isEmpty()) {
             LearningGoal target = pending.removeFirst();
-            boolean targetDeleted = rootDeleted || !target.getId().equals(root.getId());
+            boolean targetDeleted = !target.getId().equals(root.getId());
             for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
-                // A null provenance marks a pipeline or extracted goal, owned only when it is a skill
-                // of the topic being deleted. Test it explicitly: ownedProvenances is a Set.of(...),
-                // and those throw on contains(null).
+                // A null provenance marks a pipeline or extracted goal, which regeneration never owns.
+                // Test it explicitly: ownedProvenances is a Set.of(...), and those throw on contains(null).
                 GoalCreationProvenance provenance = relationship.getSource().getCreationProvenance();
                 boolean owned = relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                        && (provenance != null
-                                ? ownedProvenances.contains(provenance)
-                                : rootDeleted && isPipelineSkillOf(relationship.getSource(), target, root));
+                        && provenance != null && ownedProvenances.contains(provenance);
                 // An edge dies with either endpoint: its source is an owned goal we delete, or its
                 // target is going away. Anything else stays and keeps its surviving goal attached.
                 if (owned || targetDeleted) {

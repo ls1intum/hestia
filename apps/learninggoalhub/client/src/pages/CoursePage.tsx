@@ -227,7 +227,7 @@ export default function CoursePage() {
         {goalToDelete && (
           <ConfirmDialog
             title="Delete learning goal?"
-            message={`This permanently removes "${goalToDelete.text}" together with its sources and relationships. This cannot be undone.`}
+            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the competency tree, together with their sources and relationships. This cannot be undone.`}
             confirmLabel={
               deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
             }
