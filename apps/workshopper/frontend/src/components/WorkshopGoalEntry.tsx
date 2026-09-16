@@ -172,7 +172,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       session: skill.session,
       subSkills: skill.subSkills,
       suggestions: [],
-      checking: true, // Show loading state immediately
+      checking: false,
       dirty: false,
     }));
     
@@ -181,12 +181,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       const merged = [...nonEmpty, ...newDrafts];
       return merged.length > 0 ? merged : [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
     });
-
-    // Auto-trigger the AI refine/split check for each imported skill
-    newDrafts.forEach((draft) => {
-      triggerCheck(draft);
-    });
-  }, [triggerCheck]);
+  }, []);
 
   const [isFixingGrammar, setIsFixingGrammar] = useState(false);
 
@@ -264,7 +259,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             disabled={isLoading || g.id.startsWith("lgh-")}
           />
           {g.checking && (
-            <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-muted-foreground">
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" /> checking…
             </div>
           )}
@@ -290,42 +285,13 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             size="sm"
             onClick={() => removeGoal(g.id)}
             className="h-7 px-2.5 text-xs text-destructive gap-1.5 hover:bg-destructive/10 hover:text-destructive"
-            disabled={goals.length === 1 || isLoading}
+            disabled={isLoading}
           >
             <Trash2 className="h-3 w-3" />
             Remove
           </Button>
         </div>
-      </div>
-      
-      {/* Display session info and subskills if available */}
-      {g.id.startsWith("lgh-") && (g.session || (g.subSkills && g.subSkills.length > 0)) && (
-        <div className="pl-2 pt-1 border-l-2 border-primary/20 space-y-1">
-          {g.session && (
-            <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-              <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider">Session</span>
-              {g.session}
-            </div>
-          )}
-          {g.subSkills && g.subSkills.length > 0 && (
-            <div className="pt-1">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">
-                Sub-skills ({g.subSkills.length})
-              </div>
-              <ul className="space-y-1">
-                {g.subSkills.map((sub, i) => (
-                  <li key={sub.id || i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                    <span className="opacity-50 mt-0.5">•</span>
-                    <span>{sub.text}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* AI suggestions */}
+      </div>      {/* AI suggestions */}
       {g.looksGood && g.suggestions.length === 0 && !g.checking && (
         <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/5 px-3 py-2.5 text-sm flex items-center gap-2">
           <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
@@ -344,7 +310,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         >
           {/* G-5: text label so type is readable in grayscale */}
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+            <span className={`text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
               s.type === "split"
                 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                 : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
@@ -432,6 +398,15 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           >
             <Plus className="h-4 w-4" /> Add another learning goal
           </Button>
+
+          {goals.filter(g => g.text.trim().length > 0).length > 5 && (
+            <div className="mt-4 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-700 text-sm font-medium flex gap-3 items-center">
+              <Sparkles className="h-4 w-4 shrink-0 text-yellow-600" />
+              <div>
+                You have {goals.filter(g => g.text.trim().length > 0).length} learning goals. We recommend a maximum of 5 goals per session to keep the workshop focused.
+              </div>
+            </div>
+          )}
 
         </CardContent>
 

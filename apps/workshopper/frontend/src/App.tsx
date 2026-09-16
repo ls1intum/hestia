@@ -261,6 +261,8 @@ export default function App() {
         return;
       }
 
+      let hasSession = !!detail.session;
+
       // Draft — restore all saved state
       if (detail.draftStateJson) {
         try {
@@ -272,6 +274,7 @@ export default function App() {
           if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
           if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
           if (draft.session) {
+            hasSession = true;
             if (detail.title) draft.session.title = detail.title;
             // Ensure cached slides from the backend are merged into the draft session
             if (detail.session?.slides) {
@@ -294,11 +297,14 @@ export default function App() {
         targetStepStr = "input-2";
       }
       if (targetStepStr === "result" || targetStepStr === "skeleton") {
-        if (detail.session) {
+        if (hasSession) {
           targetStepStr = "timeline";
         } else {
           targetStepStr = "goals";
         }
+      }
+      if (targetStepStr === "timeline" && !hasSession) {
+        targetStepStr = "goals";
       }
       if (targetStepStr === "finished") {
         targetStepStr = "final-review";
@@ -380,6 +386,20 @@ export default function App() {
     setRefinedGoals(goalsWithPriority);
     
     const updatedInput = { ...workshopInput };
+    if (!updatedInput.evaluateMappings || updatedInput.evaluateMappings.length === 0) {
+      if (goalsWithPriority.length > 0 && goalsWithPriority.length <= 2) {
+        const fallbacks = ["Quiz", "Think-Pair-Share"];
+        const avail = (updatedInput.selectedActivities && updatedInput.selectedActivities.length > 0)
+          ? updatedInput.selectedActivities
+          : fallbacks;
+        
+        updatedInput.evaluateMappings = goalsWithPriority.map((g, idx) => ({
+          method: avail[idx % avail.length],
+          lgIds: [g.id]
+        }));
+      }
+    }
+    setWorkshopInput(updatedInput);
 
     setIsLoading(true);
     try {

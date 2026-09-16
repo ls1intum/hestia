@@ -39,7 +39,7 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
 
   // Selection state keeps track of selected skill IDs.
-  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (open && courses.length === 0) {
@@ -63,7 +63,7 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
   useEffect(() => {
     if (!selectedCourseId) {
       setSkillNodes([]);
-      setSelectedSkillIds(new Set());
+      setSelectedIds(new Set());
       return;
     }
 
@@ -115,7 +115,7 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
 
         setSkillNodes(nodes);
         setExpandedNodes(new Set());
-        setSelectedSkillIds(new Set());
+        setSelectedIds(new Set());
       } catch (e) {
         console.error(e);
         toast({ title: "Error", description: "Failed to fetch learning goals", variant: "destructive" });
@@ -136,11 +136,32 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
     });
   };
 
-  const toggleSelectSkill = (id: number) => {
-    setSelectedSkillIds(prev => {
+  const toggleSelectSkill = (node: SkillNode) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const subSkillIds = node.subSkills.map(sub => sub.id);
+      
+      if (subSkillIds.length > 0) {
+        const allSelected = subSkillIds.every(id => next.has(id));
+        if (allSelected) {
+          subSkillIds.forEach(id => next.delete(id));
+          next.delete(node.skill.id);
+        } else {
+          subSkillIds.forEach(id => next.add(id));
+        }
+      } else {
+        if (next.has(node.skill.id)) next.delete(node.skill.id);
+        else next.add(node.skill.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectSubSkill = (subId: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId);
+      else next.add(subId);
       return next;
     });
   };
@@ -159,21 +180,29 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
     const selectedData: SelectedSkillData[] = [];
 
     skillNodes.forEach(node => {
-      if (selectedSkillIds.has(node.skill.id)) {
+      if (node.subSkills.length === 0 && selectedIds.has(node.skill.id)) {
         selectedData.push({
-          id: `lgh-${node.skill.id}`,
+          id: `g${Date.now()}-${node.skill.id}`,
           goal: node.skill.text,
           bloomLevel: node.skill.bloomLevel,
           soloLevel: node.skill.soloLevel,
           session: node.session,
-          subSkills: node.subSkills.map(sub => ({
-            id: `lgh-${sub.id}`,
-            text: sub.text,
-            bloomLevel: sub.bloomLevel,
-            soloLevel: sub.soloLevel
-          }))
+          subSkills: []
         });
       }
+
+      node.subSkills.forEach(sub => {
+        if (selectedIds.has(sub.id)) {
+          selectedData.push({
+            id: `g${Date.now()}-${sub.id}`,
+            goal: sub.text,
+            bloomLevel: sub.bloomLevel,
+            soloLevel: sub.soloLevel,
+            session: node.session,
+            subSkills: []
+          });
+        }
+      });
     });
 
     if (selectedData.length > 0) {
@@ -265,12 +294,22 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
                     <div key={node.skill.id} className="group">
                       <div className="grid grid-cols-[auto_1fr_80px_150px] items-center gap-4 px-4 py-3 hover:bg-muted/20 transition-colors">
                         <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                            checked={selectedSkillIds.has(node.skill.id)}
-                            onChange={() => toggleSelectSkill(node.skill.id)}
-                          />
+                          {(() => {
+                            const subSkillIds = node.subSkills.map(s => s.id);
+                            const selectedCount = subSkillIds.filter(id => selectedIds.has(id)).length;
+                            const isAllSelected = subSkillIds.length > 0 && selectedCount === subSkillIds.length;
+                            const isChecked = subSkillIds.length > 0 ? isAllSelected : selectedIds.has(node.skill.id);
+                            const isIndeterminate = subSkillIds.length > 0 && selectedCount > 0 && selectedCount < subSkillIds.length;
+                            return (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                checked={isChecked}
+                                ref={el => { if (el) el.indeterminate = isIndeterminate; }}
+                                onChange={() => toggleSelectSkill(node)}
+                              />
+                            );
+                          })()}
                           <button
                             className="p-0.5 rounded-sm hover:bg-muted/50 text-muted-foreground"
                             onClick={() => toggleExpand(node.skill.id)}
@@ -288,7 +327,7 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
                         </div>
 
                         <div className="text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#d9cbb8]/30 text-[#8b7556]">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider bg-[#d9cbb8]/30 text-[#8b7556]">
                             SKILL
                           </span>
                         </div>
@@ -302,11 +341,13 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
                         <div className="bg-muted/5">
                           {node.subSkills.map((sub, subIdx) => (
                             <div key={sub.id} className="grid grid-cols-[auto_1fr_80px_150px] items-center gap-4 px-4 py-2 border-t border-border/30 hover:bg-muted/20 transition-colors">
-                              <div className="flex items-center gap-2">
-                                {/* Invisible placeholder for checkbox alignment */}
-                                <div className="w-[18px]"></div>
-                                {/* Visual tree line indicator */}
-                                <div className="h-4 w-px bg-border ml-2"></div>
+                              <div className="flex items-center gap-2 pl-6">
+                                <input
+                                  type="checkbox"
+                                  className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                                  checked={selectedIds.has(sub.id)}
+                                  onChange={() => toggleSelectSubSkill(sub.id)}
+                                />
                               </div>
 
                               <div className="text-sm text-muted-foreground pl-2 pr-4">
@@ -314,7 +355,7 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
                               </div>
 
                               <div className="text-center">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#b8cad9]/30 text-[#4c6780]">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider bg-[#b8cad9]/30 text-[#4c6780]">
                                   SUB-SKILL
                                 </span>
                               </div>
@@ -336,13 +377,13 @@ export function LGHImportModal({ onAddSkills, disabled }: Props) {
 
         <div className="p-4 border-t flex justify-between items-center bg-muted/10">
           <div className="text-sm text-muted-foreground">
-            {selectedSkillIds.size === 0
+            {selectedIds.size === 0
               ? "Nothing selected yet"
-              : `${selectedSkillIds.size} skill(s) selected`}
+              : `${selectedIds.size} goal(s) selected`}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={selectedSkillIds.size === 0}>Add Skills</Button>
+            <Button onClick={handleAdd} disabled={selectedIds.size === 0}>Add Skills</Button>
           </div>
         </div>
       </DialogContent>

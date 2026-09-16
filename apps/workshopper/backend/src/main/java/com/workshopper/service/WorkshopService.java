@@ -293,6 +293,7 @@ public class WorkshopService {
         // Collect results in order
         List<ActivityBlockDto> hydratedBlocks = blockFutures.stream()
                 .map(java.util.concurrent.CompletableFuture::join)
+                .map(this::normalizeBlockActivities)
                 .collect(Collectors.toList());
 
         String sessionTitle = titleFuture.join();
@@ -453,10 +454,28 @@ public class WorkshopService {
         int totalEvalMin = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
         
         var evaluateMappingStr = new StringBuilder();
-        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
-            int timePerBox = Math.max(1, totalEvalMin / meta.evaluateMappings().size());
+        var evaluateMappings = meta.evaluateMappings();
+
+        // AUTO-MAP FOR 1 OR 2 LGS IF EMPTY
+        if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals.size() > 0 && goals.size() <= 2) {
+            java.util.List<String> fallbacks = java.util.List.of("Quiz", "Think-Pair-Share");
+            java.util.List<String> avail = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty()) 
+                    ? meta.selectedActivities() 
+                    : fallbacks;
+            
+            evaluateMappings = new java.util.ArrayList<>();
+            for (int i = 0; i < goals.size(); i++) {
+                evaluateMappings.add(new com.workshopper.dto.EvaluateMappingDto(
+                    avail.get(i % avail.size()), 
+                    java.util.List.of(goals.get(i).id())
+                ));
+            }
+        }
+
+        if (evaluateMappings != null && !evaluateMappings.isEmpty()) {
+            int timePerBox = Math.max(1, totalEvalMin / evaluateMappings.size());
             int boxIdx = 1;
-            for (var mapping : meta.evaluateMappings()) {
+            for (var mapping : evaluateMappings) {
                 evaluateMappingStr.append("Activity Box ").append(boxIdx).append(" (").append(timePerBox).append(" min):\n");
                 evaluateMappingStr.append("  - Activity Method: ").append(mapping.method()).append("\n");
                 evaluateMappingStr.append("  - Assigned Learning Goals:\n");
@@ -473,10 +492,11 @@ public class WorkshopService {
         }
 
         String evaluateRules;
-        if (meta.evaluateMappings() != null && !meta.evaluateMappings().isEmpty()) {
+        if (evaluateMappings != null && !evaluateMappings.isEmpty()) {
             evaluateRules = """
-                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP for each Activity Box requested by the user.
-                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
+                        11. When generating an 'Understanding Check' (EVALUATE), generate exactly ONE distinct activity step PER Activity Box requested by the user.
+                            CRITICAL: If there are multiple Activity Boxes, you MUST generate multiple distinct steps. Do not combine them!
+                            DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step per box.
                             
                             REQUESTED ACTIVITY BOXES:
 %s
@@ -487,16 +507,20 @@ public class WorkshopService {
                               Format: "{box_minutes} min — Prompt LG[N] · [{method}]: [specific question or task targeting ONLY this LG]"
                             - Strictly follow the requested 'Activity Method' for each box.
                             - Ignore any Learning Goals that are not assigned to any Activity Box.
-                            - The methods list on the block should include ALL distinct activities used.
+                            - CRITICAL: The 'methods' JSON array on the top-level block object MUST include ALL distinct ActivityNames used (e.g., ["Quiz", "Roleplay"]). DO NOT leave it empty!
                             - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
 """.formatted(evaluateMappingStr.toString());
         } else {
             evaluateRules = """
-                        11. When generating an 'Understanding Check' (EVALUATE), generate EXACTLY ONE SINGLE STEP representing an integrative scenario/case/task that naturally requires applying ALL Learning Goals together.
-                            CRITICAL: DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step.
-                            Do NOT sub-label the task by LG — the scenario itself should be unified.
-                            Format: "%d min — Combined · [ActivityName]: [unified scenario/task description] (Instructor note: which parts exercise which LGs)"
-                            - Pick the activity type from the SELECTED ACTIVITIES list, or choose whichever activity best fits a multi-LG integrative scenario.
+                        11. When generating an 'Understanding Check' (EVALUATE):
+                            - You MUST generate a SEPARATE activity step for EACH Learning Goal.
+                            - CRITICAL: DO NOT combine the Learning Goals into a single step! If there are 2 LGs, there MUST be 2 distinct steps.
+                            - DO NOT break down an activity into Explain/Prompt/Activity/Summarize. Provide ONLY the activity prompt step for each LG.
+                            - Format for EACH step MUST be exactly: "X min — Prompt LG[Number] · [ActivityName]: [task description testing this specific LG]"
+                            (Example: "5 min — Prompt LG1 · Quiz: solve this equation")
+                            - Ensure the sum of minutes across these steps equals exactly %d min.
+                            - Pick the activity types from the SELECTED ACTIVITIES list, or choose whichever activities best fit.
+                            - CRITICAL: The 'methods' JSON array on the top-level block object MUST include ALL distinct ActivityNames used (e.g., ["Quiz", "Think-Pair-Share"]). DO NOT leave it empty!
                             - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
 """.formatted(totalEvalMin);
         }
@@ -533,6 +557,7 @@ public class WorkshopService {
                            For all other non-learning-cycle blocks (ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
                         9. The 'phaseLabel' should be a short, topic-focused title.
                         10. Do NOT list "Lecture" or "Presentation" under 'methods'. Furthermore, 'Q&A Session' is strictly reserved for the 'Summary & Wrap-up' block and MUST NOT be generated in any other blocks.
+                        11. When outputting interactive activities in the 'methods' array, use EXACTLY the names provided in the SELECTED ACTIVITIES list. Do not use variations (e.g. use "Quiz / Polls" instead of "Poll" or "Quiz").
                         %s
 
                         12. When generating a 'Summary & Wrap-up' block:
@@ -582,6 +607,38 @@ public class WorkshopService {
                 minClosingTime, maxClosingTime));
 
         return sb.toString();
+    }
+
+    private ActivityBlockDto normalizeBlockActivities(ActivityBlockDto block) {
+        if (block == null || block.methods() == null) return block;
+        java.util.List<String> normalized = block.methods().stream().map(m -> {
+            String lower = m.toLowerCase();
+            if (lower.equals("poll") || lower.equals("polls") || lower.equals("quiz") || lower.equals("quiz / poll") || lower.equals("quiz/poll") || lower.equals("quiz/polls")) {
+                return "Quiz / Polls";
+            }
+            return m;
+        }).distinct().collect(Collectors.toList());
+        
+        java.util.List<ActivitySectionDto> normSections = block.sections();
+        if (normSections != null) {
+            normSections = normSections.stream().map(sec -> {
+                if (sec.methods() == null) return sec;
+                java.util.List<String> secNorm = sec.methods().stream().map(m -> {
+                    String lower = m.toLowerCase();
+                    if (lower.equals("poll") || lower.equals("polls") || lower.equals("quiz") || lower.equals("quiz / poll") || lower.equals("quiz/poll") || lower.equals("quiz/polls")) {
+                        return "Quiz / Polls";
+                    }
+                    return m;
+                }).distinct().collect(Collectors.toList());
+                return new ActivitySectionDto(sec.title(), sec.duration(), sec.steps(), secNorm, sec.materials());
+            }).collect(Collectors.toList());
+        }
+        
+        return new ActivityBlockDto(
+            block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
+            block.objective(), block.description(), normalized, block.materials(),
+            normSections, block.duration()
+        );
     }
 
     // ── Draft management ──────────────────────────────────────────────

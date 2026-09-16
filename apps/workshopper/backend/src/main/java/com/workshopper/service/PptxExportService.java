@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
  *   "group":   "welcome" | "agenda" | "activate_prior_knowledge"
  *              | "main_lecture" | "check_understanding" | "summary",
  *   "lgIndex": 1,          // present on main_lecture and check_understanding slides
- *   "layout":  "default" | "activity_tiled" | "live_poll"
+ *   "layout":  "default" | "activity_sidebar" | "live_poll"
  *              | "lecture_placeholder" | "debrief" | "concept_map",
  *   "title":   "...",
  *   "subtitle":"...",
@@ -388,17 +388,17 @@ public class PptxExportService {
                       "title": "%s: [Topic or previous topics]",
                       "pollQuestion": "the open activation question",
                       "pollOptions": ["A) ...", "B) ...", "C) ..."],
-                      "notes": "a PLAIN STRING — expected answers/misconceptions"
+                      "notes": "a PLAIN STRING — concise bullet points of expected answers/misconceptions relevant only to this slide"
                     }
                     """.formatted(actName);
             } else {
                 String layout = switch (method) {
                     case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
-                    case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_tiled";
+                    case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_sidebar";
                     case "qasession" -> "activity_q&a";
                     case "handsonpractice" -> "activity_sidebar";
                     case "quizpolls", "quiz", "poll" -> "live_poll";
-                    default -> "activity_tiled";
+                    default -> "activity_sidebar";
                 };
                 List<String> instructions = FIXED_INSTRUCTIONS.getOrDefault(method, List.of("Review the prompt", "Formulate your thoughts", "Prepare to share"));
                 String instJson = "[\\\"" + String.join("\\\", \\\"", instructions) + "\\\"]";
@@ -409,7 +409,7 @@ public class PptxExportService {
                       "activityPrompt": "the open activation question",
                       "activityInstructions": %s,
                       "activityOutputExpectation": "what students should be prepared to share",
-                      "notes": "a PLAIN STRING — expected answers/misconceptions"
+                      "notes": "a PLAIN STRING — concise bullet points of expected answers/misconceptions relevant only to this slide"
                     }
                     """.formatted(layout, actName, instJson);
             }
@@ -436,7 +436,7 @@ public class PptxExportService {
             } catch (Exception e) {
                 log.warn("LLM failed for Activate slide, using fallback: {}", e.getMessage());
                 actSlide = new LinkedHashMap<>();
-                actSlide.put("layout", "activity_tiled");
+                actSlide.put("layout", "activity_sidebar");
                 actSlide.put("title", label);
                 actSlide.put("activityPrompt", "What do you already know about today's topic?");
                 actSlide.put("activityInstructions", List.of("THINK (1m): Reflect silently.", "PAIR (2m): Discuss with a partner.", "SHARE (1m): Present to the group."));
@@ -447,7 +447,7 @@ public class PptxExportService {
             actSlide.put("topic", label);
             actSlide.put("subtitle", "ACTIVATE");
             actSlide.put("activityName", actName);
-            if (!actSlide.containsKey("layout")) actSlide.put("layout", "activity_tiled");
+            if (!actSlide.containsKey("layout")) actSlide.put("layout", "activity_sidebar");
             slides.add(actSlide);
         }
 
@@ -504,7 +504,7 @@ public class PptxExportService {
                   "suggestedAnswer": short, student-facing correct answer. IMPORTANT: If the activity was a poll, explicitly state the correct option letter (e.g., 'Correct Answer: A') followed by a brief explanation.
                   "commonMisconceptions": ["Misconception 1", "Misconception 2"] (array of EXACTLY 2 short common mistakes/gaps)
                   "keyTakeaway": "One main insight participants should leave with."
-                  "notes": a PLAIN STRING — suggested debrief facilitation technique.
+                  "notes": a PLAIN STRING — concise bullet points of suggested debrief facilitation technique (short, relevant only to this slide).
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
                 
                 Return ONLY a valid JSON array of 2 objects. No prose.
@@ -538,7 +538,7 @@ public class PptxExportService {
         }
 
         // Tag and sanitize LLM output
-        String[] expectedLayouts = {"activity_tiled", "debrief"};
+        String[] expectedLayouts = {"activity_sidebar", "debrief"};
         String method = getPrimaryMethod(block);
         String actName = getActivityName(method);
         for (int i = 0; i < Math.min(llmSlides.size(), 2); i++) {
@@ -572,7 +572,7 @@ public class PptxExportService {
     private List<Map<String, Object>> buildLearningCycleFallback(String label) {
         List<Map<String, Object>> fallback = new ArrayList<>();
         Map<String, Object> act = new LinkedHashMap<>();
-        act.put("layout", "activity_tiled");
+        act.put("layout", "activity_sidebar");
         act.put("title", "Activity: " + label);
         act.put("activityPrompt", "Apply what you have just learned to the following problem.");
         act.put("activityInstructions", List.of("THINK (2m): Work independently.", "PAIR (3m): Compare with a partner.", "SHARE (1m): Present your conclusion."));
@@ -638,7 +638,7 @@ public class PptxExportService {
                           "suggestedAnswer": "short, student-facing correct answer. If a poll, state correct option."
                           "commonMisconceptions": ["Misconception 1", "Misconception 2"]
                           "keyTakeaway": "One main insight participants should leave with."
-                          "notes": a PLAIN STRING — suggested debrief facilitation technique.
+                          "notes": a PLAIN STRING — concise bullet points of suggested debrief facilitation technique (short, relevant only to this slide).
                         
                         Return ONLY a valid JSON array of 2 objects. No prose.
                         """.formatted(buildActivitySlidePrompt(cleanMethod));
@@ -757,7 +757,7 @@ public class PptxExportService {
                   "title": "Summary & Wrap-Up",
                   "layout": "summary",
                   "bullets": ["Key takeaway 1", "Key takeaway 2", ...],
-                  "notes": "Facilitation steps + time allocation"
+                  "notes": "Concise bullet points for facilitation steps + time allocation (short, relevant only to this slide)"
                 }
                 
                 Schema for the One-Minute Paper slide:
@@ -765,7 +765,7 @@ public class PptxExportService {
                   "title": "One Minute Paper",
                   "layout": "activity_q&a",
                   "activityPrompt": "What is the most important concept you learned today?\\n2. What is your biggest remaining question?",
-                  "notes": "Facilitation steps + time allocation"
+                  "notes": "Concise bullet points for facilitation steps + time allocation (short, relevant only to this slide)"
                 }
                 
                 Return ONLY a valid JSON array. No prose.
@@ -865,18 +865,18 @@ public class PptxExportService {
                   "title": "%s: [Learning Goal or Topic]"
                   "pollQuestion": "the student-facing question"
                   "pollOptions": ["A) ...", "B) ...", "C) ...", "D) ..."]
-                  "notes": a PLAIN STRING — answer/reasoning, common wrong answers.
+                  "notes": a PLAIN STRING — concise bullet points of the answer/reasoning and common wrong answers (short, relevant only to this slide).
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
                 """.formatted(actName);
         }
 
         String layout = switch (method) {
             case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
-            case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_tiled";
+            case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_sidebar";
             case "qasession" -> "activity_q&a";
             case "handsonpractice" -> "activity_sidebar";
             case "quizpolls", "quiz", "poll" -> "live_poll";
-            default -> "activity_tiled";
+            default -> "activity_sidebar";
         };
 
         String instJson;
@@ -895,7 +895,7 @@ public class PptxExportService {
                   "activityPrompt": "the main question/task (MUST be a short 1-2 sentence summary, do NOT include instructions here)",
                   "activityInstructions": %s
                   "activityOutputExpectation": "what students will present/submit (if applicable, else omit)"
-                  "notes": a PLAIN STRING — answer/reasoning, debrief technique, common wrong answers, AND full detailed step-by-step instructions for the instructor.
+                  "notes": a PLAIN STRING — concise bullet points of answer/reasoning and brief step-by-step instructions for the instructor (relevant only to this slide, keep it short).
                     CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
                 """.formatted(layout, actName, instJson);
     }
@@ -961,14 +961,14 @@ public class PptxExportService {
     private Map<String, Object> normalizeSlideMap(Map<String, Object> slide) {
         // Fields that must always be plain strings
         for (String field : new String[]{"title", "subtitle", "notes", "activityPrompt",
-                "activityOutputExpectation", "debriefQuestion", "pollQuestion", "layout", "group"}) {
+                "activityOutputExpectation", "pollQuestion", "layout", "group", "suggestedAnswer", "keyTakeaway"}) {
             Object v = slide.get(field);
             if (v != null && !(v instanceof String)) {
                 slide.put(field, coerceToString(v));
             }
         }
         // activityInstructions and pollOptions must be List<String>
-        for (String field : new String[]{"activityInstructions", "pollOptions", "bullets"}) {
+        for (String field : new String[]{"activityInstructions", "pollOptions", "bullets", "commonMisconceptions"}) {
             Object v = slide.get(field);
             if (v instanceof java.util.List<?> list) {
                 slide.put(field, list.stream()
@@ -1300,7 +1300,7 @@ public class PptxExportService {
 
         // Layout overrides for specific non-group-typed slides
         if ("lecture_placeholder".equals(layout)) return PHASE_LECTURE;
-        if ("activity_tiled".equals(layout))      return PHASE_PRACTICE;
+        if ("activity_sidebar".equals(layout))      return PHASE_PRACTICE;
         if ("debrief".equals(layout))             return PHASE_PRACTICE;
 
         return switch (group) {
@@ -1318,21 +1318,20 @@ public class PptxExportService {
 
     
     private int getTemplateSlideIndex(String layout) {
-        if (layout == null) return 10; // default fallback (generic content slide)
+        if (layout == null) return 9; // default fallback (summary)
         return switch (layout) {
             case "title" -> 0;
             case "agenda" -> 1;
             case "welcome" -> 2;
             case "activity_grid3" -> 3;
-            case "activity_tiled" -> 4;
-            case "activity_sidebar" -> 5;
-            case "activity_q&a", "activity_qanda" -> 6;
-            case "live_poll" -> 7;
-            case "debrief" -> 8;
-            case "lecture_placeholder" -> 9;
-            case "summary", "concept_map" -> 10;
-            case "break" -> 11;
-            default -> 10; // default fallback (generic content slide)
+            case "activity_sidebar" -> 4;
+            case "activity_q&a", "activity_qanda" -> 5;
+            case "live_poll" -> 6;
+            case "debrief" -> 7;
+            case "lecture_placeholder" -> 8;
+            case "summary", "concept_map", "default" -> 9;
+            case "break" -> 10;
+            default -> 9;
         };
     }
 
@@ -1757,7 +1756,7 @@ public class PptxExportService {
             // ── Group Discussion / Brainstorming (activity_tiled) ────────────────
             // Template has: one prompt box + two side tiles (LOGISTICS + DELIVERABLE)
             // Data fields:  activityPrompt, activityInstructions, activityOutputExpectation
-            case "activity_tiled" -> {
+            case "activity_sidebar" -> {
                 String prompt = (String) slideData.get("activityPrompt");
                 if (prompt != null) {
                     replaceTextInSlide(slide, "[Write the discussion prompt", prompt);
@@ -1774,19 +1773,6 @@ public class PptxExportService {
                 }
             }
 
-            // ── Case Study / Role Play / Hands-on (activity_sidebar) ─────────────
-            // Template has: a numbered instructions column + a time/materials sidebar
-            // Data fields:  activityInstructions, activityPrompt (used as context)
-            case "activity_sidebar" -> {
-                List<String> instructions = (List<String>) slideData.get("activityInstructions");
-                if (instructions != null && !instructions.isEmpty()) {
-                    replaceBodyText(slide, instructions, "[Step 1 — set up your environment", "[Step 1");
-                }
-                String prompt = (String) slideData.get("activityPrompt");
-                if (prompt != null) {
-                    replaceTextInSlide(slide, "[Write the question", prompt);
-                }
-            }
 
             // ── Q&A / One-Minute Paper (activity_q&a) ────────────────────────────
             case "activity_q&a", "activity_qanda" -> {
