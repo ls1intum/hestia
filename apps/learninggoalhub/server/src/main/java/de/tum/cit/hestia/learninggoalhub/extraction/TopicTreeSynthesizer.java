@@ -279,7 +279,7 @@ public class TopicTreeSynthesizer {
         if (outcomes == null || outcomes.isEmpty()) {
             return new Plan(List.of(), List.of());
         }
-        String effectiveModel = modelOverride == null || modelOverride.isBlank() ? model : modelOverride;
+        String effectiveModel = effectiveModel(modelOverride);
         try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
             List<String> topics = normalizeNames(call(
                     NAMING_PROMPT.formatted(languageName, numbered(outcomes, 0, outcomes.size())),
@@ -312,9 +312,7 @@ public class TopicTreeSynthesizer {
                 }
                 List<String> texts = topicMembers.stream().map(outcomes::get).toList();
                 String label = topics.get(topic);
-                structures.add(async(executor, () -> call(
-                        STRUCTURE_PROMPT.formatted(label, languageName, numbered(texts, 0, texts.size())),
-                        effectiveModel, new ParameterizedTypeReference<TopicStructure>() {})));
+                structures.add(async(executor, () -> structureCall(label, texts, languageName, effectiveModel)));
             }
 
             List<PlannedTopic> planned = new ArrayList<>();
@@ -332,6 +330,48 @@ public class TopicTreeSynthesizer {
                     planned.stream().mapToInt(t -> t.capabilities().size()).sum());
             return new Plan(planned, unmatched);
         }
+    }
+
+    /**
+     * Structures one topic's outcomes into capabilities, as {@link #synthesize} does for every topic.
+     * Indices in the result refer to {@code outcomes}. Capabilities come without short labels.
+     *
+     * @throws RuntimeException when the call fails.
+     */
+    public PlannedTopic structure(String label, List<String> outcomes, String languageName, String modelOverride) {
+        List<Integer> members = java.util.stream.IntStream.range(0, outcomes.size()).boxed().toList();
+        if (outcomes.size() < 2) {
+            return new PlannedTopic(label, List.of(), members);
+        }
+        return structureTopic(label, members,
+                structureCall(label, outcomes, languageName, effectiveModel(modelOverride)));
+    }
+
+    /**
+     * Shortens capability names in one call, one label per name in order. A name gets null when no
+     * usable label came back, and every name does when the call fails.
+     */
+    public List<String> shortLabels(List<String> names, String languageName, String modelOverride) {
+        if (names.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return normalizeShortLabels(call(
+                    SHORT_LABEL_PROMPT.formatted(languageName, numbered(names, 0, names.size())),
+                    effectiveModel(modelOverride), new ParameterizedTypeReference<ShortLabels>() {}), names.size());
+        } catch (RuntimeException ex) {
+            log.warn("Capability short labels failed, keeping the full names: {}", ex.getMessage());
+            return new ArrayList<>(java.util.Collections.nCopies(names.size(), (String) null));
+        }
+    }
+
+    private TopicStructure structureCall(String label, List<String> texts, String languageName, String model) {
+        return call(STRUCTURE_PROMPT.formatted(label, languageName, numbered(texts, 0, texts.size())),
+                model, new ParameterizedTypeReference<TopicStructure>() {});
+    }
+
+    private String effectiveModel(String modelOverride) {
+        return modelOverride == null || modelOverride.isBlank() ? model : modelOverride;
     }
 
     /** Trimmed, non-blank labels, first occurrence of each (case-insensitive) kept. */
@@ -453,15 +493,7 @@ public class TopicTreeSynthesizer {
         if (names.isEmpty()) {
             return topics;
         }
-        try {
-            List<String> labels = normalizeShortLabels(call(
-                    SHORT_LABEL_PROMPT.formatted(languageName, numbered(names, 0, names.size())),
-                    model, new ParameterizedTypeReference<ShortLabels>() {}), names.size());
-            return applyShortLabels(topics, labels);
-        } catch (RuntimeException ex) {
-            log.warn("Capability short labels failed, keeping the full names: {}", ex.getMessage());
-            return topics;
-        }
+        return applyShortLabels(topics, shortLabels(names, languageName, model));
     }
 
     /**
