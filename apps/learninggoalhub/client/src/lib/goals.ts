@@ -221,3 +221,134 @@ export function generatedChildCount(
     (child) => child.goal.creationProvenance === "WIZARD_AI_SUBTREE",
   ).length;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lecture and exercise coverage
+//
+// Every source carries the kind of the document it was quoted from, so whether a sub-skill is
+// introduced in a lecture, practised in an exercise, or both is read straight off its sources.
+// Documents uploaded before kinds existed have none; their sub-skills are "unknown" and show no
+// badge.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Where a sub-skill's evidence comes from. */
+export type Coverage = "lecture" | "exercise" | "both" | "unknown";
+
+export const COVERAGE_META: Record<
+  Exclude<Coverage, "unknown">,
+  { label: string; color: string }
+> = {
+  lecture: { label: "Lecture", color: "var(--hestia-text-muted)" },
+  exercise: { label: "Exercise", color: "var(--hestia-primary)" },
+  both: {
+    label: "Both",
+    color: "color-mix(in srgb, var(--hestia-primary) 50%, var(--hestia-accent))",
+  },
+};
+
+/** A goal's coverage from its sources' document kinds; null when it has no source at all. */
+export function coverageOf(goal: LearningGoal): Coverage | null {
+  const sources = goal.sources ?? [];
+  if (sources.length === 0) return null;
+  const lecture = sources.some((source) => source.documentKind === "LECTURE");
+  const exercise = sources.some((source) => source.documentKind === "EXERCISE");
+  return lecture && exercise ? "both" : exercise ? "exercise" : lecture ? "lecture" : "unknown";
+}
+
+/** How a branch's source-backed sub-skills split by coverage. */
+export type CoverageCounts = Record<Coverage, number> & {
+  /** Sub-skills with a source, whatever their coverage. */
+  total: number;
+  /** Sub-skills an exercise practises: exercise or both. */
+  practised: number;
+};
+
+function subSkillsOf(node: CompetencyNode): CompetencyNode[] {
+  const found: CompetencyNode[] = [];
+  const walk = (current: CompetencyNode) => {
+    if (current.role === "skill" && coverageOf(current.goal) != null) found.push(current);
+    current.children.forEach(walk);
+  };
+  node.children.forEach(walk);
+  return found;
+}
+
+/** Counts the source-backed sub-skills beneath a topic or skill by coverage. */
+export function coverageCounts(node: CompetencyNode): CoverageCounts {
+  const counts: CoverageCounts = {
+    lecture: 0,
+    exercise: 0,
+    both: 0,
+    unknown: 0,
+    total: 0,
+    practised: 0,
+  };
+  for (const subSkill of subSkillsOf(node)) {
+    counts[coverageOf(subSkill.goal)!] += 1;
+    counts.total += 1;
+  }
+  counts.practised = counts.exercise + counts.both;
+  return counts;
+}
+
+const BLOOM_RANK = ["REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE", "EVALUATE", "CREATE"];
+const bloomRank = (goal: LearningGoal) => BLOOM_RANK.indexOf(goal.bloomLevel ?? "");
+
+/**
+ * Sub-skills whose exercise level sits abnormally against what the lectures of the same topic
+ * claim, keyed by goal id with the reason to show. Only the abnormal direction is flagged:
+ *
+ * - an exercise sub-skill below UNDERSTAND under a topic whose lecture sub-skills reach APPLY or
+ *   above — the exercise practises less than the lecture claims;
+ * - an exercise sub-skill at EVALUATE or above under a topic whose lecture outcomes never pass
+ *   UNDERSTAND — the exercise asks for more than the lecture prepares.
+ *
+ * Exercise outcomes hang beside the lecture sub-skills of their topic rather than inside them, so
+ * the topic is the scope both sides are compared in. A lecture at UNDERSTAND with an exercise at
+ * APPLY is how teaching is meant to work and is never flagged. A goal without a Bloom level takes
+ * part on neither side.
+ */
+export function levelFlags(forest: CompetencyNode[]): Map<number, string> {
+  const flags = new Map<number, string>();
+  for (const topic of forest) {
+    const subSkills = subSkillsOf(topic);
+    const lectureSide = (coverage: Coverage | null) => coverage === "lecture" || coverage === "both";
+    const lectureSkillRank = Math.max(
+      -1,
+      ...subSkills.filter((node) => lectureSide(coverageOf(node.goal))).map((node) => bloomRank(node.goal)),
+    );
+    const lectureOutcomeRank = Math.max(-1, ...lectureOutcomesOf(topic).map(bloomRank));
+    for (const node of subSkills) {
+      const rank = bloomRank(node.goal);
+      if (node.goal.id == null || coverageOf(node.goal) !== "exercise" || rank < 0) continue;
+      if (rank < BLOOM_RANK.indexOf("UNDERSTAND") && lectureSkillRank >= BLOOM_RANK.indexOf("APPLY")) {
+        flags.set(
+          node.goal.id,
+          `The exercise practises this at ${titleCase(BLOOM_RANK[rank])}, while the lectures of this topic claim ${titleCase(BLOOM_RANK[lectureSkillRank])}.`,
+        );
+      } else if (
+        rank >= BLOOM_RANK.indexOf("EVALUATE") &&
+        lectureOutcomeRank >= 0 &&
+        lectureOutcomeRank <= BLOOM_RANK.indexOf("UNDERSTAND")
+      ) {
+        flags.set(
+          node.goal.id,
+          `The exercise asks for ${titleCase(BLOOM_RANK[rank])}, while the lectures of this topic never go beyond ${titleCase(BLOOM_RANK[lectureOutcomeRank])}.`,
+        );
+      }
+    }
+  }
+  return flags;
+}
+
+/** Every goal beneath a topic whose sources include a lecture. */
+function lectureOutcomesOf(topic: CompetencyNode): LearningGoal[] {
+  const found: LearningGoal[] = [];
+  const walk = (node: CompetencyNode) => {
+    const coverage = coverageOf(node.goal);
+    if (coverage === "lecture" || coverage === "both") found.push(node.goal);
+    node.children.forEach(walk);
+  };
+  topic.children.forEach(walk);
+  return found;
+}

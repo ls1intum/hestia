@@ -22,6 +22,7 @@ import AnchoredPopover from "./AnchoredPopover.tsx";
 import Button from "./Button.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
 import FilterPopover from "./FilterPopover.tsx";
+import CoverageBadge from "./CoverageBadge.tsx";
 import TopicMap, { type MapCreation } from "./TopicMap.tsx";
 // Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
 const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
@@ -31,11 +32,15 @@ import {
   SOLO_DESC,
   buildCompetencyForest,
   childGoalsOf,
+  coverageCounts,
+  coverageOf,
   generatedChildCount,
+  levelFlags,
   supportingOutcomesOf,
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
+  type CoverageCounts,
 } from "../lib/goals.ts";
 
 /**
@@ -70,7 +75,7 @@ type Row = {
   session: string;
 };
 
-type FilterKey = "role" | "kind" | "bloom" | "solo" | "document" | "session";
+type FilterKey = "role" | "kind" | "bloom" | "solo" | "document" | "session" | "coverage";
 type SortKey = "text" | "bloom" | "solo" | "source";
 type LevelScale = "bloom" | "solo";
 type GoalChanges = {
@@ -144,6 +149,12 @@ const SOLO_ORDER = Object.keys(SOLO_DESC).map(toEnum);
 const AI_INFERRED_KIND = "AI_INFERRED";
 const MANUAL_KIND = "MANUAL";
 const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
+// Coverage filter values: a sub-skill only a lecture teaches is not practised, one only an exercise
+// asks for is not introduced. Sub-skills covered by both, or whose documents have no kind, match
+// neither.
+const NOT_PRACTISED = "NOT_PRACTISED";
+const NOT_INTRODUCED = "NOT_INTRODUCED";
+const COVERAGE_ORDER = [NOT_PRACTISED, NOT_INTRODUCED];
 const ROLE_ORDER: CompetencyRole[] = [
   "topic",
   "capability",
@@ -179,6 +190,11 @@ function valuesOf(row: Row, key: FilterKey): string[] {
       return [documentOf(row)];
     case "session":
       return [row.session];
+    case "coverage": {
+      if (row.role !== "skill") return [""];
+      const coverage = coverageOf(row.goal);
+      return [coverage === "lecture" ? NOT_PRACTISED : coverage === "exercise" ? NOT_INTRODUCED : ""];
+    }
   }
 }
 
@@ -203,6 +219,8 @@ function displayValue(key: FilterKey, value: string): string {
   if (key === "role")
     return COMPETENCY_ROLE_META[value as CompetencyRole].label;
   if (key === "session" || key === "document") return value || "—";
+  if (value === NOT_PRACTISED) return "Not practised (lecture only)";
+  if (value === NOT_INTRODUCED) return "Not introduced (exercise only)";
   if (value === AI_INFERRED_KIND) return "AI-inferred";
   if (value === MANUAL_KIND) return "Manual";
   return value ? titleCase(value) : "—";
@@ -216,6 +234,7 @@ const FILTER_LABELS: Record<FilterKey, string> = {
   solo: "SOLO",
   document: "Document",
   session: "Session",
+  coverage: "Coverage",
 };
 
 const COLUMNS: {
@@ -234,7 +253,7 @@ const COLUMNS: {
     key: "source",
     label: "Source",
     sortKey: "source",
-    filterKeys: ["document", "session"],
+    filterKeys: ["document", "session", "coverage"],
   },
 ];
 
@@ -349,6 +368,11 @@ export default function CompetencyTree({
     [effectiveGoals],
   );
   const rows = useMemo(() => flattenForest(forest), [forest]);
+  const flags = useMemo(() => levelFlags(forest), [forest]);
+  const topicCoverage = useMemo(
+    () => new Map(forest.map((node) => [node.goal.id, coverageCounts(node)])),
+    [forest],
+  );
   const childrenOf = useMemo(() => {
     const map = new Map<number | null, Row[]>();
     for (const row of rows) {
@@ -385,6 +409,7 @@ export default function CompetencyTree({
     solo: new Set(),
     document: new Set(),
     session: new Set(),
+    coverage: new Set(),
   });
   const [sort, setSort] = useState<SortState>(null);
   // Rows show short labels by default; the toolbar switch swaps in every goal's full wording.
@@ -527,6 +552,7 @@ export default function CompetencyTree({
       solo: ordered(SOLO_ORDER, present("solo")),
       document: [...present("document")].sort((a, b) => a.localeCompare(b)),
       session: [...present("session")].sort((a, b) => a.localeCompare(b)),
+      coverage: ordered(COVERAGE_ORDER, present("coverage")),
     };
   }, [rows]);
 
@@ -727,6 +753,7 @@ export default function CompetencyTree({
       solo: new Set(),
       document: new Set(),
       session: new Set(),
+      coverage: new Set(),
     });
   };
 
@@ -811,6 +838,8 @@ export default function CompetencyTree({
           onEndEdit={() => setEditingId(null)}
           onUpdate={updateGoal}
           onDelete={onDelete}
+          levelFlag={flags.get(row.id)}
+          coverage={row.role === "topic" ? topicCoverage.get(row.id) : undefined}
           addChildLabel={canAddChild ? childAppend.label : undefined}
           onAddChild={
             canAddChild
@@ -1426,6 +1455,8 @@ function GridRow({
   onEndEdit,
   onUpdate,
   onDelete,
+  levelFlag,
+  coverage,
   addChildLabel,
   onAddChild,
 }: {
@@ -1460,6 +1491,10 @@ function GridRow({
   onEndEdit: () => void;
   onUpdate: (goalId: number, changes: GoalChanges) => void;
   onDelete: (goal: LearningGoal) => void;
+  /** Why this sub-skill's exercise level looks abnormal against its topic's lectures, if it does. */
+  levelFlag?: string;
+  /** A topic's sub-skills by lecture and exercise coverage. */
+  coverage?: CoverageCounts;
   /** Names the "+" action; absent when this row takes no children here. */
   addChildLabel?: string;
   onAddChild?: () => void;
@@ -1607,6 +1642,11 @@ function GridRow({
             >
               {displayedGoalLabel(row.goal, fullWording)}
             </span>
+            {row.role === "skill" && (
+              <span className="ml-1.5">
+                <CoverageBadge goal={row.goal} flag={levelFlag} />
+              </span>
+            )}
             {opensMap && (
               // The map starts below the topic, so the topic's own detail (edit, delete) opens here.
               <button
@@ -1636,6 +1676,11 @@ function GridRow({
                   <path d="M10 9v4.5M10 6.5v.01" />
                 </svg>
               </button>
+            )}
+            {coverage && coverage.total > coverage.unknown && (
+              <span className="block text-xs font-normal text-hestia-text-muted">
+                {coverage.practised} of {coverage.total} sub-skills practised
+              </span>
             )}
           </span>
           )}
