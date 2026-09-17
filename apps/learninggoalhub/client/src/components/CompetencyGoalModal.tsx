@@ -67,9 +67,9 @@ export default function CompetencyGoalModal({
   /** Source-backed lecture outcomes used to synthesize this sub-skill. */
   supportingOutcomes?: LearningGoal[];
   /**
-   * Wizard-generated sub-skills under this goal, which enables the subtree action: a number means
-   * the goal is a terminal skill (0 = its generation failed or was never run), `undefined` means it
-   * is not one and the action stays out of the modal.
+   * AI-generated skills under this goal, which enables the subtree action: a number means the goal
+   * is a topic (0 = its generation failed or was never run), `undefined` means it is not one and
+   * the action stays out of the modal.
    */
   generatedChildCount?: number;
   onClose: () => void;
@@ -193,7 +193,7 @@ export default function CompetencyGoalModal({
         "/api/courses/{courseId}/learning-goals/{goalId}/children",
         {
           params: { path: { courseId: numericCourseId, goalId: vars.goalId } },
-          body: { text: vars.text },
+          body: { text: vars.text, role: "KNOWLEDGE" },
         },
       );
       if (!result.data) {
@@ -277,7 +277,7 @@ export default function CompetencyGoalModal({
       : goal.creationProvenance === "WIZARD_AI_SUBTREE"
         ? {
             label: "AI-inferred",
-            desc: "Generated from the skill's wording, without a source reference.",
+            desc: "Generated from the topic's wording, without a source reference.",
           }
         : goal.kind
           ? { label: titleCase(goal.kind), desc: KIND_DESC[titleCase(goal.kind)] }
@@ -516,7 +516,7 @@ export default function CompetencyGoalModal({
             <div className="flex flex-col gap-1.5">
               {staleSubtree && (
                 <p className="text-xs leading-snug text-hestia-text-muted">
-                  The sub-skills were generated from the previous wording.
+                  The skills were generated from the previous wording.
                 </p>
               )}
               <div className="flex items-center gap-2">
@@ -533,8 +533,8 @@ export default function CompetencyGoalModal({
                   {regenerateMutation.isPending
                     ? "Generating…"
                     : generatedChildCount! > 0
-                      ? "Regenerate AI sub-skills"
-                      : "Generate AI sub-skills"}
+                      ? "Regenerate AI skills"
+                      : "Generate AI skills"}
                 </button>
                 {staleSubtree && (
                   <button
@@ -839,8 +839,8 @@ export default function CompetencyGoalModal({
           )}
           {/* An editable modal always shows both scales: a manually added goal starts unclassified,
               and the empty scale is the only place its levels can be set. Read-only views keep
-              hiding a level that was never assigned. */}
-          {(goal.bloomLevel || goal.soloLevel || onUpdate) && (
+              hiding a level that was never assigned. A topic is a noun phrase and has no levels. */}
+          {role !== "topic" && (goal.bloomLevel || goal.soloLevel || onUpdate) && (
             <div className="grid gap-3 sm:grid-cols-2">
               {(goal.bloomLevel || onUpdate) && (
                 <TaxonomyTile
@@ -1156,7 +1156,7 @@ export default function CompetencyGoalModal({
           title="Regenerate the AI sub-skills?"
           message={`This replaces the ${generatedChildCount} generated sub-skill${
             generatedChildCount === 1 ? "" : "s"
-          } under this skill, and the knowledge below them, with a fresh set derived from its current wording. Anything you added by hand stays.`}
+          } under this topic, and the knowledge below them, with a fresh set derived from its current wording. Anything you added by hand stays.`}
           confirmLabel={
             regenerateMutation.isPending ? "Generating…" : "Regenerate"
           }
@@ -1288,7 +1288,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
   const isGap = role === "gap";
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
         color: meta.color,
         backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
@@ -1304,7 +1304,7 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
 export function AiInferredBadge({ compact = false }: { compact?: boolean } = {}) {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
         color: "var(--hestia-danger)",
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
@@ -1319,7 +1319,7 @@ export function AiInferredBadge({ compact = false }: { compact?: boolean } = {})
 export function ManualBadge() {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
         color: "var(--hestia-warning)",
         backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",

@@ -922,21 +922,13 @@ public class ExtractionRunner {
             List<PlannedCapability> capabilities = new ArrayList<>();
             for (TopicTreeSynthesizer.PlannedCapability capability : topic.capabilities()) {
                 List<LearningGoal> members = capability.outcomes().stream().map(candidates::get).toList();
-                capabilities.add(new PlannedCapability(capability.name(),
+                capabilities.add(new PlannedCapability(capability.name(), capability.shortLabel(),
                         atLeastChildLevels(classifications.get(capabilityIndex++),
                                 bloomLevels(members), soloLevels(members)),
                         members));
             }
             List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
-            List<BloomLevel> childLevels = new ArrayList<>(bloomLevels(direct));
-            capabilities.stream()
-                    .map(PlannedCapability::classification)
-                    .filter(java.util.Objects::nonNull)
-                    .map(TaxonomyClassification::bloom)
-                    .filter(java.util.Objects::nonNull)
-                    .forEach(childLevels::add);
-            planned.add(new PlannedCompetency(topic.label(), atLeastChildBloom(null, childLevels),
-                    capabilities, direct));
+            planned.add(new PlannedCompetency(topic.label(), capabilities, direct));
         }
         planned.sort(Comparator.comparingInt(ExtractionRunner::medianLectureOrder));
         int unmatched = plan.unmatched().size();
@@ -962,19 +954,20 @@ public class ExtractionRunner {
     /**
      * One terminal competency: a topic with the capabilities and outcomes beneath it.
      *
-     * @param text           the topic label.
-     * @param classification its Bloom level, the highest among its direct children; no SOLO level.
-     * @param capabilities   generated capabilities, each over at least two extracted outcomes.
-     * @param direct         extracted outcomes that hang directly under the topic.
+     * A topic is a noun phrase and carries no Bloom or SOLO level.
+     *
+     * @param text         the topic label.
+     * @param capabilities generated capabilities, each over at least two extracted outcomes.
+     * @param direct       extracted outcomes that hang directly under the topic.
      */
-    private record PlannedCompetency(String text, TaxonomyClassification classification,
-                                     List<PlannedCapability> capabilities, List<LearningGoal> direct) {}
+    private record PlannedCompetency(String text, List<PlannedCapability> capabilities,
+                                     List<LearningGoal> direct) {}
 
     /**
      * A generated capability: its name, its levels, and the extracted outcomes beneath it. Both its
      * Bloom and its SOLO level are at least the highest among its members.
      */
-    private record PlannedCapability(String text, TaxonomyClassification classification,
+    private record PlannedCapability(String text, String shortLabel, TaxonomyClassification classification,
                                      List<LearningGoal> members) {}
 
     private static List<BloomLevel> bloomLevels(List<LearningGoal> goals) {
@@ -986,25 +979,13 @@ public class ExtractionRunner {
     }
 
     /**
-     * A tree node never sits below the children beneath it.
+     * A capability never sits below the outcomes beneath it.
      *
-     * <p>Its Bloom level is classified from generated text, and that text is the least reliable
-     * thing in the tree to read a level off: one run stored a terminal reading "Understanding
-     * definition and basic properties ... and evaluating neighbourhood preservation" as EVALUATE,
-     * picked off the clause at the tail, while its own label said "Understanding space-filling
-     * curves". Terminals also came back at UNDERSTAND over children at ANALYZE, which inverts the
-     * tier the tree is built on. The children's levels are the trustworthy half — each one was
-     * classified during extraction with a source passage behind it — so Bloom is raised to the
-     * highest level among the direct children. A topic is not classified at all, so it takes its
-     * Bloom level purely from the capabilities and skills beneath it, and no SOLO level.
-     */
-    static TaxonomyClassification atLeastChildBloom(TaxonomyClassification classified,
-                                                       List<BloomLevel> childLevels) {
-        return atLeastChildLevels(classified, childLevels, List.of());
-    }
-
-    /**
-     * Like {@link #atLeastChildBloom}, and SOLO gets the same floor. A capability covers every
+     * <p>Its levels are classified from generated text, the least reliable thing in the tree to read
+     * a level off: a name can be classified by a clause at its tail, or come back below the outcomes
+     * it groups, which inverts the tier the tree is built on. The members' levels are the trustworthy
+     * half — each was classified during extraction with a source passage behind it — so Bloom is
+     * raised to the highest level among them, and SOLO gets the same floor. A capability covers every
      * outcome beneath it, so its structure is at least as complex as the most complex of them. The
      * classified SOLO level is kept when it already reaches that floor, since a capability that
      * relates several simple outcomes can rightly sit above all of them. When classification failed,
@@ -1067,7 +1048,6 @@ public class ExtractionRunner {
             terminal.setHierarchyNode(competencyRoot);
             int medianLectureOrder = medianLectureOrder(competency);
             terminal.setLectureOrder(medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder);
-            applyLevels(terminal, competency.classification());
             goalRepository.saveAndFlush(terminal);
 
             for (PlannedCapability planned : competency.capabilities()) {
@@ -1076,6 +1056,7 @@ public class ExtractionRunner {
                 LearningGoal capability = new LearningGoal(course, planned.text(), GoalKind.IMPLICIT);
                 capability.setOrigin(GoalOrigin.SYNTHESIZED);
                 capability.setRole(GoalRole.SKILL);
+                capability.setShortLabel(planned.shortLabel());
                 int capabilityOrder = medianOrderOf(planned.members());
                 capability.setLectureOrder(capabilityOrder == Integer.MAX_VALUE ? null : capabilityOrder);
                 applyLevels(capability, planned.classification());

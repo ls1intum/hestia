@@ -75,14 +75,16 @@ function compareLectureOrder(a: LearningGoal, b: LearningGoal): number {
 // text-muted); warning is deliberately avoided (never a standalone text colour) and danger is
 // reserved for gaps. Topic takes gold (the sparing main accent, few top-level nodes), capability
 // the secondary accent, skill a muted blend of it, knowledge the quiet muted tier.
+// The labels are what instructors read and deliberately differ from the role keys: a capability is
+// shown as "Skill" and a skill as "Sub-skill", so the names alone say which tier sits higher.
 export const COMPETENCY_ROLE_META: Record<
   CompetencyRole,
   { label: string; color: string }
 > = {
   topic: { label: "Topic", color: "var(--hestia-primary)" },
-  capability: { label: "Capability", color: "var(--hestia-accent)" },
+  capability: { label: "Skill", color: "var(--hestia-accent)" },
   skill: {
-    label: "Skill",
+    label: "Sub-skill",
     color: "color-mix(in srgb, var(--hestia-accent) 55%, var(--hestia-text-muted))",
   },
   knowledge: { label: "Knowledge", color: "var(--hestia-text-muted)" },
@@ -101,8 +103,9 @@ export const COMPETENCY_ROLE_META: Record<
  * explicitly marked as a skill, or carries a doing/judgement Bloom level for legacy role-null
  * data, and knowledge when not. A depth-2 node under a capability is a skill; every other deeper
  * node is knowledge. Knowledge and gap nodes take no children; any GAP-origin goal renders as a
- * gap leaf. A hand-added depth-1 node is a skill whatever its Bloom level: manual goals are
- * deliberately left unclassified, and the instructor added it through an "Add ..." knob, which
+ * gap leaf. A hand-added depth-1 node is a capability when it was added with the SKILL role, even
+ * before it has children, and otherwise a skill whatever its Bloom level: manual goals are
+ * deliberately left unclassified, and the instructor added it through an "Add ..." control, which
  * says the tier outright.
  */
 export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
@@ -145,7 +148,9 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
         ? "gap"
         : depth === 0
           ? "topic"
-          : depth === 1 && childGoals.some((c) => c.role === "SKILL")
+          : depth === 1 &&
+              (childGoals.some((c) => c.role === "SKILL") ||
+                (goal.creationProvenance === "USER_CREATED" && goal.role === "SKILL"))
             ? "capability"
             : (depth === 1 &&
                   (childGoals.length > 0 ||
@@ -203,8 +208,8 @@ export function supportingOutcomesOf(
 }
 
 /**
- * How many wizard-generated sub-skills hang under the terminal skill `goalId` — the nodes a
- * regeneration would replace. `undefined` means the goal is not a terminal skill at all, which is
+ * How many AI-generated skills hang under the topic `goalId` — the nodes a regeneration would
+ * replace, with everything beneath them. `undefined` means the goal is not a topic at all, which is
  * what tells the goal modal to leave the regeneration action out entirely.
  */
 export function generatedChildCount(

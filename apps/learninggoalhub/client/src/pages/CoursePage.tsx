@@ -4,16 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import CompetencyTree from "../components/CompetencyTree.tsx";
-import CompetencyGraph from "../components/CompetencyGraph.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { titleCase } from "../lib/goals.ts";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
-
-// The course page shows the synthesised skills in one of two representations: the filterable
-// tree-grid (`table`) or the focus-and-drill map.
-type GoalsView = "table" | "map";
 
 const BLOOM_ORDER = [
   "REMEMBER",
@@ -38,7 +33,6 @@ export default function CoursePage() {
   const queryClient = useQueryClient();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [goalsView, setGoalsView] = useState<GoalsView>("table");
   const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
   const [extractionModalOpen, setExtractionModalOpen] = useState(false);
@@ -233,7 +227,7 @@ export default function CoursePage() {
         {goalToDelete && (
           <ConfirmDialog
             title="Delete learning goal?"
-            message={`This permanently removes "${goalToDelete.text}" together with its sources and relationships. This cannot be undone.`}
+            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the competency tree, together with their sources and relationships. This cannot be undone.`}
             confirmLabel={
               deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
             }
@@ -287,36 +281,18 @@ export default function CoursePage() {
         )}
       </div>
 
-      {/* Competency table view: the forest as a filterable Excel-style tree-grid. The view switch
-          rides in the grid's own toolbar, next to its search and expand-all controls. */}
-      {goals.length > 0 && goalsView === "table" && (
-        <div className="mx-auto w-full max-w-5xl">
+      {/* The competency grid: topics as a filterable Excel-style list, each opening its map
+          inline beneath its row. */}
+      {goals.length > 0 && (
+        <div className="w-full">
           <CompetencyTree
             courseId={courseId}
             goals={goals}
             onUpdate={updateGoal}
             onDelete={setGoalToDelete}
-            viewSwitch={<ViewSwitch view={goalsView} onChange={setGoalsView} />}
+            onEdit={setEditGoal}
           />
         </div>
-      )}
-
-      {/* Competency map view: focus-and-drill graph, one layer at a time. The map has no toolbar
-          of its own, so the view switch sits above it — at the same width as the grid's toolbar.
-          The graph widens itself only while a skill is focused, so no width cap around it. */}
-      {goals.length > 0 && goalsView === "map" && (
-        <>
-          <div className="mx-auto w-full max-w-5xl">
-            <ViewSwitch view={goalsView} onChange={setGoalsView} />
-          </div>
-          <CompetencyGraph
-            courseId={courseId}
-            goals={goals}
-            onEdit={setEditGoal}
-            onDelete={setGoalToDelete}
-            onUpdate={updateGoal}
-          />
-        </>
       )}
 
       {reviewDue && !reviewDismissed && (
@@ -331,91 +307,6 @@ export default function CoursePage() {
         />
       )}
     </div>
-  );
-}
-
-/**
- * Segmented control switching between the two skill representations. Follows the styleguide's
- * toggle: one surface pill, the selected segment filled with primary. The end segments carry the
- * rounding themselves rather than the track clipping them, so the focus ring stays visible.
- */
-function ViewSwitch({
-  view,
-  onChange,
-}: {
-  view: GoalsView;
-  onChange: (view: GoalsView) => void;
-}) {
-  const options: { key: GoalsView; label: string; icon: React.ReactNode }[] = [
-    { key: "table", label: "Table", icon: <TableIcon /> },
-    { key: "map", label: "Map", icon: <MapIcon /> },
-  ];
-  return (
-    <div
-      role="tablist"
-      aria-label="Skills representation"
-      className="inline-flex rounded-full border border-hestia-border bg-hestia-surface"
-    >
-      {options.map((option) => {
-        const active = view === option.key;
-        return (
-          <button
-            key={option.key}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(option.key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm transition first:rounded-l-full last:rounded-r-full ${
-              active
-                ? "bg-hestia-primary font-semibold text-hestia-on-primary"
-                : "font-medium text-hestia-text-muted hover:text-hestia-text"
-            }`}
-          >
-            {option.icon}
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Icons for the Skills representation toggle. Sized to sit inline with the label text. */
-function MapIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-4 w-4"
-    >
-      <rect x="7.5" y="2.5" width="5" height="4" rx="1" />
-      <rect x="2" y="13.5" width="5" height="4" rx="1" />
-      <rect x="13" y="13.5" width="5" height="4" rx="1" />
-      <path d="M10 6.5v3M10 9.5H4.5v4M10 9.5h5.5v4" />
-    </svg>
-  );
-}
-
-function TableIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-4 w-4"
-    >
-      <rect x="3" y="4" width="14" height="12" rx="1.5" />
-      <path d="M3 8h14M8 8v8" />
-    </svg>
   );
 }
 

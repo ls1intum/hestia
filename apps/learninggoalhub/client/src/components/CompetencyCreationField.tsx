@@ -1,6 +1,15 @@
 import type { CSSProperties } from "react";
 import Button from "./Button.tsx";
 
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
+    />
+  );
+}
+
 export default function CompetencyCreationField({
   value,
   placeholder,
@@ -9,6 +18,8 @@ export default function CompetencyCreationField({
   onChange,
   onSubmit,
   onCancel,
+  onGenerate,
+  generating = false,
   className = "",
   style,
   stacked = false,
@@ -20,6 +31,13 @@ export default function CompetencyCreationField({
   onChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  /**
+   * Offers "Generate with AI" beside "Add": the typed text is created together with goals an AI
+   * writes beneath it. Without it, the field only adds exactly what was typed.
+   */
+  onGenerate?: () => void;
+  /** The pending creation is a generation, so its button carries the spinner. */
+  generating?: boolean;
   className?: string;
   style?: CSSProperties;
   /** Stacks the field above its buttons, for the map's fixed-width boxes where a row would overflow. */
@@ -69,17 +87,32 @@ export default function CompetencyCreationField({
           >
             Cancel
           </Button>
+          {onGenerate && (
+            <Button
+              variant="neutral"
+              size="sm"
+              title="Also write skills, sub-skills and knowledge beneath it with AI, without a source"
+              onClick={onGenerate}
+              disabled={value.trim() === "" || pending}
+            >
+              {pending && generating ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner />
+                  Generating…
+                </span>
+              ) : (
+                "Generate with AI"
+              )}
+            </Button>
+          )}
           <Button
             type="submit"
             size="sm"
             disabled={value.trim() === "" || pending}
           >
-            {pending ? (
+            {pending && !generating ? (
               <span className="flex items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="h-3 w-3 animate-spin rounded-full border-2 border-current/40 border-t-current"
-                />
+                <Spinner />
                 Adding…
               </span>
             ) : (

@@ -435,6 +435,8 @@ export interface components {
         AddChildRequest: {
             text?: string;
             shortLabel?: string;
+            /** @enum {string} */
+            role?: "SKILL" | "KNOWLEDGE";
         };
         CreateTerminalSkillRequest: {
             text?: string;
