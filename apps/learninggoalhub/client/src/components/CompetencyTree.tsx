@@ -356,14 +356,15 @@ function ChildPreview({
 }
 
 /**
- * Flags a topic none of whose sub-skills comes from an exercise, the case a reader has to spot.
- * Every other topic leaves the cell empty.
+ * Says which topics no exercise practises. This is a statement about the material, not a fault in
+ * it — a lecture-only topic is perfectly normal — so it reads as an informational note rather than
+ * a warning. Every other topic leaves the cell empty.
  */
 function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
   const known = coverage.total - coverage.unknown;
   if (known === 0 || coverage.practised > 0) return null;
   return (
-    <Chip tone="warning" title={`None of its ${known} sub-skills comes from an exercise`}>
+    <Chip tone="neutral" title={`None of its ${known} sub-skills comes from an exercise`}>
       <svg
         viewBox="0 0 20 20"
         fill="none"
@@ -373,10 +374,9 @@ function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
         strokeLinejoin="round"
         aria-hidden="true"
         className="h-3 w-3"
-        style={{ color: "color-mix(in srgb, var(--hestia-warning) 70%, var(--hestia-text))" }}
       >
-        <path d="M10 3.5l7 12.5H3z" />
-        <path d="M10 8.5v3.5M10 14.2v.01" />
+        <circle cx="10" cy="10" r="7.25" />
+        <path d="M10 9.25v4.25M10 6.6v.01" />
       </svg>
       No exercises
     </Chip>
@@ -983,6 +983,14 @@ export default function CompetencyTree({
     setOpenTopicId((prev) => (prev === id ? null : id));
   };
 
+  // Switching to the diagram opens its first topic: a list of closed topic rows shows none of what
+  // the layout is for. A topic closed by hand stays closed — only an empty layout opens itself.
+  const changeLayout = (next: Layout) => {
+    if (next === "diagram" && openTopicId == null)
+      setOpenTopicId(forest[0]?.goal.id ?? null);
+    setLayout(next);
+  };
+
   const descendantIds = (id: number): Set<number> => {
     const out = new Set<number>();
     const walk = (pid: number) => {
@@ -1154,11 +1162,15 @@ export default function CompetencyTree({
       layout === "table" &&
       !filtering &&
       childAppend != null;
+    // A topic and what hangs off it read as one block in both layouts, so every topic after the
+    // first gets a little air above it. A filtered list is one flat run of matches and keeps none.
+    const spacedTop = !filtering && row.role === "topic" && bodyRows.length > 0;
     bodyRows.push(
       <GridRow
         key={row.id}
         row={row}
         depth={rowDepth}
+        spacedTop={spacedTop}
         zebra={rowIndex++ % 2 === 1}
         context={isContext}
         filtering={filtering}
@@ -1403,7 +1415,7 @@ export default function CompetencyTree({
       className={`mx-auto flex w-full flex-col gap-3 ${openSource ? "" : "max-w-5xl"}`}
     >
       <div className="flex flex-wrap items-center gap-3">
-        <LayoutSwitch layout={layout} onChange={setLayout} />
+        <LayoutSwitch layout={layout} onChange={changeLayout} />
         <label className="relative flex min-w-48 flex-1 items-center">
           <svg
             viewBox="0 0 20 20"
@@ -2259,6 +2271,7 @@ function GridRow({
   coverage,
   addChildLabel,
   onAddChild,
+  spacedTop,
 }: {
   row: Row;
   depth: number;
@@ -2304,6 +2317,8 @@ function GridRow({
   /** Names the "+" action; absent when this row takes no children here. */
   addChildLabel?: string;
   onAddChild?: () => void;
+  /** Sets this row off from the one above it, which both layouts use between topics. */
+  spacedTop?: boolean;
 }) {
   const interactive = !context;
   // A filtered list folds in either layout; browsing folds only in the table.
@@ -2408,6 +2423,8 @@ function GridRow({
         : {})}
       {...(opensMap ? { "aria-expanded": mapOpen } : {})}
       className={`group grid items-stretch border-b border-hestia-border/60 transition ${
+        spacedTop ? "mt-2 " : ""
+      }${
         mapOpen
           ? "bg-[color-mix(in_srgb,var(--hestia-primary)_10%,var(--hestia-surface))] shadow-[0_6px_14px_-10px_rgba(0,0,0,0.35)]"
           : zebra
