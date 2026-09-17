@@ -219,7 +219,7 @@ class TopicSearchControllerTest {
         documentSectionRepository.save(new DocumentSection(lecture, 0, "Ensembles", 0,
                 lecture.getRawText().length(), 1, 4));
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
-                nullable(String.class), anyList(), anyInt()))
+                nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(
                         skill("Train trees on bootstrap samples.", 0, BloomLevel.APPLY,
                                 new ExtractedSkill.Knowledge("Recall what a bootstrap sample is.", null,

@@ -289,18 +289,7 @@ public class TopicTreeSynthesizer {
             }
             log.info("Topic tree named {} topics for {} skills", topics.size(), outcomes.size());
 
-            String menu = numbered(topics, 0, topics.size());
-            List<CompletableFuture<Map<Integer, Integer>>> batches = new ArrayList<>();
-            for (int start = 0; start < outcomes.size(); start += ASSIGNMENT_BATCH) {
-                int from = start;
-                int to = Math.min(start + ASSIGNMENT_BATCH, outcomes.size());
-                batches.add(async(executor, () -> normalizeAssignments(call(
-                        ASSIGNMENT_PROMPT.formatted(menu, numbered(outcomes, from, to)),
-                        effectiveModel, new ParameterizedTypeReference<Assignments>() {}),
-                        from, to, topics.size())));
-            }
-            Map<Integer, Integer> assignment = new LinkedHashMap<>();
-            batches.forEach(batch -> assignment.putAll(join(batch)));
+            Map<Integer, Integer> assignment = assign(executor, topics, outcomes, effectiveModel);
             List<List<Integer>> members = membersByTopic(assignment, outcomes.size(), topics.size());
 
             List<CompletableFuture<TopicStructure>> structures = new ArrayList<>();
@@ -330,6 +319,40 @@ public class TopicTreeSynthesizer {
                     planned.stream().mapToInt(t -> t.capabilities().size()).sum());
             return new Plan(planned, unmatched);
         }
+    }
+
+    /**
+     * Assigns {@code outcomes} to the fixed {@code labels} with the same batched assignment call
+     * {@link #synthesize} runs after naming. Nothing is named or structured.
+     *
+     * @return outcome index -> label index, or {@link #UNMATCHED}; an outcome the model left out of
+     *         its batch's answer is absent. {@link #membersByTopic} and {@link #unmatched} read it.
+     * @throws RuntimeException when a call fails.
+     */
+    public Map<Integer, Integer> assign(List<String> labels, List<String> outcomes, String modelOverride) {
+        if (labels.isEmpty() || outcomes.isEmpty()) {
+            return Map.of();
+        }
+        try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
+            return assign(executor, labels, outcomes, effectiveModel(modelOverride));
+        }
+    }
+
+    private Map<Integer, Integer> assign(ExecutorService executor, List<String> labels, List<String> outcomes,
+                                         String effectiveModel) {
+        String menu = numbered(labels, 0, labels.size());
+        List<CompletableFuture<Map<Integer, Integer>>> batches = new ArrayList<>();
+        for (int start = 0; start < outcomes.size(); start += ASSIGNMENT_BATCH) {
+            int from = start;
+            int to = Math.min(start + ASSIGNMENT_BATCH, outcomes.size());
+            batches.add(async(executor, () -> normalizeAssignments(call(
+                    ASSIGNMENT_PROMPT.formatted(menu, numbered(outcomes, from, to)),
+                    effectiveModel, new ParameterizedTypeReference<Assignments>() {}),
+                    from, to, labels.size())));
+        }
+        Map<Integer, Integer> assignment = new LinkedHashMap<>();
+        batches.forEach(batch -> assignment.putAll(join(batch)));
+        return assignment;
     }
 
     /**

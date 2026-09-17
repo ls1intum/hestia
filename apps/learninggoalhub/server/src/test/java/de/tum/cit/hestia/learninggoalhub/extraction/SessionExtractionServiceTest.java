@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import java.util.List;
@@ -123,6 +124,62 @@ class SessionExtractionServiceTest {
                 .contains("COMPLETE response")
                 .contains("distinct text")
                 .contains("action-noun wording");
+    }
+
+    @Test
+    void anExerciseUnitGetsTheExercisePromptAndTheSameValidation() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill outOfRange = new ExtractedSkill(
+                "Computing the determinant of a 3x3 matrix.", "Compute determinants",
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL, 8, 9, List.of());
+        ExtractedSkill corrected = new ExtractedSkill(
+                "Computing the determinant of a 3x3 matrix.", "Compute determinants",
+                GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL, 0, 0, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(outOfRange), List.of(corrected));
+        clearInvocations(spec);
+
+        List<ExtractedSkill> result = new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+                .extract("Sheet 4", "Task 1: Compute det(A).", null, "English", null, List.of(), 2,
+                        DocumentKind.EXERCISE);
+
+        assertThat(result).containsExactly(corrected);
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(spec, times(2)).user(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues().get(0))
+                .startsWith(SessionExtractionService.EXERCISE_PROMPT_TEMPLATE.substring(0, 80))
+                .contains("what\nthe student does in its tasks")
+                .contains("Return at most 2.")
+                .contains("Exercise title:\n---\nSheet 4")
+                .contains("[0] Task 1: Compute det(A).")
+                .doesNotContain("what a student should");
+        assertThat(promptCaptor.getAllValues().get(1))
+                .contains("previous response violated")
+                .contains("Specific validation failure");
+    }
+
+    @Test
+    void aLectureOrKindlessUnitKeepsTheLecturePrompt() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class))).thenReturn(List.of());
+        clearInvocations(spec);
+        SessionExtractionService service =
+                new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2);
+
+        service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, DocumentKind.LECTURE);
+        service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, null);
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(spec, times(2)).user(promptCaptor.capture());
+        assertThat(promptCaptor.getAllValues()).allSatisfy(prompt -> assertThat(prompt)
+                .startsWith(SessionExtractionService.PROMPT_TEMPLATE.substring(0, 80))
+                .doesNotContain("Exercise title:"));
     }
 
     @Test
