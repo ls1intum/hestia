@@ -767,9 +767,15 @@ export default function CompetencyTree({
     );
 
   if (!hasTree) {
+    // Topics are named from lecture outcomes only, so a course whose sourced goals all come from
+    // exercises extracts fine and still gets no tree; say so instead of the generic message.
+    const coverages = goals.map(coverageOf).filter((coverage) => coverage != null);
+    const exercisesOnly = coverages.length > 0 && coverages.every((coverage) => coverage === "exercise");
     return (
       <p className="mx-auto w-full max-w-5xl rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
-        No competency tree was created during extraction for this course.
+        {exercisesOnly
+          ? "No competency tree was created: this course has only exercises. Topics are named from lecture material, and none was uploaded."
+          : "No competency tree was created during extraction for this course."}
       </p>
     );
   }

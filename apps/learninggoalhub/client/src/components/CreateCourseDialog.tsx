@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { DocumentKind } from "../lib/documents.ts";
@@ -124,6 +124,9 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
 
   const trimmed = name.trim();
   const busy = create.isPending || extract.isPending;
+  // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
+  // exercises alone would extract fine and still leave the course without a competency tree.
+  const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
   const formError = extract.isError
     ? extract.error.message
     : create.isError
@@ -170,7 +173,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed && !busy) create.mutate();
+            if (trimmed && !busy && !exercisesOnly) create.mutate();
           }}
           className="comp-unfold flex w-full max-w-5xl flex-col gap-3.5 sm:mt-[6vh]"
         >
@@ -293,12 +296,18 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     </div>
                   </div>
                 )}
+                {exercisesOnly && (
+                  <p className="text-sm text-hestia-text-muted">
+                    Exercises are placed onto the topics named from the lectures. Add at least one
+                    lecture.
+                  </p>
+                )}
                 {formError && <p className="text-sm text-hestia-danger">{formError}</p>}
                 <div className="flex items-center justify-between gap-3">
                   <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="lg" disabled={!trimmed || busy}>
+                  <Button type="submit" size="lg" disabled={!trimmed || busy || exercisesOnly}>
                     {busy ? "Creating…" : "Create course →"}
                   </Button>
                 </div>
@@ -315,6 +324,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   title="Lectures"
                   hint="Slides, scripts and notes. Topics are named from these."
                   files={staged.LECTURE}
+                  expand={staged.LECTURE.length > 0 || staged.EXERCISE.length === 0}
                   onAdd={(incoming) => addFiles("LECTURE", incoming)}
                   onRemove={(index) => removeFile("LECTURE", index)}
                 />
@@ -322,6 +332,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   title="Exercises"
                   hint="Exercise sheets, tutorials and assignments."
                   files={staged.EXERCISE}
+                  expand={staged.EXERCISE.length > 0 || staged.LECTURE.length === 0}
                   onAdd={(incoming) => addFiles("EXERCISE", incoming)}
                   onRemove={(index) => removeFile("EXERCISE", index)}
                 />
@@ -341,21 +352,32 @@ function MaterialsBox({
   title,
   hint,
   files,
+  expand,
   onAdd,
   onRemove,
 }: {
   title: string;
   hint: string;
   files: File[];
+  /**
+   * Whether the box takes a share of the column's height. An empty box next to one holding files
+   * keeps only its natural height, so the staged list gets the room.
+   */
+  expand: boolean;
   onAdd: (incoming: FileList | null) => void;
   onRemove: (index: number) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:min-h-0 lg:flex-1">
+    <div
+      className={`flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:min-h-0 ${
+        expand ? "lg:flex-1" : "lg:flex-none"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
           {title}
@@ -366,11 +388,14 @@ function MaterialsBox({
           </span>
         )}
       </div>
-      <div
+      {/* A label for the input rather than a scripted input.click(): the browser opens the picker
+          natively, which also works where a script-opened picker on a hidden input does not. The
+          input stays outside the label, so the click cannot bubble back into it. */}
+      <label
+        htmlFor={inputId}
         role="button"
         tabIndex={0}
         aria-label={`Add ${title.toLowerCase()}`}
-        onClick={() => fileInputRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -387,9 +412,10 @@ function MaterialsBox({
           setIsDragging(false);
           onAdd(e.dataTransfer.files);
         }}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-5 text-center transition ${
-          // Nothing staged yet: the zone fills the box instead of leaving it empty.
-          files.length > 0 ? "shrink-0" : "lg:flex-1"
+        className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed text-center transition ${
+          // Nothing staged yet: the zone fills the box instead of leaving it empty. Once files are
+          // staged it collapses to one line and the list below takes the height.
+          files.length > 0 ? "shrink-0 flex-row gap-2 px-4 py-2" : "flex-col px-6 py-5 lg:flex-1"
         } ${
           isDragging
             ? "border-hestia-primary bg-hestia-primary-muted"
@@ -397,7 +423,7 @@ function MaterialsBox({
         }`}
       >
         <svg
-          className="h-7 w-7 text-hestia-text-muted"
+          className={`${files.length > 0 ? "h-4 w-4" : "h-7 w-7"} shrink-0 text-hestia-text-muted`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -409,24 +435,27 @@ function MaterialsBox({
           <path d="M12 16V4m0 0L8 8m4-4 4 4" />
           <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
         </svg>
-        <p className="mt-2 text-sm font-medium text-hestia-text">
+        <span className={`text-sm font-medium text-hestia-text ${files.length > 0 ? "" : "mt-2"}`}>
           Drag &amp; drop or <span className="text-hestia-primary">browse files</span>
-        </p>
-        <p className="text-xs text-hestia-text-muted">{hint}</p>
-        <p className="mt-1 text-xs text-hestia-text-muted">
-          Supported: {ACCEPT_LABEL} · Max 100 MB per file
-        </p>
-      </div>
-      {/* Deliberately a sibling of the drop zone, not a child: the zone's onClick calls click() on
-          this input, and a click dispatched on a descendant bubbles straight back into that same
-          handler — which re-opens the picker forever and blows the stack. Keeping it outside breaks
-          the cycle. */}
+        </span>
+        {files.length === 0 && (
+          <>
+            <span className="text-xs text-hestia-text-muted">{hint}</span>
+            <span className="mt-1 text-xs text-hestia-text-muted">
+              Supported: {ACCEPT_LABEL} · Max 100 MB per file
+            </span>
+          </>
+        )}
+      </label>
+      {/* Visually hidden rather than display:none, which some browsers refuse to open a picker for. */}
       <input
         ref={fileInputRef}
+        id={inputId}
+        tabIndex={-1}
         type="file"
         multiple
         accept={ACCEPT}
-        className="hidden"
+        className="sr-only"
         onChange={(e) => {
           onAdd(e.target.files);
           if (fileInputRef.current) fileInputRef.current.value = "";
@@ -437,13 +466,13 @@ function MaterialsBox({
           inside it — the count above stays visible while it does. Stacked below `lg` there is no
           shared height to fill, so a viewport cap stands in. */}
       {files.length > 0 && (
-        <ul className="mt-1 flex max-h-[30vh] min-h-0 flex-1 flex-col gap-2 overflow-y-auto lg:max-h-none">
+        <ul className="flex max-h-[30vh] min-h-0 flex-1 flex-col gap-2 overflow-y-auto lg:max-h-none">
           {files.map((file, index) => (
             <li
               key={`${file.name}:${file.size}`}
-              className="flex items-center gap-3 rounded-md border border-hestia-border bg-hestia-bg px-3 py-2"
+              className="flex shrink-0 items-center gap-3 rounded-md border border-hestia-border bg-hestia-bg px-3 py-1.5"
             >
-              <span aria-hidden className="text-base">📄</span>
+              <span aria-hidden className="text-sm">📄</span>
               <span className="min-w-0 flex-1 truncate text-sm text-hestia-text">
                 {file.name}
               </span>
