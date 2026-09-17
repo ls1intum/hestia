@@ -47,7 +47,7 @@ export default function FilterPopover({
         <div
           role="radiogroup"
           aria-label="Filter by"
-          className="mb-1 inline-flex self-start rounded-full border border-hestia-border bg-hestia-surface"
+          className="mb-1.5 flex h-8 gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-[3px]"
         >
           {shown.map((group) => {
             const selected = group.key === active.key;
@@ -58,10 +58,10 @@ export default function FilterPopover({
                 role="radio"
                 aria-checked={selected}
                 onClick={() => setActiveKey(group.key)}
-                className={`px-3 py-1 text-xs transition first:rounded-l-full last:rounded-r-full ${
+                className={`flex-1 whitespace-nowrap rounded-[5px] px-3 text-xs font-medium transition ${
                   selected
-                    ? "bg-hestia-primary font-semibold text-hestia-on-primary"
-                    : "font-medium text-hestia-text-muted hover:text-hestia-text"
+                    ? "bg-hestia-primary text-hestia-on-primary"
+                    : "text-hestia-text-muted hover:text-hestia-text"
                 }`}
               >
                 {group.label}
