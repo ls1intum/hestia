@@ -15,6 +15,7 @@ import iconLight from "../assets/logos/icon-light.svg";
 import iconDark from "../assets/logos/icon-dark.svg";
 import Button from "./Button.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import TopicSearchDialog from "./TopicSearchDialog.tsx";
 
 type Props = {
   open: boolean;
@@ -53,6 +54,8 @@ export default function ExtractionProgressModal({
   const [expandedTopics, setExpandedTopics] = useState<Set<number>>(() => new Set());
   // The wording of a topic being added, or null while the add field is closed.
   const [newTopic, setNewTopic] = useState<string | null>(null);
+  // The typed topic being looked up in the slides, over the review.
+  const [findingTopic, setFindingTopic] = useState<string | null>(null);
   const treeOnlyRetry = status?.status === "FAILED"
     && status.phase === "SYNTHESIZING"
     && (status.summary?.goalsCreated ?? 0) > 0
@@ -491,6 +494,10 @@ export default function ExtractionProgressModal({
                           }}
                           onGenerate={() => submitNewTopic(true)}
                           generating={createTopicMutation.variables?.generate === true}
+                          onFind={() => {
+                            const text = newTopic.trim();
+                            if (text !== "") setFindingTopic(text);
+                          }}
                         />
                       ) : (
                         <button
@@ -574,6 +581,19 @@ export default function ExtractionProgressModal({
           )}
         </div>
       </div>
+      {findingTopic != null && courseId != null && (
+        <TopicSearchDialog
+          courseId={courseId}
+          topic={findingTopic}
+          onClose={() => setFindingTopic(null)}
+          onCreated={(topic) => {
+            setFindingTopic(null);
+            setNewTopic(null);
+            const topicId = topic.id;
+            if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,11 +1,19 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.StructuredOutputConverter;
 
 class TopicTreeSynthesizerTest {
 
@@ -132,5 +140,46 @@ class TopicTreeSynthesizerTest {
                 .containsExactly("Estimate free cash flows", null, "Price options");
         assertThat(labelled.getFirst().capabilities().getFirst().outcomes()).containsExactly(0, 1);
         assertThat(labelled.getFirst().direct()).containsExactly(4);
+    }
+
+    @Test
+    void structureSendsTheStructurePromptAndMapsTheAnswerLikeSynthesize() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.options(any())).thenReturn(spec);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(new TopicTreeSynthesizer.TopicStructure(List.of(
+                        new TopicTreeSynthesizer.CapabilityGroup("Build a random forest", List.of(0, 2))),
+                        List.of(1)));
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        List<String> outcomes = List.of("Train trees on bootstrap samples.", "Explain variance.",
+                "Sample features per split.");
+
+        TopicTreeSynthesizer.PlannedTopic topic = new TopicTreeSynthesizer(builder, "planner", 0.0)
+                .structure("Random forests", outcomes, "English", null);
+
+        verify(spec).user(TopicTreeSynthesizer.STRUCTURE_PROMPT.formatted("Random forests", "English",
+                "[0] Train trees on bootstrap samples.\n[1] Explain variance.\n[2] Sample features per split.\n"));
+        assertThat(topic.capabilities()).singleElement().satisfies(capability -> {
+            assertThat(capability.name()).isEqualTo("Build a random forest");
+            assertThat(capability.outcomes()).containsExactly(0, 2);
+        });
+        assertThat(topic.direct()).containsExactly(1);
+    }
+
+    @Test
+    void shortLabelsLeaveEveryNameWithoutALabelWhenTheCallFails() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.options(any())).thenReturn(spec);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenThrow(new RuntimeException("model down"));
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+
+        assertThat(new TopicTreeSynthesizer(builder, "planner", 0.0)
+                .shortLabels(List.of("Build a random forest", "Tune a forest"), "English", null))
+                .containsExactly(null, null);
     }
 }

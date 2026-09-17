@@ -20,6 +20,7 @@ export default function CompetencyCreationField({
   onCancel,
   onGenerate,
   generating = false,
+  onFind,
   className = "",
   style,
   stacked = false,
@@ -38,6 +39,8 @@ export default function CompetencyCreationField({
   onGenerate?: () => void;
   /** The pending creation is a generation, so its button carries the spinner. */
   generating?: boolean;
+  /** Offers "Find in the slides" beside "Add": the typed text is looked up in the course's pages. */
+  onFind?: () => void;
   className?: string;
   style?: CSSProperties;
   /** Stacks the field above its buttons, for the map's fixed-width boxes where a row would overflow. */
@@ -87,6 +90,17 @@ export default function CompetencyCreationField({
           >
             Cancel
           </Button>
+          {onFind && (
+            <Button
+              variant="neutral"
+              size="sm"
+              title="Read the pages that teach it and create it with the sub-skills found there"
+              onClick={onFind}
+              disabled={value.trim() === "" || pending}
+            >
+              Find in the slides
+            </Button>
+          )}
           {onGenerate && (
             <Button
               variant="neutral"

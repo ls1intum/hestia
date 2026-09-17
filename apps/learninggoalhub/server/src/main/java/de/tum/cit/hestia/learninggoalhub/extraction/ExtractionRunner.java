@@ -9,17 +9,20 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentOrder;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
-import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
-import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SessionExtraction;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SessionUnit;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SourceLineSelection;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitExtraction;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitGoal;
+import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.Window;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
-import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceId;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
@@ -36,7 +39,6 @@ import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,7 +50,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -56,9 +57,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java.util.HashSet;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -81,7 +79,7 @@ public class ExtractionRunner {
     private final LearningGoalRepository goalRepository;
     private final GoalSourceRepository goalSourceRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
-    private final SessionExtractionService sessionExtractionService;
+    private final UnitExtractor unitExtractor;
     private final ExtractionRunAuditService extractionRunAuditService;
     private final DocumentSectionRepository documentSectionRepository;
     private final TopicTreeSynthesizer topicTreeSynthesizer;
@@ -92,10 +90,7 @@ public class ExtractionRunner {
     private final TransactionOperations extractionTransactions;
     private final int parallelism;
     private final int figureParallelism;
-    private final int unitMaxChars;
-    private final int skillTargetChars;
     private final String configuredDefaultModel;
-    private final HighlightGeometryService highlightGeometryService;
 
     public ExtractionRunner(CourseRepository courseRepository,
                             DocumentRepository documentRepository,
@@ -105,7 +100,7 @@ public class ExtractionRunner {
                             LearningGoalRepository goalRepository,
                             GoalSourceRepository goalSourceRepository,
                             GoalRelationshipRepository goalRelationshipRepository,
-                            SessionExtractionService sessionExtractionService,
+                            UnitExtractor unitExtractor,
                             ExtractionRunAuditService extractionRunAuditService,
                             DocumentSectionRepository documentSectionRepository,
                             TopicTreeSynthesizer topicTreeSynthesizer,
@@ -115,11 +110,8 @@ public class ExtractionRunner {
                             TransactionOperations extractionTransactions,
                             @Value("${hestia.extraction.parallelism:8}") int parallelism,
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
-                            @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
-                            @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
                             @Value("${hestia.extraction.keep-empty-units:false}") boolean keepEmptyUnits,
-                            @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel,
-                            HighlightGeometryService highlightGeometryService) {
+                            @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
@@ -128,7 +120,7 @@ public class ExtractionRunner {
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
-        this.sessionExtractionService = sessionExtractionService;
+        this.unitExtractor = unitExtractor;
         this.extractionRunAuditService = extractionRunAuditService;
         this.documentSectionRepository = documentSectionRepository;
         this.topicTreeSynthesizer = topicTreeSynthesizer;
@@ -138,11 +130,8 @@ public class ExtractionRunner {
         this.extractionTransactions = extractionTransactions;
         this.parallelism = parallelism;
         this.figureParallelism = figureParallelism;
-        this.unitMaxChars = unitMaxChars;
-        this.skillTargetChars = skillTargetChars;
         this.keepEmptyUnits = keepEmptyUnits;
         this.configuredDefaultModel = configuredDefaultModel;
-        this.highlightGeometryService = highlightGeometryService;
     }
 
     public ExtractionSummary runForCourse(Long courseId) {
@@ -294,15 +283,16 @@ public class ExtractionRunner {
 
         // Each session gets the complete text range of its structural node.
         run.phase(ExtractionProgressTracker.Phase.PARSING, documents.size());
-        List<SessionUnit> sessions = new ArrayList<>();
+        List<SessionUnit<HierarchyNode>> sessions = new ArrayList<>();
         for (Document d : documents) {
             String text = d.getRawText();
             if (text != null && !text.isBlank()) {
                 for (Unit unit : unitsByDocument.getOrDefault(d.getId(), List.of())) {
-                    String unitText = text.substring(unit.start(), Math.min(unit.end(), text.length()));
+                    Window window = unit.window();
+                    String unitText = text.substring(window.start(), Math.min(window.end(), text.length()));
                     if (!unitText.isBlank()) {
-                        sessions.add(new SessionUnit(d, unit, unit.node().getLabel(), unitText,
-                                figureDescriptionsFor(d, unit,
+                        sessions.add(new SessionUnit<>(unit.node(), d, window, unit.node().getLabel(), unitText,
+                                UnitExtractor.figureDescriptionsFor(d, window,
                                         figuresByDocument.getOrDefault(d.getId(), List.of()))));
                     }
                 }
@@ -311,12 +301,12 @@ public class ExtractionRunner {
         }
 
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, sessions.size());
-        List<SessionExtraction> extractedSessions = extractSessions(
+        List<SessionExtraction<HierarchyNode>> extractedSessions = extractSessions(
                 course, sessions, dominantLanguage, modelOverride, run);
         if (run.failedSessions() > 0) {
             throw new IllegalStateException(incompleteExtractionMessage(run.failedSessionNames()));
         }
-        List<UnitExtraction> assembled = assembleSessions(extractedSessions);
+        List<UnitExtraction<HierarchyNode>> assembled = unitExtractor.assemble(extractedSessions);
 
         List<ClassifiedGoal> classified = classifyInParallel(assembled, modelOverride, run);
 
@@ -326,9 +316,7 @@ public class ExtractionRunner {
         int figureSources = 0;
         int unsupportedSources = 0;
         Map<ExtractedGoal, LearningGoal> persistedGoals = new IdentityHashMap<>();
-        Map<Long, PDDocument> pdfDocuments = new HashMap<>();
-        Set<Long> attemptedPdfDocuments = new HashSet<>();
-        try {
+        try (UnitExtractor.PdfCache pdfCache = unitExtractor.pdfCache()) {
             for (ClassifiedGoal classifiedGoal : classified) {
                 ExtractedGoal e = classifiedGoal.extracted();
                 Document document = classifiedGoal.document();
@@ -337,9 +325,8 @@ public class ExtractionRunner {
                 goal.setShortLabel(e.shortLabel());
                 goal.setRole(classifiedGoal.role());
                 goal.setLectureOrder(goalsCreated);
-                Unit unit = classifiedGoal.unit();
-                if (unit != null) {
-                    goal.setHierarchyNode(unit.node());
+                if (classifiedGoal.node() != null) {
+                    goal.setHierarchyNode(classifiedGoal.node());
                 }
                 if (classifiedGoal.classification() != null) {
                     goal.setBloomLevel(classifiedGoal.classification().bloom());
@@ -351,29 +338,10 @@ public class ExtractionRunner {
 
                 GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
                 if (!goalSourceRepository.existsById(sourceId)) {
-                    SourcePageResolver.Resolution resolution;
-                    EvidenceKind evidenceKind;
-                    String modelSnippet;
-                    if (classifiedGoal.sourceLineSelection() != null) {
-                        DirectSourceResolution direct = resolveDirectSource(document, unit,
-                                classifiedGoal.sourceLineSelection(), classifiedGoal.figures());
-                        resolution = direct.resolution();
-                        evidenceKind = direct.evidenceKind();
-                        modelSnippet = "";
-                    } else {
-                        String rawText = document.getRawText();
-                        int textLength = rawText == null ? 0 : rawText.length();
-                        int unitStart = unit == null ? 0 : unit.start();
-                        int unitEnd = unit == null ? textLength : unit.end();
-                        resolution = SourcePageResolver.resolve(
-                                rawText, document.getPageOffsets(), unitStart, unitEnd,
-                                e.sourceSnippet());
-                        evidenceKind = resolution.grounded() ? EvidenceKind.TEXT : EvidenceKind.UNSUPPORTED;
-                        modelSnippet = e.sourceSnippet();
-                    }
-                    persistGoalSource(target, document, modelSnippet, resolution, evidenceKind,
-                            pdfDocuments, attemptedPdfDocuments);
-                    switch (evidenceKind) {
+                    UnitExtractor.ResolvedSource source = unitExtractor.resolve(document, classifiedGoal.window(),
+                            classifiedGoal.sourceLineSelection(), classifiedGoal.figures(), e.sourceSnippet());
+                    unitExtractor.persistSource(target, document, source, pdfCache);
+                    switch (source.evidenceKind()) {
                         case TEXT -> textSources++;
                         case FIGURE -> figureSources++;
                         case UNSUPPORTED -> unsupportedSources++;
@@ -382,8 +350,6 @@ public class ExtractionRunner {
 
                 run.increment();
             }
-        } finally {
-            closePdfDocuments(pdfDocuments);
         }
 
         for (ClassifiedGoal classifiedGoal : classified) {
@@ -406,15 +372,16 @@ public class ExtractionRunner {
     }
 
     /** Runs one extraction call per unit; every unit is within the direct path by construction. */
-    private List<SessionExtraction> extractSessions(Course course, List<SessionUnit> sessions,
-                                                     String dominantLanguage, String modelOverride,
-                                                     ExtractionProgressTracker.Run run) {
+    private List<SessionExtraction<HierarchyNode>> extractSessions(Course course,
+                                                                   List<SessionUnit<HierarchyNode>> sessions,
+                                                                   String dominantLanguage, String modelOverride,
+                                                                   ExtractionProgressTracker.Run run) {
         ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
         try {
-            List<CompletableFuture<SessionExtraction>> futures = sessions.stream()
+            List<CompletableFuture<SessionExtraction<HierarchyNode>>> futures = sessions.stream()
                     .map(session -> CompletableFuture.supplyAsync(() -> {
                         try {
-                            return extractSession(course, session, dominantLanguage, modelOverride);
+                            return unitExtractor.extract(course, session, dominantLanguage, modelOverride);
                         } catch (RuntimeException ex) {
                             // Keep collecting every failed name while the other workers finish. The
                             // caller then aborts the transaction, so no partial course tree is exposed.
@@ -441,28 +408,9 @@ public class ExtractionRunner {
                 : count + " sessions could not be analysed: " + sessions + ". Retry the extraction.";
     }
 
-    private SessionExtraction extractSession(Course course, SessionUnit session, String dominantLanguage,
-                                             String modelOverride) {
-        String languageCode = resolveLanguage(course, session.document().getLanguage(), dominantLanguage);
-        String languageName = LanguageUtils.englishName(languageCode);
-        // The allowance follows the unit's own size, so a one-page problem sheet is not asked for as
-        // many outcomes as a fifty-page lecture. Units are already split at the granularity budget
-        // above, so this only has to scale what is left.
-        int budget = SessionExtractionService.skillBudget(session.text().length(), skillTargetChars);
-        List<ExtractedSkill> skills = sessionExtractionService.extract(
-                session.title(), session.text(), languageCode, languageName,
-                modelOverride, session.figures(), budget);
-        if (skills != null && skills.size() > budget) {
-            log.warn("Session '{}' returned {} skills, above its allowance of {}; keeping them all",
-                    session.title(), skills.size(), budget);
-        }
-        return new SessionExtraction(session.document(), session.unit(),
-                skills == null ? List.of() : skills, session.figures());
-    }
-
     private String runParams(String language, boolean figuresEnabled) {
-        return "{\"unit-max-chars\":" + unitMaxChars
-                + ",\"skill-target-chars\":" + skillTargetChars
+        return "{\"unit-max-chars\":" + unitExtractor.unitMaxChars()
+                + ",\"skill-target-chars\":" + unitExtractor.skillTargetChars()
                 + ",\"keep-empty-units\":" + keepEmptyUnits
                 + ",\"parallelism\":" + parallelism
                 + ",\"output-language\":\"" + language + "\""
@@ -516,56 +464,6 @@ public class ExtractionRunner {
             return cause.getMessage();
         }
         return cause.getClass().getSimpleName();
-    }
-
-    private List<UnitExtraction> assembleSessions(List<SessionExtraction> extractedSessions) {
-        List<UnitExtraction> sessionGoals = new ArrayList<>();
-        for (SessionExtraction extraction : extractedSessions) {
-            List<SessionGoal> goals = new ArrayList<>();
-            List<ExtractedSkill> orderedSkills = extraction.skills().stream()
-                    .sorted(Comparator.comparing(
-                            ExtractedSkill::sourceStartLine,
-                            Comparator.nullsLast(Comparator.naturalOrder())))
-                    .toList();
-            for (ExtractedSkill skill : orderedSkills) {
-                ExtractedGoal skillGoal = new ExtractedGoal(
-                        skill.text(), skill.shortLabel(), skill.kind(),
-                        "");
-                goals.add(new SessionGoal(skillGoal, GoalRole.SKILL, null,
-                        new SourceLineSelection(skill.sourceStartLine(), skill.sourceEndLine(),
-                                skill.sourceFigure()),
-                        new TaxonomyClassification(skill.bloom(), skill.solo())));
-                List<ExtractedSkill.Knowledge> orderedKnowledge = skill.knowledge().stream()
-                        .sorted(Comparator.comparing(
-                                ExtractedSkill.Knowledge::sourceStartLine,
-                                Comparator.nullsLast(Comparator.naturalOrder())))
-                        .toList();
-                for (ExtractedSkill.Knowledge knowledge : orderedKnowledge) {
-                    ExtractedGoal knowledgeGoal = new ExtractedGoal(
-                            knowledge.text(), knowledge.shortLabel(), knowledge.kind(),
-                            "");
-                    goals.add(new SessionGoal(knowledgeGoal, GoalRole.KNOWLEDGE, skillGoal,
-                            new SourceLineSelection(knowledge.sourceStartLine(), knowledge.sourceEndLine(),
-                                    knowledge.sourceFigure()),
-                            new TaxonomyClassification(knowledge.bloom(), knowledge.solo())));
-                }
-            }
-            if (!goals.isEmpty()) {
-                sessionGoals.add(new UnitExtraction(extraction.document(), extraction.unit(),
-                        goals, extraction.figures()));
-            }
-        }
-        return sessionGoals;
-    }
-
-    /** One extraction unit's skills, still keyed to the unit whose text they were read from. */
-    private record SessionExtraction(Document document, Unit unit, List<ExtractedSkill> skills,
-                                     List<PageDescriptionService.FigureDescription> figures) {
-
-        /** A session whose extraction failed: it contributes nothing and its unit is pruned. */
-        private static SessionExtraction empty(SessionUnit session) {
-            return new SessionExtraction(session.document(), session.unit(), List.of(), List.of());
-        }
     }
 
     /**
@@ -1084,14 +982,16 @@ public class ExtractionRunner {
      * second opinion that can disagree with the verb the writer chose while the material was in view.
      * The phase is still reported so the progress bar keeps its shape.
      */
-    private List<ClassifiedGoal> classifyInParallel(List<UnitExtraction> extractions, String modelOverride,
+    private List<ClassifiedGoal> classifyInParallel(List<UnitExtraction<HierarchyNode>> extractions,
+                                                    String modelOverride,
                                                     ExtractionProgressTracker.Run run) {
         List<ClassifiedGoal> classified = new ArrayList<>();
-        for (UnitExtraction extraction : extractions) {
-            for (SessionGoal goal : extraction.goals()) {
-                classified.add(new ClassifiedGoal(extraction.document(), extraction.unit(),
+        for (UnitExtraction<HierarchyNode> extraction : extractions) {
+            SessionUnit<HierarchyNode> session = extraction.session();
+            for (UnitGoal goal : extraction.goals()) {
+                classified.add(new ClassifiedGoal(session.document(), session.owner(), session.window(),
                         goal.extracted(), goal.role(), goal.parentSkill(), goal.sourceLineSelection(),
-                        extraction.figures(), goal.classification()));
+                        session.figures(), goal.classification()));
             }
         }
         run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, classified.size());
@@ -1118,173 +1018,6 @@ public class ExtractionRunner {
         return new ArrayList<>(Collections.nCopies(texts.size(), null));
     }
 
-    private DirectSourceResolution resolveDirectSource(
-            Document document, Unit unit, SourceLineSelection selection,
-            List<PageDescriptionService.FigureDescription> figures) {
-        String rawText = document.getRawText();
-        if (rawText != null && unit != null && selection.startLine() != null && selection.endLine() != null) {
-            int unitStart = Math.max(0, Math.min(unit.start(), rawText.length()));
-            int unitEnd = Math.max(unitStart, Math.min(unit.end(), rawText.length()));
-            String sessionText = rawText.substring(unitStart, unitEnd);
-            NumberedLines numberedLines = NumberedLines.of(sessionText);
-            Optional<NumberedLines.Span> span = numberedLines.span(selection.startLine(), selection.endLine());
-            if (span.isPresent()) {
-                int matchStart = unitStart + span.get().start();
-                int matchEnd = unitStart + span.get().end();
-                Integer page = SourcePageResolver.pageForOffset(document.getPageOffsets(), matchStart).orElse(null);
-                return new DirectSourceResolution(
-                        new SourcePageResolver.Resolution(page, SourceMatchQuality.EXACT_IN_SESSION,
-                                matchStart, matchEnd), EvidenceKind.TEXT);
-            }
-            log.info("Rejected source line selection [{}..{}] in document {}: {}",
-                    selection.startLine(), selection.endLine(), document.getId(),
-                    numberedLines.rejectionReason(selection.startLine(), selection.endLine()));
-        } else {
-            log.info("Rejected source line selection [{}..{}] in document {}: selection incomplete",
-                    selection.startLine(), selection.endLine(), document.getId());
-        }
-
-        if (selection.figure() != null && selection.figure() >= 0 && selection.figure() < figures.size()) {
-            PageDescriptionService.FigureDescription figure = figures.get(selection.figure());
-            return new DirectSourceResolution(
-                    new SourcePageResolver.Resolution(figure.page(), SourceMatchQuality.NONE, null, null),
-                    EvidenceKind.FIGURE);
-        }
-        if (selection.figure() != null) {
-            log.info("Rejected source figure index {} in document {}: outside the {} offered figure descriptions",
-                    selection.figure(), document.getId(), figures.size());
-        }
-        return new DirectSourceResolution(noneResolution(), EvidenceKind.UNSUPPORTED);
-    }
-
-    private static SourcePageResolver.Resolution noneResolution() {
-        return new SourcePageResolver.Resolution(null, SourceMatchQuality.NONE, null, null);
-    }
-
-    private void persistGoalSource(LearningGoal goal, Document document, String modelSnippet,
-                                   SourcePageResolver.Resolution resolution,
-                                   EvidenceKind evidenceKind,
-                                   Map<Long, PDDocument> pdfDocuments,
-                                   Set<Long> attemptedPdfDocuments) {
-        String rawText = document.getRawText();
-        String persistedSnippet = modelSnippet;
-        if (resolution.grounded() && resolution.matchStart() != null && resolution.matchEnd() != null
-                && rawText != null && resolution.matchStart() >= 0
-                && resolution.matchStart() <= resolution.matchEnd()
-                && resolution.matchEnd() <= rawText.length()) {
-            persistedSnippet = rawText.substring(resolution.matchStart(), resolution.matchEnd());
-        }
-        GoalSource source = evidenceKind == EvidenceKind.FIGURE
-                ? GoalSource.figure(goal, document, resolution.page())
-                : new GoalSource(goal, document, persistedSnippet, resolution.page(), resolution.quality());
-        if (resolution.grounded() && resolution.page() != null
-                && resolution.matchStart() != null && resolution.matchEnd() != null
-                && document.getPageOffsets() != null
-                && resolution.page() >= 1
-                && resolution.page() < document.getPageOffsets().length) {
-            PDDocument pdf = openPdf(document, pdfDocuments, attemptedPdfDocuments);
-            if (pdf != null) {
-                int pageStart = document.getPageOffsets()[resolution.page() - 1];
-                int pageLocalStart = resolution.matchStart() - pageStart;
-                int pageLocalEnd = resolution.matchEnd() - pageStart;
-                try {
-                    List<HighlightRect> rects = highlightGeometryService.findHighlightRects(
-                            pdf, resolution.page(), pageLocalStart, pageLocalEnd);
-                    // An empty result is "no geometry", not "highlight nothing": leave the
-                    // column null so the client can fall back to its own text match.
-                    source.setHighlightRects(rects.isEmpty() ? null : rects);
-                } catch (IOException | RuntimeException geometryFailure) {
-                    log.warn("Could not compute source highlight geometry for document {}: {}",
-                            document.getId(), geometryFailure.getMessage());
-                }
-            }
-        }
-        goalSourceRepository.save(source);
-    }
-
-    private PDDocument openPdf(Document document, Map<Long, PDDocument> pdfDocuments,
-                               Set<Long> attemptedPdfDocuments) {
-        Long documentId = document.getId();
-        if (!attemptedPdfDocuments.add(documentId)) {
-            return pdfDocuments.get(documentId);
-        }
-        if (!isPdf(document)) {
-            pdfDocuments.put(documentId, null);
-            return null;
-        }
-        try {
-            byte[] bytes = documentContentRepository.findById(documentId)
-                    .map(content -> content.getBytes())
-                    .orElse(null);
-            if (bytes == null) {
-                log.debug("No PDF bytes available for document {}, skipping source geometry", documentId);
-                pdfDocuments.put(documentId, null);
-                return null;
-            }
-            PDDocument pdf = Loader.loadPDF(bytes);
-            pdfDocuments.put(documentId, pdf);
-            return pdf;
-        } catch (IOException | RuntimeException loadFailure) {
-            log.warn("Could not open PDF document {} for source geometry: {}",
-                    documentId, loadFailure.getMessage());
-            pdfDocuments.put(documentId, null);
-            return null;
-        }
-    }
-
-    private static void closePdfDocuments(Map<Long, PDDocument> pdfDocuments) {
-        for (PDDocument pdf : pdfDocuments.values()) {
-            if (pdf == null) {
-                continue;
-            }
-            try {
-                pdf.close();
-            } catch (IOException closeFailure) {
-                log.warn("Could not close PDF document used for source geometry: {}",
-                        closeFailure.getMessage());
-            }
-        }
-    }
-
-    private static boolean isPdf(Document document) {
-        return (document.getContentType() != null
-                && document.getContentType().toLowerCase(Locale.ROOT).contains("pdf"))
-                || (document.getFilename() != null
-                && document.getFilename().toLowerCase(Locale.ROOT).endsWith(".pdf"));
-    }
-
-    private static List<PageDescriptionService.FigureDescription> figureDescriptionsFor(
-            Document document, Unit unit, List<PageDescriptionService.FigureDescription> descriptions) {
-        if (descriptions.isEmpty()) {
-            return List.of();
-        }
-        if (unit.startPage() != null && unit.endPage() != null) {
-            return descriptions.stream()
-                    .filter(d -> d.page() >= unit.startPage() && d.page() <= unit.endPage())
-                    .toList();
-        }
-        int[] pageOffsets = document.getPageOffsets();
-        String rawText = document.getRawText();
-        if (pageOffsets == null || pageOffsets.length < 2 || rawText == null) {
-            return List.of();
-        }
-        int start = Math.max(0, Math.min(unit.start(), rawText.length()));
-        int end = Math.max(start, Math.min(unit.end(), rawText.length()));
-        return descriptions.stream()
-                .filter(description -> pageOverlaps(description.page(), pageOffsets, start, end))
-                .toList();
-    }
-
-    private static boolean pageOverlaps(int page, int[] pageOffsets, int sectionStart, int sectionEnd) {
-        if (page < 1 || page >= pageOffsets.length) {
-            return false;
-        }
-        int pageStart = pageOffsets[page - 1];
-        int pageEnd = pageOffsets[page];
-        return pageEnd > sectionStart && pageStart < sectionEnd
-                || pageStart == pageEnd && pageStart == sectionStart;
-    }
-
     /**
      * Creates one SESSION/EXERCISE hierarchy node per persisted structural section of the document
      * (each a character range of the raw text), under the course's module root. A document with no
@@ -1307,86 +1040,18 @@ public class ExtractionRunner {
             int end = Math.max(start, Math.min(s.getEndOffset(), text.length()));
             HierarchyNode node = hierarchyNodeRepository.save(
                     new HierarchyNode(course, moduleRoot, levelFor(s.getTitle()), s.getTitle(), document));
-            units.addAll(windows(node, document, text, start, end, s.getStartPage(), s.getEndPage()));
+            unitExtractor.windows(node.getLabel(), document, text, start, end, s.getStartPage(), s.getEndPage())
+                    .forEach(window -> units.add(new Unit(node, window)));
         }
         if (units.isEmpty()) {
             HierarchyNode node = hierarchyNodeRepository.save(new HierarchyNode(
                     course, moduleRoot, levelFor(document.getFilename()), document.getFilename(), document));
             int pageCount = document.getPageOffsets() == null ? 0 : document.getPageOffsets().length - 1;
-            units.addAll(windows(node, document, text, 0, text.length(), pageCount > 0 ? 1 : null,
-                    pageCount > 0 ? pageCount : null));
+            unitExtractor.windows(node.getLabel(), document, text, 0, text.length(), pageCount > 0 ? 1 : null,
+                            pageCount > 0 ? pageCount : null)
+                    .forEach(window -> units.add(new Unit(node, window)));
         }
         return units;
-    }
-
-    /**
-     * Splits one section's range into consecutive windows that each fit the direct extraction call.
-     *
-     * <p>Structure decides the units wherever the document offers any: a PDF is cut only at page
-     * boundaries, greedily packing whole pages up to the budget, so no slide is ever torn in half and
-     * every window keeps a true page range for figure routing. A document with no page offsets is cut
-     * at line boundaries instead. A single page larger than the budget is left whole and logged —
-     * cutting inside it would corrupt the line numbering the model grounds its quotes in.
-     *
-     * <p>This IS the granularity mechanism. It was written as a safety net at 80,000 characters,
-     * which no real section ever reached, so every section became exactly one extraction call however
-     * large it was — a fifty-page deck and an eleven-page handout each got one call and one allowance.
-     * At a budget sized to a lecture instead, a long section becomes several units and earns
-     * proportionally more outcomes, while a short one still becomes exactly one.
-     *
-     * <p>Windows never cross a section boundary. A unit holding the tail of one lecture and the head
-     * of the next would be asked for the outcomes of a slice that teaches two unrelated things, which
-     * is how conjunction outcomes ("X und Y") get produced; keeping the boundary hard is what stops
-     * the granularity change from pushing that pressure onto a new seam.
-     */
-    private List<Unit> windows(HierarchyNode node, Document document, String text,
-                               int start, int end, Integer startPage, Integer endPage) {
-        if (unitMaxChars <= 0 || end - start <= unitMaxChars) {
-            return List.of(new Unit(node, start, end, startPage, endPage));
-        }
-        List<Unit> windows = new ArrayList<>();
-        int[] pageOffsets = document.getPageOffsets();
-        if (pageOffsets != null && pageOffsets.length >= 2) {
-            int pageCount = pageOffsets.length - 1;
-            int firstPage = startPage == null ? 1 : Math.max(1, startPage);
-            int lastPage = endPage == null ? pageCount : Math.min(pageCount, endPage);
-            int windowStart = start;
-            int windowStartPage = firstPage;
-            for (int page = firstPage; page <= lastPage; page++) {
-                int pageEnd = clamp(pageOffsets[page], start, end);
-                if (pageEnd - windowStart > unitMaxChars && page > windowStartPage) {
-                    int cut = clamp(pageOffsets[page - 1], start, end);
-                    windows.add(new Unit(node, windowStart, cut, windowStartPage, page - 1));
-                    windowStart = cut;
-                    windowStartPage = page;
-                }
-            }
-            windows.add(new Unit(node, windowStart, end, windowStartPage, lastPage));
-        } else {
-            int windowStart = start;
-            while (end - windowStart > unitMaxChars) {
-                int limit = windowStart + unitMaxChars;
-                int newline = text.lastIndexOf('\n', limit);
-                int cut = newline > windowStart ? newline + 1 : limit;
-                windows.add(new Unit(node, windowStart, cut, null, null));
-                windowStart = cut;
-            }
-            windows.add(new Unit(node, windowStart, end, null, null));
-        }
-        if (windows.size() == 1) {
-            log.warn("Section '{}' spans {} characters, above the {}-character extraction budget, but "
-                            + "offers no boundary to split on; extracting it whole",
-                    node.getLabel(), end - start, unitMaxChars);
-        } else {
-            log.info("Section '{}' spans {} characters, above the {}-character extraction budget; "
-                            + "split into {} windows sharing its session",
-                    node.getLabel(), end - start, unitMaxChars, windows.size());
-        }
-        return List.copyOf(windows);
-    }
-
-    private static int clamp(int value, int low, int high) {
-        return Math.max(low, Math.min(value, high));
     }
 
     /**
@@ -1394,7 +1059,7 @@ public class ExtractionRunner {
      * EXERCISE; everything else is a SESSION (lecture/chapter). Bookmarks and filenames carry no
      * reliable module signal, so the only MODULE node is the course root.
      */
-    private static HierarchyLevel levelFor(String title) {
+    static HierarchyLevel levelFor(String title) {
         String t = title == null ? "" : title.toLowerCase(Locale.ROOT);
         if (t.contains("exercise") || t.contains("übung") || t.contains("uebung")
                 || t.contains("tutorial") || t.contains("assignment")) {
@@ -1403,35 +1068,15 @@ public class ExtractionRunner {
         return HierarchyLevel.SESSION;
     }
 
-    /** One session/exercise unit: its hierarchy node and the raw-text range [start, end) it covers. */
-    private record Unit(HierarchyNode node, int start, int end, Integer startPage, Integer endPage) {
+    /** One session/exercise unit: its hierarchy node and the window of raw text it covers. */
+    private record Unit(HierarchyNode node, Window window) {
     }
 
-    private record SessionUnit(Document document, Unit unit, String title, String text,
-                               List<PageDescriptionService.FigureDescription> figures) {
-    }
-
-    private record UnitExtraction(Document document, Unit unit, List<SessionGoal> goals,
-                                   List<PageDescriptionService.FigureDescription> figures) {
-    }
-
-    private record SessionGoal(ExtractedGoal extracted, GoalRole role, ExtractedGoal parentSkill,
-                               SourceLineSelection sourceLineSelection,
-                               TaxonomyClassification classification) {
-    }
-
-    private record ClassifiedGoal(Document document, Unit unit, ExtractedGoal extracted,
+    private record ClassifiedGoal(Document document, HierarchyNode node, Window window, ExtractedGoal extracted,
                                   GoalRole role, ExtractedGoal parentSkill,
                                   SourceLineSelection sourceLineSelection,
                                   List<PageDescriptionService.FigureDescription> figures,
                                   TaxonomyClassification classification) {
-    }
-
-    private record SourceLineSelection(Integer startLine, Integer endLine, Integer figure) {
-    }
-
-    private record DirectSourceResolution(SourcePageResolver.Resolution resolution,
-                                          EvidenceKind evidenceKind) {
     }
 
     /** Counts and language committed before the separately transactional competency-tree stage. */

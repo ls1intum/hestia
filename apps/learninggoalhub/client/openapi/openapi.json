@@ -1141,6 +1141,154 @@
           }
         }
       }
+    },
+    "/api/courses/{courseId}/learning-goals/topic-search": {
+      "post": {
+        "tags": [
+          "topic-search-controller"
+        ],
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/topic-search/pages": {
+      "post": {
+        "tags": [
+          "topic-search-controller"
+        ],
+        "operationId": "pages",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePlan"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/topic-search/{proposalId}": {
+      "post": {
+        "tags": [
+          "topic-search-controller"
+        ],
+        "operationId": "accept",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1899,6 +2047,277 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "AcceptRequest": {
+        "type": "object",
+        "properties": {
+          "subSkillKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DuplicateOf": {
+        "type": "object",
+        "properties": {
+          "goalId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "text": {
+            "type": "string"
+          },
+          "topicText": {
+            "type": "string"
+          }
+        }
+      },
+      "PagePlan": {
+        "type": "object",
+        "properties": {
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageRun"
+            }
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPages": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PageRange": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "startPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "endPage": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PageRun": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "label": {
+            "type": "string"
+          },
+          "startPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "endPage": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProposalResponse": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pagesRead": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSkill"
+            }
+          },
+          "direct": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSubSkill"
+            }
+          },
+          "duplicates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSubSkill"
+            }
+          }
+        }
+      },
+      "ProposedKnowledge": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          }
+        }
+      },
+      "ProposedSkill": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          },
+          "bloom": {
+            "type": "string",
+            "enum": [
+              "REMEMBER",
+              "UNDERSTAND",
+              "APPLY",
+              "ANALYZE",
+              "EVALUATE",
+              "CREATE"
+            ]
+          },
+          "solo": {
+            "type": "string",
+            "enum": [
+              "PRESTRUCTURAL",
+              "UNISTRUCTURAL",
+              "MULTISTRUCTURAL",
+              "RELATIONAL",
+              "EXTENDED_ABSTRACT"
+            ]
+          },
+          "subSkills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSubSkill"
+            }
+          }
+        }
+      },
+      "ProposedSource": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "evidenceKind": {
+            "type": "string",
+            "enum": [
+              "TEXT",
+              "FIGURE",
+              "UNSUPPORTED"
+            ]
+          }
+        }
+      },
+      "ProposedSubSkill": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
+          },
+          "bloom": {
+            "type": "string",
+            "enum": [
+              "REMEMBER",
+              "UNDERSTAND",
+              "APPLY",
+              "ANALYZE",
+              "EVALUATE",
+              "CREATE"
+            ]
+          },
+          "solo": {
+            "type": "string",
+            "enum": [
+              "PRESTRUCTURAL",
+              "UNISTRUCTURAL",
+              "MULTISTRUCTURAL",
+              "RELATIONAL",
+              "EXTENDED_ABSTRACT"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/ProposedSource"
+          },
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedKnowledge"
+            }
+          },
+          "duplicateOf": {
+            "$ref": "#/components/schemas/DuplicateOf"
+          }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageRange"
+            }
+          }
+        }
+      },
+      "TopicRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
           }
         }
       }

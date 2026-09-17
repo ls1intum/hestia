@@ -102,6 +102,10 @@ hestia:
     # Model for the competency tree: naming the course's topics, assigning skills to them, and
     # structuring each topic into capabilities. All three calls run at assignment-temperature.
     taxonomy-planner-model: openai-gpt-oss-120b
+  topic-search:
+    # Most pages one "Find in the slides" search may read. Each page range is extracted like a
+    # session, so this caps the calls and the wait of a single search.
+    max-pages: 80
   embedding:
     # Embeddings go to the endpoint in batches of this many texts per request instead of one call
     # per goal, cutting hundreds of round trips to a handful.
