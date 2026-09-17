@@ -22,6 +22,7 @@ import Button from "./Button.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import CoverageBadge from "./CoverageBadge.tsx";
+import InfoTooltip from "./InfoTooltip.tsx";
 import TopicMap, { type MapCreation } from "./TopicMap.tsx";
 import { RenameField, RowAction } from "./GoalInlineEditing.tsx";
 // Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
@@ -105,6 +106,8 @@ type ColumnPrefs = {
   widths: Partial<Record<ColumnKey, number>>;
 };
 const COLUMN_PREFS_KEY = "learninggoalhub.competencyTable.columns";
+/** Set once a reader dismissed a course's first-visit hint on how to read the table. */
+const tierGuideSeenKey = (courseId: number) => `learninggoalhub.tierGuide.seen.${courseId}`;
 const MIN_COLUMN_WIDTH = 64;
 const MIN_GOAL_COLUMN_WIDTH = 160;
 
@@ -651,6 +654,31 @@ export default function CompetencyTree({
     }
   }, [columnPrefs]);
   const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
+  // The strip explaining the tiers shows on a reader's first visit to a course; once dismissed it
+  // folds into the toolbar's "How to read this" button, which flashes briefly to show where it went.
+  const [tierGuideOpen, setTierGuideOpen] = useState(false);
+  const [tierGuideSeen, setTierGuideSeen] = useState(() => {
+    try {
+      return localStorage.getItem(tierGuideSeenKey(courseId)) != null;
+    } catch {
+      return false;
+    }
+  });
+  const [tierGuideFlash, setTierGuideFlash] = useState(false);
+  const dismissTierGuide = () => {
+    setTierGuideSeen(true);
+    setTierGuideFlash(true);
+    try {
+      localStorage.setItem(tierGuideSeenKey(courseId), "1");
+    } catch {
+      // Without storage the strip simply returns on the next visit.
+    }
+  };
+  useEffect(() => {
+    if (!tierGuideFlash) return;
+    const timer = window.setTimeout(() => setTierGuideFlash(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [tierGuideFlash]);
   const visibleAttributes = columnPrefs.order.filter((key) => !columnPrefs.hidden.includes(key));
   const visibleColumns = (["text", ...visibleAttributes] as ColumnKey[]).map(
     (key) => COLUMN_BY_KEY.get(key)!,
@@ -735,7 +763,8 @@ export default function CompetencyTree({
       openLevel != null ||
       editingId != null ||
       creation != null ||
-      displayMenuOpen
+      displayMenuOpen ||
+      tierGuideOpen
     )
       return;
     const onKey = (e: KeyboardEvent) => {
@@ -746,7 +775,7 @@ export default function CompetencyTree({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sourceGoalId, openFilter, openLevel, editingId, creation, displayMenuOpen]);
+  }, [sourceGoalId, openFilter, openLevel, editingId, creation, displayMenuOpen, tierGuideOpen]);
 
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
@@ -1120,6 +1149,11 @@ export default function CompetencyTree({
         onToggleMap={toggleMap}
         sourceOpen={sourceGoalId === row.id}
         onOpenSource={showSource}
+        members={
+          row.role === "capability"
+            ? (childrenOf.get(row.id) ?? []).filter((child) => child.role === "skill")
+            : undefined
+        }
         openLevel={openLevel?.id === row.id ? openLevel.scale : null}
         onToggleLevel={toggleLevel}
         onCloseLevel={() => setOpenLevel(null)}
@@ -1181,6 +1215,11 @@ export default function CompetencyTree({
                     onUpdate={updateGoal}
                     sourceOpen={sourceGoalId === nodeRow.id}
                     onOpenSource={showSource}
+                    members={
+                      nodeRow.role === "capability"
+                        ? (childrenOf.get(nodeRow.id) ?? []).filter((child) => child.role === "skill")
+                        : undefined
+                    }
                   />
                 ) : null;
               }}
@@ -1379,7 +1418,23 @@ export default function CompetencyTree({
           onToggleHidden={toggleColumnHidden}
           onReset={() => setColumnPrefs(DEFAULT_COLUMN_PREFS)}
         />
+        <TierGuideMenu
+          open={tierGuideOpen}
+          flash={tierGuideFlash}
+          onToggleOpen={() => setTierGuideOpen((prev) => !prev)}
+          onClose={() => setTierGuideOpen(false)}
+        />
       </div>
+
+      {!tierGuideSeen && (
+        <TierGuideStrip
+          onOpenGuide={() => {
+            dismissTierGuide();
+            setTierGuideOpen(true);
+          }}
+          onDismiss={dismissTierGuide}
+        />
+      )}
 
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1866,6 +1921,180 @@ function DisplayMenu({
   );
 }
 
+/**
+ * The toolbar's explanation of the four tiers: which are generated to organise the course and which
+ * are read from its material, and what the source and coverage cells say about a row.
+ */
+function TierGuideMenu({
+  open,
+  flash,
+  onToggleOpen,
+  onClose,
+}: {
+  open: boolean;
+  /** Draws the eye to the button right after the first-visit strip folded into it. */
+  flash: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="relative">
+      <Button
+        variant="neutral"
+        className={`h-9 ${open ? "border-hestia-primary" : ""} ${
+          flash ? "border-hestia-primary shadow-[0_0_0_3px_var(--hestia-primary-muted)]" : ""
+        }`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={onToggleOpen}
+      >
+        <InfoIcon />
+        How to read this
+      </Button>
+      {open && (
+        <AnchoredPopover
+          alignRight
+          onClose={onClose}
+          className="flex w-96 flex-col overflow-y-auto rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg"
+        >
+          <div role="dialog" aria-label="How to read this table" className="flex flex-col gap-3 text-sm text-hestia-text">
+            <p className="text-xs leading-snug">
+              Each topic breaks down into skills, sub-skills and knowledge, from broad to concrete.
+            </p>
+            <TierGuideGroup
+              icon={<GeneratedIcon />}
+              heading="Generated to organise the course"
+              tiers={[
+                ["topic", "A theme of the course. It has no quote and no Bloom or SOLO level."],
+                [
+                  "capability",
+                  "Names what a group of sub-skills adds up to, at least at their level. Hover its source to see which.",
+                ],
+              ]}
+            />
+            <TierGuideGroup
+              icon={<DocumentIcon />}
+              heading="From your course material"
+              tiers={[
+                ["skill", "Something students should be able to do, with the passage it was read from."],
+                ["knowledge", "A fact, term or concept a sub-skill relies on, also with its passage."],
+              ]}
+            />
+            <ul className="flex flex-col gap-1.5 border-t border-hestia-border pt-3 text-xs leading-snug text-hestia-text-muted">
+              <li>
+                <b className="font-semibold text-hestia-text">Source:</b> hover it to read the quote,
+                click it to open the page beside the table.
+              </li>
+              <li>
+                <b className="font-semibold text-hestia-text">Coverage:</b> whether a sub-skill was found
+                in a lecture or an exercise.
+              </li>
+              <li>
+                <b className="font-semibold text-hestia-text">Kind:</b> Manual marks goals you added,
+                AI-inferred the ones the AI wrote beneath a topic you added. Neither has a source.
+              </li>
+            </ul>
+          </div>
+        </AnchoredPopover>
+      )}
+    </div>
+  );
+}
+
+function TierGuideGroup({
+  icon,
+  heading,
+  tiers,
+}: {
+  icon: ReactNode;
+  heading: string;
+  tiers: [CompetencyRole, string][];
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border border-hestia-border">
+      <p className="flex items-center gap-1.5 bg-hestia-text/5 px-3 py-1.5 text-xs font-semibold text-hestia-text-muted">
+        {icon}
+        {heading}
+      </p>
+      {tiers.map(([role, text]) => (
+        <div key={role} className="grid grid-cols-[5.5rem_1fr] items-start gap-2 border-t border-hestia-border px-3 py-2">
+          <span>
+            <TierChip role={role} />
+          </span>
+          <span className="text-xs leading-snug">{text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** First-visit hint above the table; both of its actions fold it into the toolbar button. */
+function TierGuideStrip({ onOpenGuide, onDismiss }: { onOpenGuide: () => void; onDismiss: () => void }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-[color-mix(in_srgb,var(--hestia-primary)_35%,transparent)] bg-hestia-primary-muted px-3 py-2.5 text-sm text-hestia-text">
+      <span className="mt-0.5 text-hestia-primary">
+        <InfoIcon />
+      </span>
+      <p className="min-w-0 flex-1 leading-snug">
+        <b className="font-semibold">Topics</b> and <b className="font-semibold">skills</b> are generated to
+        organise the course. <b className="font-semibold">Sub-skills</b> and{" "}
+        <b className="font-semibold">knowledge</b> come from your course material, each with the passage it
+        was read from.
+      </p>
+      <div className="flex shrink-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={onOpenGuide}
+          className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover"
+        >
+          How to read this
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover"
+        >
+          Got it
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+      className="h-4 w-4 shrink-0"
+    >
+      <circle cx="10" cy="10" r="7.5" />
+      <path d="M10 9v5M10 6.2v.01" />
+    </svg>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0"
+    >
+      <path d="M5 2.5h7l3.5 3.5v11.5H5z" />
+      <path d="M8 10h5M8 13h5" />
+    </svg>
+  );
+}
+
 function AppendKnob({
   depth,
   label,
@@ -1970,6 +2199,7 @@ function GridRow({
   onToggleMap,
   sourceOpen,
   onOpenSource,
+  members,
   openLevel,
   onToggleLevel,
   onCloseLevel,
@@ -2005,6 +2235,8 @@ function GridRow({
   /** This row's source is the one shown in the PDF panel. */
   sourceOpen: boolean;
   onOpenSource: (row: Row, trigger: HTMLElement) => void;
+  /** A skill's sub-skills, which its generated name sums up. */
+  members?: Row[];
   /** The taxonomy whose level menu is open on this row, if any. */
   openLevel: LevelScale | null;
   onToggleLevel: (row: Row, scale: LevelScale) => void;
@@ -2099,6 +2331,7 @@ function GridRow({
       >
         <SourceChip
           row={row}
+          members={members}
           disabled={context}
           open={sourceOpen}
           onOpen={(trigger) => onOpenSource(row, trigger)}
@@ -2403,6 +2636,7 @@ function DiagramAttributes({
   onUpdate,
   sourceOpen,
   onOpenSource,
+  members,
 }: {
   row: Row;
   columns: AttributeKey[];
@@ -2413,6 +2647,8 @@ function DiagramAttributes({
   onUpdate: (goalId: number, changes: GoalChanges) => void;
   sourceOpen: boolean;
   onOpenSource: (row: Row, trigger: HTMLElement) => void;
+  /** A skill's sub-skills, which its generated name sums up. */
+  members?: Row[];
 }) {
   const coverage = coverageOf(row.goal);
   const showCoverage = columns.includes("coverage") && coverage != null && coverage !== "unknown";
@@ -2421,7 +2657,10 @@ function DiagramAttributes({
   const scales = (["bloom", "solo"] as const).filter(
     (scale) => columns.includes(scale) && row.role !== "topic",
   );
-  const showSource = columns.includes("source") && row.goal.sources?.[0] != null;
+  const showSource =
+    columns.includes("source") &&
+    (row.goal.sources?.[0] != null ||
+      (isGrouping(row.role) && row.goal.creationProvenance !== "USER_CREATED"));
   if (!showCoverage && !showKind && scales.length === 0 && !showSource) return null;
   return (
     <div className="flex flex-col gap-2 border-t border-hestia-border/60 pt-2">
@@ -2460,7 +2699,13 @@ function DiagramAttributes({
       )}
       {showSource && (
         <div className="flex min-w-0 text-xs text-hestia-text-muted">
-          <SourceChip row={row} open={sourceOpen} onOpen={(trigger) => onOpenSource(row, trigger)} />
+          <SourceChip
+            row={row}
+            members={members}
+            inline
+            open={sourceOpen}
+            onOpen={(trigger) => onOpenSource(row, trigger)}
+          />
         </div>
       )}
     </div>
@@ -2469,82 +2714,210 @@ function DiagramAttributes({
 
 /**
  * A goal's own source as a control that opens it in the PDF panel: the document and page, with the
- * session beneath. Renders nothing for a goal without a source.
+ * session beneath, and the quoted passage on hover. A generated topic or skill has no source, so it
+ * says so instead, a skill naming the sub-skills its name sums up. Renders nothing otherwise.
  */
 function SourceChip({
   row,
+  members,
+  inline = false,
   disabled = false,
   open,
   onOpen,
 }: {
   row: Row;
+  /** A skill's sub-skills, which its generated name sums up. */
+  members?: Row[];
+  /** Keeps the generated chip on one line, where a diagram box has the width for it. */
+  inline?: boolean;
   disabled?: boolean;
   /** This goal's source is the one shown in the PDF panel. */
   open: boolean;
   onOpen: (trigger: HTMLElement) => void;
 }) {
   const source = row.goal.sources?.[0];
-  if (!source) return null;
+  if (!source) {
+    return isGrouping(row.role) && row.goal.creationProvenance !== "USER_CREATED" ? (
+      <GeneratedChip members={members} inline={inline} />
+    ) : null;
+  }
   // The document names the source; the session is where in the course it sits. A session named
   // exactly like its file (one lecture per PDF) would only repeat the label, so it is left out.
   const documentLabel = source.displayName || source.filename || "Source document";
   const sessionLabel = row.session && row.session !== documentLabel ? row.session : null;
   // A figure source rests on the AI's description of a slide image rather than on quoted text.
   const figure = source.evidenceKind === "FIGURE";
+  const quote = source.snippet?.trim();
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-pressed={open}
-      title={`${documentLabel}${source.page ? ` · page ${source.page}` : ""}${
-        sessionLabel ? `\nSession: ${sessionLabel}` : ""
-      }${
-        figure && source.figureDescription
-          ? `\nFigure (AI description): ${source.figureDescription}`
-          : ""
-      }`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onOpen(e.currentTarget);
-      }}
-      // The row itself opens the goal on click and on Enter/Space, so this control has to
-      // keep both to itself.
-      onKeyDown={(e) => e.stopPropagation()}
-      className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
-        open
-          ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
-          : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
+    <InfoTooltip
+      className="flex max-w-full min-w-0"
+      content={
+        <div className="flex flex-col gap-2.5 text-xs text-hestia-text">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-hestia-accent">
+            {figure ? "From a figure in your course material" : "From your course material"}
+          </p>
+          {quote && (
+            <p className="line-clamp-6 border-l-[3px] border-[color-mix(in_srgb,var(--hestia-accent)_25%,transparent)] pl-2.5 leading-snug">
+              “{quote}”
+            </p>
+          )}
+          {figure && source.figureDescription && (
+            <p className="line-clamp-6 border-l-[3px] border-[color-mix(in_srgb,var(--hestia-accent)_25%,transparent)] pl-2.5 leading-snug">
+              <span className="text-hestia-text-muted">AI description: </span>
+              {source.figureDescription}
+            </p>
+          )}
+          <div className="flex text-hestia-text-muted">
+            <span className="min-w-0">
+              <span className="flex min-w-0">
+                <span className="truncate">{documentLabel}</span>
+                {source.page != null && (
+                  <span className="shrink-0 whitespace-pre tabular-nums"> · p. {source.page}</span>
+                )}
+              </span>
+              {sessionLabel && <span className="block truncate">Session: {sessionLabel}</span>}
+            </span>
+          </div>
+        </div>
+      }
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-pressed={open}
+        aria-label={`Source: ${documentLabel}${source.page != null ? `, page ${source.page}` : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen(e.currentTarget);
+        }}
+        // The row itself opens the goal on click and on Enter/Space, so this control has to
+        // keep both to itself.
+        onKeyDown={(e) => e.stopPropagation()}
+        className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
+          open
+            ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
+            : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
+        }`}
+      >
+        <span className="flex max-w-full min-w-0 items-center gap-1">
+          {figure && (
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              role="img"
+              aria-label="Figure source"
+              className="h-3.5 w-3.5 shrink-0"
+            >
+              <rect x="3" y="4" width="14" height="12" rx="2" />
+              <path d="M3 13l4-4 3 3 2-2 5 5" />
+              <circle cx="13" cy="8" r="1.2" />
+            </svg>
+          )}
+          <span className="min-w-0 truncate">{documentLabel}</span>
+          {source.page != null && (
+            <span className="shrink-0 tabular-nums">· p. {source.page}</span>
+          )}
+        </span>
+        {sessionLabel && (
+          <span className="max-w-full truncate opacity-75">
+            Session: {sessionLabel}
+          </span>
+        )}
+      </button>
+    </InfoTooltip>
+  );
+}
+
+// The hover card doesn't scroll, so a long list is cut short rather than clipped mid-item.
+const GENERATED_FROM_SHOWN = 6;
+
+/**
+ * Marks a topic or skill as generated rather than read from the material. A skill also counts the
+ * sub-skills its name sums up and lists them on hover, each with where it was found, which is the
+ * way back to the slides; a topic has nothing so direct to point at, so it stays a plain label.
+ */
+function GeneratedChip({ members, inline = false }: { members?: Row[]; inline?: boolean }) {
+  const chip = (
+    <span
+      className={`flex max-w-full min-w-0 rounded-md border border-dashed border-hestia-text-muted/60 px-1.5 py-0.5 text-left ${
+        inline ? "items-center gap-1" : "flex-col items-start"
       }`}
     >
-      <span className="flex max-w-full min-w-0 items-center gap-1">
-        {figure && (
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            role="img"
-            aria-label="Figure source"
-            className="h-3.5 w-3.5 shrink-0"
-          >
-            <rect x="3" y="4" width="14" height="12" rx="2" />
-            <path d="M3 13l4-4 3 3 2-2 5 5" />
-            <circle cx="13" cy="8" r="1.2" />
-          </svg>
-        )}
-        <span className="min-w-0 truncate">{documentLabel}</span>
-        {source.page != null && (
-          <span className="shrink-0 tabular-nums">· p. {source.page}</span>
-        )}
+      <span className="flex shrink-0 items-center gap-1">
+        <GeneratedIcon />
+        Generated
       </span>
-      {sessionLabel && (
-        <span className="max-w-full truncate opacity-75">
-          Session: {sessionLabel}
+      {members != null && members.length > 0 && (
+        <span className="min-w-0 truncate opacity-75">
+          from {members.length} {tierNoun("skill", members.length)}
         </span>
       )}
-    </button>
+    </span>
+  );
+  if (members == null || members.length === 0) return chip;
+  return (
+    <InfoTooltip
+      className="flex max-w-full min-w-0"
+      content={
+        <div className="flex flex-col gap-2 text-xs text-hestia-text">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-hestia-text-muted">
+            Generated from
+          </p>
+          <ul className="flex flex-col gap-1">
+            {members.slice(0, GENERATED_FROM_SHOWN).map((member) => {
+              const source = member.goal.sources?.[0];
+              const where = source
+                ? `${source.displayName || source.filename || ""}${source.page != null ? ` · p. ${source.page}` : ""}`
+                : member.goal.creationProvenance === "USER_CREATED"
+                  ? "Manual"
+                  : member.goal.creationProvenance === "WIZARD_AI_SUBTREE"
+                    ? "AI-inferred"
+                    : "";
+              return (
+                <li key={member.id} className="flex min-w-0 flex-col">
+                  <span className="leading-snug">{displayedGoalLabel(member.goal)}</span>
+                  {where && <span className="truncate text-hestia-text-muted">{where}</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {members.length > GENERATED_FROM_SHOWN && (
+            <p className="text-hestia-text-muted">
+              +{members.length - GENERATED_FROM_SHOWN} more
+            </p>
+          )}
+        </div>
+      }
+    >
+      <span
+        tabIndex={0}
+        className="flex max-w-full min-w-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-hestia-primary"
+      >
+        {chip}
+      </span>
+    </InfoTooltip>
+  );
+}
+
+/** Two strands merging into one: something built from other goals rather than quoted. */
+function GeneratedIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5 shrink-0"
+    >
+      <path d="M4 3v4a4 4 0 004 4h2M16 3v4a4 4 0 01-4 4h-2M10 11v6" />
+    </svg>
   );
 }
 
