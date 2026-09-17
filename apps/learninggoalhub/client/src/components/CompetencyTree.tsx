@@ -14,8 +14,6 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
-import CompetencyGoalModal from "./CompetencyGoalModal.tsx";
-import CapabilityModal from "./CapabilityModal.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import TopicSearchDialog from "./TopicSearchDialog.tsx";
 import { createTopic } from "../lib/createTopic.ts";
@@ -25,6 +23,7 @@ import ErrorBoundary from "./ErrorBoundary.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import CoverageBadge from "./CoverageBadge.tsx";
 import TopicMap, { type MapCreation } from "./TopicMap.tsx";
+import { RenameField, RowAction } from "./GoalInlineEditing.tsx";
 // Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
 const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
 import {
@@ -32,12 +31,11 @@ import {
   COMPETENCY_ROLE_META,
   SOLO_DESC,
   buildCompetencyForest,
-  childGoalsOf,
   coverageCounts,
   coverageOf,
-  generatedChildCount,
+  displayedGoalLabel,
   levelFlags,
-  supportingOutcomesOf,
+  tierNoun,
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
@@ -57,7 +55,7 @@ import {
  * Filter semantics: while a filter or search is active the grid becomes a list of matches. The
  * matching capabilities, skills and knowledge appear as rows in their tree position, and ancestors
  * of a match that don't match themselves are shown dimmed as context-only rows. Rows in that list
- * open the goal detail modal, in both layouts; clearing the filters brings back the chosen layout.
+ * fold as table rows do, in both layouts; clearing the filters brings back the chosen layout.
  *
  * It renders as a CSS grid (not a <table>) so rows can animate in the map's language: opening a
  * table branch cascades its rows in with a light overshoot while the rows below glide down (FLIP),
@@ -83,7 +81,7 @@ type GoalChanges = {
   bloomLevel?: LearningGoal["bloomLevel"];
   soloLevel?: LearningGoal["soloLevel"];
 };
-type Layout = "table" | "map";
+type Layout = "table" | "diagram";
 type CreationTier = 1 | 2 | 3 | 4;
 type CreationState = {
   key: string;
@@ -398,17 +396,6 @@ function TierDot({ role }: { role: CompetencyRole }) {
   );
 }
 
-/** "1 sub-skill", "7 sub-skills", "7 knowledge": the tier's label in lower case, counted. */
-function tierNoun(role: CompetencyRole, count: number): string {
-  const label = COMPETENCY_ROLE_META[role].label.toLowerCase();
-  return count === 1 || role === "knowledge" ? label : `${label}s`;
-}
-
-/** The short label by default; `full` asks for the complete wording instead. */
-function displayedGoalLabel(goal: LearningGoal, full = false): string {
-  return (full ? goal.text : goal.shortLabel) ?? goal.shortLabel ?? goal.text ?? "";
-}
-
 /** Human label for a raw column value (role names, title-cased enums). */
 function displayValue(key: FilterKey, value: string): string {
   if (key === "role")
@@ -507,7 +494,6 @@ export default function CompetencyTree({
   goals,
   onUpdate,
   onDelete,
-  onEdit,
 }: {
   courseId: number;
   goals: LearningGoal[];
@@ -520,8 +506,6 @@ export default function CompetencyTree({
     },
   ) => void;
   onDelete: (goal: LearningGoal) => void;
-  /** The edit pencil on a map box. */
-  onEdit: (goal: LearningGoal) => void;
 }) {
   const queryClient = useQueryClient();
   const [creation, setCreation] = useState<CreationState | null>(null);
@@ -713,36 +697,6 @@ export default function CompetencyTree({
     }));
   // The column (by key) whose filter popover is open.
   const [openFilter, setOpenFilter] = useState<string | null>(null);
-  // Clicking a row opens the same classification overlay the map view uses. The modal only reads
-  // the node's goal and role, so a row's flat data is enough to build one.
-  const [detail, setDetail] = useState<{
-    goal: LearningGoal;
-    role: CompetencyRole;
-  } | null>(null);
-  // The goal the modal was drilled into from, so a knowledge goal opened out of the evidence list
-  // can hand the reader back to its skill instead of dropping them out of the modal entirely.
-  const [detailParent, setDetailParent] = useState<{
-    goal: LearningGoal;
-    role: CompetencyRole;
-  } | null>(null);
-  const openDetail = (row: Row) => {
-    setDetailParent(null);
-    setDetail({ goal: row.goal, role: row.role });
-  };
-  // A capability's detail opens its skills and their knowledge by their real role, and keeps itself
-  // as the way back.
-  const openFromCapability = (goal: LearningGoal, role: CompetencyRole) => {
-    setDetailParent(detail);
-    setDetail({ goal, role });
-  };
-  const onOpenGoal = (goal: LearningGoal) => {
-    setDetailParent(detail);
-    setDetail({ goal, role: "knowledge" });
-  };
-  const closeDetail = () => {
-    setDetail(null);
-    setDetailParent(null);
-  };
 
   // At most one level menu and one inline rename are open at a time across the grid.
   const [openLevel, setOpenLevel] = useState<{ id: number; scale: LevelScale } | null>(null);
@@ -773,11 +727,10 @@ export default function CompetencyTree({
       sourceTriggerRef.current = null;
     }
   }, [sourceGoalId]);
-  // Escape closes the panel, unless a modal, popover or rename above it owns the key.
+  // Escape closes the panel, unless a popover or rename above it owns the key.
   useEffect(() => {
     if (
       sourceGoalId == null ||
-      detail != null ||
       openFilter != null ||
       openLevel != null ||
       editingId != null ||
@@ -793,7 +746,7 @@ export default function CompetencyTree({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sourceGoalId, detail, openFilter, openLevel, editingId, creation, displayMenuOpen]);
+  }, [sourceGoalId, openFilter, openLevel, editingId, creation, displayMenuOpen]);
 
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
@@ -1108,7 +1061,7 @@ export default function CompetencyTree({
   // A filtered list previews only the children it would show.
   const previewOf = (row: Row, mapOpen: boolean): Row[] | undefined => {
     if (row.role !== "topic" && row.role !== "capability" && row.role !== "skill") return undefined;
-    const open = layout === "map" && !filtering ? mapOpen : isOpen(row.id);
+    const open = layout === "diagram" && !filtering ? mapOpen : isOpen(row.id);
     if (open) return undefined;
     const children = (childrenOf.get(row.id) ?? []).filter(
       (child) => !filtering || matchIds!.has(child.id) || contextIds.has(child.id),
@@ -1137,7 +1090,7 @@ export default function CompetencyTree({
     const isMatch = !filtering || matchIds!.has(row.id);
     const isContext = filtering && contextIds.has(row.id);
     if (filtering && !isMatch && !isContext) return;
-    const mapOpen = layout === "map" && !filtering && openTopicId === row.id;
+    const mapOpen = layout === "diagram" && !filtering && openTopicId === row.id;
     // A goal hanging directly under a topic sits in the "Sub-skills without a skill" group, one
     // step further in, level with the sub-skills under a skill. Its knowledge follows it in.
     const rowDepth = row.role !== "capability" && parentRole === "topic" ? depth + 1 : depth;
@@ -1165,7 +1118,6 @@ export default function CompetencyTree({
         stickyTop={headerHeight}
         onToggle={onToggle}
         onToggleMap={toggleMap}
-        onOpen={openDetail}
         sourceOpen={sourceGoalId === row.id}
         onOpenSource={showSource}
         openLevel={openLevel?.id === row.id ? openLevel.scale : null}
@@ -1206,16 +1158,33 @@ export default function CompetencyTree({
             <TopicMap
               topic={topicNode}
               sequence={row.number}
-              onOpenDetail={(node) => {
-                setDetailParent(null);
-                setDetail({ goal: node.goal, role: node.role });
+              editingId={editingId}
+              onStartEdit={(goal) => setEditingId(goal.id!)}
+              onEndEdit={(goal, text) => {
+                if (text != null) updateGoal(goal.id!, { text });
+                setEditingId(null);
               }}
-              onEdit={onEdit}
               onDelete={onDelete}
               onClose={() => setOpenTopicId(null)}
               creation={mapCreation}
+              fullWording={fullWording}
+              attributesOf={(node) => {
+                const nodeRow = byId.get(node.goal.id!);
+                return nodeRow ? (
+                  <DiagramAttributes
+                    row={nodeRow}
+                    columns={visibleAttributes}
+                    levelFlag={flags.get(nodeRow.id)}
+                    openLevel={openLevel?.id === nodeRow.id ? openLevel.scale : null}
+                    onToggleLevel={toggleLevel}
+                    onCloseLevel={() => setOpenLevel(null)}
+                    onUpdate={updateGoal}
+                    sourceOpen={sourceGoalId === nodeRow.id}
+                    onOpenSource={showSource}
+                  />
+                ) : null;
+              }}
               suspendEscape={
-                detail != null ||
                 openFilter != null ||
                 sourceGoalId != null ||
                 openLevel != null ||
@@ -1334,10 +1303,6 @@ export default function CompetencyTree({
   };
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
-  const capabilityRow =
-    detail?.role === "capability" ? byId.get(detail.goal.id!) : undefined;
-  const capabilityTopic =
-    capabilityRow?.parent != null ? byId.get(capabilityRow.parent) : undefined;
 
   const activeChips: { label: string; value: string; onRemove: () => void }[] =
     [];
@@ -1589,47 +1554,6 @@ export default function CompetencyTree({
         </div>
       )}
       </div>
-      {/* The modals always get the freshest goal for their id, so in-modal edits survive refetches.
-          A capability is built around the skills it contains, so it has a detail view of its own. */}
-      <CapabilityModal
-        goal={capabilityRow?.goal ?? null}
-        number={capabilityRow?.number ?? ""}
-        topicNumber={capabilityTopic?.number}
-        topicLabel={capabilityTopic ? displayedGoalLabel(capabilityTopic.goal) : undefined}
-        skills={(capabilityRow ? (childrenOf.get(capabilityRow.id) ?? []) : []).map((skill) => ({
-          goal: skill.goal,
-          number: skill.number,
-          knowledge: (childrenOf.get(skill.id) ?? []).map((item) => item.goal),
-        }))}
-        onClose={closeDetail}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onOpenGoal={openFromCapability}
-      />
-      <CompetencyGoalModal
-        goal={
-          detail && detail.role !== "capability"
-            ? (byId.get(detail.goal.id!)?.goal ?? detail.goal)
-            : null
-        }
-        role={detail?.role}
-        knowledge={childGoalsOf(forest, detail?.goal.id)}
-        supportingOutcomes={supportingOutcomesOf(goals, detail?.goal.id)}
-        generatedChildCount={generatedChildCount(forest, detail?.goal.id)}
-        onClose={closeDetail}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onOpenGoal={onOpenGoal}
-        onBack={detailParent ? () => {
-          setDetail(detailParent);
-          setDetailParent(null);
-        } : undefined}
-        backLabel={
-          detailParent
-            ? displayedGoalLabel(detailParent.goal)
-            : undefined
-        }
-      />
       {finding != null && (
         <TopicSearchDialog
           courseId={courseId}
@@ -2044,7 +1968,6 @@ function GridRow({
   stickyTop,
   onToggle,
   onToggleMap,
-  onOpen,
   sourceOpen,
   onOpenSource,
   openLevel,
@@ -2079,7 +2002,6 @@ function GridRow({
   stickyTop: number;
   onToggle: (id: number) => void;
   onToggleMap: (id: number) => void;
-  onOpen: (row: Row) => void;
   /** This row's source is the one shown in the PDF panel. */
   sourceOpen: boolean;
   onOpenSource: (row: Row, trigger: HTMLElement) => void;
@@ -2108,30 +2030,21 @@ function GridRow({
   const interactive = !context;
   // A filtered list folds in either layout; browsing folds only in the table.
   const canToggle = childCount > 0 && (layout === "table" || filtering);
-  // While browsing the map layout, a topic row opens its map; every other row opens its detail.
-  const opensMap = layout === "map" && row.role === "topic" && !filtering;
-  // Goal details are switched off in the table for now, so a click anywhere on a row with children
-  // folds it, as the chevron does; the row's own controls (level, source, rename, delete, +) keep
-  // their clicks to themselves. A row being renamed doesn't fold.
+  // While browsing the diagram layout, a topic row opens its diagram.
+  const opensMap = layout === "diagram" && row.role === "topic" && !filtering;
+  // Anywhere else a click on a row with children folds it, as the chevron does; the row's own
+  // controls (level, source, rename, delete, +) keep their clicks to themselves. A row being
+  // renamed doesn't fold.
   const activate = opensMap
     ? () => onToggleMap(row.id)
-    : layout === "table"
-      ? canToggle && !editing
-        ? () => onToggle(row.id)
-        : null
-      : () => onOpen(row);
+    : canToggle && !editing
+      ? () => onToggle(row.id)
+      : null;
   // A context row still folds, so a filtered list can be tidied from its dimmed parents too.
-  const clickable = activate != null && (interactive || (layout === "table" && canToggle));
+  const clickable = activate != null && (interactive || canToggle);
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
   // branch tiers (topic / capability / skill) and gaps stand out.
   const railColor = tierRailColor(row.role);
-  const source = row.goal.sources?.[0];
-  // The document names the source; the session is where in the course it sits. A session named
-  // exactly like its file (one lecture per PDF) would only repeat the label, so it is left out.
-  const documentLabel = source?.displayName || source?.filename || "Source document";
-  const sessionLabel = row.session && row.session !== documentLabel ? row.session : null;
-  // A figure source rests on the AI's description of a slide image rather than on quoted text.
-  const figure = source?.evidenceKind === "FIGURE";
   // The attribute cells by column, so they render in the reader's column order.
   const cells = {
     role: (
@@ -2151,13 +2064,7 @@ function GridRow({
     ),
     kind: (
       <div key="kind" role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
-        {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
-          <Chip tone="neutral">AI-inferred</Chip>
-        ) : row.goal.creationProvenance === "USER_CREATED" ? (
-          <Chip tone="neutral">Manual</Chip>
-        ) : row.goal.kind && !isGrouping(row.role) ? (
-          <Chip tone="neutral">{titleCase(row.goal.kind)}</Chip>
-        ) : null}
+        <KindChip row={row} />
       </div>
     ),
     ...Object.fromEntries(
@@ -2190,61 +2097,12 @@ function GridRow({
         role="gridcell"
         className="flex min-w-0 items-start overflow-hidden px-2 py-1.5 text-xs text-hestia-text-muted"
       >
-        {!source ? null : (
-          <button
-            type="button"
-            disabled={context}
-            aria-pressed={sourceOpen}
-            title={`${documentLabel}${source.page ? ` · page ${source.page}` : ""}${
-              sessionLabel ? `\nSession: ${sessionLabel}` : ""
-            }${
-              figure && source.figureDescription
-                ? `\nFigure (AI description): ${source.figureDescription}`
-                : ""
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenSource(row, e.currentTarget);
-            }}
-            // The row itself opens the goal on click and on Enter/Space, so this control has to
-            // keep both to itself.
-            onKeyDown={(e) => e.stopPropagation()}
-            className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
-              sourceOpen
-                ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
-                : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
-            }`}
-          >
-            <span className="flex max-w-full min-w-0 items-center gap-1">
-              {figure && (
-                <svg
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  role="img"
-                  aria-label="Figure source"
-                  className="h-3.5 w-3.5 shrink-0"
-                >
-                  <rect x="3" y="4" width="14" height="12" rx="2" />
-                  <path d="M3 13l4-4 3 3 2-2 5 5" />
-                  <circle cx="13" cy="8" r="1.2" />
-                </svg>
-              )}
-              <span className="min-w-0 truncate">{documentLabel}</span>
-              {source.page != null && (
-                <span className="shrink-0 tabular-nums">· p. {source.page}</span>
-              )}
-            </span>
-            {sessionLabel && (
-              <span className="max-w-full truncate opacity-75">
-                Session: {sessionLabel}
-              </span>
-            )}
-          </button>
-        )}
+        <SourceChip
+          row={row}
+          disabled={context}
+          open={sourceOpen}
+          onOpen={(trigger) => onOpenSource(row, trigger)}
+        />
       </div>
     ),
   } as Record<AttributeKey, ReactElement>;
@@ -2371,36 +2229,6 @@ function GridRow({
             >
               {displayedGoalLabel(row.goal, fullWording)}
             </span>
-            {opensMap && (
-              // The map starts below the topic, so the topic's own detail (edit, delete) opens here.
-              <button
-                type="button"
-                aria-label="Open topic details"
-                title="Open topic details"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpen(row);
-                }}
-                onKeyDown={(e) => e.stopPropagation()}
-                className={`ml-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md align-middle text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text focus-visible:opacity-100 ${
-                  mapOpen ? "" : "opacity-0 group-hover:opacity-100"
-                }`}
-              >
-                <svg
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                >
-                  <circle cx="10" cy="10" r="7" />
-                  <path d="M10 9v4.5M10 6.5v.01" />
-                </svg>
-              </button>
-            )}
             {preview && <ChildPreview role={row.role} items={preview} fullWording={fullWording} />}
           </span>
           )}
@@ -2548,95 +2376,175 @@ function SessionName({
   );
 }
 
-/** Icon button in a row's hover actions; keeps its click and keys away from the row itself. */
-function RowAction({
-  label,
-  onClick,
-  className,
-  children,
+/** A goal's kind, or how it came about when a person or the AI added it rather than extraction. */
+function kindLabel(row: Row): string | null {
+  if (row.goal.creationProvenance === "WIZARD_AI_SUBTREE") return "AI-inferred";
+  if (row.goal.creationProvenance === "USER_CREATED") return "Manual";
+  return row.goal.kind && !isGrouping(row.role) ? titleCase(row.goal.kind) : null;
+}
+
+function KindChip({ row }: { row: Row }) {
+  const label = kindLabel(row);
+  return label ? <Chip tone="neutral">{label}</Chip> : null;
+}
+
+/**
+ * The table's visible attribute columns laid out for a diagram box: coverage and kind as chips,
+ * Bloom and SOLO side by side under their names, and the source beneath. A column hidden in the
+ * table is hidden here too; the levels and the source stay editable and openable as in a row.
+ */
+function DiagramAttributes({
+  row,
+  columns,
+  levelFlag,
+  openLevel,
+  onToggleLevel,
+  onCloseLevel,
+  onUpdate,
+  sourceOpen,
+  onOpenSource,
 }: {
-  label: string;
-  onClick: () => void;
-  className: string;
-  children: ReactNode;
+  row: Row;
+  columns: AttributeKey[];
+  levelFlag?: string;
+  openLevel: LevelScale | null;
+  onToggleLevel: (row: Row, scale: LevelScale) => void;
+  onCloseLevel: () => void;
+  onUpdate: (goalId: number, changes: GoalChanges) => void;
+  sourceOpen: boolean;
+  onOpenSource: (row: Row, trigger: HTMLElement) => void;
 }) {
+  const coverage = coverageOf(row.goal);
+  const showCoverage = columns.includes("coverage") && coverage != null && coverage !== "unknown";
+  const showKind = columns.includes("kind") && kindLabel(row) != null;
+  // A topic is a noun phrase with no level of its own.
+  const scales = (["bloom", "solo"] as const).filter(
+    (scale) => columns.includes(scale) && row.role !== "topic",
+  );
+  const showSource = columns.includes("source") && row.goal.sources?.[0] != null;
+  if (!showCoverage && !showKind && scales.length === 0 && !showSource) return null;
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onKeyDown={(e) => e.stopPropagation()}
-      className={`flex h-6 w-6 items-center justify-center rounded-md text-hestia-text-muted transition ${className}`}
-    >
-      <svg
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        className="h-4 w-4"
-      >
-        {children}
-      </svg>
-    </button>
+    <div className="flex flex-col gap-2 border-t border-hestia-border/60 pt-2">
+      {(showCoverage || showKind) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {showCoverage && <CoverageBadge goal={row.goal} flag={levelFlag} />}
+          {showKind && <KindChip row={row} />}
+        </div>
+      )}
+      {scales.length > 0 && (
+        <div className="grid grid-cols-2 gap-2">
+          {scales.map((scale) => (
+            <div key={scale} className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-hestia-text-muted">
+                {LEVEL_SCALES[scale].label}
+              </span>
+              <LevelCell
+                scale={scale}
+                value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
+                interactive
+                open={openLevel === scale}
+                onToggle={() => onToggleLevel(row, scale)}
+                onClose={onCloseLevel}
+                onSelect={(value) =>
+                  onUpdate(
+                    row.id,
+                    scale === "bloom"
+                      ? { bloomLevel: value as LearningGoal["bloomLevel"] }
+                      : { soloLevel: value as LearningGoal["soloLevel"] },
+                  )
+                }
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {showSource && (
+        <div className="flex min-w-0 text-xs text-hestia-text-muted">
+          <SourceChip row={row} open={sourceOpen} onOpen={(trigger) => onOpenSource(row, trigger)} />
+        </div>
+      )}
+    </div>
   );
 }
 
 /**
- * In-place rename of a goal's full wording. Enter or leaving the field saves, Escape cancels;
- * `onDone` gets the new text, or `null` when nothing changed or the edit was dropped.
+ * A goal's own source as a control that opens it in the PDF panel: the document and page, with the
+ * session beneath. Renders nothing for a goal without a source.
  */
-function RenameField({
-  text,
-  onDone,
+function SourceChip({
+  row,
+  disabled = false,
+  open,
+  onOpen,
 }: {
-  text: string;
-  onDone: (text: string | null) => void;
+  row: Row;
+  disabled?: boolean;
+  /** This goal's source is the one shown in the PDF panel. */
+  open: boolean;
+  onOpen: (trigger: HTMLElement) => void;
 }) {
-  const [draft, setDraft] = useState(text);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  // Enter and Escape unmount the field, which can blur it once more on the way out.
-  const finished = useRef(false);
-  const finish = (save: boolean) => {
-    if (finished.current) return;
-    finished.current = true;
-    const trimmed = draft.trim();
-    onDone(save && trimmed !== "" && trimmed !== text ? trimmed : null);
-  };
-  useLayoutEffect(() => {
-    const field = ref.current;
-    if (!field) return;
-    field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
-  }, []);
+  const source = row.goal.sources?.[0];
+  if (!source) return null;
+  // The document names the source; the session is where in the course it sits. A session named
+  // exactly like its file (one lecture per PDF) would only repeat the label, so it is left out.
+  const documentLabel = source.displayName || source.filename || "Source document";
+  const sessionLabel = row.session && row.session !== documentLabel ? row.session : null;
+  // A figure source rests on the AI's description of a slide image rather than on quoted text.
+  const figure = source.evidenceKind === "FIGURE";
   return (
-    <textarea
-      ref={ref}
-      value={draft}
-      rows={1}
-      aria-label="Goal wording"
-      onChange={(e) => setDraft(e.target.value)}
-      onClick={(e) => e.stopPropagation()}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        // The row opens the goal on Enter/Space, and the grid closes things on Escape.
+    <button
+      type="button"
+      disabled={disabled}
+      aria-pressed={open}
+      title={`${documentLabel}${source.page ? ` · page ${source.page}` : ""}${
+        sessionLabel ? `\nSession: ${sessionLabel}` : ""
+      }${
+        figure && source.figureDescription
+          ? `\nFigure (AI description): ${source.figureDescription}`
+          : ""
+      }`}
+      onClick={(e) => {
         e.stopPropagation();
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          finish(true);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          finish(false);
-        }
+        onOpen(e.currentTarget);
       }}
-      className="min-w-0 flex-1 resize-none rounded-sm border-[1.5px] border-hestia-primary bg-hestia-bg px-1.5 py-0.5 text-sm leading-relaxed text-hestia-text shadow-[0_0_0_3px_var(--hestia-primary-muted)] outline-none [field-sizing:content]"
-    />
+      // The row itself opens the goal on click and on Enter/Space, so this control has to
+      // keep both to itself.
+      onKeyDown={(e) => e.stopPropagation()}
+      className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
+        open
+          ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
+          : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
+      }`}
+    >
+      <span className="flex max-w-full min-w-0 items-center gap-1">
+        {figure && (
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            role="img"
+            aria-label="Figure source"
+            className="h-3.5 w-3.5 shrink-0"
+          >
+            <rect x="3" y="4" width="14" height="12" rx="2" />
+            <path d="M3 13l4-4 3 3 2-2 5 5" />
+            <circle cx="13" cy="8" r="1.2" />
+          </svg>
+        )}
+        <span className="min-w-0 truncate">{documentLabel}</span>
+        {source.page != null && (
+          <span className="shrink-0 tabular-nums">· p. {source.page}</span>
+        )}
+      </span>
+      {sessionLabel && (
+        <span className="max-w-full truncate opacity-75">
+          Session: {sessionLabel}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -2849,7 +2757,7 @@ function LayoutSwitch({
 }) {
   const options: { key: Layout; label: string; icon: ReactNode }[] = [
     { key: "table", label: "Table", icon: <TableIcon /> },
-    { key: "map", label: "Map", icon: <MapIcon /> },
+    { key: "diagram", label: "Diagram", icon: <DiagramIcon /> },
   ];
   return (
     <div
@@ -2923,7 +2831,7 @@ function WordingSwitch({
 }
 
 /** Icons for the layout switch. Sized to sit inline with the label text. */
-function MapIcon() {
+function DiagramIcon() {
   return (
     <svg
       viewBox="0 0 20 20"

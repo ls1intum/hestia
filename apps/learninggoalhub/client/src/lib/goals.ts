@@ -91,6 +91,17 @@ export const COMPETENCY_ROLE_META: Record<
   gap: { label: "Gap", color: "var(--hestia-danger)" },
 };
 
+/** "1 sub-skill", "7 sub-skills", "7 knowledge": the tier's label in lower case, counted. */
+export function tierNoun(role: CompetencyRole, count: number): string {
+  const label = COMPETENCY_ROLE_META[role].label.toLowerCase();
+  return count === 1 || role === "knowledge" ? label : `${label}s`;
+}
+
+/** The short label by default; `full` asks for the complete wording instead. */
+export function displayedGoalLabel(goal: LearningGoal, full = false): string {
+  return (full ? goal.text : goal.shortLabel) ?? goal.shortLabel ?? goal.text ?? "";
+}
+
 /**
  * Builds the competency forest from a flat goal list: topics are the roots, and each goal's
  * CONTRIBUTES_TO edges (which point child → parent) are inverted into a parent → children map
@@ -172,54 +183,6 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     .filter((g) => g.origin === "TERMINAL")
     .map((g) => build(g, 0, new Set(), null))
     .sort((a, b) => compareLectureOrder(a.goal, b.goal));
-}
-
-/** Finds a node in the competency forest and returns the immediate child goals attached to it. */
-export function childGoalsOf(
-  forest: CompetencyNode[],
-  goalId: number | null | undefined,
-): LearningGoal[] {
-  if (goalId == null) return [];
-  const find = (nodes: CompetencyNode[]): CompetencyNode | undefined => {
-    for (const node of nodes) {
-      if (node.goal.id === goalId) return node;
-      const found = find(node.children);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  return find(forest)?.children.map((child) => child.goal) ?? [];
-}
-
-/** Source-backed lecture outcomes that justify a synthesized sub-skill without becoming tree nodes. */
-export function supportingOutcomesOf(
-  goals: LearningGoal[],
-  goalId: number | null | undefined,
-): LearningGoal[] {
-  if (goalId == null) return [];
-  return goals
-    .filter((goal) =>
-      goal.relationships?.some(
-        (relationship) =>
-          relationship.type === "SUPPORTS" && relationship.targetGoalId === goalId,
-      ),
-    )
-    .sort(compareLectureOrder);
-}
-
-/**
- * How many AI-generated skills hang under the topic `goalId` — the nodes a regeneration would
- * replace, with everything beneath them. `undefined` means the goal is not a topic at all, which is
- * what tells the goal modal to leave the regeneration action out entirely.
- */
-export function generatedChildCount(
-  forest: CompetencyNode[],
-  goalId: number | null | undefined,
-): number | undefined {
-  const terminal = forest.find((node) => node.goal.id === goalId);
-  return terminal?.children.filter(
-    (child) => child.goal.creationProvenance === "WIZARD_AI_SUBTREE",
-  ).length;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

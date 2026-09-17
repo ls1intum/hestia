@@ -1,32 +1,39 @@
 import {
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import type { LearningGoal } from "../api/client.ts";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
-import CoverageBadge from "./CoverageBadge.tsx";
+import { RenameField, RowAction } from "./GoalInlineEditing.tsx";
 import {
   RoleBadge,
   AiInferredBadge,
   ManualBadge,
-} from "./CompetencyGoalModal.tsx";
-import { COMPETENCY_ROLE_META, levelFlags, type CompetencyNode } from "../lib/goals.ts";
+} from "./GoalBadges.tsx";
+import {
+  COMPETENCY_ROLE_META,
+  displayedGoalLabel,
+  tierNoun,
+  type CompetencyNode,
+  type CompetencyRole,
+} from "../lib/goals.ts";
 
 // Box geometry, kept in sync with the Tailwind classes below so the SVG connectors can be drawn
 // from the layout alone (no DOM measuring): w-40 = 10rem, w-56 = 14rem, w-60 = 15rem and
 // gap-3 = 0.75rem at a 16px root.
 const BOX_W = 224;
-const COMPACT_W = 160; // dimmed sibling boxes in a focused capability row
-const LEAF_W = 240; // leaf boxes under a focused capability
+const COMPACT_W = 160; // dimmed sibling boxes in a row with a focused box
+const LEAF_W = 240; // boxes in the second and third rows
 const GHOST_W = 128; // the quiet "+ New …" pill beside a row
 const GAP = 12;
 const CONNECTOR_H = 40;
 const SCROLL_STEP = 332; // one scroll-arrow press
+const EDGE_W = 56; // the scroll fade at either edge (w-14)
 
 function rowWidth(widths: number[]) {
   return widths.reduce((total, width) => total + width, 0) +
@@ -44,8 +51,8 @@ function childCentres(widths: number[]) {
 }
 
 /**
- * Space a row reserves on BOTH sides for its creation control, so the boxes stay centred under
- * their connector while the control sits beside them. An open creation field needs a box's width.
+ * Space a row's creation control takes to the left of its boxes. An open creation field needs a
+ * box's width.
  */
 function ghostReserve(present: boolean, active: boolean) {
   if (!present) return 0;
@@ -62,7 +69,7 @@ export type MapCreation = {
   pending: boolean;
   /** The failure of the creation currently open, if any. */
   error: string | undefined;
-  begin: (tier: 2 | 3, parentGoalId: number) => void;
+  begin: (tier: 2 | 3 | 4, parentGoalId: number) => void;
   change: (value: string) => void;
   submit: () => void;
   cancel: () => void;
@@ -70,46 +77,71 @@ export type MapCreation = {
 
 /**
  * One topic as a focus-and-context tree, opened inline under its table row. The pinned row above
- * names the topic, so the map starts at its capabilities and direct skills, with connectors rising
- * to that row. Clicking a capability drills in: it takes the focus with its skills beneath it,
- * while its siblings stay visible as subdued, directly selectable context; clicking it again folds
- * it. Skills and knowledge open the goal detail modal instead of unfolding — knowledge is evidence
- * for its skill, and the modal is where it is listed and edited — and a capability's own detail is
- * one of its box actions. The tree shares one horizontal scroll container so boxes and connectors
- * stay aligned; each focus change centres the focused node.
+ * names the topic, so the diagram starts at its skills and direct sub-skills, with connectors
+ * rising to that row. Clicking a box that holds goals drills in: it takes the focus with its
+ * children in a row beneath it, while its siblings stay visible as subdued, directly selectable
+ * context; clicking it again folds it. A focused skill's sub-skills drill in the same way, so
+ * knowledge opens as a third row. A box that is not open names its first children as mini boxes
+ * hanging beneath it; clicking one opens that box and briefly highlights the child in its row. Every box renames and deletes in
+ * place, as the topic row does. The tree shares one horizontal scroll container so boxes and
+ * connectors stay aligned; each focus change centres the deepest focused node.
  */
 export default function TopicMap({
   topic,
   sequence,
-  onOpenDetail,
-  onEdit,
+  editingId,
+  onStartEdit,
+  onEndEdit,
   onDelete,
   onClose,
   creation,
   suspendEscape,
+  fullWording,
+  attributesOf,
 }: {
   topic: CompetencyNode;
   /** The topic's lecture-order number in the table, e.g. "3". */
   sequence: string;
-  onOpenDetail: (node: CompetencyNode) => void;
-  onEdit: (goal: LearningGoal) => void;
+  /** The goal whose wording is being renamed in place, anywhere in the grid. */
+  editingId: number | null;
+  onStartEdit: (goal: LearningGoal) => void;
+  /** Ends a rename; `text` is the new wording, or null when nothing is to be saved. */
+  onEndEdit: (goal: LearningGoal, text: string | null) => void;
   onDelete: (goal: LearningGoal) => void;
   onClose: () => void;
   creation: MapCreation;
   /** Something above the map (the detail modal, a filter popover) owns Escape right now. */
   suspendEscape: boolean;
+  /** Show every goal's full wording rather than its short label, as the table does. */
+  fullWording: boolean;
+  /** The goal's attributes in the table's visible columns, shown beneath a box's wording. */
+  attributesOf: (node: CompetencyNode) => ReactNode;
 }) {
-  const actions = { onEdit, onDelete };
-  const flags = useMemo(() => levelFlags([topic]), [topic]);
+  const actions = { editingId, onStartEdit, onEndEdit, onDelete };
+  // The focus path: a box in the first row, then one of its sub-skills.
   const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [subFocusedId, setSubFocusedId] = useState<number | null>(null);
+  // The child a mini box was clicked for: centred and outlined for a moment once its row is in.
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+  useEffect(() => {
+    if (highlightId == null) return;
+    const timer = window.setTimeout(() => setHighlightId(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
   const focused =
-    topic.children.find((node) => node.goal.id === focusedId) ?? null;
+    topic.children.find((node) => node.goal.id === focusedId && canDrill(node)) ?? null;
+  const subFocused =
+    focused?.role === "capability"
+      ? (focused.children.find((node) => node.goal.id === subFocusedId && canDrill(node)) ??
+        null)
+      : null;
 
-  // A reload/re-extraction can drop the focused capability; fall back to the topic. Plain state
-  // change — nothing was clicked, so nothing should animate.
+  // A reload/re-extraction can drop a focused goal; fall back one level. Plain state change —
+  // nothing was clicked, so nothing should animate.
   useEffect(() => {
     if (focusedId != null && !focused) setFocusedId(null);
-  }, [focusedId, focused]);
+    if (subFocusedId != null && !subFocused) setSubFocusedId(null);
+  }, [focusedId, focused, subFocusedId, subFocused]);
 
   // FLIP: `navigate` snapshots every visible box (by goal id) before the focus changes; after the
   // new layout is in, each box that survived the transition — the clicked one gliding into its
@@ -120,24 +152,31 @@ export default function TopicMap({
   const flipRects = useRef<Map<string, DOMRect> | null>(null);
   const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
 
-  const navigate = (next: number | null) => {
+  const navigate = (
+    next: number | null,
+    nextSub: number | null = null,
+    highlight: number | null = null,
+  ) => {
     const map = new Map<string, DOMRect>();
     containerRef.current
       ?.querySelectorAll<HTMLElement>("[data-goal-id]")
       .forEach((el) => map.set(el.dataset.goalId!, el.getBoundingClientRect()));
     flipRects.current = map;
     setFocusedId(next);
+    setSubFocusedId(nextSub);
+    setHighlightId(highlight);
   };
 
+  const deepest = subFocused ?? focused;
   useLayoutEffect(() => {
-    // Centre the active node, rather than the entire canvas, so its children are immediately
-    // readable even when the expanded sibling row overflows the shared scroller.
+    // Centre the highlighted child, else the deepest focused node, rather than the entire canvas,
+    // so the node being opened is immediately readable even when a row overflows the scroller.
     const scroller = scrollRef.current;
-    const focusedBox = focused
-      ? containerRef.current?.querySelector<HTMLElement>(
-          `[data-goal-id="${focused.goal.id}"]`,
-        )
-      : null;
+    const centreId = highlightId ?? deepest?.goal.id;
+    const focusedBox =
+      centreId != null
+        ? containerRef.current?.querySelector<HTMLElement>(`[data-goal-id="${centreId}"]`)
+        : null;
     if (scroller && focusedBox) {
       const scrollerRect = scroller.getBoundingClientRect();
       const focusedRect = focusedBox.getBoundingClientRect();
@@ -190,7 +229,9 @@ export default function TopicMap({
           { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
         );
       });
-  }, [focusedId, focused]);
+    // The highlight only steers this first centring; its fade-out must not scroll again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedId, subFocusedId, deepest]);
 
   // The canvas is deterministic, but its rendered width depends on the current tree. Observe both
   // the scrollport and its canvas so the cosmetic affordances only appear when overflow exists;
@@ -222,14 +263,15 @@ export default function TopicMap({
       resizeObserver.disconnect();
       scroller.removeEventListener("scroll", updateScrollEdges);
     };
-  }, [focused]);
+  }, [focused, subFocused]);
 
-  // Clicking the focused capability again folds it back into the topic's overview.
-  const pickCapability = (id: number) => navigate(focusedId === id ? null : id);
+  // Clicking a focused box again folds it back into its parent's overview.
+  const pickFirst = (id: number) => navigate(focusedId === id ? null : id);
+  const pickSecond = (id: number) => navigate(focusedId, subFocusedId === id ? null : id);
 
-  // Escape retraces the path: out of a capability first, then closes the map. Whatever owns
-  // Escape above the map (the detail modal, a filter popover, an open creation field that
-  // prevents the default) is left alone.
+  // Escape retraces the path: out of a sub-skill, then out of a skill, then closes the map.
+  // Whatever owns Escape above the map (the detail modal, a filter popover, an open creation field
+  // that prevents the default) is left alone.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -239,56 +281,92 @@ export default function TopicMap({
         document.querySelector('[role="dialog"]')
       )
         return;
-      if (focusedId != null) navigate(null);
+      if (subFocused) navigate(focusedId);
+      else if (focused) navigate(null);
       else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const capabilityKey = `2:${topic.goal.id}`;
+  // Row widths: in a row with a focused box, the focused one keeps its normal width while the
+  // dimmed context boxes compact to w-40. Positions are measured from the centre of the first row
+  // (every row centres itself between symmetric creation reserves), so the rows, the connectors
+  // and the branches stay aligned without DOM measuring.
+  const firstKey = `2:${topic.goal.id}`;
   // A topic takes any number of skills, so its "New skill" ghost is always there.
-  const capabilityReserve = ghostReserve(true, creation.activeKey === capabilityKey);
-  const focusedSubIndex = focused
-    ? topic.children.findIndex((node) => node.goal.id === focused.goal.id)
-    : -1;
-  // In the focused row, the active box keeps its normal width while dimmed context boxes compact
-  // to w-40. Prefix sums keep the row, the connectors and the leaf branch aligned.
-  const siblingWidths = topic.children.map((child) =>
+  const firstReserve = ghostReserve(true, creation.activeKey === firstKey);
+  const firstWidths = topic.children.map((child) =>
     focused && child.goal.id !== focused.goal.id ? COMPACT_W : BOX_W,
   );
-  const siblingRowWidth = rowWidth(siblingWidths);
-  const siblingCentres = childCentres(siblingWidths);
-  const focusedSubCentre =
-    focusedSubIndex >= 0 ? siblingCentres[focusedSubIndex] : siblingRowWidth / 2;
-  const focusedSubOffset =
-    focusedSubIndex >= 0 ? focusedSubCentre - siblingRowWidth / 2 : 0;
+  const focusedIndex = focused
+    ? topic.children.findIndex((node) => node.goal.id === focused.goal.id)
+    : -1;
+  const secondOffset =
+    focusedIndex >= 0
+      ? childCentres(firstWidths)[focusedIndex] - rowWidth(firstWidths) / 2
+      : 0;
 
-  const skillKey = focused ? `3:${focused.goal.id}` : "";
-  const leafWidths = focused ? focused.children.map(() => LEAF_W) : [];
-  const leafReserve = ghostReserve(focused != null, creation.activeKey === skillKey);
-  const leafBranchWidth = focused ? rowWidth(leafWidths) + 2 * leafReserve : 0;
-  // Relative positioning paints the leaf branch at the focused node, but does not
-  // enlarge the canvas. These paddings cover its overhang past the sibling row (and that row's
-  // creation reserve) at either edge, making the whole shifted branch scrollable.
-  const leafLeftOverhang = Math.max(
-    0,
-    leafBranchWidth / 2 - focusedSubCentre - capabilityReserve,
-  );
-  const leafRightOverhang = Math.max(
-    0,
-    focusedSubCentre + leafBranchWidth / 2 - siblingRowWidth - capabilityReserve,
-  );
+  // A skill's children are sub-skills; a sub-skill hanging directly off the topic holds knowledge.
+  const secondTier = focused?.role === "capability" ? 3 : 4;
+  const secondKey = focused ? `${secondTier}:${focused.goal.id}` : "";
+  const secondReserve = ghostReserve(focused != null, creation.activeKey === secondKey);
+  const secondWidths = focused
+    ? focused.children.map((child) =>
+        subFocused && child.goal.id !== subFocused.goal.id ? COMPACT_W : LEAF_W,
+      )
+    : [];
+  const subFocusedIndex =
+    focused && subFocused
+      ? focused.children.findIndex((node) => node.goal.id === subFocused.goal.id)
+      : -1;
+  const thirdOffset =
+    subFocusedIndex >= 0
+      ? childCentres(secondWidths)[subFocusedIndex] - rowWidth(secondWidths) / 2
+      : 0;
 
-  const capabilityGhost = (
+  const thirdKey = subFocused ? `4:${subFocused.goal.id}` : "";
+  const thirdReserve = ghostReserve(subFocused != null, creation.activeKey === thirdKey);
+  const thirdWidths = subFocused ? subFocused.children.map(() => LEAF_W) : [];
+
+  // Relative positioning paints a branch at its focused parent, but does not enlarge the canvas.
+  // The canvas is as wide as its widest row of boxes with every row centred in it; these paddings
+  // cover how far a shifted branch or a ghost reaches past that width at either edge, making it
+  // scrollable.
+  // Each row's creation ghost sits to the left of its boxes, outside the row's own width.
+  const rows = [
+    { centre: 0, half: rowWidth(firstWidths) / 2, reserve: firstReserve },
+    ...(focused
+      ? [{ centre: secondOffset, half: rowWidth(secondWidths) / 2, reserve: secondReserve }]
+      : []),
+    ...(subFocused
+      ? [
+          {
+            centre: secondOffset + thirdOffset,
+            half: rowWidth(thirdWidths) / 2,
+            reserve: thirdReserve,
+          },
+        ]
+      : []),
+  ];
+  // Each side also keeps the scroll fade's width, so whatever sits at an edge (a creation ghost,
+  // an outer box) can be scrolled clear of the fade and its arrow.
+  const canvasHalf = Math.max(...rows.map((row) => row.half));
+  const padLeft =
+    EDGE_W +
+    Math.max(0, ...rows.map((row) => row.half + row.reserve - row.centre - canvasHalf));
+  const padRight =
+    EDGE_W + Math.max(0, ...rows.map((row) => row.half + row.centre - canvasHalf));
+
+  const ghost = (label: string, color: string, tier: 2 | 3 | 4, key: string, parentId: number) => (
     <CreationGhost
-      label="New skill"
-      color={COMPETENCY_ROLE_META.capability.color}
-      active={creation.activeKey === capabilityKey}
+      label={label}
+      color={color}
+      active={creation.activeKey === key}
       value={creation.value}
       pending={creation.pending}
-      error={creation.activeKey === capabilityKey ? creation.error : undefined}
-      onStart={() => creation.begin(2, topic.goal.id!)}
+      error={creation.activeKey === key ? creation.error : undefined}
+      onStart={() => creation.begin(tier, parentId)}
       onChange={creation.change}
       onSubmit={creation.submit}
       onCancel={creation.cancel}
@@ -299,31 +377,28 @@ export default function TopicMap({
     <div ref={containerRef} className="flex flex-col px-3 pb-4">
       <div className="relative">
         <div ref={scrollRef} className="scrollbar-none overflow-x-auto pb-2">
-          {/* Keyed by the focus so every navigation remounts the tiers — the connectors
+          {/* Keyed by the focus path so every navigation remounts the tiers — the connectors
               redraw and the children replay their entrance, while surviving boxes FLIP. */}
           <div
-            key={`tree-${topic.goal.id}-${focused?.goal.id ?? "none"}`}
+            key={`tree-${topic.goal.id}-${focused?.goal.id ?? "none"}-${subFocused?.goal.id ?? "none"}`}
             className="mx-auto flex w-max min-w-full flex-col items-center"
-            style={
-              focused
-                ? { paddingLeft: leafLeftOverhang, paddingRight: leafRightOverhang }
-                : undefined
-            }
+            style={{ paddingLeft: padLeft, paddingRight: padRight }}
           >
             {/* Rises to the topic row above; in a drilled-in state it leads to the focused box. */}
             <Connector
-              childWidths={siblingWidths}
+              childWidths={firstWidths}
               color={COMPETENCY_ROLE_META.topic.color}
-              focusedIndex={focused ? focusedSubIndex : undefined}
+              focusedIndex={focused ? focusedIndex : undefined}
             />
-            <CreationRow reserve={capabilityReserve} ghost={capabilityGhost}>
+            <CreationRow
+              reserve={firstReserve}
+              ghost={ghost("New skill", COMPETENCY_ROLE_META.capability.color, 2, firstKey, topic.goal.id!)}
+            >
               {topic.children.map((child, i) => {
-                const isCapability = child.role === "capability";
                 const isFocused = focused != null && child.goal.id === focused.goal.id;
+                const dimmed = focused != null && !isFocused;
                 return (
-                  // Column cell: the box plus, while nothing is focused and a tier waits beneath
-                  // a capability, the mini leaf indicator branching off below it. Stub width <
-                  // box width, so the cell keeps the box's footprint and the connector stays aligned.
+                  // Column cell: the box plus, while it is not open, what it holds beneath it.
                   <div
                     key={child.goal.id}
                     className="comp-pop flex flex-col items-center"
@@ -332,83 +407,120 @@ export default function TopicMap({
                     <Box
                       node={child}
                       active={isFocused}
-                      expandable={isCapability && child.children.length > 0}
-                      onClick={() =>
-                        isCapability
-                          ? pickCapability(child.goal.id!)
-                          : onOpenDetail(child)
-                      }
-                      onDetails={isCapability ? () => onOpenDetail(child) : undefined}
+                      expandable={canDrill(child)}
+                      onClick={canDrill(child) ? () => pickFirst(child.goal.id!) : undefined}
                       actions={actions}
-                      dimmed={focused != null && !isFocused}
-                      compact={focused != null && !isFocused}
-                      clampText={focused != null && !isFocused}
+                      dimmed={dimmed}
+                      compact={dimmed}
+                      clampText={dimmed}
                       sequenceLabel={`${sequence}.${i + 1}`}
-                      levelFlag={flags.get(child.goal.id!)}
-                      title={
-                        isCapability
-                          ? isFocused
-                            ? "Fold"
-                            : "Unfold"
-                          : "View goal details"
-                      }
+                      fullWording={fullWording}
+                      attributes={attributesOf(child)}
                     />
-                    {!focused && isCapability && child.children.length > 0 && (
-                      <LeafStub count={child.children.length} />
+                    {!isFocused && (
+                      <ChildHint
+                        node={child}
+                        dimmed={dimmed}
+                        onPick={(grandchild) =>
+                          navigate(child.goal.id!, null, grandchild.goal.id!)
+                        }
+                        onMore={() => navigate(child.goal.id!)}
+                      />
                     )}
                   </div>
                 );
               })}
             </CreationRow>
             {focused && (
-              // The active node sits at a known fixed position in the sibling row. Moving this
-              // whole leaf branch by that same offset makes its connector originate at the
-              // focused node instead of the row centre.
-              <div
-                className="relative flex flex-col items-center"
-                style={{ left: focusedSubOffset }}
-              >
+              // The focused box sits at a known fixed position in its row. Moving this whole
+              // branch by that same offset makes its connector originate at the focused box
+              // instead of the row centre.
+              <div className="relative flex flex-col items-center" style={{ left: secondOffset }}>
                 <Connector
-                  childWidths={leafWidths}
-                  color={COMPETENCY_ROLE_META.skill.color}
+                  childWidths={secondWidths}
+                  color={COMPETENCY_ROLE_META[focused.role].color}
+                  focusedIndex={subFocused ? subFocusedIndex : undefined}
                 />
                 <CreationRow
-                  reserve={leafReserve}
+                  reserve={secondReserve}
                   ghost={
-                    <CreationGhost
-                      label="New sub-skill"
-                      color={COMPETENCY_ROLE_META.skill.color}
-                      active={creation.activeKey === skillKey}
-                      value={creation.value}
-                      pending={creation.pending}
-                      error={creation.activeKey === skillKey ? creation.error : undefined}
-                      onStart={() => creation.begin(3, focused.goal.id!)}
-                      onChange={creation.change}
-                      onSubmit={creation.submit}
-                      onCancel={creation.cancel}
-                    />
+                    secondTier === 3
+                      ? ghost("New sub-skill", COMPETENCY_ROLE_META.skill.color, 3, secondKey, focused.goal.id!)
+                      : ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
                   }
                 >
-                  {focused.children.map((leaf, i) => (
-                    // The leaves pop in after the focused node has slid into place.
-                    <div
-                      key={leaf.goal.id}
-                      className="comp-pop"
-                      style={{ animationDelay: `${240 + i * 30}ms` }}
-                    >
-                      <Box
-                        node={leaf}
-                        active={false}
-                        expandable={false}
-                        onClick={() => onOpenDetail(leaf)}
-                        actions={actions}
-                        leaf
-                        sequenceLabel={`${sequence}.${focusedSubIndex + 1}.${i + 1}`}
-                        levelFlag={flags.get(leaf.goal.id!)}
-                      />
-                    </div>
-                  ))}
+                  {focused.children.map((child, i) => {
+                    const isFocused = subFocused != null && child.goal.id === subFocused.goal.id;
+                    const dimmed = subFocused != null && !isFocused;
+                    const drillable = secondTier === 3 && canDrill(child);
+                    return (
+                      // The children pop in after the focused box has slid into place.
+                      <div
+                        key={child.goal.id}
+                        className="comp-pop flex flex-col items-center"
+                        style={{ animationDelay: `${240 + i * 30}ms` }}
+                      >
+                        <Box
+                          node={child}
+                          active={isFocused}
+                          expandable={drillable}
+                          onClick={drillable ? () => pickSecond(child.goal.id!) : undefined}
+                          highlighted={highlightId === child.goal.id}
+                          actions={actions}
+                          leaf={!dimmed}
+                          dimmed={dimmed}
+                          compact={dimmed}
+                          clampText={dimmed}
+                          sequenceLabel={`${sequence}.${focusedIndex + 1}.${i + 1}`}
+                          fullWording={fullWording}
+                          attributes={attributesOf(child)}
+                        />
+                        {drillable && !isFocused && (
+                          <ChildHint
+                            node={child}
+                            dimmed={dimmed}
+                            onPick={(leaf) =>
+                              navigate(focused.goal.id!, child.goal.id!, leaf.goal.id!)
+                            }
+                            onMore={() => navigate(focused.goal.id!, child.goal.id!)}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </CreationRow>
+                {subFocused && (
+                  <div className="relative flex flex-col items-center" style={{ left: thirdOffset }}>
+                    <Connector
+                      childWidths={thirdWidths}
+                      color={COMPETENCY_ROLE_META.skill.color}
+                    />
+                    <CreationRow
+                      reserve={thirdReserve}
+                      ghost={ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, thirdKey, subFocused.goal.id!)}
+                    >
+                      {subFocused.children.map((leaf, i) => (
+                        <div
+                          key={leaf.goal.id}
+                          className="comp-pop"
+                          style={{ animationDelay: `${240 + i * 30}ms` }}
+                        >
+                          <Box
+                            node={leaf}
+                            active={false}
+                            expandable={false}
+                            highlighted={highlightId === leaf.goal.id}
+                            actions={actions}
+                            leaf
+                            sequenceLabel={`${sequence}.${focusedIndex + 1}.${subFocusedIndex + 1}.${i + 1}`}
+                            fullWording={fullWording}
+                            attributes={attributesOf(leaf)}
+                          />
+                        </div>
+                      ))}
+                    </CreationRow>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -428,9 +540,86 @@ export default function TopicMap({
   );
 }
 
+/** Skills and sub-skills that hold goals unfold into a row of their own; knowledge and gaps don't. */
+function canDrill(node: CompetencyNode) {
+  return (node.role === "capability" || node.role === "skill") && node.children.length > 0;
+}
+
+/** How many children a closed box names as mini boxes before summing up the rest. */
+const MINI_LIMIT = 3;
+
 /**
- * A row of boxes with its creation control beside them. The control lives in a reserve kept on
- * both sides, so the boxes stay centred exactly under the connector drawn for them alone.
+ * What a closed box holds, hanging beneath it: its first children as mini boxes on a thin line,
+ * each opening the box with that child highlighted, then a "+N more" pill that opens the box. A dimmed
+ * context box only hints with stub dots, so the focused branch stays the thing to read.
+ */
+function ChildHint({
+  node,
+  dimmed,
+  onPick,
+  onMore,
+}: {
+  node: CompetencyNode;
+  dimmed: boolean;
+  onPick: (child: CompetencyNode) => void;
+  onMore: () => void;
+}) {
+  if (node.children.length === 0 || node.role === "knowledge" || node.role === "gap") return null;
+  if (dimmed) return <LeafStub count={node.children.length} />;
+  const shown = node.children.slice(0, MINI_LIMIT);
+  const rest = node.children.length - shown.length;
+  const lineColor = COMPETENCY_ROLE_META[shown[0].role].color;
+  return (
+    <div className="relative flex flex-col items-center gap-1 pt-3.5">
+      <span
+        aria-hidden="true"
+        className="absolute top-0 bottom-3 left-1/2 w-[1.5px] -translate-x-1/2 opacity-55"
+        style={{ backgroundColor: lineColor }}
+      />
+      {shown.map((child) => {
+        const color = COMPETENCY_ROLE_META[child.role].color;
+        const label = displayedGoalLabel(child.goal);
+        return (
+          <button
+            key={child.goal.id}
+            type="button"
+            title={child.goal.text ?? label}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPick(child);
+            }}
+            className="relative flex h-6 w-44 items-center gap-1.5 rounded-md border-[1.5px] bg-hestia-surface px-2 text-left text-[11px] text-hestia-text transition hover:bg-hestia-bg"
+            style={{ borderColor: `color-mix(in srgb, ${color} 55%, transparent)` }}
+          >
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+            <span className="min-w-0 truncate">{label}</span>
+          </button>
+        );
+      })}
+      {rest > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMore();
+          }}
+          className="relative h-[22px] rounded-full border-[1.5px] border-dashed border-hestia-border bg-hestia-surface px-2.5 text-[11px] text-hestia-text-muted transition hover:border-hestia-primary hover:text-hestia-text"
+        >
+          +{rest} more
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A row of boxes with its creation control to their left. The control hangs outside the row's
+ * width, so the boxes stay centred exactly under the connector drawn for them alone; the canvas
+ * padding makes room for it.
  */
 function CreationRow({
   reserve,
@@ -442,15 +631,12 @@ function CreationRow({
   children: ReactNode;
 }) {
   return (
-    <div
-      className="relative flex justify-center gap-3"
-      style={{ paddingLeft: reserve, paddingRight: reserve }}
-    >
+    <div className="relative flex justify-center gap-3">
       {children}
       {ghost && reserve > 0 && (
         <div
-          className="absolute top-1/2 right-0 flex -translate-y-1/2 justify-start"
-          style={{ width: reserve - GAP }}
+          className="absolute top-1/2 flex -translate-y-1/2 justify-end"
+          style={{ right: `calc(100% + ${GAP}px)`, width: reserve - GAP }}
         >
           {ghost}
         </div>
@@ -459,7 +645,11 @@ function CreationRow({
   );
 }
 
-/** Edge fade with a scroll arrow, shown only on a side the map overflows. */
+/**
+ * Edge fade with a scroll arrow, shown only on a side the map overflows. It stays beneath the
+ * pinned topic row and the grid header, and its arrow sticks to the middle of the visible part of
+ * a diagram taller than the view.
+ */
 function ScrollEdge({
   side,
   onClick,
@@ -470,7 +660,7 @@ function ScrollEdge({
   const left = side === "left";
   return (
     <div
-      className={`pointer-events-none absolute inset-y-0 z-10 flex w-14 items-center ${
+      className={`pointer-events-none absolute inset-y-0 z-[4] flex w-14 items-start py-4 ${
         left ? "left-0 justify-start pl-1" : "right-0 justify-end pr-1"
       }`}
       style={{
@@ -479,8 +669,8 @@ function ScrollEdge({
     >
       <button
         type="button"
-        aria-label={`Scroll topic map ${side}`}
-        className="pointer-events-auto rounded-full border border-hestia-border bg-hestia-bg/90 p-1 text-hestia-text-muted shadow-sm transition hover:bg-hestia-surface hover:text-hestia-text"
+        aria-label={`Scroll topic diagram ${side}`}
+        className="pointer-events-auto sticky top-1/2 rounded-full border border-hestia-border bg-hestia-bg/90 p-1 text-hestia-text-muted shadow-sm transition hover:bg-hestia-surface hover:text-hestia-text"
         onClick={onClick}
       >
         <svg
@@ -632,39 +822,43 @@ function Connector({
   );
 }
 
-/** The edit actions shared by every box; approving stays a list-view concern. */
+/** The rename and delete actions shared by every box, the same as a table row's. */
 type GoalActions = {
-  onEdit: (goal: LearningGoal) => void;
+  editingId: number | null;
+  onStartEdit: (goal: LearningGoal) => void;
+  onEndEdit: (goal: LearningGoal, text: string | null) => void;
   onDelete: (goal: LearningGoal) => void;
 };
 
-/** A readable capability/skill/knowledge rectangle. Branch boxes carry a child count and an
- * unfold chevron; every box carries its actions top-right, which fade in on hover. Clicking the
- * body folds or unfolds a capability or opens the goal detail — the classification (Bloom / SOLO
- * / kind / source) lives in that detail modal. It is a div (not a button) so the action buttons
- * can nest. */
+/** A readable capability/skill/knowledge rectangle. Beneath its wording it shows the attributes the
+ * table currently shows as columns, then what it holds by tier ("3 sub-skills"), with an unfold
+ * chevron on branch boxes. Rename and delete float top-right on hover, as on a table row.
+ * Clicking the body folds or unfolds a box that holds goals. A dimmed sibling keeps only its
+ * wording and count, so the focused branch stays readable. It is a div (not a button) so
+ * the action and attribute buttons can nest. */
 function Box({
   node,
   active,
   expandable,
   onClick,
-  onDetails,
+  highlighted = false,
   actions,
   dimmed = false,
   compact = false,
   leaf = false,
   clampText = false,
-  title,
   sequenceLabel,
-  levelFlag,
+  fullWording,
+  attributes,
 }: {
   node: CompetencyNode;
   /** The box is the focused, unfolded node. */
   active: boolean;
   expandable: boolean;
-  onClick: () => void;
-  /** Opens the goal detail from an action, for boxes whose click unfolds instead. */
-  onDetails?: () => void;
+  /** Folds or unfolds the box; absent on a box with nothing to unfold. */
+  onClick?: () => void;
+  /** Outlined for a moment: the child a mini box was clicked for. */
+  highlighted?: boolean;
   actions: GoalActions;
   /** An unfocused sibling in the visible row. */
   dimmed?: boolean;
@@ -674,30 +868,37 @@ function Box({
   leaf?: boolean;
   /** Keeps sibling context compact without truncating the focused node. */
   clampText?: boolean;
-  /** Overrides the default branch/detail tooltip. */
-  title?: string;
   /** Hierarchical lecture-order label, e.g. "2.3". */
   sequenceLabel?: string;
-  /** Why this sub-skill's exercise level looks abnormal against its topic's lectures, if it does. */
-  levelFlag?: string;
+  fullWording: boolean;
+  /** The goal's attributes in the table's visible columns. */
+  attributes: ReactNode;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const isGap = node.role === "gap";
-  const childCount = node.children.length;
+  const editing = actions.editingId === node.goal.id;
+  const childCounts = new Map<CompetencyRole, number>();
+  for (const child of node.children)
+    childCounts.set(child.role, (childCounts.get(child.role) ?? 0) + 1);
   return (
     <div
-      role="button"
-      tabIndex={0}
+      {...(onClick
+        ? {
+            role: "button",
+            tabIndex: 0,
+            "aria-expanded": active,
+            onClick,
+            onKeyDown: (e: ReactKeyboardEvent) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
       data-goal-id={node.goal.id}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      title={title ?? (!active && expandable ? "Unfold" : "View goal details")}
-      className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border-[1.5px] p-3 text-left transition ${
+      className={`group relative flex ${onClick ? "cursor-pointer" : ""} flex-col gap-1.5 rounded-lg border-[1.5px] p-3 text-left transition ${
         leaf ? "w-60 shrink-0" : compact ? "w-40 shrink-0" : "w-56 shrink-0"
       } ${
         isGap
@@ -705,7 +906,9 @@ function Box({
           : node.role === "knowledge"
             ? "border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_2.5%,var(--hestia-surface))] hover:border-hestia-primary hover:bg-hestia-bg"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"
-      } ${dimmed ? "opacity-60 hover:opacity-100" : ""}`}
+      } ${dimmed ? "opacity-60 hover:opacity-100" : ""} ${
+        highlighted ? "ring-2 ring-hestia-primary ring-offset-2 ring-offset-hestia-bg" : ""
+      }`}
       style={{
         // The whole outline carries the role colour, so the tier reads without a shadow or rail.
         ...(isGap ? {} : { borderColor: meta.color }),
@@ -717,94 +920,59 @@ function Box({
           : {}),
       }}
     >
-      {/* Header: the role badge on the left, the actions pinned right. */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <RoleBadge role={node.role} />
-          {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && (
-            <AiInferredBadge compact />
-          )}
-          {node.goal.creationProvenance === "USER_CREATED" && <ManualBadge />}
-        </div>
-        <div className="flex items-center gap-0.5">
-          {onDetails && (
-            <BoxAction
-              label="Open details"
-              tip="Open this goal's details: its sources, levels and wording."
-              tipBelow
-              onClick={onDetails}
-              className="text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-            >
-              <svg
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-4 w-4"
-              >
-                <circle cx="10" cy="10" r="7" />
-                <path d="M10 9v4.5M10 6.5v.01" />
-              </svg>
-            </BoxAction>
-          )}
-          <BoxAction
-            label="Edit goal"
-            tip="Edit this goal's wording and its Bloom / SOLO level."
-            tipBelow
-            onClick={() => actions.onEdit(node.goal)}
-            className="text-hestia-text-muted hover:bg-hestia-primary-muted hover:text-hestia-text"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
-            </svg>
-          </BoxAction>
-          <BoxAction
-            label="Delete goal"
-            tip="Delete this goal permanently."
-            tipBelow
-            onClick={() => actions.onDelete(node.goal)}
-            className="text-hestia-text-muted hover:bg-hestia-danger hover:text-hestia-on-danger"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
-            </svg>
-          </BoxAction>
-        </div>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <RoleBadge role={node.role} />
+        {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && <AiInferredBadge compact />}
+        {node.goal.creationProvenance === "USER_CREATED" && <ManualBadge />}
       </div>
-      <p
-        className={`text-sm font-medium leading-snug ${
-          isGap ? "text-hestia-danger" : "text-hestia-text"
-        } ${clampText ? "line-clamp-3" : ""}`}
-      >
-        {sequenceLabel != null && <span className="tabular-nums">{sequenceLabel} </span>}
-        {node.goal.shortLabel ?? node.goal.text}
-      </p>
-      <div className="mt-auto flex items-center gap-1 pt-1">
-        <CoverageBadge goal={node.goal} flag={levelFlag} />
-        {expandable && (
-          <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
-            <span className="tabular-nums">
-              {childCount} item
-              {childCount === 1 ? "" : "s"}
-            </span>
+      {editing ? (
+        <div className="flex min-w-0 items-start gap-1 text-sm">
+          {sequenceLabel != null && (
+            <span className="pt-0.5 tabular-nums text-hestia-text-muted">{sequenceLabel}</span>
+          )}
+          <RenameField
+            text={node.goal.text ?? ""}
+            onDone={(text) => actions.onEndEdit(node.goal, text)}
+          />
+        </div>
+      ) : (
+        <p
+          className={`text-sm font-medium leading-snug ${
+            isGap ? "text-hestia-danger" : "text-hestia-text"
+          } ${clampText ? "line-clamp-3" : ""}`}
+        >
+          {sequenceLabel != null && <span className="tabular-nums">{sequenceLabel} </span>}
+          {displayedGoalLabel(node.goal, fullWording)}
+        </p>
+      )}
+      {!editing && (
+        // Revealed on hover (or keyboard focus) like a table row's, floating over the box's corner.
+        <span className="absolute right-1.5 top-1.5 z-[1] flex items-center gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-0.5 opacity-0 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100">
+          <RowAction
+            label="Rename goal"
+            onClick={() => actions.onStartEdit(node.goal)}
+            className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+          >
+            <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+          </RowAction>
+          <RowAction
+            label="Delete goal"
+            onClick={() => actions.onDelete(node.goal)}
+            className="hover:bg-hestia-danger hover:text-hestia-on-danger"
+          >
+            <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
+          </RowAction>
+        </span>
+      )}
+      {!dimmed && attributes}
+      {childCounts.size > 0 && (
+        <div className="mt-auto flex items-center gap-1 pt-1 text-xs text-hestia-text-muted">
+          <span className="tabular-nums">
+            {[...childCounts]
+              .map(([role, count]) => `${count} ${tierNoun(role, count)}`)
+              .join(" · ")}
+          </span>
+          {expandable && (
             <svg
               viewBox="0 0 20 20"
               fill="none"
@@ -816,17 +984,17 @@ function Box({
             >
               <path d="M7 5l6 5-6 5" />
             </svg>
-          </span>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Mini leaf indicator under an unfocused capability: stub lines branching into a few dots,
+ * Mini leaf indicator under a dimmed context box: stub lines branching into a few dots,
  * hinting that another tier unfolds beneath it. The count is suggestive (capped at three); the
- * exact number already sits in the box's "N items" line.
+ * exact numbers already sit in the box's count line.
  */
 function LeafStub({ count }: { count: number }) {
   const xs = count >= 3 ? [12, 30, 48] : count === 2 ? [21, 39] : [30];
@@ -863,55 +1031,5 @@ function LeafStub({ count }: { count: number }) {
         ))}
       </div>
     </div>
-  );
-}
-
-/**
- * Icon action inside a box, mirroring the list view's CardAction: stops propagation so it doesn't
- * also unfold/open the box, fades in on box hover (unless `alwaysVisible`), and reveals a tooltip
- * describing what it does on its own hover.
- */
-function BoxAction({
-  label,
-  tip,
-  onClick,
-  className,
-  alwaysVisible,
-  tipBelow,
-  children,
-}: {
-  label: string;
-  tip: string;
-  onClick: () => void;
-  className: string;
-  alwaysVisible?: boolean;
-  tipBelow?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <span className="group/tip relative inline-flex">
-      <button
-        type="button"
-        title={label}
-        aria-label={label}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-        className={`flex h-7 w-7 items-center justify-center rounded-md transition focus-visible:opacity-100 ${
-          alwaysVisible ? "" : "opacity-0 group-hover:opacity-100"
-        } ${className}`}
-      >
-        {children}
-      </button>
-      <span
-        role="tooltip"
-        className={`pointer-events-none absolute right-0 z-30 hidden w-44 rounded-lg border border-hestia-border border-l-[3px] border-l-hestia-primary bg-hestia-surface p-2 text-left text-xs font-normal normal-case leading-snug text-hestia-text shadow-lg group-hover/tip:block ${
-          tipBelow ? "top-full mt-1.5" : "bottom-full mb-1.5"
-        }`}
-      >
-        {tip}
-      </span>
-    </span>
   );
 }
