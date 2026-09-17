@@ -694,7 +694,7 @@ public class TopicSearchService {
                 .filter(node -> Objects.equals(label, node.getLabel()))
                 .findFirst()
                 .orElseGet(() -> hierarchyNodeRepository.save(new HierarchyNode(course, moduleRoot(course),
-                        ExtractionRunner.levelFor(label), label, document))));
+                        ExtractionRunner.levelFor(document, label), label, document))));
     }
 
     private HierarchyNode moduleRoot(Course course) {

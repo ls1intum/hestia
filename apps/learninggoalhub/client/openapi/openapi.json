@@ -516,6 +516,19 @@
                 "format": "binary"
               }
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Optional kind of every file in this upload: LECTURE or EXERCISE. Omit to upload without a kind, which keeps the title-based hierarchy level.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "LECTURE",
+                "EXERCISE"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1375,6 +1388,16 @@
           "displayName": {
             "type": "string"
           },
+          "documentKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "LECTURE",
+              "EXERCISE"
+            ]
+          },
           "snippet": {
             "type": "string"
           },
@@ -1759,6 +1782,16 @@
           "contentType": {
             "type": "string"
           },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "LECTURE",
+              "EXERCISE"
+            ]
+          },
           "uploadedAt": {
             "type": "string",
             "format": "date-time"
@@ -1866,7 +1899,20 @@
         "type": "object",
         "properties": {
           "displayName": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "LECTURE",
+              "EXERCISE"
+            ]
           }
         }
       },

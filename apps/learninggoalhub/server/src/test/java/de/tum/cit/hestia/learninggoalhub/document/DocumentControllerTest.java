@@ -202,6 +202,69 @@ class DocumentControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void uploadsWithAndWithoutKind() throws Exception {
+        long courseId = createCourse("Algorithms");
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        MvcResult exercises = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "sheet-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .param("kind", "EXERCISE"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].kind").value("EXERCISE"))
+                .andReturn();
+        long exerciseId = objectMapper.readTree(exercises.getResponse().getContentAsString()).get(0).get("id").asLong();
+        assertThat(documentRepository.findById(exerciseId).orElseThrow().getKind()).isEqualTo(DocumentKind.EXERCISE);
+
+        MvcResult untyped = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].kind").doesNotExist())
+                .andReturn();
+        long untypedId = objectMapper.readTree(untyped.getResponse().getContentAsString()).get(0).get("id").asLong();
+        assertThat(documentRepository.findById(untypedId).orElseThrow().getKind()).isNull();
+
+        mockMvc.perform(get("/api/courses/{id}/documents", courseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.filename == 'sheet-01.pdf')].kind").value("EXERCISE"));
+    }
+
+    @Test
+    void rejectsAnUnknownKind() throws Exception {
+        long courseId = createCourse("Graphics");
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "x.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .param("kind", "HANDOUT"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchesKindWithoutTouchingTheDisplayName() throws Exception {
+        long courseId = createCourse("Machine Learning");
+        long documentId = uploadDocument(courseId, "lecture-01.pdf");
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Regression\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"kind\":\"EXERCISE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("EXERCISE"))
+                .andExpect(jsonPath("$.displayName").value("Regression"));
+        assertThat(documentRepository.findById(documentId).orElseThrow().getKind()).isEqualTo(DocumentKind.EXERCISE);
+
+        mockMvc.perform(patch("/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":null,\"kind\":\"LECTURE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("LECTURE"))
+                .andExpect(jsonPath("$.displayName").doesNotExist());
+    }
+
     private long createCourse(String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)

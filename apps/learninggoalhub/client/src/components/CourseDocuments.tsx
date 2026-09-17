@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { DocumentResponse } from "../api/client.ts";
 import Button from "./Button.tsx";
+import { DOCUMENT_KIND_LABEL } from "../lib/documents.ts";
+import type { DocumentKind } from "../lib/documents.ts";
 
 /**
- * Inline list of a course's uploaded documents with inline rename. Rendered under an expanded
- * course row on the overview. The filename is immutable provenance (goal sources and the CSV
+ * Inline list of a course's uploaded documents with inline rename and kind change. Rendered under
+ * an expanded course row on the overview. The filename is immutable provenance (goal sources and the CSV
  * export cite it); renaming only sets a display name, and clearing it falls back to the filename.
  *
  * Mount this only when the row is expanded — the documents query fires on mount, so keeping it
@@ -47,6 +49,21 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
     },
   });
 
+  const kindMutation = useMutation({
+    mutationFn: async (vars: { documentId: number; kind: DocumentKind }) => {
+      const { error } = await api.PATCH(
+        "/api/courses/{courseId}/documents/{documentId}",
+        {
+          params: { path: { courseId, documentId: vars.documentId } },
+          // displayName stays out of the body, so the server leaves it as it is.
+          body: { kind: vars.kind },
+        },
+      );
+      if (error) throw new Error("Could not change the document's kind.");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
+  });
+
   const documents = documentsQuery.data ?? [];
 
   return (
@@ -63,6 +80,9 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
         <p className="rounded-lg border border-dashed border-hestia-border p-4 text-center text-sm text-hestia-text-muted">
           No documents uploaded for this course.
         </p>
+      )}
+      {kindMutation.isError && (
+        <p className="mb-2 text-sm text-hestia-danger">{(kindMutation.error as Error).message}</p>
       )}
       {documents.length > 0 && (
         <ul className="flex flex-col gap-1.5">
@@ -88,6 +108,8 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
               onSave={(displayName) =>
                 renameMutation.mutate({ documentId: doc.id!, displayName })
               }
+              kindBusy={kindMutation.isPending}
+              onKindChange={(kind) => kindMutation.mutate({ documentId: doc.id!, kind })}
             />
           ))}
         </ul>
@@ -96,7 +118,9 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
   );
 }
 
-/** One document: display name (or filename), rename pencil, and an inline edit form. */
+/**
+ * One document: display name (or filename), its kind, rename pencil, and an inline edit form.
+ */
 function DocumentRow({
   document,
   editing,
@@ -105,6 +129,8 @@ function DocumentRow({
   onEdit,
   onCancel,
   onSave,
+  kindBusy,
+  onKindChange,
 }: {
   document: DocumentResponse;
   editing: boolean;
@@ -113,6 +139,8 @@ function DocumentRow({
   onEdit: () => void;
   onCancel: () => void;
   onSave: (displayName: string | null) => void;
+  kindBusy: boolean;
+  onKindChange: (kind: DocumentKind) => void;
 }) {
   const shown = document.displayName ?? document.filename ?? "";
   const [draft, setDraft] = useState(shown);
@@ -174,7 +202,7 @@ function DocumentRow({
           </div>
         </form>
       ) : (
-        <div className="grid grid-cols-[1fr_7rem_2rem] items-center gap-4">
+        <div className="grid grid-cols-[1fr_auto_7rem_2rem] items-center gap-4">
           <div className="flex min-w-0 items-baseline gap-2">
             <span className="truncate text-sm text-hestia-text" title={shown}>
               {shown}
@@ -189,6 +217,22 @@ function DocumentRow({
               </span>
             )}
           </div>
+          {/* A document uploaded before kinds existed has none; it can be given one but not cleared. */}
+          <select
+            value={document.kind ?? ""}
+            disabled={kindBusy}
+            onChange={(e) => onKindChange(e.target.value as DocumentKind)}
+            aria-label={`Kind of ${shown}`}
+            title="Takes effect on the next extraction or competency tree rebuild"
+            className="rounded-sm border border-hestia-border bg-hestia-surface px-1.5 py-0.5 text-xs text-hestia-text-muted transition hover:border-hestia-primary focus:border-hestia-primary focus:outline-none disabled:opacity-50"
+          >
+            {!document.kind && <option value="">No kind</option>}
+            {(Object.keys(DOCUMENT_KIND_LABEL) as DocumentKind[]).map((kind) => (
+              <option key={kind} value={kind}>
+                {DOCUMENT_KIND_LABEL[kind]}
+              </option>
+            ))}
+          </select>
           <span className="whitespace-nowrap text-right text-xs text-hestia-text-muted">
             {uploaded ? `Uploaded ${uploaded}` : null}
           </span>
