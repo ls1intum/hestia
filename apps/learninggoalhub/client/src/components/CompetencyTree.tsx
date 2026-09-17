@@ -46,8 +46,7 @@ import {
 
 /**
  * The competency tree as an Excel-like grid. Every goal attribute is a proper column with a funnel
- * filter (multi-select checkboxes) and hierarchy-preserving sorting (siblings are sorted within
- * their parent). The grid browses the tree in one of two layouts, switched in its toolbar:
+ * filter (multi-select checkboxes). Rows keep lecture order. The grid browses the tree in one of two layouts, switched in its toolbar:
  *
  * - `table`: the Topic → Capability → Skill hierarchy lives in the first column with
  *   expand/collapse carets, and branches unfold as rows in place.
@@ -77,14 +76,12 @@ type Row = {
 };
 
 type FilterKey = "role" | "kind" | "bloom" | "solo" | "document" | "session" | "coverage";
-type SortKey = "text" | "bloom" | "solo" | "coverage" | "source";
 type LevelScale = "bloom" | "solo";
 type GoalChanges = {
   text?: string;
   bloomLevel?: LearningGoal["bloomLevel"];
   soloLevel?: LearningGoal["soloLevel"];
 };
-type SortState = { key: SortKey; dir: 1 | -1 } | null;
 type Layout = "table" | "map";
 type CreationTier = 1 | 2 | 3 | 4;
 type CreationState = {
@@ -96,13 +93,21 @@ type CreationState = {
   generate?: boolean;
 };
 
-// Shared grid template so the sticky header row and every body row line their columns up: a
-// flexible learning-goal column, then fixed attribute columns. Kept in one place so header and
-// rows can never drift apart.
-// Source carries full session titles, so it takes a share of the free space rather than a fixed
-// width — otherwise the goal column swallows everything.
-const GRID_COLS =
-  "minmax(240px,1fr) 100px 136px 80px 104px 120px minmax(160px,0.55fr)";
+type AttributeKey = "role" | "coverage" | "kind" | "bloom" | "solo" | "source";
+type ColumnKey = "text" | AttributeKey;
+/**
+ * The reader's column layout: the order of the attribute columns, which of them are hidden and the
+ * widths they were dragged to. The learning-goal column always comes first and can't be hidden,
+ * because the tree's carets live in it. Kept in the browser, so the layout survives reloads.
+ */
+type ColumnPrefs = {
+  order: AttributeKey[];
+  hidden: AttributeKey[];
+  widths: Partial<Record<ColumnKey, number>>;
+};
+const COLUMN_PREFS_KEY = "learninggoalhub.competencyTable.columns";
+const MIN_COLUMN_WIDTH = 64;
+const MIN_GOAL_COLUMN_WIDTH = 160;
 
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
@@ -155,7 +160,6 @@ const LECTURE_ONLY = "LECTURE_ONLY";
 const EXERCISE_ONLY = "EXERCISE_ONLY";
 const BOTH = "BOTH";
 const COVERAGE_ORDER = [LECTURE_ONLY, EXERCISE_ONLY, BOTH];
-const COVERAGE_SORT_ORDER: Coverage[] = ["unknown", "lecture", "both", "exercise"];
 const COVERAGE_VALUE: Partial<Record<Coverage, string>> = {
   lecture: LECTURE_ONLY,
   exercise: EXERCISE_ONLY,
@@ -194,8 +198,9 @@ function valuesOf(row: Row, key: FilterKey): string[] {
       return [row.goal.soloLevel ?? ""];
     case "document":
       return [documentOf(row)];
+    // Only real sessions: an exercise's title is its file name, which the document filter already lists.
     case "session":
-      return [row.session];
+      return [row.goal.hierarchy?.session ?? ""];
     case "coverage": {
       const coverage = coverageOf(row.goal);
       return [(coverage && COVERAGE_VALUE[coverage]) ?? ""];
@@ -225,6 +230,8 @@ function LooseGroupRow({
   open,
   context,
   items,
+  gridCols,
+  columns,
   onToggle,
 }: {
   id: number;
@@ -233,6 +240,8 @@ function LooseGroupRow({
   open: boolean;
   context: boolean;
   items: Row[];
+  gridCols: string;
+  columns: AttributeKey[];
   onToggle: (id: number) => void;
 }) {
   return (
@@ -254,7 +263,7 @@ function LooseGroupRow({
       className={`grid cursor-pointer items-stretch border-b border-hestia-border/60 transition hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)] ${
         zebra ? "bg-hestia-text/3" : ""
       } ${context ? "opacity-45" : ""}`}
-      style={{ gridTemplateColumns: GRID_COLS }}
+      style={{ gridTemplateColumns: gridCols }}
     >
       <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
         <div className="flex items-start gap-1">
@@ -293,8 +302,8 @@ function LooseGroupRow({
           </span>
         </div>
       </div>
-      {COLUMNS.slice(1).map((column) => (
-        <div key={column.key} role="gridcell" />
+      {columns.map((key) => (
+        <div key={key} role="gridcell" />
       ))}
     </div>
   );
@@ -423,25 +432,73 @@ const FILTER_LABELS: Record<FilterKey, string> = {
 };
 
 const COLUMNS: {
-  key: string;
+  key: ColumnKey;
   label: string;
-  sortKey?: SortKey;
+  /** Starting width in pixels; the learning-goal column also takes all the free space until resized. */
+  width: number;
   /** The attributes the column's funnel filters on; Source offers both its document and session. */
   filterKeys?: FilterKey[];
 }[] = [
-  { key: "text", label: "Learning goal", sortKey: "text" },
-  { key: "role", label: "Tier", filterKeys: ["role"] },
-  { key: "coverage", label: "Coverage", sortKey: "coverage", filterKeys: ["coverage"] },
-  { key: "kind", label: "Kind", filterKeys: ["kind"] },
-  { key: "bloom", label: "Bloom", sortKey: "bloom", filterKeys: ["bloom"] },
-  { key: "solo", label: "SOLO", sortKey: "solo", filterKeys: ["solo"] },
+  { key: "text", label: "Learning goal", width: 240 },
+  { key: "role", label: "Tier", width: 100, filterKeys: ["role"] },
+  { key: "coverage", label: "Coverage", width: 136, filterKeys: ["coverage"] },
+  { key: "kind", label: "Kind", width: 80, filterKeys: ["kind"] },
+  { key: "bloom", label: "Bloom", width: 104, filterKeys: ["bloom"] },
+  { key: "solo", label: "SOLO", width: 120, filterKeys: ["solo"] },
   {
     key: "source",
     label: "Source",
-    sortKey: "source",
+    width: 180,
     filterKeys: ["document", "session"],
   },
 ];
+const COLUMN_BY_KEY = new Map(COLUMNS.map((column) => [column.key, column]));
+const ATTRIBUTE_KEYS = COLUMNS.slice(1).map((column) => column.key as AttributeKey);
+const DEFAULT_COLUMN_PREFS: ColumnPrefs = { order: ATTRIBUTE_KEYS, hidden: [], widths: {} };
+
+/** Reads the stored column layout, dropping keys that no longer exist and appending new columns. */
+function loadColumnPrefs(): ColumnPrefs {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COLUMN_PREFS_KEY) ?? "null") as Partial<ColumnPrefs> | null;
+    if (!stored) return DEFAULT_COLUMN_PREFS;
+    const known = (keys: unknown) =>
+      (Array.isArray(keys) ? keys : []).filter((key): key is AttributeKey =>
+        ATTRIBUTE_KEYS.includes(key),
+      );
+    const order = [...new Set(known(stored.order))];
+    const widths: ColumnPrefs["widths"] = {};
+    for (const column of COLUMNS) {
+      const width = stored.widths?.[column.key];
+      if (typeof width === "number" && Number.isFinite(width)) widths[column.key] = width;
+    }
+    return {
+      order: [...order, ...ATTRIBUTE_KEYS.filter((key) => !order.includes(key))],
+      hidden: known(stored.hidden),
+      widths,
+    };
+  } catch {
+    return DEFAULT_COLUMN_PREFS;
+  }
+}
+
+/**
+ * The grid template shared by the header and every row, so their columns always line up. The
+ * learning-goal column fills the free space until it is resized; after that an empty trailing track
+ * takes the free space instead, so a narrowed goal column really gets narrower.
+ */
+function gridTemplate(keys: ColumnKey[], widths: ColumnPrefs["widths"]): string {
+  const goalWidth = widths.text;
+  return [
+    ...keys.map((key) =>
+      key === "text"
+        ? goalWidth != null
+          ? `${goalWidth}px`
+          : `minmax(${COLUMN_BY_KEY.get("text")!.width}px,1fr)`
+        : `${widths[key] ?? COLUMN_BY_KEY.get(key)!.width}px`,
+    ),
+    ...(goalWidth != null ? ["minmax(0,1fr)"] : []),
+  ].join(" ");
+}
 
 export default function CompetencyTree({
   courseId,
@@ -597,9 +654,61 @@ export default function CompetencyTree({
     session: new Set(),
     coverage: new Set(),
   });
-  const [sort, setSort] = useState<SortState>(null);
   // Rows show short labels by default; the toolbar switch swaps in every goal's full wording.
   const [fullWording, setFullWording] = useState(false);
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(loadColumnPrefs);
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(columnPrefs));
+    } catch {
+      // Without storage the layout simply lasts until the page is left.
+    }
+  }, [columnPrefs]);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const visibleAttributes = columnPrefs.order.filter((key) => !columnPrefs.hidden.includes(key));
+  const visibleColumns = (["text", ...visibleAttributes] as ColumnKey[]).map(
+    (key) => COLUMN_BY_KEY.get(key)!,
+  );
+  const gridCols = gridTemplate(
+    visibleColumns.map((column) => column.key),
+    columnPrefs.widths,
+  );
+  const tableMinWidth = visibleColumns.reduce(
+    (sum, column) => sum + (columnPrefs.widths[column.key] ?? column.width),
+    0,
+  );
+  // The header being dragged to a new place, and the edge of the header it would land on.
+  const [draggedColumn, setDraggedColumn] = useState<AttributeKey | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    key: ColumnKey;
+    side: "before" | "after";
+  } | null>(null);
+  const endColumnDrag = () => {
+    setDraggedColumn(null);
+    setDropTarget(null);
+  };
+  const moveColumn = (key: AttributeKey, target: ColumnKey, side: "before" | "after") =>
+    setColumnPrefs((prev) => {
+      const order = prev.order.filter((other) => other !== key);
+      // Nothing moves in front of the learning-goal column.
+      const index = target === "text" ? 0 : order.indexOf(target) + (side === "after" ? 1 : 0);
+      order.splice(index, 0, key);
+      return { ...prev, order };
+    });
+  const resizeColumn = (key: ColumnKey, width: number | null) =>
+    setColumnPrefs((prev) => {
+      const widths = { ...prev.widths };
+      if (width == null) delete widths[key];
+      else widths[key] = width;
+      return { ...prev, widths };
+    });
+  const toggleColumnHidden = (key: AttributeKey) =>
+    setColumnPrefs((prev) => ({
+      ...prev,
+      hidden: prev.hidden.includes(key)
+        ? prev.hidden.filter((other) => other !== key)
+        : [...prev.hidden, key],
+    }));
   // The column (by key) whose filter popover is open.
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   // Clicking a row opens the same classification overlay the map view uses. The modal only reads
@@ -670,7 +779,8 @@ export default function CompetencyTree({
       openFilter != null ||
       openLevel != null ||
       editingId != null ||
-      creation != null
+      creation != null ||
+      columnsMenuOpen
     )
       return;
     const onKey = (e: KeyboardEvent) => {
@@ -681,7 +791,7 @@ export default function CompetencyTree({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sourceGoalId, detail, openFilter, openLevel, editingId, creation]);
+  }, [sourceGoalId, detail, openFilter, openLevel, editingId, creation, columnsMenuOpen]);
 
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
@@ -781,33 +891,6 @@ export default function CompetencyTree({
     };
   }, [rows]);
 
-  const sortSiblings = (siblings: Row[]): Row[] => {
-    if (!sort) return siblings;
-    const { key, dir } = sort;
-    const rank = (row: Row): string | number => {
-      switch (key) {
-        case "text":
-          return displayedGoalLabel(row.goal, fullWording);
-        // Unset levels rank below the lowest one.
-        case "bloom":
-          return BLOOM_ORDER.indexOf(row.goal.bloomLevel ?? "");
-        case "solo":
-          return SOLO_ORDER.indexOf(row.goal.soloLevel ?? "");
-        // Lecture, then both, then exercise; rows without a kind rank first.
-        case "coverage":
-          return COVERAGE_SORT_ORDER.indexOf(coverageOf(row.goal) ?? "unknown");
-        // By document, then by page within it, which is the order the material is read in.
-        case "source":
-          return `${documentOf(row)} ${String(row.goal.sources?.[0]?.page ?? 0).padStart(6, "0")}`;
-      }
-    };
-    return [...siblings].sort((a, b) => {
-      const va = rank(a);
-      const vb = rank(b);
-      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
-    });
-  };
-
   // ── Row animation (map language). A single FLIP pass after each render: surviving rows
   // (measured last render) glide to their new position, and rows a table branch just revealed
   // cascade in with a light overshoot. Collapsing is handled imperatively below so its rows can
@@ -822,7 +905,7 @@ export default function CompetencyTree({
   const prevTops = useRef<Map<number, number>>(new Map());
   const firstLayout = useRef(true);
   // Which newly-revealed rows may cascade in on the next layout: the descendants of a branch just
-  // opened, or "all" for expand-all. Empty for every other change (filter / search / sort / map),
+  // opened, or "all" for expand-all. Empty for every other change (filter / search / map),
   // so those rows simply appear while the survivors glide. Consumed after each layout pass.
   const enterIntent = useRef<Set<number> | "all">(new Set());
   // Set when a map was just opened, so the next layout scrolls its row up under the header.
@@ -1004,15 +1087,6 @@ export default function CompetencyTree({
     });
   };
 
-  const cycleSort = (key: SortKey) =>
-    setSort((prev) =>
-      prev?.key !== key
-        ? { key, dir: 1 }
-        : prev.dir === 1
-          ? { key, dir: -1 }
-          : null,
-    );
-
   if (!hasTree) {
     // Topics are named from lecture outcomes only, so a course whose sourced goals all come from
     // exercises extracts fine and still gets no tree; say so instead of the generic message.
@@ -1037,7 +1111,7 @@ export default function CompetencyTree({
     const children = (childrenOf.get(row.id) ?? []).filter(
       (child) => !filtering || matchIds!.has(child.id) || contextIds.has(child.id),
     );
-    return children.length > 0 ? sortSiblings(children) : undefined;
+    return children.length > 0 ? children : undefined;
   };
 
   // Depth-first walk producing the visible rows. Browsing follows the layout — the table unfolds
@@ -1084,6 +1158,8 @@ export default function CompetencyTree({
         open={isOpen(row.id)}
         childCount={childCountOf(row.id)}
         mapOpen={mapOpen}
+        gridCols={gridCols}
+        columns={visibleAttributes}
         stickyTop={headerHeight}
         onToggle={onToggle}
         onToggleMap={toggleMap}
@@ -1124,7 +1200,7 @@ export default function CompetencyTree({
           role="row"
           className="border-b border-hestia-border bg-hestia-bg shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]"
         >
-          <div role="gridcell" aria-colspan={COLUMNS.length}>
+          <div role="gridcell" aria-colspan={visibleColumns.length}>
             <TopicMap
               topic={topicNode}
               sequence={row.number}
@@ -1165,7 +1241,6 @@ export default function CompetencyTree({
         last,
       );
     };
-    const ordered = sortSiblings(siblings);
     const emitKnob = (last: boolean) => {
 // "Add topic" always closes the grid and "Add skill" closes each topic; the
       // deeper tiers have no resting knob and only appear once a row's "+" opened them. In the map
@@ -1226,8 +1301,8 @@ export default function CompetencyTree({
     if (parentRole === "topic" && parentGoalId != null) {
       // Skills first; the goals in no skill follow under one foldable group row, after the knob that
       // adds a skill, so they never read as part of the skill above them.
-      const skills = ordered.filter((row) => row.role === "capability");
-      const loose = ordered.filter((row) => row.role !== "capability" && isVisible(row));
+      const skills = siblings.filter((row) => row.role === "capability");
+      const loose = siblings.filter((row) => row.role !== "capability" && isVisible(row));
       skills.forEach((row, i) => emitRow(row, trailing && loose.length === 0 && i === skills.length - 1));
       emitKnob(trailing && loose.length === 0);
       if (loose.length > 0) {
@@ -1243,6 +1318,8 @@ export default function CompetencyTree({
             // Never a match itself, so a filtered list dims it like any other ancestor.
             context={filtering}
             items={loose}
+            gridCols={gridCols}
+            columns={visibleAttributes}
             onToggle={onToggle}
           />,
         );
@@ -1250,7 +1327,7 @@ export default function CompetencyTree({
       }
       return;
     }
-    ordered.forEach((row, i) => emitRow(row, trailing && i === ordered.length - 1));
+    siblings.forEach((row, i) => emitRow(row, trailing && i === siblings.length - 1));
     emitKnob(trailing);
   };
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
@@ -1310,17 +1387,6 @@ export default function CompetencyTree({
         </label>
         <WordingSwitch full={fullWording} onChange={setFullWording} />
         <span className="flex-1" />
-        {sort ? (
-          <button
-            type="button"
-            onClick={() => setSort(null)}
-            className="text-xs font-medium text-hestia-primary underline transition hover:text-hestia-text"
-          >
-            Restore lecture order
-          </button>
-        ) : (
-          <span className="text-xs font-medium text-hestia-text-muted">Lecture order</span>
-        )}
         {(layout === "table" || filtering) && (
           <Button
             onClick={() => {
@@ -1336,6 +1402,14 @@ export default function CompetencyTree({
             {allOpen ? "Collapse all" : "Expand all"}
           </Button>
         )}
+        <ColumnsMenu
+          prefs={columnPrefs}
+          open={columnsMenuOpen}
+          onToggleOpen={() => setColumnsMenuOpen((prev) => !prev)}
+          onClose={() => setColumnsMenuOpen(false)}
+          onToggleHidden={toggleColumnHidden}
+          onReset={() => setColumnPrefs(DEFAULT_COLUMN_PREFS)}
+        />
       </div>
 
       {activeChips.length > 0 && (
@@ -1377,20 +1451,46 @@ export default function CompetencyTree({
           <div
             role="table"
             aria-label="Competency tree"
-            className="min-w-[1000px]"
+            style={{ minWidth: tableMinWidth }}
           >
             <div
               ref={headerRef}
               role="row"
               className="sticky top-0 z-10 grid rounded-t-xl border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
-              style={{ gridTemplateColumns: GRID_COLS }}
+              style={{ gridTemplateColumns: gridCols }}
             >
-              {COLUMNS.map((column) => (
+              {visibleColumns.map((column) => (
                 <HeaderCell
                   key={column.key}
                   column={column}
-                  sort={sort}
-                  onSort={cycleSort}
+                  dragged={draggedColumn === column.key}
+                  dropSide={dropTarget?.key === column.key ? dropTarget.side : null}
+                  onDragStart={
+                    column.key === "text"
+                      ? undefined
+                      : () => setDraggedColumn(column.key as AttributeKey)
+                  }
+                  onDragOver={
+                    draggedColumn == null
+                      ? undefined
+                      : (side) => {
+                          const target = {
+                            key: column.key,
+                            // Nothing lands in front of the learning-goal column.
+                            side: column.key === "text" ? ("after" as const) : side,
+                          };
+                          if (dropTarget?.key !== target.key || dropTarget.side !== target.side)
+                            setDropTarget(target);
+                        }
+                  }
+                  onDrop={() => {
+                    if (draggedColumn != null && dropTarget != null)
+                      moveColumn(draggedColumn, dropTarget.key, dropTarget.side);
+                    endColumnDrag();
+                  }}
+                  onDragEnd={endColumnDrag}
+                  minWidth={column.key === "text" ? MIN_GOAL_COLUMN_WIDTH : MIN_COLUMN_WIDTH}
+                  onResize={(width) => resizeColumn(column.key, width)}
                   filterActive={(column.filterKeys ?? []).some(
                     (key) => filters[key].size > 0,
                   )}
@@ -1576,47 +1676,76 @@ function flattenForest(forest: CompetencyNode[]): Row[] {
 
 function HeaderCell({
   column,
-  sort,
-  onSort,
+  dragged,
+  dropSide,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  minWidth,
+  onResize,
   filterActive,
   popoverOpen,
   onTogglePopover,
   popover,
 }: {
   column: (typeof COLUMNS)[number];
-  sort: SortState;
-  onSort: (key: SortKey) => void;
+  /** This header is the one being dragged to a new place. */
+  dragged: boolean;
+  /** The edge a dragged header would land on, when it hovers this one. */
+  dropSide: "before" | "after" | null;
+  /** Absent for the learning-goal column, which stays first. */
+  onDragStart?: () => void;
+  /** Absent while no header is being dragged. */
+  onDragOver?: (side: "before" | "after") => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+  minWidth: number;
+  /** The new width in pixels, or `null` to return to the starting width. */
+  onResize: (width: number | null) => void;
   filterActive: boolean;
   popoverOpen: boolean;
   onTogglePopover: () => void;
   popover: ReactNode;
 }) {
-  const sorted =
-    sort != null && column.sortKey != null && sort.key === column.sortKey
-      ? sort.dir
-      : null;
-  const label = column.sortKey ? (
-    <button
-      type="button"
-      onClick={() => onSort(column.sortKey!)}
-      aria-label={`Sort by ${column.label}`}
-      className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted transition hover:bg-hestia-text/5 hover:text-hestia-text"
-    >
-      {column.label}
-      <span className="inline-block w-2.5 text-xs text-hestia-primary">
-        {sorted === 1 ? "▲" : sorted === -1 ? "▼" : ""}
-      </span>
-    </button>
-  ) : (
+  const label = (
     <span className="px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
       {column.label}
     </span>
   );
+  // Set while the edge is dragged, so the drag doesn't also pick the header up to move it.
+  const resizing = useRef(false);
   return (
     <div
       role="columnheader"
-      className="relative flex items-center gap-0.5 px-2.5 py-2"
+      draggable={onDragStart != null}
+      onDragStart={(e) => {
+        if (!onDragStart || resizing.current) {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", column.label);
+        onDragStart();
+      }}
+      onDragOver={(e) => {
+        if (!onDragOver) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = e.currentTarget.getBoundingClientRect();
+        onDragOver(e.clientX < rect.left + rect.width / 2 ? "before" : "after");
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
+      title={onDragStart ? "Drag to move this column" : undefined}
+      className={`relative flex min-w-0 items-center px-2.5 py-2 ${
+        onDragStart ? "cursor-grab active:cursor-grabbing" : ""
+      } ${dragged ? "opacity-40" : ""}`}
     >
+      <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
       {label}
       {column.filterKeys && (
         <button
@@ -1643,7 +1772,133 @@ function HeaderCell({
           </svg>
         </button>
       )}
+      </div>
       {popover}
+      {dropSide && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-y-1 z-20 w-0.5 rounded-full bg-hestia-primary ${
+            dropSide === "before" ? "-left-px" : "-right-px"
+          }`}
+        />
+      )}
+      {/* The column's right edge; a double click returns it to its starting width. */}
+      <span
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={`Resize ${column.label}`}
+        title="Drag to resize, double-click to reset"
+        onMouseDown={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const handle = e.currentTarget;
+          const startX = e.clientX;
+          const startWidth = handle.parentElement!.getBoundingClientRect().width;
+          resizing.current = true;
+          handle.setPointerCapture(e.pointerId);
+          const move = (ev: PointerEvent) =>
+            onResize(Math.max(minWidth, Math.round(startWidth + ev.clientX - startX)));
+          const end = () => {
+            resizing.current = false;
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", end);
+            handle.removeEventListener("pointercancel", end);
+          };
+          handle.addEventListener("pointermove", move);
+          handle.addEventListener("pointerup", end);
+          handle.addEventListener("pointercancel", end);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={() => onResize(null)}
+        className="absolute inset-y-0 -right-1.5 z-10 flex w-3 cursor-col-resize touch-none justify-center after:my-2 after:w-px after:bg-hestia-border after:transition hover:after:w-0.5 hover:after:bg-hestia-primary"
+      />
+    </div>
+  );
+}
+
+/**
+ * Toolbar menu choosing which attribute columns the grid shows. The learning-goal column is listed
+ * but locked, since the tree's carets live in it. Moving and resizing happen on the headers.
+ */
+function ColumnsMenu({
+  prefs,
+  open,
+  onToggleOpen,
+  onClose,
+  onToggleHidden,
+  onReset,
+}: {
+  prefs: ColumnPrefs;
+  open: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  onToggleHidden: (key: AttributeKey) => void;
+  onReset: () => void;
+}) {
+  const customised =
+    prefs.hidden.length > 0 ||
+    Object.keys(prefs.widths).length > 0 ||
+    prefs.order.some((key, i) => key !== ATTRIBUTE_KEYS[i]);
+  return (
+    <div className="relative">
+      <Button variant="neutral" aria-expanded={open} onClick={onToggleOpen}>
+        <TableIcon />
+        Columns
+        {prefs.hidden.length > 0 && (
+          <span className="text-xs text-hestia-text-muted">({prefs.hidden.length} hidden)</span>
+        )}
+      </Button>
+      {open && (
+        <AnchoredPopover
+          alignRight
+          onClose={onClose}
+          className="flex w-56 flex-col rounded-lg border border-hestia-border bg-hestia-surface p-1.5 shadow-lg"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {(["text", ...prefs.order] as ColumnKey[]).map((key) => {
+              const locked = key === "text";
+              return (
+                <label
+                  key={key}
+                  className={`flex items-center gap-2 rounded-md px-2 py-1 text-sm text-hestia-text ${
+                    locked ? "opacity-60" : "cursor-pointer hover:bg-hestia-text/5"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={locked || !prefs.hidden.includes(key as AttributeKey)}
+                    disabled={locked}
+                    onChange={() => onToggleHidden(key as AttributeKey)}
+                    className="h-3.5 w-3.5 shrink-0 accent-hestia-primary"
+                  />
+                  {COLUMN_BY_KEY.get(key)!.label}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-1 border-t border-hestia-border px-2 pt-1.5 text-xs leading-snug text-hestia-text-muted">
+            Drag a header to move its column, or its right edge to resize it.
+          </p>
+          <div className="flex justify-between gap-2 px-2 pb-0.5 pt-1.5">
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={!customised}
+              className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Reset columns
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover"
+            >
+              Done
+            </button>
+          </div>
+        </AnchoredPopover>
+      )}
     </div>
   );
 }
@@ -1745,6 +2000,8 @@ function GridRow({
   childCount,
   preview,
   mapOpen,
+  gridCols,
+  columns,
   stickyTop,
   onToggle,
   onToggleMap,
@@ -1777,6 +2034,9 @@ function GridRow({
   childCount: number;
   /** Map layout: this topic's map is open beneath the row, which pins the row under the header. */
   mapOpen: boolean;
+  gridCols: string;
+  /** The attribute columns shown after the learning goal, in their order. */
+  columns: AttributeKey[];
   stickyTop: number;
   onToggle: (id: number) => void;
   onToggleMap: (id: number) => void;
@@ -1837,6 +2097,125 @@ function GridRow({
   const sessionLabel = row.session && row.session !== documentLabel ? row.session : null;
   // A figure source rests on the AI's description of a slide image rather than on quoted text.
   const figure = source?.evidenceKind === "FIGURE";
+  // The attribute cells by column, so they render in the reader's column order.
+  const cells = {
+    role: (
+      <div key="role" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+        <Pill label={meta.label} color={meta.color} />
+      </div>
+    ),
+    coverage: (
+      <div key="coverage" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+        {coverage ? (
+          <TopicCoverage coverage={coverage} />
+        ) : (
+          // Only a goal with a source of its own has a coverage; the badge renders nothing otherwise.
+          <CoverageBadge goal={row.goal} flag={levelFlag} size="cell" />
+        )}
+      </div>
+    ),
+    kind: (
+      <div key="kind" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+        {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
+          <Pill label="AI-inferred" color="var(--hestia-danger)" />
+        ) : row.goal.creationProvenance === "USER_CREATED" ? (
+          <Pill label="Manual" color="var(--hestia-warning)" />
+        ) : row.goal.kind && !isGrouping(row.role) ? (
+          <Pill
+            label={titleCase(row.goal.kind)}
+            color="var(--hestia-text-muted)"
+          />
+        ) : null}
+      </div>
+    ),
+    ...Object.fromEntries(
+      (["bloom", "solo"] as const).map((scale) => [
+        scale,
+        <div key={scale} role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+          <LevelCell
+            scale={scale}
+            value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
+            // A topic is a noun phrase with no level of its own, so its cells are not editable.
+            interactive={interactive && row.role !== "topic"}
+            open={openLevel === scale}
+            onToggle={() => onToggleLevel(row, scale)}
+            onClose={onCloseLevel}
+            onSelect={(value) =>
+              onUpdate(
+                row.id,
+                scale === "bloom"
+                  ? { bloomLevel: value as LearningGoal["bloomLevel"] }
+                  : { soloLevel: value as LearningGoal["soloLevel"] },
+              )
+            }
+          />
+        </div>,
+      ]),
+    ),
+    source: (
+      <div
+        key="source"
+        role="gridcell"
+        className="min-w-0 overflow-hidden px-2.5 py-1.5 text-xs text-hestia-text-muted"
+      >
+        {!source ? null : (
+          <button
+            type="button"
+            disabled={context}
+            aria-pressed={sourceOpen}
+            title={`${documentLabel}${source.page ? ` · page ${source.page}` : ""}${
+              sessionLabel ? `\nSession: ${sessionLabel}` : ""
+            }${
+              figure && source.figureDescription
+                ? `\nFigure (AI description): ${source.figureDescription}`
+                : ""
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenSource(row, e.currentTarget);
+            }}
+            // The row itself opens the goal on click and on Enter/Space, so this control has to
+            // keep both to itself.
+            onKeyDown={(e) => e.stopPropagation()}
+            className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
+              sourceOpen
+                ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
+                : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
+            }`}
+          >
+            <span className="flex max-w-full min-w-0 items-center gap-1">
+              {figure && (
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  role="img"
+                  aria-label="Figure source"
+                  className="h-3.5 w-3.5 shrink-0"
+                >
+                  <rect x="3" y="4" width="14" height="12" rx="2" />
+                  <path d="M3 13l4-4 3 3 2-2 5 5" />
+                  <circle cx="13" cy="8" r="1.2" />
+                </svg>
+              )}
+              <span className="min-w-0 truncate">{documentLabel}</span>
+              {source.page != null && (
+                <span className="shrink-0 tabular-nums">· p. {source.page}</span>
+              )}
+            </span>
+            {sessionLabel && (
+              <span className="max-w-full truncate opacity-75">
+                Session: {sessionLabel}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+    ),
+  } as Record<AttributeKey, ReactElement>;
   return (
     <div
       role="row"
@@ -1873,12 +2252,12 @@ function GridRow({
             : `${activate ? "cursor-pointer " : ""}hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]`
       }`}
       style={{
-        gridTemplateColumns: GRID_COLS,
+        gridTemplateColumns: gridCols,
         // The sticky row paints over the map beneath it, so its background above is opaque.
         ...(mapOpen ? { position: "sticky", top: stickyTop, zIndex: 5 } : {}),
       }}
     >
-      <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
+      <div role="gridcell" className="relative min-w-0 px-2.5 py-1.5">
         <div className="flex items-start gap-1">
           <span className="shrink-0" style={{ width: depth * 20 }} />
           <span
@@ -1945,7 +2324,7 @@ function GridRow({
             </span>
           ) : (
           <span
-            className={`min-w-0 pt-px text-sm leading-relaxed text-hestia-text ${
+            className={`min-w-0 break-words pt-px text-sm leading-relaxed text-hestia-text ${
               row.role === "topic" ? "font-semibold" : ""
             }`}
           >
@@ -1994,8 +2373,9 @@ function GridRow({
           </span>
           )}
           {interactive && !editing && (
-            // Revealed on hover (or keyboard focus), so resting rows read as plain text.
-            <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+            // Revealed on hover (or keyboard focus), so resting rows read as plain text. They float over
+            // the end of the wording instead of reserving its width, which a narrow column needs.
+            <span className="absolute right-1.5 top-1 z-[1] flex items-center gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-0.5 opacity-0 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100">
               {onAddChild && addChildLabel && (
                 <RowAction
                   label={addChildLabel}
@@ -2023,110 +2403,7 @@ function GridRow({
           )}
         </div>
       </div>
-      <div role="gridcell" className="px-2.5 py-1.5">
-        <Pill label={meta.label} color={meta.color} />
-      </div>
-      <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
-        {coverage ? (
-          <TopicCoverage coverage={coverage} />
-        ) : (
-          // Only a goal with a source of its own has a coverage; the badge renders nothing otherwise.
-          <CoverageBadge goal={row.goal} flag={levelFlag} size="cell" />
-        )}
-      </div>
-      <div role="gridcell" className="px-2.5 py-1.5">
-        {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
-          <Pill label="AI-inferred" color="var(--hestia-danger)" />
-        ) : row.goal.creationProvenance === "USER_CREATED" ? (
-          <Pill label="Manual" color="var(--hestia-warning)" />
-        ) : row.goal.kind && !isGrouping(row.role) ? (
-          <Pill
-            label={titleCase(row.goal.kind)}
-            color="var(--hestia-text-muted)"
-          />
-        ) : null}
-      </div>
-      {(["bloom", "solo"] as const).map((scale) => (
-        <div key={scale} role="gridcell" className="min-w-0 px-2.5 py-1.5">
-          <LevelCell
-            scale={scale}
-            value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
-            // A topic is a noun phrase with no level of its own, so its cells are not editable.
-            interactive={interactive && row.role !== "topic"}
-            open={openLevel === scale}
-            onToggle={() => onToggleLevel(row, scale)}
-            onClose={onCloseLevel}
-            onSelect={(value) =>
-              onUpdate(
-                row.id,
-                scale === "bloom"
-                  ? { bloomLevel: value as LearningGoal["bloomLevel"] }
-                  : { soloLevel: value as LearningGoal["soloLevel"] },
-              )
-            }
-          />
-        </div>
-      ))}
-      <div
-        role="gridcell"
-        className="min-w-0 px-2.5 py-1.5 text-xs text-hestia-text-muted"
-      >
-        {!source ? null : (
-          <button
-            type="button"
-            disabled={context}
-            aria-pressed={sourceOpen}
-            title={`${documentLabel}${source.page ? ` · page ${source.page}` : ""}${
-              sessionLabel ? `\nSession: ${sessionLabel}` : ""
-            }${
-              figure && source.figureDescription
-                ? `\nFigure (AI description): ${source.figureDescription}`
-                : ""
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenSource(row, e.currentTarget);
-            }}
-            // The row itself opens the goal on click and on Enter/Space, so this control has to
-            // keep both to itself.
-            onKeyDown={(e) => e.stopPropagation()}
-            className={`flex max-w-full min-w-0 flex-col items-start rounded-md border px-1.5 py-0.5 text-left transition ${
-              sourceOpen
-                ? "border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] bg-hestia-primary-muted text-hestia-primary"
-                : "border-hestia-border/60 bg-hestia-text/3 hover:border-[color-mix(in_srgb,var(--hestia-primary)_40%,transparent)] hover:text-hestia-text"
-            }`}
-          >
-            <span className="flex max-w-full min-w-0 items-center gap-1">
-              {figure && (
-                <svg
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  role="img"
-                  aria-label="Figure source"
-                  className="h-3.5 w-3.5 shrink-0"
-                >
-                  <rect x="3" y="4" width="14" height="12" rx="2" />
-                  <path d="M3 13l4-4 3 3 2-2 5 5" />
-                  <circle cx="13" cy="8" r="1.2" />
-                </svg>
-              )}
-              <span className="min-w-0 truncate">{documentLabel}</span>
-              {source.page != null && (
-                <span className="shrink-0 tabular-nums">· p. {source.page}</span>
-              )}
-            </span>
-            {sessionLabel && (
-              <span className="max-w-full truncate opacity-75">
-                Session: {sessionLabel}
-              </span>
-            )}
-          </button>
-        )}
-      </div>
+      {columns.map((key) => cells[key])}
     </div>
   );
 }
