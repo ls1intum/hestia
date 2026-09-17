@@ -111,6 +111,10 @@ const COLUMN_PREFS_KEY = "learninggoalhub.competencyTable.columns";
 const tierGuideSeenKey = (courseId: number) => `learninggoalhub.tierGuide.seen.${courseId}`;
 const MIN_COLUMN_WIDTH = 64;
 const MIN_GOAL_COLUMN_WIDTH = 160;
+// The grid's scroll area: it reaches the bottom of the window bar this gap, and never shrinks
+// below a few rows on a short window — there the page scrolls instead.
+const SCROLLER_BOTTOM_GAP = 32;
+const MIN_SCROLLER_HEIGHT = 320;
 
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
@@ -965,6 +969,34 @@ export default function CompetencyTree({
     revealOpened.current = false;
   });
 
+  // The grid ends at the bottom of the window, whatever stands above it — page title, toolbar, the
+  // tier strip, a row of filter chips. A fixed slice of the viewport had to leave room for the
+  // tallest of those, so it wasted rows whenever they were absent.
+  const [scrollerHeight, setScrollerHeight] = useState<number>();
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    // Measured against the document, not the viewport, so scrolling the page never resizes the grid.
+    const measure = () =>
+      setScrollerHeight(
+        Math.max(
+          MIN_SCROLLER_HEIGHT,
+          window.innerHeight -
+            (scroller.getBoundingClientRect().top + window.scrollY) -
+            SCROLLER_BOTTOM_GAP,
+        ),
+      );
+    measure();
+    // Anything appearing above the grid moves it down; the body's height change catches all of it.
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
   // The open topic row sticks right under the column header, so it needs the header's height.
   const [headerHeight, setHeaderHeight] = useState(0);
   const hasTree = forest.length > 0;
@@ -1528,7 +1560,11 @@ export default function CompetencyTree({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
       <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         {/* pb-4 keeps the trailing append knob inside the scroll area instead of under its edge. */}
-        <div ref={scrollerRef} className="relative max-h-[72vh] overflow-auto pb-4">
+        <div
+          ref={scrollerRef}
+          className="relative overflow-auto pb-4"
+          style={{ maxHeight: scrollerHeight }}
+        >
           <div
             role="table"
             aria-label="Competency tree"
