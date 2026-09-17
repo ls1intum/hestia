@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -780,15 +781,11 @@ export default function CompetencyTree({
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
 
-  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
-  const { matchIds, contextIds } = useMemo(() => {
-    if (!filtering)
-      return {
-        matchIds: null as Set<number> | null,
-        contextIds: new Set<number>(),
-      };
-    const needle = search.trim().toLowerCase();
-    const matchesRow = (row: Row): boolean => {
+  // Whether a row survives the search and every filter, optionally ignoring one key: the popover's
+  // per-value counts ask what one column's filter would leave once the others have had their say.
+  const matchesRow = useCallback(
+    (row: Row, ignore: FilterKey | null = null): boolean => {
+      const needle = search.trim().toLowerCase();
       if (
         needle &&
         ![row.goal.shortLabel, row.goal.text].some((value) =>
@@ -797,13 +794,24 @@ export default function CompetencyTree({
       )
         return false;
       for (const key of Object.keys(filters) as FilterKey[]) {
+        if (key === ignore) continue;
         const set = filters[key];
         if (set.size > 0 && !valuesOf(row, key).some((v) => set.has(v)))
           return false;
       }
       return true;
-    };
-    const matches = new Set(rows.filter(matchesRow).map((r) => r.id));
+    },
+    [search, filters],
+  );
+
+  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
+  const { matchIds, contextIds } = useMemo(() => {
+    if (!filtering)
+      return {
+        matchIds: null as Set<number> | null,
+        contextIds: new Set<number>(),
+      };
+    const matches = new Set(rows.filter((row) => matchesRow(row)).map((r) => r.id));
     const context = new Set<number>();
     for (const id of matches) {
       let parent = byId.get(id)?.parent ?? null;
@@ -816,7 +824,7 @@ export default function CompetencyTree({
       matchIds: matches,
       contextIds: context,
     };
-  }, [rows, byId, search, filters, filtering]);
+  }, [rows, byId, matchesRow, filtering]);
 
   // A filtered list opens every branch down to its matches, and rows collapsed in it stay collapsed
   // only while the same filter holds: changing the filter or search starts fully open again. This
@@ -874,6 +882,22 @@ export default function CompetencyTree({
       coverage: ordered(COVERAGE_ORDER, present("coverage")),
     };
   }, [rows]);
+
+  // How many rows each filter value would leave, counted against the search and the other columns'
+  // filters but not its own — so the numbers in one popover stay comparable as you tick values.
+  const filterCounts = useMemo(() => {
+    const counts = {} as Record<FilterKey, Map<string, number>>;
+    for (const key of Object.keys(filters) as FilterKey[]) {
+      const map = new Map<string, number>();
+      for (const row of rows) {
+        if (!matchesRow(row, key)) continue;
+        for (const value of valuesOf(row, key))
+          if (value !== "") map.set(value, (map.get(value) ?? 0) + 1);
+      }
+      counts[key] = map;
+    }
+    return counts;
+  }, [rows, filters, matchesRow]);
 
   // ── Row animation (map language). A single FLIP pass after each render: surviving rows
   // (measured last render) glide to their new position, and rows a table branch just revealed
@@ -1343,12 +1367,21 @@ export default function CompetencyTree({
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
 
-  const activeChips: { label: string; value: string; onRemove: () => void }[] =
-    [];
+  const matchCount = matchIds?.size ?? rows.length;
+  // Each chip carries what it alone leaves, counted the way the popover counts a value: against the
+  // search and every other chip, but not against its own column. The search chip's own count is the
+  // whole result, since nothing else narrows it further.
+  const activeChips: {
+    label: string;
+    value: string;
+    count: number;
+    onRemove: () => void;
+  }[] = [];
   if (search.trim())
     activeChips.push({
       label: "Search",
       value: `“${search.trim()}”`,
+      count: matchCount,
       onRemove: () => setSearch(""),
     });
   for (const column of COLUMNS) {
@@ -1357,6 +1390,7 @@ export default function CompetencyTree({
         activeChips.push({
           label: FILTER_LABELS[key],
           value: displayValue(key, value),
+          count: filterCounts[key].get(value) ?? 0,
           onRemove: () => toggleFilterValue(key, value),
         });
       }
@@ -1446,6 +1480,9 @@ export default function CompetencyTree({
               <span>
                 <b className="font-semibold">{chip.label}:</b> {chip.value}
               </span>
+              <span className="border-l border-[color-mix(in_srgb,var(--hestia-primary)_30%,transparent)] pl-1.5 tabular-nums text-hestia-text-muted">
+                {chip.count === 1 ? "1 goal" : `${chip.count} goals`}
+              </span>
               <button
                 type="button"
                 onClick={chip.onRemove}
@@ -1456,6 +1493,14 @@ export default function CompetencyTree({
               </button>
             </span>
           ))}
+          {/* What the chips leave together, which only says something a single chip's own count
+              does not once a second chip narrows it. */}
+          {activeChips.length > 1 && (
+            <span className="text-xs text-hestia-text-muted" aria-live="polite">
+              {matchCount === 1 ? "1 goal" : `${matchCount} goals`} of{" "}
+              {rows.length}
+            </span>
+          )}
           {activeChips.length > 1 && (
             <button
               type="button"
@@ -1533,6 +1578,7 @@ export default function CompetencyTree({
                           options: filterOptions[key],
                           selected: filters[key],
                           display: (v) => displayValue(key, v),
+                          count: (v) => filterCounts[key].get(v) ?? 0,
                           onToggle: (v) => toggleFilterValue(key, v),
                         }))}
                         onClear={() => {

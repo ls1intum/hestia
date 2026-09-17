@@ -9,6 +9,8 @@ export type FilterGroup = {
   options: string[];
   selected: Set<string>;
   display: (value: string) => string;
+  /** How many rows the value would leave, given the search and the other columns' filters. */
+  count: (value: string) => number;
   onToggle: (value: string) => void;
 };
 
@@ -83,7 +85,12 @@ export default function FilterPopover({
               onChange={() => active.onToggle(value)}
               className="h-3.5 w-3.5 shrink-0 accent-hestia-primary"
             />
-            {active.display(value)}
+            <span className="min-w-0 flex-1 truncate">{active.display(value)}</span>
+            {/* A value the other filters have already ruled out counts 0 and is left tickable,
+                so the reader can see why it is empty instead of hunting for a missing row. */}
+            <span className="shrink-0 tabular-nums text-xs text-hestia-text-muted">
+              {active.count(value)}
+            </span>
           </label>
         ))}
       </div>
