@@ -14,7 +14,7 @@ default, override with `VITE_API_TARGET`). Start the backend separately:
 
 ```bash
 docker compose -f ../compose.yaml up -d postgres
-SAIA_API_KEY=... ./gradlew :apps:learninggoalhub:server:bootRun   # from repo root
+LOGOS_API_KEY=... SAIA_API_KEY=... ./gradlew :apps:learninggoalhub:server:bootRun   # from repo root
 ```
 
 ## API client

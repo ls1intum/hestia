@@ -69,7 +69,7 @@ unprotected.
 Per environment, set:
 
 - **Secrets:** `VM_HOST`, `VM_USERNAME`, `VM_SSH_PRIVATE_KEY` (SSH access to that VM),
-  `POSTGRES_PASSWORD`, `SAIA_API_KEY`
+  `POSTGRES_PASSWORD`, `LOGOS_API_KEY`, `SAIA_API_KEY`
 - **Variables:** `APP_HOST` (the VM's FQDN, must match the TLS cert SAN), `APP_PATH_PREFIX`
   (`/learninggoalhub`), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`
 
@@ -99,7 +99,7 @@ already be in GHCR; `docker login ghcr.io` first if the package is private):
 
 ```bash
 cd <repo>/apps/learninggoalhub
-cp .env.example .env        # fill POSTGRES_PASSWORD, SAIA_API_KEY, APP_HOST; set IMAGE_TAG
+cp .env.example .env        # fill POSTGRES_PASSWORD, LOGOS_API_KEY, SAIA_API_KEY, APP_HOST; set IMAGE_TAG
 sudo docker compose -f compose.prod.yaml --env-file .env pull
 sudo docker compose -f compose.prod.yaml --env-file .env up -d
 ```
@@ -109,7 +109,7 @@ The app is then served at `https://<APP_HOST>/learninggoalhub/`.
 
 ### Notes
 
-- `SAIA_API_KEY` and `POSTGRES_PASSWORD` live only in GitHub environment secrets (and the
+- `LOGOS_API_KEY`, `SAIA_API_KEY` and `POSTGRES_PASSWORD` live only in GitHub environment secrets (and the
   generated `.env` on the VM) — never committed.
 - `APP_HOST` must match the TLS cert SAN; `APP_PATH_PREFIX` (default `/learninggoalhub`) is the
   URL path this app is routed under — both drive the Traefik labels in `compose.prod.yaml`.

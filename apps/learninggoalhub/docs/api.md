@@ -122,7 +122,7 @@ goals created for it, in the same `LearningGoalResponse` shape as the other endp
 ]
 ```
 
-An optional `model` query param overrides the SAIA chat model for the generation calls.
+An optional `model` query param overrides the chat model for the generation calls.
 Validation errors (no blocks, no task block, blank task description) return `400` in the
 standard error shape below.
 
