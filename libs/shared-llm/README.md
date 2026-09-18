@@ -1,6 +1,6 @@
 # shared-llm
 
-Spring Boot library that wires a [Spring AI](https://docs.spring.io/spring-ai/reference/) `ChatClient` against the GWDG SAIA endpoint with sensible defaults. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder` plus `EmbeddingModel`.
+Spring Boot library that wires a [Spring AI](https://docs.spring.io/spring-ai/reference/) `ChatClient` against the TUM AET [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway with sensible defaults, with GWDG SAIA one profile away. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder` plus `EmbeddingModel`.
 
 ## Usage
 
@@ -36,10 +36,10 @@ The library leaves the API key unset on purpose. Set it via `application.yml`:
 spring:
   ai:
     openai:
-      api-key: ${SAIA_API_KEY:}
+      api-key: ${LOGOS_API_KEY:}
 ```
 
-…and supply `SAIA_API_KEY` through your `.env`, the JVM process environment, or your deployment platform. Never commit the key.
+…and supply `LOGOS_API_KEY` through your `.env`, the JVM process environment, or your deployment platform. Never commit the key.
 
 ### 3. Inject and call
 
@@ -62,42 +62,43 @@ The library registers an `EnvironmentPostProcessor` that fills in low-priority d
 
 | Property                                       | Default                                  |
 |------------------------------------------------|------------------------------------------|
-| `spring.ai.openai.base-url`                    | `https://chat-ai.academiccloud.de`       |
-| `spring.ai.openai.chat.options.model`          | `openai-gpt-oss-120b`                    |
-| `spring.ai.openai.chat.options.temperature`    | `0.0`                                    |
-| `spring.ai.openai.embedding.options.model`     | `e5-mistral-7b-instruct`                 |
-| `spring.ai.openai.chat.options.vision-model`   | `qwen3.5-27b`                            |
-
-### Logos instead of SAIA
-
-The library also knows the [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway run by TUM
-AET, which speaks the same OpenAI API. Start the app with the `logos` profile and the defaults above
-change to Logos's endpoint and its model ids:
-
-| Property                                       | Default under `logos`                    |
-|------------------------------------------------|------------------------------------------|
 | `spring.ai.openai.base-url`                    | `https://logos.aet.cit.tum.de`           |
 | `spring.ai.openai.chat.options.model`          | `openai/gpt-oss-120b`                    |
+| `spring.ai.openai.chat.options.temperature`    | `0.0`                                    |
 | `spring.ai.openai.chat.options.vision-model`   | `Qwen/Qwen3.8-27B`                       |
+| `spring.ai.openai.embedding.base-url`          | `https://chat-ai.academiccloud.de`       |
+| `spring.ai.openai.embedding.options.model`     | `e5-mistral-7b-instruct`                 |
 
-```bash
-SPRING_PROFILES_ACTIVE=logos ./gradlew :apps:<app>:server:bootRun
-```
-
-Supply the key the same way as for SAIA — the library sets no key for either provider — and point
-`spring.ai.openai.api-key` at your own variable in the profile's `application-logos.yml`:
+Logos publishes its models under provider-prefixed ids and serves two of them: `openai/gpt-oss-120b`
+for text and the multimodal `Qwen/Qwen3.8-27B`. It has **no `/v1/embeddings` endpoint**, so
+embeddings go to SAIA. An app that embeds supplies a SAIA key for them:
 
 ```yaml
 spring:
   ai:
     openai:
       api-key: ${LOGOS_API_KEY:}
+      embedding:
+        api-key: ${SAIA_API_KEY:}
 ```
 
-Two caveats. Logos publishes the same weights under provider-prefixed ids, so an app that names
-models of its own (a vision model per pipeline phase, say) must map those ids in its own
-`application-logos.yml` as well. And Logos exposes **no `/v1/embeddings` endpoint**: the embedding
-default is left pointing at SAIA, so any code path that embeds needs SAIA regardless of the profile.
+### SAIA instead of Logos
+
+Start the app with the `saia` profile and the defaults change to GWDG SAIA, which serves chat and
+embeddings from one endpoint:
+
+| Property                                       | Default under `saia`                     |
+|------------------------------------------------|------------------------------------------|
+| `spring.ai.openai.base-url`                    | `https://chat-ai.academiccloud.de`       |
+| `spring.ai.openai.chat.options.model`          | `openai-gpt-oss-120b`                    |
+| `spring.ai.openai.chat.options.vision-model`   | `qwen3.5-27b`                            |
+
+```bash
+SPRING_PROFILES_ACTIVE=saia ./gradlew :apps:<app>:server:bootRun
+```
+
+Point `spring.ai.openai.api-key` at your SAIA key in the profile's `application-saia.yml`. An app
+that names models of its own (a vision model per pipeline phase, say) maps those ids there as well.
 
 The profile is read from `spring.profiles.active` (or `spring.profiles.include`) as the process
 starts — an environment variable, a `-D` system property or the command line. A profile activated

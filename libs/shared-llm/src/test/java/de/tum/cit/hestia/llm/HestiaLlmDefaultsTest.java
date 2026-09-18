@@ -10,23 +10,8 @@ class HestiaLlmDefaultsTest {
     private final HestiaLlmDefaults processor = new HestiaLlmDefaults();
 
     @Test
-    void appliesSaiaDefaults() {
+    void appliesLogosDefaults() {
         MockEnvironment environment = new MockEnvironment();
-
-        processor.postProcessEnvironment(environment, null);
-
-        assertThat(environment.getProperty("spring.ai.openai.base-url"))
-                .isEqualTo("https://chat-ai.academiccloud.de");
-        assertThat(environment.getProperty("spring.ai.openai.chat.options.model"))
-                .isEqualTo("openai-gpt-oss-120b");
-        assertThat(environment.getProperty("spring.ai.openai.embedding.options.model"))
-                .isEqualTo("e5-mistral-7b-instruct");
-    }
-
-    @Test
-    void appliesLogosDefaultsWhenThatProfileIsRequested() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod,logos");
 
         processor.postProcessEnvironment(environment, null);
 
@@ -39,13 +24,39 @@ class HestiaLlmDefaultsTest {
     }
 
     @Test
-    void keepsSaiaForAnUnrelatedProfile() {
-        MockEnvironment environment = new MockEnvironment().withProperty("spring.profiles.active", "prod");
+    void keepsEmbeddingsOnSaiaUnderLogos() {
+        MockEnvironment environment = new MockEnvironment();
+
+        processor.postProcessEnvironment(environment, null);
+
+        assertThat(environment.getProperty("spring.ai.openai.embedding.base-url"))
+                .isEqualTo("https://chat-ai.academiccloud.de");
+        assertThat(environment.getProperty("spring.ai.openai.embedding.options.model"))
+                .isEqualTo("e5-mistral-7b-instruct");
+    }
+
+    @Test
+    void appliesSaiaDefaultsWhenThatProfileIsRequested() {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("spring.profiles.active", "prod,saia");
 
         processor.postProcessEnvironment(environment, null);
 
         assertThat(environment.getProperty("spring.ai.openai.base-url"))
                 .isEqualTo("https://chat-ai.academiccloud.de");
+        assertThat(environment.getProperty("spring.ai.openai.chat.options.model"))
+                .isEqualTo("openai-gpt-oss-120b");
+        assertThat(environment.getProperty("spring.ai.openai.embedding.base-url")).isNull();
+    }
+
+    @Test
+    void keepsLogosForAnUnrelatedProfile() {
+        MockEnvironment environment = new MockEnvironment().withProperty("spring.profiles.active", "prod");
+
+        processor.postProcessEnvironment(environment, null);
+
+        assertThat(environment.getProperty("spring.ai.openai.base-url"))
+                .isEqualTo("https://logos.aet.cit.tum.de");
     }
 
     @Test
@@ -60,9 +71,9 @@ class HestiaLlmDefaultsTest {
     }
 
     @Test
-    void userOverridesTakePrecedenceOverLogosDefaults() {
+    void userOverridesTakePrecedenceOverSaiaDefaults() {
         MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "logos")
+                .withProperty("spring.profiles.active", "saia")
                 .withProperty("spring.ai.openai.base-url", "http://localhost:11434");
 
         processor.postProcessEnvironment(environment, null);

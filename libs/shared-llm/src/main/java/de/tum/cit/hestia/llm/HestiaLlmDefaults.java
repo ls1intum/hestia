@@ -11,32 +11,36 @@ public class HestiaLlmDefaults implements EnvironmentPostProcessor {
 
     static final String PROPERTY_SOURCE_NAME = "hestiaLlmDefaults";
 
-    /** Activates the TUM AET Logos gateway instead of GWDG SAIA; both speak the OpenAI API. */
-    static final String LOGOS_PROFILE = "logos";
+    /** Switches from the default TUM AET Logos gateway back to GWDG SAIA; both speak the OpenAI API. */
+    static final String SAIA_PROFILE = "saia";
+
+    static final String SAIA_BASE_URL = "https://chat-ai.academiccloud.de";
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        Map<String, Object> defaults = logosRequested(environment) ? logos() : saia();
+        Map<String, Object> defaults = saiaRequested(environment) ? saia() : logos();
         environment.getPropertySources().addLast(new MapPropertySource(PROPERTY_SOURCE_NAME, defaults));
-    }
-
-    private static Map<String, Object> saia() {
-        Map<String, Object> defaults = common();
-        defaults.put("spring.ai.openai.base-url", "https://chat-ai.academiccloud.de");
-        defaults.put("spring.ai.openai.chat.options.model", "openai-gpt-oss-120b");
-        defaults.put("spring.ai.openai.chat.options.vision-model", "qwen3.5-27b");
-        return defaults;
     }
 
     /**
      * Logos publishes the same weights under provider-prefixed ids, and its catalogue holds no
-     * embedding model, so the embedding default stays as it is: an app that embeds needs SAIA.
+     * embedding model, so embeddings keep going to SAIA: an app that embeds sets
+     * {@code spring.ai.openai.embedding.api-key} to its SAIA key.
      */
     private static Map<String, Object> logos() {
         Map<String, Object> defaults = common();
         defaults.put("spring.ai.openai.base-url", "https://logos.aet.cit.tum.de");
         defaults.put("spring.ai.openai.chat.options.model", "openai/gpt-oss-120b");
         defaults.put("spring.ai.openai.chat.options.vision-model", "Qwen/Qwen3.8-27B");
+        defaults.put("spring.ai.openai.embedding.base-url", SAIA_BASE_URL);
+        return defaults;
+    }
+
+    private static Map<String, Object> saia() {
+        Map<String, Object> defaults = common();
+        defaults.put("spring.ai.openai.base-url", SAIA_BASE_URL);
+        defaults.put("spring.ai.openai.chat.options.model", "openai-gpt-oss-120b");
+        defaults.put("spring.ai.openai.chat.options.vision-model", "qwen3.5-27b");
         return defaults;
     }
 
@@ -52,12 +56,12 @@ public class HestiaLlmDefaults implements EnvironmentPostProcessor {
      * files are loaded, so it sees SPRING_PROFILES_ACTIVE, -Dspring.profiles.active and the command
      * line — the ways a provider is chosen for a run — but not a profile named inside a config file.
      */
-    private static boolean logosRequested(ConfigurableEnvironment environment) {
+    private static boolean saiaRequested(ConfigurableEnvironment environment) {
         for (String property : new String[] {"spring.profiles.active", "spring.profiles.include"}) {
             String value = environment.getProperty(property);
             if (value != null) {
                 for (String profile : value.split(",")) {
-                    if (LOGOS_PROFILE.equalsIgnoreCase(profile.trim())) {
+                    if (SAIA_PROFILE.equalsIgnoreCase(profile.trim())) {
                         return true;
                     }
                 }
