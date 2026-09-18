@@ -7,24 +7,7 @@ import CompetencyTree from "../components/CompetencyTree.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
-import { titleCase } from "../lib/goals.ts";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
-
-const BLOOM_ORDER = [
-  "REMEMBER",
-  "UNDERSTAND",
-  "APPLY",
-  "ANALYZE",
-  "EVALUATE",
-  "CREATE",
-];
-const SOLO_ORDER = [
-  "PRESTRUCTURAL",
-  "UNISTRUCTURAL",
-  "MULTISTRUCTURAL",
-  "RELATIONAL",
-  "EXTENDED_ABSTRACT",
-];
 
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
@@ -33,7 +16,6 @@ export default function CoursePage() {
   const queryClient = useQueryClient();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editGoal, setEditGoal] = useState<LearningGoal | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
   const [extractionModalOpen, setExtractionModalOpen] = useState(false);
 
@@ -124,7 +106,6 @@ export default function CoursePage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
-      setEditGoal(null);
     },
   });
 
@@ -205,7 +186,7 @@ export default function CoursePage() {
         )}
         {/* In-modal edits (text, Bloom/SOLO dots) save without a dialog of their own, so their
             failures surface here. */}
-        {updateGoalMutation.isError && !editGoal && (
+        {updateGoalMutation.isError && (
           <p className="text-sm text-hestia-danger">
             {(updateGoalMutation.error as Error).message}
           </p>
@@ -245,26 +226,6 @@ export default function CoursePage() {
           />
         )}
 
-        {editGoal && (
-          <EditGoalDialog
-            key={editGoal.id}
-            goal={editGoal}
-            busy={updateGoalMutation.isPending}
-            error={
-              updateGoalMutation.isError
-                ? (updateGoalMutation.error as Error).message
-                : undefined
-            }
-            onSave={(changes) =>
-              updateGoalMutation.mutate({ goalId: editGoal.id!, ...changes })
-            }
-            onCancel={() => {
-              updateGoalMutation.reset();
-              setEditGoal(null);
-            }}
-          />
-        )}
-
         {/* States */}
         {goalsQuery.isLoading && (
           <p className="text-sm text-hestia-text-muted">Loading…</p>
@@ -290,7 +251,6 @@ export default function CoursePage() {
             goals={goals}
             onUpdate={updateGoal}
             onDelete={setGoalToDelete}
-            onEdit={setEditGoal}
           />
         </div>
       )}
@@ -389,134 +349,6 @@ function CourseMenu({
     </div>
   );
 }
-
-/**
- * Modal for rewording a learning goal and correcting its Bloom/SOLO classification — rewording
- * often shifts the cognitive level (the verb anchors Bloom), and the instructor is the authority
- * over the LLM's initial classification. Levels can be set or changed, not cleared.
- */
-function EditGoalDialog({
-  goal,
-  busy,
-  error,
-  onSave,
-  onCancel,
-}: {
-  goal: LearningGoal;
-  busy?: boolean;
-  error?: string;
-  onSave: (changes: {
-    text?: string;
-    bloomLevel?: LearningGoal["bloomLevel"];
-    soloLevel?: LearningGoal["soloLevel"];
-  }) => void;
-  onCancel: () => void;
-}) {
-  const [text, setText] = useState(goal.text ?? "");
-  const [bloom, setBloom] = useState(goal.bloomLevel ?? "");
-  const [solo, setSolo] = useState(goal.soloLevel ?? "");
-  const trimmed = text.trim();
-  const textChanged = trimmed !== goal.text;
-  const bloomChanged = bloom !== (goal.bloomLevel ?? "");
-  const soloChanged = solo !== (goal.soloLevel ?? "");
-  const canSave =
-    trimmed !== "" && (textChanged || bloomChanged || soloChanged) && !busy;
-
-  const save = () =>
-    onSave({
-      text: textChanged ? trimmed : undefined,
-      bloomLevel: bloomChanged
-        ? (bloom as LearningGoal["bloomLevel"])
-        : undefined,
-      soloLevel: soloChanged ? (solo as LearningGoal["soloLevel"]) : undefined,
-    });
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  return (
-    <div
-      onClick={onCancel}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg"
-      >
-        <h3 className="text-lg text-hestia-text">Edit learning goal</h3>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={4}
-          autoFocus
-          className="mt-3 w-full resize-y rounded-md border-[1.5px] border-hestia-border bg-hestia-surface p-2.5 text-sm leading-relaxed text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-        />
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <LevelSelect
-            label="Bloom"
-            value={bloom}
-            onChange={setBloom}
-            options={BLOOM_ORDER}
-          />
-          <LevelSelect
-            label="SOLO"
-            value={solo}
-            onChange={setSolo}
-            options={SOLO_ORDER}
-          />
-        </div>
-        {error && <p className="mt-2 text-sm text-hestia-danger">{error}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="neutral" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={!canSave}>
-            {busy ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Labelled select for a taxonomy level in the edit dialog; shows "Not classified" while unset. */
-function LevelSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-hestia-text-muted">
-      {label}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border-[1.5px] border-hestia-border bg-hestia-surface px-2 py-1.5 text-sm font-normal normal-case tracking-normal text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-      >
-        {value === "" && <option value="">Not classified</option>}
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {titleCase(o)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 
 /**
  * Closes a popover when the user clicks outside the returned ref's element or presses Escape.
