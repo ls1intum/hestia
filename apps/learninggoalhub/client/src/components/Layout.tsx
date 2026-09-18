@@ -25,7 +25,8 @@ export default function Layout({ children }: { children: ReactNode }) {
           <ThemeToggle />
         </div>
       </header>
-      <main className="mx-auto px-6 py-8">{children}</main>
+      {/* Less air above the page than below it: the views that fill the window start higher. */}
+      <main className="mx-auto px-6 pb-8 pt-5">{children}</main>
     </div>
   );
 }

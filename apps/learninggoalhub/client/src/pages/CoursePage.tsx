@@ -145,8 +145,8 @@ export default function CoursePage() {
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (
-    <div className="flex flex-col gap-6">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="flex flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         {/* Header — course identity stays separate from the view switch below. */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <h1 className="text-2xl">{courseName}</h1>

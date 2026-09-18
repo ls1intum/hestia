@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -110,6 +111,10 @@ const COLUMN_PREFS_KEY = "learninggoalhub.competencyTable.columns";
 const tierGuideSeenKey = (courseId: number) => `learninggoalhub.tierGuide.seen.${courseId}`;
 const MIN_COLUMN_WIDTH = 64;
 const MIN_GOAL_COLUMN_WIDTH = 160;
+// The grid's scroll area: it reaches the bottom of the window bar this gap, and never shrinks
+// below a few rows on a short window — there the page scrolls instead.
+const SCROLLER_BOTTOM_GAP = 32;
+const MIN_SCROLLER_HEIGHT = 320;
 
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
@@ -355,14 +360,15 @@ function ChildPreview({
 }
 
 /**
- * Flags a topic none of whose sub-skills comes from an exercise, the case a reader has to spot.
- * Every other topic leaves the cell empty.
+ * Says which topics no exercise practises. This is a statement about the material, not a fault in
+ * it — a lecture-only topic is perfectly normal — so it reads as an informational note rather than
+ * a warning. Every other topic leaves the cell empty.
  */
 function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
   const known = coverage.total - coverage.unknown;
   if (known === 0 || coverage.practised > 0) return null;
   return (
-    <Chip tone="warning" title={`None of its ${known} sub-skills comes from an exercise`}>
+    <Chip tone="neutral" title={`None of its ${known} sub-skills comes from an exercise`}>
       <svg
         viewBox="0 0 20 20"
         fill="none"
@@ -372,10 +378,9 @@ function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
         strokeLinejoin="round"
         aria-hidden="true"
         className="h-3 w-3"
-        style={{ color: "color-mix(in srgb, var(--hestia-warning) 70%, var(--hestia-text))" }}
       >
-        <path d="M10 3.5l7 12.5H3z" />
-        <path d="M10 8.5v3.5M10 14.2v.01" />
+        <circle cx="10" cy="10" r="7.25" />
+        <path d="M10 9.25v4.25M10 6.6v.01" />
       </svg>
       No exercises
     </Chip>
@@ -780,15 +785,11 @@ export default function CompetencyTree({
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
 
-  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
-  const { matchIds, contextIds } = useMemo(() => {
-    if (!filtering)
-      return {
-        matchIds: null as Set<number> | null,
-        contextIds: new Set<number>(),
-      };
-    const needle = search.trim().toLowerCase();
-    const matchesRow = (row: Row): boolean => {
+  // Whether a row survives the search and every filter, optionally ignoring one key: the popover's
+  // per-value counts ask what one column's filter would leave once the others have had their say.
+  const matchesRow = useCallback(
+    (row: Row, ignore: FilterKey | null = null): boolean => {
+      const needle = search.trim().toLowerCase();
       if (
         needle &&
         ![row.goal.shortLabel, row.goal.text].some((value) =>
@@ -797,13 +798,24 @@ export default function CompetencyTree({
       )
         return false;
       for (const key of Object.keys(filters) as FilterKey[]) {
+        if (key === ignore) continue;
         const set = filters[key];
         if (set.size > 0 && !valuesOf(row, key).some((v) => set.has(v)))
           return false;
       }
       return true;
-    };
-    const matches = new Set(rows.filter(matchesRow).map((r) => r.id));
+    },
+    [search, filters],
+  );
+
+  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
+  const { matchIds, contextIds } = useMemo(() => {
+    if (!filtering)
+      return {
+        matchIds: null as Set<number> | null,
+        contextIds: new Set<number>(),
+      };
+    const matches = new Set(rows.filter((row) => matchesRow(row)).map((r) => r.id));
     const context = new Set<number>();
     for (const id of matches) {
       let parent = byId.get(id)?.parent ?? null;
@@ -816,7 +828,7 @@ export default function CompetencyTree({
       matchIds: matches,
       contextIds: context,
     };
-  }, [rows, byId, search, filters, filtering]);
+  }, [rows, byId, matchesRow, filtering]);
 
   // A filtered list opens every branch down to its matches, and rows collapsed in it stay collapsed
   // only while the same filter holds: changing the filter or search starts fully open again. This
@@ -874,6 +886,22 @@ export default function CompetencyTree({
       coverage: ordered(COVERAGE_ORDER, present("coverage")),
     };
   }, [rows]);
+
+  // How many rows each filter value would leave, counted against the search and the other columns'
+  // filters but not its own — so the numbers in one popover stay comparable as you tick values.
+  const filterCounts = useMemo(() => {
+    const counts = {} as Record<FilterKey, Map<string, number>>;
+    for (const key of Object.keys(filters) as FilterKey[]) {
+      const map = new Map<string, number>();
+      for (const row of rows) {
+        if (!matchesRow(row, key)) continue;
+        for (const value of valuesOf(row, key))
+          if (value !== "") map.set(value, (map.get(value) ?? 0) + 1);
+      }
+      counts[key] = map;
+    }
+    return counts;
+  }, [rows, filters, matchesRow]);
 
   // ── Row animation (map language). A single FLIP pass after each render: surviving rows
   // (measured last render) glide to their new position, and rows a table branch just revealed
@@ -941,6 +969,34 @@ export default function CompetencyTree({
     revealOpened.current = false;
   });
 
+  // The grid ends at the bottom of the window, whatever stands above it — page title, toolbar, the
+  // tier strip, a row of filter chips. A fixed slice of the viewport had to leave room for the
+  // tallest of those, so it wasted rows whenever they were absent.
+  const [scrollerHeight, setScrollerHeight] = useState<number>();
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    // Measured against the document, not the viewport, so scrolling the page never resizes the grid.
+    const measure = () =>
+      setScrollerHeight(
+        Math.max(
+          MIN_SCROLLER_HEIGHT,
+          window.innerHeight -
+            (scroller.getBoundingClientRect().top + window.scrollY) -
+            SCROLLER_BOTTOM_GAP,
+        ),
+      );
+    measure();
+    // Anything appearing above the grid moves it down; the body's height change catches all of it.
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
   // The open topic row sticks right under the column header, so it needs the header's height.
   const [headerHeight, setHeaderHeight] = useState(0);
   const hasTree = forest.length > 0;
@@ -957,6 +1013,14 @@ export default function CompetencyTree({
   const toggleMap = (id: number) => {
     if (openTopicId !== id) revealOpened.current = true;
     setOpenTopicId((prev) => (prev === id ? null : id));
+  };
+
+  // Switching to the diagram opens its first topic: a list of closed topic rows shows none of what
+  // the layout is for. A topic closed by hand stays closed — only an empty layout opens itself.
+  const changeLayout = (next: Layout) => {
+    if (next === "diagram" && openTopicId == null)
+      setOpenTopicId(forest[0]?.goal.id ?? null);
+    setLayout(next);
   };
 
   const descendantIds = (id: number): Set<number> => {
@@ -1130,11 +1194,15 @@ export default function CompetencyTree({
       layout === "table" &&
       !filtering &&
       childAppend != null;
+    // A topic and what hangs off it read as one block in both layouts, so every topic after the
+    // first gets a little air above it. A filtered list is one flat run of matches and keeps none.
+    const spacedTop = !filtering && row.role === "topic" && bodyRows.length > 0;
     bodyRows.push(
       <GridRow
         key={row.id}
         row={row}
         depth={rowDepth}
+        spacedTop={spacedTop}
         zebra={rowIndex++ % 2 === 1}
         context={isContext}
         filtering={filtering}
@@ -1343,12 +1411,21 @@ export default function CompetencyTree({
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
 
-  const activeChips: { label: string; value: string; onRemove: () => void }[] =
-    [];
+  const matchCount = matchIds?.size ?? rows.length;
+  // Each chip carries what it alone leaves, counted the way the popover counts a value: against the
+  // search and every other chip, but not against its own column. The search chip's own count is the
+  // whole result, since nothing else narrows it further.
+  const activeChips: {
+    label: string;
+    value: string;
+    count: number;
+    onRemove: () => void;
+  }[] = [];
   if (search.trim())
     activeChips.push({
       label: "Search",
       value: `“${search.trim()}”`,
+      count: matchCount,
       onRemove: () => setSearch(""),
     });
   for (const column of COLUMNS) {
@@ -1357,6 +1434,7 @@ export default function CompetencyTree({
         activeChips.push({
           label: FILTER_LABELS[key],
           value: displayValue(key, value),
+          count: filterCounts[key].get(value) ?? 0,
           onRemove: () => toggleFilterValue(key, value),
         });
       }
@@ -1369,7 +1447,7 @@ export default function CompetencyTree({
       className={`mx-auto flex w-full flex-col gap-3 ${openSource ? "" : "max-w-5xl"}`}
     >
       <div className="flex flex-wrap items-center gap-3">
-        <LayoutSwitch layout={layout} onChange={setLayout} />
+        <LayoutSwitch layout={layout} onChange={changeLayout} />
         <label className="relative flex min-w-48 flex-1 items-center">
           <svg
             viewBox="0 0 20 20"
@@ -1446,6 +1524,9 @@ export default function CompetencyTree({
               <span>
                 <b className="font-semibold">{chip.label}:</b> {chip.value}
               </span>
+              <span className="border-l border-[color-mix(in_srgb,var(--hestia-primary)_30%,transparent)] pl-1.5 tabular-nums text-hestia-text-muted">
+                {chip.count === 1 ? "1 goal" : `${chip.count} goals`}
+              </span>
               <button
                 type="button"
                 onClick={chip.onRemove}
@@ -1456,6 +1537,14 @@ export default function CompetencyTree({
               </button>
             </span>
           ))}
+          {/* What the chips leave together, which only says something a single chip's own count
+              does not once a second chip narrows it. */}
+          {activeChips.length > 1 && (
+            <span className="text-xs text-hestia-text-muted" aria-live="polite">
+              {matchCount === 1 ? "1 goal" : `${matchCount} goals`} of{" "}
+              {rows.length}
+            </span>
+          )}
           {activeChips.length > 1 && (
             <button
               type="button"
@@ -1471,7 +1560,11 @@ export default function CompetencyTree({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
       <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         {/* pb-4 keeps the trailing append knob inside the scroll area instead of under its edge. */}
-        <div ref={scrollerRef} className="relative max-h-[72vh] overflow-auto pb-4">
+        <div
+          ref={scrollerRef}
+          className="relative overflow-auto pb-4"
+          style={{ maxHeight: scrollerHeight }}
+        >
           <div
             role="table"
             aria-label="Competency tree"
@@ -1533,6 +1626,7 @@ export default function CompetencyTree({
                           options: filterOptions[key],
                           selected: filters[key],
                           display: (v) => displayValue(key, v),
+                          count: (v) => filterCounts[key].get(v) ?? 0,
                           onToggle: (v) => toggleFilterValue(key, v),
                         }))}
                         onClear={() => {
@@ -2213,6 +2307,7 @@ function GridRow({
   coverage,
   addChildLabel,
   onAddChild,
+  spacedTop,
 }: {
   row: Row;
   depth: number;
@@ -2258,6 +2353,8 @@ function GridRow({
   /** Names the "+" action; absent when this row takes no children here. */
   addChildLabel?: string;
   onAddChild?: () => void;
+  /** Sets this row off from the one above it, which both layouts use between topics. */
+  spacedTop?: boolean;
 }) {
   const interactive = !context;
   // A filtered list folds in either layout; browsing folds only in the table.
@@ -2362,6 +2459,8 @@ function GridRow({
         : {})}
       {...(opensMap ? { "aria-expanded": mapOpen } : {})}
       className={`group grid items-stretch border-b border-hestia-border/60 transition ${
+        spacedTop ? "mt-2 " : ""
+      }${
         mapOpen
           ? "bg-[color-mix(in_srgb,var(--hestia-primary)_10%,var(--hestia-surface))] shadow-[0_6px_14px_-10px_rgba(0,0,0,0.35)]"
           : zebra
