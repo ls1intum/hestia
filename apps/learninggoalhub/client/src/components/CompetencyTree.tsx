@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -115,8 +116,8 @@ const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
 // Each taxonomy's ladder is the insertion order of its description map, the same order the goal
 // modal's dot scales use.
 const LEVEL_SCALES = {
-  bloom: { label: "Bloom", desc: BLOOM_DESC, dotClass: "bg-hestia-accent" },
-  solo: { label: "SOLO", desc: SOLO_DESC, dotClass: "bg-hestia-primary" },
+  bloom: { label: "Bloom", desc: BLOOM_DESC },
+  solo: { label: "SOLO", desc: SOLO_DESC },
 } as const;
 const BLOOM_ORDER = Object.keys(BLOOM_DESC).map(toEnum);
 
@@ -360,14 +361,7 @@ function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
   const known = coverage.total - coverage.unknown;
   if (known === 0 || coverage.practised > 0) return null;
   return (
-    <span
-      title={`None of its ${known} sub-skills comes from an exercise`}
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold"
-      style={{
-        color: "var(--hestia-warning)",
-        backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
-      }}
-    >
+    <Chip tone="warning" title={`None of its ${known} sub-skills comes from an exercise`}>
       <svg
         viewBox="0 0 20 20"
         fill="none"
@@ -377,21 +371,29 @@ function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
         strokeLinejoin="round"
         aria-hidden="true"
         className="h-3 w-3"
+        style={{ color: "color-mix(in srgb, var(--hestia-warning) 70%, var(--hestia-text))" }}
       >
         <path d="M10 3.5l7 12.5H3z" />
         <path d="M10 8.5v3.5M10 14.2v.01" />
       </svg>
       No exercises
-    </span>
+    </Chip>
   );
 }
 
+/** The tier's colour, faded for knowledge; the rail beside a row and the preview dots share it. */
+function tierRailColor(role: CompetencyRole): string {
+  const color = COMPETENCY_ROLE_META[role].color;
+  return role === "knowledge" ? `color-mix(in srgb, ${color} 55%, transparent)` : color;
+}
+
+/** A preview dot in its tier's rail colour, so a collapsed branch previews in the colours it unfolds to. */
 function TierDot({ role }: { role: CompetencyRole }) {
   return (
     <span
       aria-hidden="true"
       className="h-1.5 w-1.5 shrink-0 rounded-full"
-      style={{ backgroundColor: COMPETENCY_ROLE_META[role].color }}
+      style={{ backgroundColor: tierRailColor(role) }}
     />
   );
 }
@@ -440,15 +442,15 @@ const COLUMNS: {
   filterKeys?: FilterKey[];
 }[] = [
   { key: "text", label: "Learning goal", width: 240 },
-  { key: "role", label: "Tier", width: 100, filterKeys: ["role"] },
-  { key: "coverage", label: "Coverage", width: 136, filterKeys: ["coverage"] },
-  { key: "kind", label: "Kind", width: 80, filterKeys: ["kind"] },
-  { key: "bloom", label: "Bloom", width: 104, filterKeys: ["bloom"] },
-  { key: "solo", label: "SOLO", width: 120, filterKeys: ["solo"] },
+  { key: "role", label: "Tier", width: 80, filterKeys: ["role"] },
+  { key: "coverage", label: "Coverage", width: 120, filterKeys: ["coverage"] },
+  { key: "kind", label: "Kind", width: 84, filterKeys: ["kind"] },
+  { key: "bloom", label: "Bloom", width: 132, filterKeys: ["bloom"] },
+  { key: "solo", label: "SOLO", width: 156, filterKeys: ["solo"] },
   {
     key: "source",
     label: "Source",
-    width: 180,
+    width: 168,
     filterKeys: ["document", "session"],
   },
 ];
@@ -664,7 +666,7 @@ export default function CompetencyTree({
       // Without storage the layout simply lasts until the page is left.
     }
   }, [columnPrefs]);
-  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
   const visibleAttributes = columnPrefs.order.filter((key) => !columnPrefs.hidden.includes(key));
   const visibleColumns = (["text", ...visibleAttributes] as ColumnKey[]).map(
     (key) => COLUMN_BY_KEY.get(key)!,
@@ -780,7 +782,7 @@ export default function CompetencyTree({
       openLevel != null ||
       editingId != null ||
       creation != null ||
-      columnsMenuOpen
+      displayMenuOpen
     )
       return;
     const onKey = (e: KeyboardEvent) => {
@@ -791,7 +793,7 @@ export default function CompetencyTree({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sourceGoalId, detail, openFilter, openLevel, editingId, creation, columnsMenuOpen]);
+  }, [sourceGoalId, detail, openFilter, openLevel, editingId, creation, displayMenuOpen]);
 
   const filtering =
     search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
@@ -1364,7 +1366,7 @@ export default function CompetencyTree({
     >
       <div className="flex flex-wrap items-center gap-3">
         <LayoutSwitch layout={layout} onChange={setLayout} />
-        <label className="relative flex min-w-48 max-w-xs flex-1 items-center">
+        <label className="relative flex min-w-48 flex-1 items-center">
           <svg
             viewBox="0 0 20 20"
             fill="none"
@@ -1382,13 +1384,13 @@ export default function CompetencyTree({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search goals…"
-            className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface py-1.5 pl-9 pr-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
+            className="h-9 w-full rounded-md border border-hestia-border bg-hestia-surface pl-9 pr-3 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
           />
         </label>
-        <WordingSwitch full={fullWording} onChange={setFullWording} />
-        <span className="flex-1" />
         {(layout === "table" || filtering) && (
           <Button
+            variant="neutral"
+            className="h-9"
             onClick={() => {
               if (!allOpen) enterIntent.current = "all";
               if (filtering) {
@@ -1402,11 +1404,13 @@ export default function CompetencyTree({
             {allOpen ? "Collapse all" : "Expand all"}
           </Button>
         )}
-        <ColumnsMenu
+        <DisplayMenu
+          fullWording={fullWording}
+          onChangeWording={setFullWording}
           prefs={columnPrefs}
-          open={columnsMenuOpen}
-          onToggleOpen={() => setColumnsMenuOpen((prev) => !prev)}
-          onClose={() => setColumnsMenuOpen(false)}
+          open={displayMenuOpen}
+          onToggleOpen={() => setDisplayMenuOpen((prev) => !prev)}
+          onClose={() => setDisplayMenuOpen(false)}
           onToggleHidden={toggleColumnHidden}
           onReset={() => setColumnPrefs(DEFAULT_COLUMN_PREFS)}
         />
@@ -1709,7 +1713,7 @@ function HeaderCell({
   popover: ReactNode;
 }) {
   const label = (
-    <span className="px-1 py-0.5 text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+    <span className="px-1 py-0.5 text-xs font-semibold text-hestia-text-muted">
       {column.label}
     </span>
   );
@@ -1741,7 +1745,7 @@ function HeaderCell({
       }}
       onDragEnd={onDragEnd}
       title={onDragStart ? "Drag to move this column" : undefined}
-      className={`relative flex min-w-0 items-center px-2.5 py-2 ${
+      className={`relative flex min-w-0 items-center py-2 ${column.key === "text" ? "px-2.5" : "px-2"} ${
         onDragStart ? "cursor-grab active:cursor-grabbing" : ""
       } ${dragged ? "opacity-40" : ""}`}
     >
@@ -1821,7 +1825,13 @@ function HeaderCell({
  * Toolbar menu choosing which attribute columns the grid shows. The learning-goal column is listed
  * but locked, since the tree's carets live in it. Moving and resizing happen on the headers.
  */
-function ColumnsMenu({
+/**
+ * The table's reading settings in one menu: short or full goal names, and which columns show. Both
+ * are set once and left alone, so they sit behind a button instead of taking toolbar space.
+ */
+function DisplayMenu({
+  fullWording,
+  onChangeWording,
   prefs,
   open,
   onToggleOpen,
@@ -1829,6 +1839,8 @@ function ColumnsMenu({
   onToggleHidden,
   onReset,
 }: {
+  fullWording: boolean;
+  onChangeWording: (full: boolean) => void;
   prefs: ColumnPrefs;
   open: boolean;
   onToggleOpen: () => void;
@@ -1842,60 +1854,87 @@ function ColumnsMenu({
     prefs.order.some((key, i) => key !== ATTRIBUTE_KEYS[i]);
   return (
     <div className="relative">
-      <Button variant="neutral" aria-expanded={open} onClick={onToggleOpen}>
-        <TableIcon />
-        Columns
+      <Button
+        variant="neutral"
+        className={`h-9 ${open ? "border-hestia-primary" : ""}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={onToggleOpen}
+      >
+        <SlidersIcon />
+        Display
         {prefs.hidden.length > 0 && (
           <span className="text-xs text-hestia-text-muted">({prefs.hidden.length} hidden)</span>
         )}
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-3.5 w-3.5 text-hestia-text-muted transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M5.5 8l4.5 4.5L14.5 8" />
+        </svg>
       </Button>
       {open && (
         <AnchoredPopover
           alignRight
           onClose={onClose}
-          className="flex w-56 flex-col rounded-lg border border-hestia-border bg-hestia-surface p-1.5 shadow-lg"
+          className="flex w-64 flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-3 shadow-lg"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {(["text", ...prefs.order] as ColumnKey[]).map((key) => {
-              const locked = key === "text";
-              return (
-                <label
-                  key={key}
-                  className={`flex items-center gap-2 rounded-md px-2 py-1 text-sm text-hestia-text ${
-                    locked ? "opacity-60" : "cursor-pointer hover:bg-hestia-text/5"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={locked || !prefs.hidden.includes(key as AttributeKey)}
-                    disabled={locked}
-                    onChange={() => onToggleHidden(key as AttributeKey)}
-                    className="h-3.5 w-3.5 shrink-0 accent-hestia-primary"
-                  />
-                  {COLUMN_BY_KEY.get(key)!.label}
-                </label>
-              );
-            })}
-          </div>
-          <p className="mt-1 border-t border-hestia-border px-2 pt-1.5 text-xs leading-snug text-hestia-text-muted">
-            Drag a header to move its column, or its right edge to resize it.
-          </p>
-          <div className="flex justify-between gap-2 px-2 pb-0.5 pt-1.5">
-            <button
-              type="button"
-              onClick={onReset}
-              disabled={!customised}
-              className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Reset columns
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover"
-            >
-              Done
-            </button>
+          <div role="dialog" aria-label="Display options" className="flex min-h-0 flex-1 flex-col gap-3">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-hestia-text-muted">Goal names</p>
+              <WordingSwitch full={fullWording} onChange={onChangeWording} />
+            </div>
+            <div className="flex min-h-0 flex-col">
+              <p className="mb-1 text-xs font-semibold text-hestia-text-muted">Columns</p>
+              <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto">
+                {(["text", ...prefs.order] as ColumnKey[]).map((key) => {
+                  const locked = key === "text";
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-hestia-text ${
+                        locked ? "opacity-60" : "cursor-pointer hover:bg-hestia-text/5"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={locked || !prefs.hidden.includes(key as AttributeKey)}
+                        disabled={locked}
+                        onChange={() => onToggleHidden(key as AttributeKey)}
+                        className="h-3.5 w-3.5 shrink-0 accent-hestia-primary"
+                      />
+                      {COLUMN_BY_KEY.get(key)!.label}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs leading-snug text-hestia-text-muted">
+                Drag a header to move its column, or its right edge to resize it.
+              </p>
+            </div>
+            <div className="flex justify-between gap-2 border-t border-hestia-border pt-2">
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={!customised}
+                className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reset columns
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-xs font-semibold text-hestia-primary transition hover:text-hestia-primary-hover"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </AnchoredPopover>
       )}
@@ -2066,7 +2105,6 @@ function GridRow({
   addChildLabel?: string;
   onAddChild?: () => void;
 }) {
-  const meta = COMPETENCY_ROLE_META[row.role];
   const interactive = !context;
   // A filtered list folds in either layout; browsing folds only in the table.
   const canToggle = childCount > 0 && (layout === "table" || filtering);
@@ -2086,10 +2124,7 @@ function GridRow({
   const clickable = activate != null && (interactive || (layout === "table" && canToggle));
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
   // branch tiers (topic / capability / skill) and gaps stand out.
-  const railColor =
-    row.role === "knowledge"
-      ? `color-mix(in srgb, ${meta.color} 55%, transparent)`
-      : meta.color;
+  const railColor = tierRailColor(row.role);
   const source = row.goal.sources?.[0];
   // The document names the source; the session is where in the course it sits. A session named
   // exactly like its file (one lecture per PDF) would only repeat the label, so it is left out.
@@ -2100,12 +2135,12 @@ function GridRow({
   // The attribute cells by column, so they render in the reader's column order.
   const cells = {
     role: (
-      <div key="role" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
-        <Pill label={meta.label} color={meta.color} />
+      <div key="role" role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
+        <TierChip role={row.role} />
       </div>
     ),
     coverage: (
-      <div key="coverage" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+      <div key="coverage" role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
         {coverage ? (
           <TopicCoverage coverage={coverage} />
         ) : (
@@ -2115,23 +2150,20 @@ function GridRow({
       </div>
     ),
     kind: (
-      <div key="kind" role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+      <div key="kind" role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
         {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
-          <Pill label="AI-inferred" color="var(--hestia-danger)" />
+          <Chip tone="neutral">AI-inferred</Chip>
         ) : row.goal.creationProvenance === "USER_CREATED" ? (
-          <Pill label="Manual" color="var(--hestia-warning)" />
+          <Chip tone="neutral">Manual</Chip>
         ) : row.goal.kind && !isGrouping(row.role) ? (
-          <Pill
-            label={titleCase(row.goal.kind)}
-            color="var(--hestia-text-muted)"
-          />
+          <Chip tone="neutral">{titleCase(row.goal.kind)}</Chip>
         ) : null}
       </div>
     ),
     ...Object.fromEntries(
       (["bloom", "solo"] as const).map((scale) => [
         scale,
-        <div key={scale} role="gridcell" className="min-w-0 overflow-hidden px-2.5 py-1.5">
+        <div key={scale} role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
           <LevelCell
             scale={scale}
             value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
@@ -2156,7 +2188,7 @@ function GridRow({
       <div
         key="source"
         role="gridcell"
-        className="min-w-0 overflow-hidden px-2.5 py-1.5 text-xs text-hestia-text-muted"
+        className="flex min-w-0 items-start overflow-hidden px-2 py-1.5 text-xs text-hestia-text-muted"
       >
         {!source ? null : (
           <button
@@ -2632,11 +2664,20 @@ function LevelCell({
 }) {
   const meta = LEVEL_SCALES[scale];
   const term = value ? titleCase(value) : null;
-  if (!interactive) {
-    return term ? <span className="text-xs text-hestia-text-muted">{term}</span> : null;
-  }
   const ladder = Object.keys(meta.desc);
   const index = term == null ? -1 : ladder.indexOf(term);
+  const reading = term && (
+    <span
+      className="flex min-w-0 items-center gap-1"
+      aria-label={`${meta.label} level ${index + 1} of ${ladder.length}: ${term}`}
+    >
+      <LevelPips index={index} steps={ladder.length} />
+      <span className="truncate" aria-hidden="true">{term}</span>
+    </span>
+  );
+  if (!interactive) {
+    return reading ? <span className="flex text-xs text-hestia-text">{reading}</span> : null;
+  }
   // Escape has to reach the popover's own listener, so only the row's activation keys are held back.
   const keepRowKeys = (e: ReactKeyboardEvent) => {
     if (e.key !== "Escape") e.stopPropagation();
@@ -2652,13 +2693,13 @@ function LevelCell({
           onToggle();
         }}
         onKeyDown={keepRowKeys}
-        className={`max-w-full truncate rounded-md px-1.5 py-0.5 text-xs transition ${
+        className={`-mx-1 flex max-w-[calc(100%+0.5rem)] min-w-0 items-center rounded-md px-1 py-0.5 text-xs transition ${
           term
             ? `text-hestia-text hover:bg-hestia-text/5 ${open ? "bg-hestia-text/5" : ""}`
             : "border border-dashed border-hestia-border text-hestia-text-muted hover:border-hestia-primary hover:text-hestia-primary"
         }`}
       >
-        {term ?? "Set"}
+        {reading || "Set"}
       </button>
       {open && (
         <AnchoredPopover
@@ -2684,13 +2725,8 @@ function LevelCell({
                   i === index ? "bg-hestia-primary-muted" : ""
                 }`}
               >
-                <span className="mt-2 flex shrink-0 gap-0.5" aria-hidden="true">
-                  {ladder.map((dot, j) => (
-                    <span
-                      key={dot}
-                      className={`h-1.5 w-1.5 rounded-full ${j <= i ? meta.dotClass : "bg-hestia-text/15"}`}
-                    />
-                  ))}
+                <span className="mt-2">
+                  <LevelPips index={i} steps={ladder.length} />
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-medium text-hestia-text">{step}</span>
@@ -2707,25 +2743,102 @@ function LevelCell({
   );
 }
 
-/** Small tinted attribute pill, coloured via a HESTIA CSS variable so it tracks the theme. */
-function Pill({ label, color }: { label: string; color: string }) {
+/**
+ * The table's chip styles. Colour carries meaning only twice: the tier chips take the hue of their
+ * rail (topic in primary, skill and sub-skill in accent), and a problem takes warning. Everything
+ * else is a quiet neutral outline. The tints mix with the surface rather than going transparent so
+ * the label keeps its contrast on a zebra row too.
+ */
+const CHIP_TONES = {
+  topic: {
+    color: "var(--hestia-primary)",
+    backgroundColor: "color-mix(in srgb, var(--hestia-primary) 14%, var(--hestia-surface))",
+    borderColor: "transparent",
+  },
+  capability: {
+    color: "var(--hestia-accent)",
+    backgroundColor: "color-mix(in srgb, var(--hestia-accent) 15%, var(--hestia-surface))",
+    borderColor: "transparent",
+  },
+  skill: {
+    color: "var(--hestia-accent)",
+    backgroundColor: "transparent",
+    borderColor: "color-mix(in srgb, var(--hestia-accent) 50%, var(--hestia-surface))",
+  },
+  gap: {
+    color: "var(--hestia-danger)",
+    backgroundColor: "color-mix(in srgb, var(--hestia-danger) 12%, var(--hestia-surface))",
+    borderColor: "transparent",
+  },
+  neutral: {
+    color: "var(--hestia-text-muted)",
+    backgroundColor: "transparent",
+    borderColor: "var(--hestia-border)",
+  },
+  // Warning is too light to be text, so the label stays in the text colour on the warning tint.
+  warning: {
+    color: "var(--hestia-text)",
+    backgroundColor: "color-mix(in srgb, var(--hestia-warning) 22%, var(--hestia-surface))",
+    borderColor: "transparent",
+  },
+} satisfies Record<string, CSSProperties>;
+
+type ChipTone = keyof typeof CHIP_TONES;
+
+function Chip({
+  tone,
+  title,
+  children,
+}: {
+  tone: ChipTone;
+  title?: string;
+  children: ReactNode;
+}) {
   return (
     <span
-      className="inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold"
-      style={{
-        color,
-        backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
-      }}
+      title={title}
+      className="inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-md border px-2 text-xs font-medium"
+      style={CHIP_TONES[tone]}
     >
-      {label}
+      {children}
+    </span>
+  );
+}
+
+/** A goal's tier as a chip in its rail's hue; knowledge, the plain leaf tier, is plain text. */
+function TierChip({ role }: { role: CompetencyRole }) {
+  const label = COMPETENCY_ROLE_META[role].label;
+  if (role === "knowledge") return <span className="text-xs text-hestia-text-muted">{label}</span>;
+  return <Chip tone={role}>{label}</Chip>;
+}
+
+/**
+ * Where a level sits on its taxonomy's ladder, as a row of squares. Neutral on purpose: a higher
+ * Bloom or SOLO level is not better, so a hue ramp would suggest a judgement the scale doesn't make.
+ */
+function LevelPips({ index, steps }: { index: number; steps: number }) {
+  return (
+    <span className="flex shrink-0 gap-0.5" aria-hidden="true">
+      {Array.from({ length: steps }, (_, i) => (
+        <span
+          key={i}
+          className="h-[5px] w-[5px] rounded-[1px]"
+          style={{
+            backgroundColor:
+              i <= index
+                ? "color-mix(in srgb, var(--hestia-text) 75%, var(--hestia-surface))"
+                : "var(--hestia-border)",
+          }}
+        />
+      ))}
     </span>
   );
 }
 
 /**
  * Segmented control switching the grid between its two layouts. Follows the styleguide's toggle:
- * one surface pill, the selected segment filled with primary. The end segments carry the rounding
- * themselves rather than the track clipping them, so the focus ring stays visible.
+ * one surface track, the selected segment filled with primary. It shares the toolbar's 36px height
+ * and 8px radius so the row reads as one set of controls.
  */
 function LayoutSwitch({
   layout,
@@ -2742,7 +2855,7 @@ function LayoutSwitch({
     <div
       role="tablist"
       aria-label="Tree layout"
-      className="inline-flex rounded-full border border-hestia-border bg-hestia-surface"
+      className="inline-flex h-9 gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-[3px]"
     >
       {options.map((option) => {
         const active = layout === option.key;
@@ -2753,10 +2866,10 @@ function LayoutSwitch({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(option.key)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm transition first:rounded-l-full last:rounded-r-full ${
+            className={`inline-flex items-center gap-1.5 rounded-[6px] px-3 text-sm font-medium transition ${
               active
-                ? "bg-hestia-primary font-semibold text-hestia-on-primary"
-                : "font-medium text-hestia-text-muted hover:text-hestia-text"
+                ? "bg-hestia-primary text-hestia-on-primary"
+                : "text-hestia-text-muted hover:text-hestia-text"
             }`}
           >
             {option.icon}
@@ -2768,7 +2881,7 @@ function LayoutSwitch({
   );
 }
 
-/** Toolbar switch between short labels and every goal's full wording in the goal column. */
+/** Switch between short labels and every goal's full wording in the goal column. */
 function WordingSwitch({
   full,
   onChange,
@@ -2777,15 +2890,14 @@ function WordingSwitch({
   onChange: (full: boolean) => void;
 }) {
   const options = [
-    { full: false, label: "Short names" },
-    { full: true, label: "Full names" },
+    { full: false, label: "Short" },
+    { full: true, label: "Full" },
   ];
   return (
     <div
       role="radiogroup"
-      aria-label="Goal wording"
-      title="Show short labels or each goal's full wording"
-      className="inline-flex rounded-full border border-hestia-border bg-hestia-surface"
+      aria-label="Goal names"
+      className="flex h-8 gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-[3px]"
     >
       {options.map((option) => {
         const active = full === option.full;
@@ -2796,10 +2908,10 @@ function WordingSwitch({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(option.full)}
-            className={`px-3 py-1.5 text-xs transition first:rounded-l-full last:rounded-r-full ${
+            className={`flex-1 rounded-[5px] text-xs font-medium transition ${
               active
-                ? "bg-hestia-primary font-semibold text-hestia-on-primary"
-                : "font-medium text-hestia-text-muted hover:text-hestia-text"
+                ? "bg-hestia-primary text-hestia-on-primary"
+                : "text-hestia-text-muted hover:text-hestia-text"
             }`}
           >
             {option.label}
@@ -2860,13 +2972,30 @@ function FoldIcon({ collapse }: { collapse: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-3.5 w-3.5"
+      className="h-4 w-4"
     >
       {collapse ? (
-        <path d="M6 8.5l4-3.5 4 3.5M6 11.5l4 3.5 4-3.5" />
+        <path d="M6.5 3.5L10 7l3.5-3.5M6.5 16.5L10 13l3.5 3.5" />
       ) : (
-        <path d="M6 5.5l4 3.5 4-3.5M6 14.5l4-3.5 4 3.5" />
+        <path d="M6.5 6.5L10 3l3.5 3.5M6.5 13.5L10 17l3.5-3.5" />
       )}
+    </svg>
+  );
+}
+
+function SlidersIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <path d="M17 4.5h-5.5M8 4.5H3M17 10h-7M6.5 10H3M17 15.5h-3.5M10 15.5H3M11.5 3v3M6.5 8.5v3M13.5 14v3" />
     </svg>
   );
 }

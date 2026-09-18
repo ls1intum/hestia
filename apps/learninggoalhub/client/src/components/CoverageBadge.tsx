@@ -55,11 +55,14 @@ export default function CoverageBadge({
 type PillSize = "small" | "cell";
 
 const PILL_SIZE: Record<PillSize, string> = {
-  small: "px-1.5 text-[10px] leading-4 uppercase tracking-wide",
-  cell: "px-2 py-0.5 text-xs",
+  small: "rounded-full px-1.5 text-[10px] font-semibold leading-4 uppercase tracking-wide",
+  cell: "h-[22px] rounded-md border border-hestia-border px-2 text-xs font-medium text-hestia-text-muted",
 };
 
-/** A coverage label in its colour. */
+/**
+ * A coverage label. On a map box it takes its coverage's colour; in a table cell it is a neutral
+ * outline like the table's other metadata, which keeps colour for the tiers and for problems.
+ */
 function CoveragePill({
   coverage,
   size,
@@ -70,11 +73,15 @@ function CoveragePill({
   const meta = COVERAGE_META[coverage];
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full font-semibold ${PILL_SIZE[size]}`}
-      style={{
-        color: meta.color,
-        backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
-      }}
+      className={`inline-flex items-center whitespace-nowrap ${PILL_SIZE[size]}`}
+      style={
+        size === "small"
+          ? {
+              color: meta.color,
+              backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
+            }
+          : undefined
+      }
     >
       {meta.label}
     </span>
