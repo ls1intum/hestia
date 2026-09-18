@@ -128,8 +128,21 @@ export default function TopicMap({
     const timer = window.setTimeout(() => setHighlightId(null), 1600);
     return () => window.clearTimeout(timer);
   }, [highlightId]);
+  // As in the table, the skills come first and the goals hanging directly off the topic follow in
+  // one "Sub-skills without a skill" box. That box is no goal: it takes the negated topic id, which
+  // no goal id collides with, and opens its goals as a skill opens its sub-skills.
+  const skills = topic.children.filter((node) => node.role === "capability");
+  const loose = topic.children.filter((node) => node.role !== "capability");
+  const firstRow: CompetencyNode[] =
+    loose.length > 0
+      ? [
+          ...skills,
+          { goal: { id: -topic.goal.id!, text: LOOSE_GROUP_LABEL }, role: "capability", children: loose },
+        ]
+      : skills;
   const focused =
-    topic.children.find((node) => node.goal.id === focusedId && canDrill(node)) ?? null;
+    firstRow.find((node) => node.goal.id === focusedId && canDrill(node)) ?? null;
+  const focusedIsGroup = focused != null && isLooseGroup(focused);
   const subFocused =
     focused?.role === "capability"
       ? (focused.children.find((node) => node.goal.id === subFocusedId && canDrill(node)) ??
@@ -296,11 +309,11 @@ export default function TopicMap({
   const firstKey = `2:${topic.goal.id}`;
   // A topic takes any number of skills, so its "New skill" ghost is always there.
   const firstReserve = ghostReserve(true, creation.activeKey === firstKey);
-  const firstWidths = topic.children.map((child) =>
+  const firstWidths = firstRow.map((child) =>
     focused && child.goal.id !== focused.goal.id ? COMPACT_W : BOX_W,
   );
   const focusedIndex = focused
-    ? topic.children.findIndex((node) => node.goal.id === focused.goal.id)
+    ? firstRow.findIndex((node) => node.goal.id === focused.goal.id)
     : -1;
   const secondOffset =
     focusedIndex >= 0
@@ -310,7 +323,17 @@ export default function TopicMap({
   // A skill's children are sub-skills; a sub-skill hanging directly off the topic holds knowledge.
   const secondTier = focused?.role === "capability" ? 3 : 4;
   const secondKey = focused ? `${secondTier}:${focused.goal.id}` : "";
-  const secondReserve = ghostReserve(focused != null, creation.activeKey === secondKey);
+  // A sub-skill added straight under the topic would be read back as a skill, so the group offers
+  // no "New sub-skill"; skills are added in the first row.
+  const secondReserve = ghostReserve(
+    focused != null && !focusedIsGroup,
+    creation.activeKey === secondKey,
+  );
+  // The table's numbers: a goal in the group continues the topic's count after its skills.
+  const secondSequence = (index: number) =>
+    focusedIsGroup
+      ? `${sequence}.${skills.length + index + 1}`
+      : `${sequence}.${focusedIndex + 1}.${index + 1}`;
   const secondWidths = focused
     ? focused.children.map((child) =>
         subFocused && child.goal.id !== subFocused.goal.id ? COMPACT_W : LEAF_W,
@@ -394,9 +417,10 @@ export default function TopicMap({
               reserve={firstReserve}
               ghost={ghost("New skill", COMPETENCY_ROLE_META.capability.color, 2, firstKey, topic.goal.id!)}
             >
-              {topic.children.map((child, i) => {
+              {firstRow.map((child, i) => {
                 const isFocused = focused != null && child.goal.id === focused.goal.id;
                 const dimmed = focused != null && !isFocused;
+                const group = isLooseGroup(child);
                 return (
                   // Column cell: the box plus, while it is not open, what it holds beneath it.
                   <div
@@ -413,9 +437,10 @@ export default function TopicMap({
                       dimmed={dimmed}
                       compact={dimmed}
                       clampText={dimmed}
-                      sequenceLabel={`${sequence}.${i + 1}`}
+                      group={group}
+                      sequenceLabel={group ? undefined : `${sequence}.${i + 1}`}
                       fullWording={fullWording}
-                      attributes={attributesOf(child)}
+                      attributes={group ? null : attributesOf(child)}
                     />
                     {!isFocused && (
                       <ChildHint
@@ -444,7 +469,9 @@ export default function TopicMap({
                 <CreationRow
                   reserve={secondReserve}
                   ghost={
-                    secondTier === 3
+                    focusedIsGroup
+                      ? null
+                      : secondTier === 3
                       ? ghost("New sub-skill", COMPETENCY_ROLE_META.skill.color, 3, secondKey, focused.goal.id!)
                       : ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
                   }
@@ -471,7 +498,7 @@ export default function TopicMap({
                           dimmed={dimmed}
                           compact={dimmed}
                           clampText={dimmed}
-                          sequenceLabel={`${sequence}.${focusedIndex + 1}.${i + 1}`}
+                          sequenceLabel={secondSequence(i)}
                           fullWording={fullWording}
                           attributes={attributesOf(child)}
                         />
@@ -512,7 +539,7 @@ export default function TopicMap({
                             highlighted={highlightId === leaf.goal.id}
                             actions={actions}
                             leaf
-                            sequenceLabel={`${sequence}.${focusedIndex + 1}.${subFocusedIndex + 1}.${i + 1}`}
+                            sequenceLabel={`${secondSequence(subFocusedIndex)}.${i + 1}`}
                             fullWording={fullWording}
                             attributes={attributesOf(leaf)}
                           />
@@ -538,6 +565,13 @@ export default function TopicMap({
       </div>
     </div>
   );
+}
+
+const LOOSE_GROUP_LABEL = "Sub-skills without a skill";
+
+/** The first row's box gathering the topic's goals that sit in no skill. */
+function isLooseGroup(node: CompetencyNode) {
+  return node.goal.id! < 0;
 }
 
 /** Skills and sub-skills that hold goals unfold into a row of their own; knowledge and gaps don't. */
@@ -847,6 +881,7 @@ function Box({
   compact = false,
   leaf = false,
   clampText = false,
+  group = false,
   sequenceLabel,
   fullWording,
   attributes,
@@ -868,6 +903,8 @@ function Box({
   leaf?: boolean;
   /** Keeps sibling context compact without truncating the focused node. */
   clampText?: boolean;
+  /** The "Sub-skills without a skill" box: no goal, so no tier badge, number or actions. */
+  group?: boolean;
   /** Hierarchical lecture-order label, e.g. "2.3". */
   sequenceLabel?: string;
   fullWording: boolean;
@@ -875,6 +912,7 @@ function Box({
   attributes: ReactNode;
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
+  const outline = group ? "var(--hestia-text-muted)" : meta.color;
   const isGap = node.role === "gap";
   const editing = actions.editingId === node.goal.id;
   const childCounts = new Map<CompetencyRole, number>();
@@ -898,7 +936,7 @@ function Box({
           }
         : {})}
       data-goal-id={node.goal.id}
-      className={`group relative flex ${onClick ? "cursor-pointer" : ""} flex-col gap-1.5 rounded-lg border-[1.5px] p-3 text-left transition ${
+      className={`group relative flex ${onClick ? "cursor-pointer" : ""} flex-col gap-1.5 rounded-lg border-[1.5px] ${group ? "border-dashed" : ""} p-3 text-left transition ${
         leaf ? "w-60 shrink-0" : compact ? "w-40 shrink-0" : "w-56 shrink-0"
       } ${
         isGap
@@ -911,21 +949,27 @@ function Box({
       }`}
       style={{
         // The whole outline carries the role colour, so the tier reads without a shadow or rail.
-        ...(isGap ? {} : { borderColor: meta.color }),
+        ...(isGap ? {} : { borderColor: outline }),
         // The focused box keeps a quiet role tint while its row siblings remain subdued context.
         ...(active
           ? {
-              backgroundColor: `color-mix(in srgb, ${meta.color} 12%, var(--hestia-surface))`,
+              backgroundColor: `color-mix(in srgb, ${outline} 12%, var(--hestia-surface))`,
             }
           : {}),
       }}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <RoleBadge role={node.role} />
-        {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && <AiInferredBadge compact />}
-        {node.goal.creationProvenance === "USER_CREATED" && <ManualBadge />}
-      </div>
-      {editing ? (
+      {!group && (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <RoleBadge role={node.role} />
+          {node.goal.creationProvenance === "WIZARD_AI_SUBTREE" && <AiInferredBadge compact />}
+          {node.goal.creationProvenance === "USER_CREATED" && <ManualBadge />}
+        </div>
+      )}
+      {group ? (
+        <p className="text-sm leading-snug italic text-hestia-text-muted">
+          {displayedGoalLabel(node.goal)}
+        </p>
+      ) : editing ? (
         <div className="flex min-w-0 items-start gap-1 text-sm">
           {sequenceLabel != null && (
             <span className="pt-0.5 tabular-nums text-hestia-text-muted">{sequenceLabel}</span>
@@ -945,7 +989,7 @@ function Box({
           {displayedGoalLabel(node.goal, fullWording)}
         </p>
       )}
-      {!editing && (
+      {!editing && !group && (
         // Revealed on hover (or keyboard focus) like a table row's, floating over the box's corner.
         <span className="absolute right-1.5 top-1.5 z-[1] flex items-center gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-0.5 opacity-0 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100">
           <RowAction
