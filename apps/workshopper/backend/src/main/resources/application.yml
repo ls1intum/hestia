@@ -34,8 +34,11 @@ server:
   forward-headers-strategy: framework
 
 # ── LLM Configuration ──────────────────────────────────────────────
-# We now use the shared Hestia LLM defaults (spring.ai.openai properties).
+# We use the shared Hestia LLM defaults (spring.ai.openai properties), pinned to GWDG SAIA: the
+# key below is a SAIA key, and libs/shared-llm is moving its default to the TUM AET Logos gateway.
 spring.ai.openai.api-key: ${WORKSHOPPER_SAIA_API_KEY}
+spring.ai.openai.base-url: https://chat-ai.academiccloud.de
+spring.ai.openai.chat.options.model: openai-gpt-oss-120b
 
 llm:
   secondary-model: ${LLM_SECONDARY_MODEL:}
