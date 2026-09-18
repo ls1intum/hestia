@@ -40,6 +40,7 @@ import {
   titleCase,
   type CompetencyNode,
   type CompetencyRole,
+  type Coverage,
   type CoverageCounts,
 } from "../lib/goals.ts";
 
@@ -76,7 +77,7 @@ type Row = {
 };
 
 type FilterKey = "role" | "kind" | "bloom" | "solo" | "document" | "session" | "coverage";
-type SortKey = "text" | "bloom" | "solo" | "source";
+type SortKey = "text" | "bloom" | "solo" | "coverage" | "source";
 type LevelScale = "bloom" | "solo";
 type GoalChanges = {
   text?: string;
@@ -101,7 +102,7 @@ type CreationState = {
 // Source carries full session titles, so it takes a share of the free space rather than a fixed
 // width — otherwise the goal column swallows everything.
 const GRID_COLS =
-  "minmax(240px,1fr) 100px 96px 108px 132px minmax(180px,0.55fr)";
+  "minmax(240px,1fr) 100px 136px 80px 104px 120px minmax(160px,0.55fr)";
 
 /** Maps a title-cased ladder term back to its API enum value ("Extended Abstract" → "EXTENDED_ABSTRACT"). */
 const toEnum = (term: string) => term.toUpperCase().replace(/ /g, "_");
@@ -140,21 +141,26 @@ const CHILD_APPEND: Partial<
     color: COMPETENCY_ROLE_META.knowledge.color,
   },
 };
-/** The server caps a topic at this many direct children. */
-const MAX_TOPIC_CHILDREN = 5;
 const SOLO_ORDER = Object.keys(SOLO_DESC).map(toEnum);
 
 // "AI_INFERRED" is a synthetic kind value derived from a goal's WIZARD_AI_SUBTREE provenance, so the
 // Kind column and its filter surface AI-generated goals without a separate GoalKind enum on the server.
+const NO_IDS: ReadonlySet<number> = new Set();
 const AI_INFERRED_KIND = "AI_INFERRED";
 const MANUAL_KIND = "MANUAL";
 const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
-// Coverage filter values: a sub-skill only a lecture teaches is not practised, one only an exercise
-// asks for is not introduced. Sub-skills covered by both, or whose documents have no kind, match
-// neither.
-const NOT_PRACTISED = "NOT_PRACTISED";
-const NOT_INTRODUCED = "NOT_INTRODUCED";
-const COVERAGE_ORDER = [NOT_PRACTISED, NOT_INTRODUCED];
+// Coverage filter values for goals with a source: sourced only from lectures, only from exercises,
+// or from both. Goals without a source, or whose documents have no kind, match none.
+const LECTURE_ONLY = "LECTURE_ONLY";
+const EXERCISE_ONLY = "EXERCISE_ONLY";
+const BOTH = "BOTH";
+const COVERAGE_ORDER = [LECTURE_ONLY, EXERCISE_ONLY, BOTH];
+const COVERAGE_SORT_ORDER: Coverage[] = ["unknown", "lecture", "both", "exercise"];
+const COVERAGE_VALUE: Partial<Record<Coverage, string>> = {
+  lecture: LECTURE_ONLY,
+  exercise: EXERCISE_ONLY,
+  both: BOTH,
+};
 const ROLE_ORDER: CompetencyRole[] = [
   "topic",
   "capability",
@@ -191,9 +197,8 @@ function valuesOf(row: Row, key: FilterKey): string[] {
     case "session":
       return [row.session];
     case "coverage": {
-      if (row.role !== "skill") return [""];
       const coverage = coverageOf(row.goal);
-      return [coverage === "lecture" ? NOT_PRACTISED : coverage === "exercise" ? NOT_INTRODUCED : ""];
+      return [(coverage && COVERAGE_VALUE[coverage]) ?? ""];
     }
   }
 }
@@ -209,6 +214,185 @@ function sessionTitleOf(goal: LearningGoal): string {
   return goal.hierarchy?.session ?? goal.hierarchy?.exercise ?? "";
 }
 
+/**
+ * The row that gathers a topic's goals in no skill. It is no goal: it has no number, levels or
+ * actions, only a fold, and while folded it counts what it holds like a skill does.
+ */
+function LooseGroupRow({
+  id,
+  depth,
+  zebra,
+  open,
+  context,
+  items,
+  onToggle,
+}: {
+  id: number;
+  depth: number;
+  zebra: boolean;
+  open: boolean;
+  context: boolean;
+  items: Row[];
+  onToggle: (id: number) => void;
+}) {
+  return (
+    <div
+      role="row"
+      data-row-id={id}
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={() => {
+        if (!window.getSelection()?.toString()) onToggle(id);
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle(id);
+        }
+      }}
+      className={`grid cursor-pointer items-stretch border-b border-hestia-border/60 transition hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)] ${
+        zebra ? "bg-hestia-text/3" : ""
+      } ${context ? "opacity-45" : ""}`}
+      style={{ gridTemplateColumns: GRID_COLS }}
+    >
+      <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
+        <div className="flex items-start gap-1">
+          <span className="shrink-0" style={{ width: depth * 20 }} />
+          {/* Dotted where a skill's rail is solid: a grouping, not a goal. */}
+          <span
+            aria-hidden="true"
+            className="mr-1 shrink-0 self-stretch border-l-[3px] border-dotted"
+            style={{ borderColor: COMPETENCY_ROLE_META.skill.color }}
+          />
+          <button
+            type="button"
+            aria-label={open ? "Collapse" : "Expand"}
+            aria-expanded={open}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(id);
+            }}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`}
+            >
+              <path d="M7 5l6 5-6 5" />
+            </svg>
+          </button>
+          <span className="min-w-0 pt-px text-sm leading-relaxed text-hestia-text-muted">
+            <span className="italic">Sub-skills without a skill</span>
+            {!open && <ChildPreview role="capability" items={items} fullWording={false} />}
+          </span>
+        </div>
+      </div>
+      {COLUMNS.slice(1).map((column) => (
+        <div key={column.key} role="gridcell" />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * What a collapsed row holds. A topic lists its first children, one per line with a dot in their
+ * tier colour; a skill or sub-skill only counts its children by tier ("• 7 sub-skills"), which says
+ * how big the branch is without making an opened topic much taller.
+ */
+function ChildPreview({
+  role,
+  items,
+  fullWording,
+}: {
+  role: CompetencyRole;
+  items: Row[];
+  fullWording: boolean;
+}) {
+  if (role !== "topic") {
+    const counts = new Map<CompetencyRole, number>();
+    for (const item of items) counts.set(item.role, (counts.get(item.role) ?? 0) + 1);
+    return (
+      <span className="flex flex-wrap gap-x-2.5 text-xs font-normal text-hestia-text-muted">
+        {[...counts].map(([childRole, count]) => (
+          <span key={childRole} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <TierDot role={childRole} />
+            {count} {tierNoun(childRole, count)}
+          </span>
+        ))}
+      </span>
+    );
+  }
+  const shown = items.slice(0, 3);
+  const rest = items.length - shown.length;
+  return (
+    <span className="my-0.5 grid gap-px text-xs font-normal text-hestia-text-muted">
+      {shown.map((child) => (
+        <span key={child.id} className="flex min-w-0 items-center gap-1.5">
+          <TierDot role={child.role} />
+          <span className="truncate">{displayedGoalLabel(child.goal, fullWording)}</span>
+        </span>
+      ))}
+      {rest > 0 && <span className="pl-3 text-hestia-text-muted/80">+{rest} more</span>}
+    </span>
+  );
+}
+
+/**
+ * Flags a topic none of whose sub-skills comes from an exercise, the case a reader has to spot.
+ * Every other topic leaves the cell empty.
+ */
+function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
+  const known = coverage.total - coverage.unknown;
+  if (known === 0 || coverage.practised > 0) return null;
+  return (
+    <span
+      title={`None of its ${known} sub-skills comes from an exercise`}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold"
+      style={{
+        color: "var(--hestia-warning)",
+        backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
+      }}
+    >
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="h-3 w-3"
+      >
+        <path d="M10 3.5l7 12.5H3z" />
+        <path d="M10 8.5v3.5M10 14.2v.01" />
+      </svg>
+      No exercises
+    </span>
+  );
+}
+
+function TierDot({ role }: { role: CompetencyRole }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-1.5 w-1.5 shrink-0 rounded-full"
+      style={{ backgroundColor: COMPETENCY_ROLE_META[role].color }}
+    />
+  );
+}
+
+/** "1 sub-skill", "7 sub-skills", "7 knowledge": the tier's label in lower case, counted. */
+function tierNoun(role: CompetencyRole, count: number): string {
+  const label = COMPETENCY_ROLE_META[role].label.toLowerCase();
+  return count === 1 || role === "knowledge" ? label : `${label}s`;
+}
+
 /** The short label by default; `full` asks for the complete wording instead. */
 function displayedGoalLabel(goal: LearningGoal, full = false): string {
   return (full ? goal.text : goal.shortLabel) ?? goal.shortLabel ?? goal.text ?? "";
@@ -219,8 +403,9 @@ function displayValue(key: FilterKey, value: string): string {
   if (key === "role")
     return COMPETENCY_ROLE_META[value as CompetencyRole].label;
   if (key === "session" || key === "document") return value || "—";
-  if (value === NOT_PRACTISED) return "Not practised (lecture only)";
-  if (value === NOT_INTRODUCED) return "Not introduced (exercise only)";
+  if (value === LECTURE_ONLY) return "Lecture only";
+  if (value === EXERCISE_ONLY) return "Exercise only";
+  if (value === BOTH) return "Both";
   if (value === AI_INFERRED_KIND) return "AI-inferred";
   if (value === MANUAL_KIND) return "Manual";
   return value ? titleCase(value) : "—";
@@ -246,6 +431,7 @@ const COLUMNS: {
 }[] = [
   { key: "text", label: "Learning goal", sortKey: "text" },
   { key: "role", label: "Tier", filterKeys: ["role"] },
+  { key: "coverage", label: "Coverage", sortKey: "coverage", filterKeys: ["coverage"] },
   { key: "kind", label: "Kind", filterKeys: ["kind"] },
   { key: "bloom", label: "Bloom", sortKey: "bloom", filterKeys: ["bloom"] },
   { key: "solo", label: "SOLO", sortKey: "solo", filterKeys: ["solo"] },
@@ -253,7 +439,7 @@ const COLUMNS: {
     key: "source",
     label: "Source",
     sortKey: "source",
-    filterKeys: ["document", "session", "coverage"],
+    filterKeys: ["document", "session"],
   },
 ];
 
@@ -538,6 +724,45 @@ export default function CompetencyTree({
     };
   }, [rows, byId, search, filters, filtering]);
 
+  // A filtered list opens every branch down to its matches, and rows collapsed in it stay collapsed
+  // only while the same filter holds: changing the filter or search starts fully open again. This
+  // is kept apart from `expanded`, so clearing the filter returns to the tree as it was left.
+  const filterSignature = JSON.stringify([
+    search.trim(),
+    Object.entries(filters).map(([key, values]) => [key, [...values].sort()]),
+  ]);
+  const [filterFold, setFilterFold] = useState<{ signature: string; collapsed: Set<number> }>({
+    signature: "",
+    collapsed: new Set(),
+  });
+  const filterCollapsed =
+    filterFold.signature === filterSignature ? filterFold.collapsed : NO_IDS;
+  const setFilterCollapsed = (update: (collapsed: Set<number>) => Set<number>) =>
+    setFilterFold((prev) => ({
+      signature: filterSignature,
+      collapsed: update(prev.signature === filterSignature ? prev.collapsed : new Set()),
+    }));
+  // How many children a row shows in the filtered list, which decides whether it gets a caret.
+  const filteredChildCount = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!matchIds) return map;
+    for (const row of rows) {
+      if (row.parent == null || !(matchIds.has(row.id) || contextIds.has(row.id))) continue;
+      map.set(row.parent, (map.get(row.parent) ?? 0) + 1);
+    }
+    return map;
+  }, [rows, matchIds, contextIds]);
+  const isOpen = (id: number) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
+  // The goals under a topic that sit in no skill, gathered under one "Sub-skills without a skill"
+  // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
+  const looseOf = (topicId: number) =>
+    (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "capability");
+  const looseGroupId = (topicId: number) => -topicId;
+  const isVisible = (row: Row) =>
+    !filtering || matchIds!.has(row.id) || contextIds.has(row.id);
+  const childCountOf = (id: number) =>
+    (filtering ? filteredChildCount : visibleChildCount).get(id) ?? 0;
+
   // Only offer filter values that actually occur, so no filter can promise a value that has no row
   // to land on.
   const filterOptions = useMemo(() => {
@@ -568,6 +793,9 @@ export default function CompetencyTree({
           return BLOOM_ORDER.indexOf(row.goal.bloomLevel ?? "");
         case "solo":
           return SOLO_ORDER.indexOf(row.goal.soloLevel ?? "");
+        // Lecture, then both, then exercise; rows without a kind rank first.
+        case "coverage":
+          return COVERAGE_SORT_ORDER.indexOf(coverageOf(row.goal) ?? "unknown");
         // By document, then by page within it, which is the order the material is read in.
         case "source":
           return `${documentOf(row)} ${String(row.goal.sources?.[0]?.page ?? 0).padStart(6, "0")}`;
@@ -667,7 +895,11 @@ export default function CompetencyTree({
   const descendantIds = (id: number): Set<number> => {
     const out = new Set<number>();
     const walk = (pid: number) => {
-      for (const child of childrenOf.get(pid) ?? []) {
+      // A group's children are its topic's loose goals; a topic's descendants include its group.
+      const children = pid < 0 ? looseOf(-pid) : (childrenOf.get(pid) ?? []);
+      if (pid > 0 && byId.get(pid)?.role === "topic" && looseOf(pid).length > 0)
+        out.add(looseGroupId(pid));
+      for (const child of children) {
         out.add(child.id);
         walk(child.id);
       }
@@ -678,18 +910,28 @@ export default function CompetencyTree({
 
   const expand = (id: number) => {
     enterIntent.current = descendantIds(id);
-    setExpanded((prev) => new Set(prev).add(id));
+    if (filtering) {
+      setFilterCollapsed((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } else {
+      setExpanded((prev) => new Set(prev).add(id));
+    }
   };
 
   // Collapse: fade the currently-visible descendants out, then drop them from the tree (the FLIP
   // pass then slides the survivors up). Falls back to an instant collapse when motion is reduced.
   const collapse = (id: number) => {
     const remove = () =>
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      filtering
+        ? setFilterCollapsed((prev) => new Set(prev).add(id))
+        : setExpanded((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
     const container = containerRef.current;
     if (!container || prefersReducedMotion()) {
       remove();
@@ -710,15 +952,20 @@ export default function CompetencyTree({
     window.setTimeout(remove, 150);
   };
 
-  const onToggle = (id: number) =>
-    expanded.has(id) ? collapse(id) : expand(id);
+  const onToggle = (id: number) => (isOpen(id) ? collapse(id) : expand(id));
 
   const parentIds = useMemo(
-    () => rows.filter((r) => (visibleChildCount.get(r.id) ?? 0) > 0).map((r) => r.id),
-    [rows, visibleChildCount],
+    () =>
+      rows.flatMap((r) => {
+        const ids =
+          ((filtering ? filteredChildCount : visibleChildCount).get(r.id) ?? 0) > 0 ? [r.id] : [];
+        if (r.role === "topic" && looseOf(r.id).some(isVisible)) ids.push(looseGroupId(r.id));
+        return ids;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- looseOf and isVisible read the same inputs
+    [rows, filtering, filteredChildCount, visibleChildCount, childrenOf, matchIds, contextIds],
   );
-  const allOpen =
-    parentIds.length > 0 && parentIds.every((id) => expanded.has(id));
+  const allOpen = parentIds.length > 0 && parentIds.every(isOpen);
 
   const mapCreation: MapCreation = {
     activeKey: creation?.key ?? null,
@@ -780,6 +1027,19 @@ export default function CompetencyTree({
     );
   }
 
+  // A collapsed topic, skill or sub-skill previews what it holds, so a closed branch still says what
+  // is inside.
+  // A filtered list previews only the children it would show.
+  const previewOf = (row: Row, mapOpen: boolean): Row[] | undefined => {
+    if (row.role !== "topic" && row.role !== "capability" && row.role !== "skill") return undefined;
+    const open = layout === "map" && !filtering ? mapOpen : isOpen(row.id);
+    if (open) return undefined;
+    const children = (childrenOf.get(row.id) ?? []).filter(
+      (child) => !filtering || matchIds!.has(child.id) || contextIds.has(child.id),
+    );
+    return children.length > 0 ? sortSiblings(children) : undefined;
+  };
+
   // Depth-first walk producing the visible rows. Browsing follows the layout — the table unfolds
   // expanded rows in place, the map layout lists topics with the open one's map beneath its row —
   // while a filter or search walks down to every match in either layout.
@@ -797,173 +1057,201 @@ export default function CompetencyTree({
      */
     trailing: boolean,
   ) => {
-    const ordered = sortSiblings(siblings);
-    for (let i = 0; i < ordered.length; i++) {
-      const row = ordered[i];
-      const isMatch = !filtering || matchIds!.has(row.id);
-      const isContext = filtering && contextIds.has(row.id);
-      if (filtering && !isMatch && !isContext) continue;
-      const mapOpen = layout === "map" && !filtering && openTopicId === row.id;
-      // A sub-skill hanging directly under a topic sits one step further in, level with the
-      // sub-skills under a skill, so the indentation reads as the tier rather than the tree depth.
-      // Its knowledge follows it in.
-      const rowDepth = row.role === "skill" && parentRole === "topic" ? depth + 1 : depth;
-      // The "+" lives in the table only: the map adds in the map, and a filtered list has no place
-      // for the new row to appear.
-      const childAppend = CHILD_APPEND[row.role];
-      const canAddChild =
-        layout === "table" &&
-        !filtering &&
-        childAppend != null &&
-        (row.role !== "topic" ||
-          (childrenOf.get(row.id)?.length ?? 0) < MAX_TOPIC_CHILDREN);
+    const emitRow = (row: Row, last: boolean) => {
+    const isMatch = !filtering || matchIds!.has(row.id);
+    const isContext = filtering && contextIds.has(row.id);
+    if (filtering && !isMatch && !isContext) return;
+    const mapOpen = layout === "map" && !filtering && openTopicId === row.id;
+    // A goal hanging directly under a topic sits in the "Sub-skills without a skill" group, one
+    // step further in, level with the sub-skills under a skill. Its knowledge follows it in.
+    const rowDepth = row.role !== "capability" && parentRole === "topic" ? depth + 1 : depth;
+    // The "+" lives in the table only: the map adds in the map, and a filtered list has no place
+    // for the new row to appear.
+    const childAppend = CHILD_APPEND[row.role];
+    const canAddChild =
+      layout === "table" &&
+      !filtering &&
+      childAppend != null;
+    bodyRows.push(
+      <GridRow
+        key={row.id}
+        row={row}
+        depth={rowDepth}
+        zebra={rowIndex++ % 2 === 1}
+        context={isContext}
+        filtering={filtering}
+        layout={layout}
+        open={isOpen(row.id)}
+        childCount={childCountOf(row.id)}
+        mapOpen={mapOpen}
+        stickyTop={headerHeight}
+        onToggle={onToggle}
+        onToggleMap={toggleMap}
+        onOpen={openDetail}
+        sourceOpen={sourceGoalId === row.id}
+        onOpenSource={showSource}
+        openLevel={openLevel?.id === row.id ? openLevel.scale : null}
+        onToggleLevel={toggleLevel}
+        onCloseLevel={() => setOpenLevel(null)}
+        fullWording={fullWording}
+        editing={editingId === row.id}
+        onStartEdit={(target) => setEditingId(target.id)}
+        onEndEdit={() => setEditingId(null)}
+        onUpdate={updateGoal}
+        onDelete={onDelete}
+        levelFlag={flags.get(row.id)}
+        coverage={row.role === "topic" ? topicCoverage.get(row.id) : undefined}
+        preview={previewOf(row, mapOpen)}
+        addChildLabel={canAddChild ? childAppend.label : undefined}
+        onAddChild={
+          canAddChild
+            ? () => {
+                beginCreation(childAppend.tier, row.id);
+                // The field opens beneath the row's children, so they have to be showing.
+                if (!expanded.has(row.id)) expand(row.id);
+              }
+            : undefined
+        }
+      />,
+    );
+    const topicNode = mapOpen
+      ? forest.find((node) => node.goal.id === row.id)
+      : undefined;
+    if (topicNode) {
       bodyRows.push(
-        <GridRow
-          key={row.id}
-          row={row}
-          depth={rowDepth}
-          zebra={rowIndex++ % 2 === 1}
-          context={isContext}
-          filtering={filtering}
-          layout={layout}
-          open={expanded.has(row.id)}
-          childCount={visibleChildCount.get(row.id) ?? 0}
-          mapOpen={mapOpen}
-          stickyTop={headerHeight}
-          onToggle={onToggle}
-          onToggleMap={toggleMap}
-          onOpen={openDetail}
-          sourceOpen={sourceGoalId === row.id}
-          onOpenSource={showSource}
-          openLevel={openLevel?.id === row.id ? openLevel.scale : null}
-          onToggleLevel={toggleLevel}
-          onCloseLevel={() => setOpenLevel(null)}
-          fullWording={fullWording}
-          editing={editingId === row.id}
-          onStartEdit={(target) => setEditingId(target.id)}
-          onEndEdit={() => setEditingId(null)}
-          onUpdate={updateGoal}
-          onDelete={onDelete}
-          levelFlag={flags.get(row.id)}
-          coverage={row.role === "topic" ? topicCoverage.get(row.id) : undefined}
-          addChildLabel={canAddChild ? childAppend.label : undefined}
-          onAddChild={
-            canAddChild
-              ? () => {
-                  beginCreation(childAppend.tier, row.id);
-                  // The field opens beneath the row's children, so they have to be showing.
-                  if (!expanded.has(row.id)) expand(row.id);
-                }
-              : undefined
-          }
-        />,
+        <div
+          key={`map-${row.id}`}
+          role="row"
+          className="border-b border-hestia-border bg-hestia-bg shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]"
+        >
+          <div role="gridcell" aria-colspan={COLUMNS.length}>
+            <TopicMap
+              topic={topicNode}
+              sequence={row.number}
+              onOpenDetail={(node) => {
+                setDetailParent(null);
+                setDetail({ goal: node.goal, role: node.role });
+              }}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onClose={() => setOpenTopicId(null)}
+              creation={mapCreation}
+              suspendEscape={
+                detail != null ||
+                openFilter != null ||
+                sourceGoalId != null ||
+                openLevel != null ||
+                editingId != null
+              }
+            />
+          </div>
+        </div>,
       );
-      const topicNode = mapOpen
-        ? forest.find((node) => node.goal.id === row.id)
-        : undefined;
-      if (topicNode) {
-        bodyRows.push(
-          <div
-            key={`map-${row.id}`}
-            role="row"
-            className="border-b border-hestia-border bg-hestia-bg shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]"
-          >
-            <div role="gridcell" aria-colspan={COLUMNS.length}>
-              <TopicMap
-                topic={topicNode}
-                sequence={row.number}
-                onOpenDetail={(node) => {
-                  setDetailParent(null);
-                  setDetail({ goal: node.goal, role: node.role });
-                }}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onClose={() => setOpenTopicId(null)}
-                creation={mapCreation}
-                suspendEscape={
-                  detail != null ||
-                  openFilter != null ||
-                  sourceGoalId != null ||
-                  openLevel != null ||
-                  editingId != null
-                }
-              />
-            </div>
-          </div>,
-        );
-      }
-      // In the table, a childless topic is still walked into so its "Add skill" knob has somewhere
-      // to live.
-      if (
-        filtering ||
-        (layout === "table" &&
-          (expanded.has(row.id) ||
-            ((visibleChildCount.get(row.id) ?? 0) === 0 && row.role === "topic")))
-      )
-        walk(
-          childrenOf.get(row.id) ?? [],
-          rowDepth + 1,
-          row.id,
-          row.role,
-          trailing && i === ordered.length - 1,
-        );
     }
-    // "Add topic" always closes the grid and "Add skill" closes each topic with room left; the
-    // deeper tiers have no resting knob and only appear once a row's "+" opened them. In the map
-    // layout, skills and sub-skills are added in the map itself.
-    if (!filtering) {
-      const append =
-        depth === 0
-          ? {
-              tier: 1 as const,
-              label: "Add topic",
-              placeholder: "Describe a topic…",
-              color: "var(--hestia-primary)",
-            }
-          : layout === "table" && parentRole != null
-            ? CHILD_APPEND[parentRole]
-            : undefined;
-      const appendKey = append ? `${append.tier}:${parentGoalId ?? "root"}` : null;
-      const appendActive = appendKey != null && creation?.key === appendKey;
-      const resting =
-        depth === 0 ||
-        (parentRole === "topic" && siblings.length < MAX_TOPIC_CHILDREN);
-      if (append && (appendActive || resting)) {
+    // In the table, a childless topic is still walked into so its "Add skill" knob has somewhere
+    // to live.
+    if (
+      (filtering && !filterCollapsed.has(row.id)) ||
+      (!filtering &&
+        layout === "table" &&
+        (expanded.has(row.id) ||
+          ((visibleChildCount.get(row.id) ?? 0) === 0 && row.role === "topic")))
+    )
+      walk(
+        childrenOf.get(row.id) ?? [],
+        rowDepth + 1,
+        row.id,
+        row.role,
+        last,
+      );
+    };
+    const ordered = sortSiblings(siblings);
+    const emitKnob = (last: boolean) => {
+// "Add topic" always closes the grid and "Add skill" closes each topic; the
+      // deeper tiers have no resting knob and only appear once a row's "+" opened them. In the map
+      // layout, skills and sub-skills are added in the map itself.
+      if (!filtering) {
+        const append =
+          depth === 0
+            ? {
+                tier: 1 as const,
+                label: "Add topic",
+                placeholder: "Describe a topic…",
+                color: "var(--hestia-primary)",
+              }
+            : layout === "table" && parentRole != null
+              ? CHILD_APPEND[parentRole]
+              : undefined;
+        const appendKey = append ? `${append.tier}:${parentGoalId ?? "root"}` : null;
+        const appendActive = appendKey != null && creation?.key === appendKey;
+        const resting =
+          depth === 0 || parentRole === "topic";
+        if (append && (appendActive || resting)) {
+          bodyRows.push(
+            <AppendKnob
+              key={`append-${appendKey}`}
+              depth={depth}
+              label={append.label}
+              placeholder={append.placeholder}
+              color={append.color}
+              last={last}
+              active={appendActive}
+              value={creation?.text ?? ""}
+              pending={createMutation.isPending}
+              error={
+                appendActive && createMutation.isError
+                  ? (createMutation.error as Error).message
+                  : undefined
+              }
+              onStart={() => beginCreation(append.tier, parentGoalId)}
+              onChange={updateCreationText}
+              onSubmit={() => submitCreation()}
+              onCancel={cancelCreation}
+              // Only a topic can be generated; the tiers below it are added by hand.
+              onGenerate={append.tier === 1 ? () => submitCreation(true) : undefined}
+              generating={createMutation.variables?.generate === true}
+              onFind={
+                append.tier === 1
+                  ? () => {
+                      const text = creation?.text.trim() ?? "";
+                      if (text !== "") setFinding(text);
+                    }
+                  : undefined
+              }
+            />,
+          );
+        }
+      }
+    };
+    if (parentRole === "topic" && parentGoalId != null) {
+      // Skills first; the goals in no skill follow under one foldable group row, after the knob that
+      // adds a skill, so they never read as part of the skill above them.
+      const skills = ordered.filter((row) => row.role === "capability");
+      const loose = ordered.filter((row) => row.role !== "capability" && isVisible(row));
+      skills.forEach((row, i) => emitRow(row, trailing && loose.length === 0 && i === skills.length - 1));
+      emitKnob(trailing && loose.length === 0);
+      if (loose.length > 0) {
+        const groupId = looseGroupId(parentGoalId);
+        const groupOpen = isOpen(groupId);
         bodyRows.push(
-          <AppendKnob
-            key={`append-${appendKey}`}
+          <LooseGroupRow
+            key={`loose-${parentGoalId}`}
+            id={groupId}
             depth={depth}
-            label={append.label}
-            placeholder={append.placeholder}
-            color={append.color}
-            last={trailing}
-            active={appendActive}
-            value={creation?.text ?? ""}
-            pending={createMutation.isPending}
-            error={
-              appendActive && createMutation.isError
-                ? (createMutation.error as Error).message
-                : undefined
-            }
-            onStart={() => beginCreation(append.tier, parentGoalId)}
-            onChange={updateCreationText}
-            onSubmit={() => submitCreation()}
-            onCancel={cancelCreation}
-            // Only a topic can be generated; the tiers below it are added by hand.
-            onGenerate={append.tier === 1 ? () => submitCreation(true) : undefined}
-            generating={createMutation.variables?.generate === true}
-            onFind={
-              append.tier === 1
-                ? () => {
-                    const text = creation?.text.trim() ?? "";
-                    if (text !== "") setFinding(text);
-                  }
-                : undefined
-            }
+            zebra={rowIndex++ % 2 === 1}
+            open={groupOpen}
+            // Never a match itself, so a filtered list dims it like any other ancestor.
+            context={filtering}
+            items={loose}
+            onToggle={onToggle}
           />,
         );
+        if (groupOpen) loose.forEach((row, i) => emitRow(row, trailing && i === loose.length - 1));
       }
+      return;
     }
+    ordered.forEach((row, i) => emitRow(row, trailing && i === ordered.length - 1));
+    emitKnob(trailing);
   };
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
@@ -1033,14 +1321,14 @@ export default function CompetencyTree({
         ) : (
           <span className="text-xs font-medium text-hestia-text-muted">Lecture order</span>
         )}
-        {layout === "table" && !filtering && (
+        {(layout === "table" || filtering) && (
           <Button
             onClick={() => {
-              if (allOpen) {
-                setExpanded(new Set());
+              if (!allOpen) enterIntent.current = "all";
+              if (filtering) {
+                setFilterCollapsed(() => (allOpen ? new Set(parentIds) : new Set()));
               } else {
-                enterIntent.current = "all";
-                setExpanded(new Set(parentIds));
+                setExpanded(allOpen ? new Set() : new Set(parentIds));
               }
             }}
           >
@@ -1089,7 +1377,7 @@ export default function CompetencyTree({
           <div
             role="table"
             aria-label="Competency tree"
-            className="min-w-[880px]"
+            className="min-w-[1000px]"
           >
             <div
               ref={headerRef}
@@ -1266,8 +1554,18 @@ function flattenForest(forest: CompetencyNode[]): Row[] {
       role: node.role,
       session: sessionTitleOf(node.goal),
     });
-    for (let index = 0; index < node.children.length; index++) {
-      walk(node.children[index], node.goal.id, `${number}.${index + 1}`);
+    // Under a topic the skills come first and the sub-skills in no skill after them, so the
+    // numbering follows the order the table shows them in: skills, then the "Sub-skills without a
+    // skill" group.
+    const children =
+      node.role === "topic"
+        ? [
+            ...node.children.filter((child) => child.role === "capability"),
+            ...node.children.filter((child) => child.role !== "capability"),
+          ]
+        : node.children;
+    for (let index = 0; index < children.length; index++) {
+      walk(children[index], node.goal.id, `${number}.${index + 1}`);
     }
   };
   for (let index = 0; index < forest.length; index++) {
@@ -1445,6 +1743,7 @@ function GridRow({
   layout,
   open,
   childCount,
+  preview,
   mapOpen,
   stickyTop,
   onToggle,
@@ -1501,22 +1800,30 @@ function GridRow({
   levelFlag?: string;
   /** A topic's sub-skills by lecture and exercise coverage. */
   coverage?: CoverageCounts;
+  /** The children of a collapsed topic, skill or sub-skill, previewed beneath its wording. */
+  preview?: Row[];
   /** Names the "+" action; absent when this row takes no children here. */
   addChildLabel?: string;
   onAddChild?: () => void;
 }) {
   const meta = COMPETENCY_ROLE_META[row.role];
   const interactive = !context;
-  const canToggle = layout === "table" && childCount > 0 && !filtering;
+  // A filtered list folds in either layout; browsing folds only in the table.
+  const canToggle = childCount > 0 && (layout === "table" || filtering);
   // While browsing the map layout, a topic row opens its map; every other row opens its detail.
   const opensMap = layout === "map" && row.role === "topic" && !filtering;
-  // Goal details are switched off in the table for now: a click there does nothing, and the row's
-  // own controls (toggle, level, source, rename, delete, +) keep working.
+  // Goal details are switched off in the table for now, so a click anywhere on a row with children
+  // folds it, as the chevron does; the row's own controls (level, source, rename, delete, +) keep
+  // their clicks to themselves. A row being renamed doesn't fold.
   const activate = opensMap
     ? () => onToggleMap(row.id)
     : layout === "table"
-      ? null
+      ? canToggle && !editing
+        ? () => onToggle(row.id)
+        : null
       : () => onOpen(row);
+  // A context row still folds, so a filtered list can be tidied from its dimmed parents too.
+  const clickable = activate != null && (interactive || (layout === "table" && canToggle));
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
   // branch tiers (topic / capability / skill) and gaps stand out.
   const railColor =
@@ -1534,11 +1841,16 @@ function GridRow({
     <div
       role="row"
       data-row-id={row.id}
-      {...(interactive && activate
+      {...(clickable
         ? {
             tabIndex: 0,
-            onClick: activate,
+            onClick: () => {
+              // Selecting a goal's wording to copy it is not a request to fold the row.
+              if (window.getSelection()?.toString()) return;
+              activate();
+            },
             onKeyDown: (e: ReactKeyboardEvent) => {
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 activate();
@@ -1555,7 +1867,7 @@ function GridRow({
             : ""
       } ${
         context
-          ? "opacity-45"
+          ? `opacity-45${clickable ? " cursor-pointer" : ""}`
           : mapOpen
             ? "cursor-pointer"
             : `${activate ? "cursor-pointer " : ""}hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]`
@@ -1566,7 +1878,7 @@ function GridRow({
         ...(mapOpen ? { position: "sticky", top: stickyTop, zIndex: 5 } : {}),
       }}
     >
-      <div role="gridcell" className="px-2.5 py-1.5">
+      <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
         <div className="flex items-start gap-1">
           <span className="shrink-0" style={{ width: depth * 20 }} />
           <span
@@ -1633,7 +1945,7 @@ function GridRow({
             </span>
           ) : (
           <span
-            className={`pt-px text-sm leading-relaxed text-hestia-text ${
+            className={`min-w-0 pt-px text-sm leading-relaxed text-hestia-text ${
               row.role === "topic" ? "font-semibold" : ""
             }`}
           >
@@ -1648,11 +1960,6 @@ function GridRow({
             >
               {displayedGoalLabel(row.goal, fullWording)}
             </span>
-            {row.role === "skill" && (
-              <span className="ml-1.5">
-                <CoverageBadge goal={row.goal} flag={levelFlag} />
-              </span>
-            )}
             {opensMap && (
               // The map starts below the topic, so the topic's own detail (edit, delete) opens here.
               <button
@@ -1683,11 +1990,7 @@ function GridRow({
                 </svg>
               </button>
             )}
-            {coverage && coverage.total > coverage.unknown && (
-              <span className="block text-xs font-normal text-hestia-text-muted">
-                {coverage.practised} of {coverage.total} sub-skills practised
-              </span>
-            )}
+            {preview && <ChildPreview role={row.role} items={preview} fullWording={fullWording} />}
           </span>
           )}
           {interactive && !editing && (
@@ -1723,6 +2026,14 @@ function GridRow({
       <div role="gridcell" className="px-2.5 py-1.5">
         <Pill label={meta.label} color={meta.color} />
       </div>
+      <div role="gridcell" className="min-w-0 px-2.5 py-1.5">
+        {coverage ? (
+          <TopicCoverage coverage={coverage} />
+        ) : (
+          // Only a goal with a source of its own has a coverage; the badge renders nothing otherwise.
+          <CoverageBadge goal={row.goal} flag={levelFlag} size="cell" />
+        )}
+      </div>
       <div role="gridcell" className="px-2.5 py-1.5">
         {row.goal.creationProvenance === "WIZARD_AI_SUBTREE" ? (
           <Pill label="AI-inferred" color="var(--hestia-danger)" />
@@ -1733,9 +2044,7 @@ function GridRow({
             label={titleCase(row.goal.kind)}
             color="var(--hestia-text-muted)"
           />
-        ) : (
-          <span className="text-xs text-hestia-text-muted">—</span>
-        )}
+        ) : null}
       </div>
       {(["bloom", "solo"] as const).map((scale) => (
         <div key={scale} role="gridcell" className="min-w-0 px-2.5 py-1.5">
@@ -1762,9 +2071,7 @@ function GridRow({
         role="gridcell"
         className="min-w-0 px-2.5 py-1.5 text-xs text-hestia-text-muted"
       >
-        {!source ? (
-          "—"
-        ) : (
+        {!source ? null : (
           <button
             type="button"
             disabled={context}
@@ -2049,7 +2356,7 @@ function LevelCell({
   const meta = LEVEL_SCALES[scale];
   const term = value ? titleCase(value) : null;
   if (!interactive) {
-    return <span className="text-xs text-hestia-text-muted">{term ?? "—"}</span>;
+    return term ? <span className="text-xs text-hestia-text-muted">{term}</span> : null;
   }
   const ladder = Object.keys(meta.desc);
   const index = term == null ? -1 : ladder.indexOf(term);

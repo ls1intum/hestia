@@ -26,7 +26,6 @@ const LEAF_W = 240; // leaf boxes under a focused capability
 const GHOST_W = 128; // the quiet "+ New …" pill beside a row
 const GAP = 12;
 const CONNECTOR_H = 40;
-const MAX_TOPIC_CHILDREN = 5;
 const SCROLL_STEP = 332; // one scroll-arrow press
 
 function rowWidth(widths: number[]) {
@@ -248,11 +247,8 @@ export default function TopicMap({
   });
 
   const capabilityKey = `2:${topic.goal.id}`;
-  const canAddCapability = topic.children.length < MAX_TOPIC_CHILDREN;
-  const capabilityReserve = ghostReserve(
-    canAddCapability,
-    creation.activeKey === capabilityKey,
-  );
+  // A topic takes any number of skills, so its "New skill" ghost is always there.
+  const capabilityReserve = ghostReserve(true, creation.activeKey === capabilityKey);
   const focusedSubIndex = focused
     ? topic.children.findIndex((node) => node.goal.id === focused.goal.id)
     : -1;
@@ -284,7 +280,7 @@ export default function TopicMap({
     focusedSubCentre + leafBranchWidth / 2 - siblingRowWidth - capabilityReserve,
   );
 
-  const capabilityGhost = canAddCapability ? (
+  const capabilityGhost = (
     <CreationGhost
       label="New skill"
       color={COMPETENCY_ROLE_META.capability.color}
@@ -297,7 +293,7 @@ export default function TopicMap({
       onSubmit={creation.submit}
       onCancel={creation.cancel}
     />
-  ) : null;
+  );
 
   return (
     <div ref={containerRef} className="flex flex-col px-3 pb-4">
@@ -802,7 +798,7 @@ function Box({
         {node.goal.shortLabel ?? node.goal.text}
       </p>
       <div className="mt-auto flex items-center gap-1 pt-1">
-        {node.role === "skill" && <CoverageBadge goal={node.goal} flag={levelFlag} />}
+        <CoverageBadge goal={node.goal} flag={levelFlag} />
         {expandable && (
           <span className="flex items-center gap-1 text-xs text-hestia-text-muted">
             <span className="tabular-nums">
