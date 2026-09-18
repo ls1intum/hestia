@@ -34,8 +34,9 @@ server:
   forward-headers-strategy: framework
 
 # ── LLM Configuration ──────────────────────────────────────────────
-# We now use the shared Hestia LLM defaults (spring.ai.openai properties).
-spring.ai.openai.api-key: ${WORKSHOPPER_SAIA_API_KEY}
+# We use the shared Hestia LLM defaults (spring.ai.openai properties): the TUM AET Logos gateway
+# with openai/gpt-oss-120b. A secondary model must be a Logos model id as well.
+spring.ai.openai.api-key: ${WORKSHOPPER_LOGOS_API_KEY}
 
 llm:
   secondary-model: ${LLM_SECONDARY_MODEL:}
