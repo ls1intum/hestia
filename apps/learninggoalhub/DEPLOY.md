@@ -54,8 +54,8 @@ Build and deploy both run on GitHub-hosted runners via the shared ls1intum reusa
 workflows, like the other chair apps (e.g. Hephaestus). The VMs sit behind the LRZ VPN, so the
 deploy workflow reaches them over SSH **through the chair's shared deployment gateway/bastion**
 (`DEPLOYMENT_GATEWAY_*`, provided as organization-level secrets/variables and pulled in via
-`secrets: inherit`). The reusable workflow writes `.env` on the VM from the GitHub environment
-secrets/variables (plus the injected `IMAGE_TAG`), then runs `docker compose pull && up -d`.
+`secrets: inherit`). The reusable workflow writes `.env` on the VM from the repository's
+Actions secrets/variables (plus the injected `IMAGE_TAG`), then runs `docker compose pull && up -d`.
 
 Images are `ghcr.io/ls1intum/hestia/learninggoalhub-{server,client}:<tag>`. The server image
 is built from the repo root (multi-module Gradle build); the client from its own directory.
@@ -64,14 +64,16 @@ is built from the repo root (multi-module Gradle build); the client from its own
 
 Create two **Environments** (Settings → Environments) named `Staging` and `Production`.
 `Production` gets a *required reviewer* so its deploys pause for approval; `Staging` stays
-unprotected.
+unprotected. The environments only gate deploys and hold no values.
 
-Per environment, set:
+Secrets and variables are set once for the whole repository (Settings → Secrets and variables →
+Actions → **Repository** secrets / variables). Every app in the monorepo deploys from the same
+set, so app-specific values carry the app name as a prefix:
 
-- **Secrets:** `VM_HOST`, `VM_USERNAME`, `VM_SSH_PRIVATE_KEY` (SSH access to that VM),
-  `POSTGRES_PASSWORD`, `LOGOS_API_KEY`, `SAIA_API_KEY`
-- **Variables:** `APP_HOST` (the VM's FQDN, must match the TLS cert SAN), `APP_PATH_PREFIX`
-  (`/learninggoalhub`), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`
+- **Secrets:** `VM_SSH_PRIVATE_KEY` (SSH access to the VM), `LEARNINGGOALHUB_POSTGRES_PASSWORD`,
+  `LEARNINGGOALHUB_LOGOS_API_KEY` (chat and vision), `LEARNINGGOALHUB_SAIA_API_KEY` (embeddings)
+- **Variables:** `VM_HOST`, `VM_USERNAME`, `APP_HOST` (the VM's FQDN, must match the TLS cert
+  SAN), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`
 
 The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config — they do not
 need to be set per repo. Everything except the connection keys is written verbatim into `.env`
@@ -88,7 +90,7 @@ sudo usermod -aG docker github_deployment
 sudo mkdir -p /opt/hestia/learninggoalhub && sudo chown -R github_deployment /opt/hestia
 
 # Authorize the deploy key: put its PUBLIC key in github_deployment's authorized_keys and
-# store the PRIVATE key as the VM_SSH_PRIVATE_KEY environment secret; set VM_USERNAME=
+# store the PRIVATE key as the VM_SSH_PRIVATE_KEY repository secret; set VM_USERNAME=
 # github_deployment and VM_HOST to this VM's address (as reachable from the gateway).
 ```
 
@@ -99,7 +101,7 @@ already be in GHCR; `docker login ghcr.io` first if the package is private):
 
 ```bash
 cd <repo>/apps/learninggoalhub
-cp .env.example .env        # fill POSTGRES_PASSWORD, LOGOS_API_KEY, SAIA_API_KEY, APP_HOST; set IMAGE_TAG
+cp .env.example .env        # fill LEARNINGGOALHUB_{POSTGRES_PASSWORD,LOGOS_API_KEY,SAIA_API_KEY}, APP_HOST; set IMAGE_TAG
 sudo docker compose -f compose.prod.yaml --env-file .env pull
 sudo docker compose -f compose.prod.yaml --env-file .env up -d
 ```
@@ -109,7 +111,7 @@ The app is then served at `https://<APP_HOST>/learninggoalhub/`.
 
 ### Notes
 
-- `LOGOS_API_KEY`, `SAIA_API_KEY` and `POSTGRES_PASSWORD` live only in GitHub environment secrets (and the
+- The API keys and the Postgres password live only in the repository's Actions secrets (and the
   generated `.env` on the VM) — never committed.
 - `APP_HOST` must match the TLS cert SAN; `APP_PATH_PREFIX` (default `/learninggoalhub`) is the
   URL path this app is routed under — both drive the Traefik labels in `compose.prod.yaml`.
