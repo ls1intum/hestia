@@ -265,7 +265,7 @@ export default function ExtractionProgressModal({
         {/* One animation for the whole panel rather than per card, as in the other two dialogs. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${
+          className={`comp-unfold flex w-full flex-col gap-4 ${
             "max-w-2xl"
           }`}
         >
@@ -275,23 +275,20 @@ export default function ExtractionProgressModal({
               <img
                 src={flame}
                 alt=""
-                className={`h-6 w-6 shrink-0 ${running ? "animate-pulse" : ""}`}
+                className={`h-8 w-8 shrink-0 ${running ? "animate-pulse" : ""}`}
               />
               <div className="flex min-w-0 flex-col gap-1">
-                <span
-                  id="extraction-progress-title"
-                  className="text-xs font-semibold uppercase tracking-wider text-hestia-text"
-                >
+                <h2 id="extraction-progress-title" className="text-2xl">
                   {title}
-                </span>
-                {subtitle && <p className="text-xs text-hestia-text-muted">{subtitle}</p>}
+                </h2>
+                {subtitle && <p className="text-sm text-hestia-text-muted">{subtitle}</p>}
               </div>
             </div>
             {!reviewLocked && closeButton}
           </div>
 
           {running && (
-            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+            <div className="flex flex-col gap-4 rounded-xl border border-hestia-border bg-hestia-surface p-4 shadow-sm">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted">
                 {total > 0 ? (
                   <div
@@ -341,21 +338,38 @@ export default function ExtractionProgressModal({
           )}
 
           {done && (
-            <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-stretch">
-              <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
+            <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-stretch">
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
                 {failedSessions > 0 && (
-                  <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
-                    <span aria-hidden="true">⚠ </span>
+                  // The table's warning tint: the warning hue is too light for text, so the text
+                  // stays in the text colour and only the icon carries the hue.
+                  <p className="flex items-start gap-2.5 rounded-xl bg-[color-mix(in_srgb,var(--hestia-warning)_22%,var(--hestia-surface))] px-4 py-3 text-sm text-hestia-text">
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-[color-mix(in_srgb,var(--hestia-warning)_70%,var(--hestia-text))]"
+                    >
+                      <path d="M10 3.5l7 12.5H3z" />
+                      <path d="M10 8.5v3.5M10 14.2v.01" />
+                    </svg>
+                    <span>
                     {failedSessions === 1
                       ? "One session could not be analysed and contributed no skills."
                       : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
                     You can add anything that is missing afterwards in the table.
+                    </span>
                   </p>
                 )}
 
-                <div className="flex flex-col rounded-lg border border-hestia-border bg-hestia-surface shadow-lg">
-                  <div className="flex items-center justify-between gap-3 border-b border-hestia-border px-4 py-3">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+                {/* One card: the column-name band, the topics, adding a topic, and the footer. */}
+                <div className="flex flex-col overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-2">
+                    <span className="text-xs font-semibold text-hestia-text-muted">
                       Skills by topic
                     </span>
                     {skills.length > 0 && (
@@ -364,7 +378,9 @@ export default function ExtractionProgressModal({
                       </span>
                     )}
                   </div>
-                  <div className="max-h-[60vh] overflow-y-auto">
+                  {/* Sized to the window: the title, the band, "Add topic" and the footer take about
+                      20rem around it, so the card ends just above the window's bottom edge. */}
+                  <div className="max-h-[calc(100vh-20rem)] min-h-40 overflow-y-auto">
                     {goalsQuery.isLoading && (
                       <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
                         Loading skills…
@@ -381,7 +397,7 @@ export default function ExtractionProgressModal({
                       </p>
                     )}
                     {topics.length > 0 && (
-                      <ul className="divide-y divide-hestia-border">
+                      <ul className="divide-y divide-hestia-border/60">
                         {topics.map((topic, topicIndex) => {
                           const topicId = topic.goal.id;
                           const topicSkills = topic.children.filter(
@@ -433,7 +449,7 @@ export default function ExtractionProgressModal({
                                 }}
                               />
                               {expanded && (
-                                <ul className="pb-2">
+                                <ul className="border-t border-hestia-border/60">
                                   {reviewItems.map((skill) => (
                                     <SkillRow
                                       key={skill.goal.id ?? skill.goal.text}
@@ -503,17 +519,25 @@ export default function ExtractionProgressModal({
                         <button
                           type="button"
                           onClick={() => setNewTopic("")}
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-hestia-primary transition hover:underline"
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-hestia-primary transition hover:text-hestia-primary-hover"
                         >
-                          <span aria-hidden="true">+</span>
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                            className="h-4 w-4"
+                          >
+                            <path d="M10 4v12M4 10h12" />
+                          </svg>
                           Add topic
                         </button>
                       )}
                     </div>
                   )}
-                </div>
-
-                <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+                  <div className="flex flex-col gap-3 border-t border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-3">
                   {acceptAllMutation.isError && (
                     <p className="text-sm text-hestia-danger">
                       {(acceptAllMutation.error as Error).message}
@@ -533,9 +557,10 @@ export default function ExtractionProgressModal({
                     <p className="text-xs text-hestia-text-muted">
                       Rename or add skills afterwards in the table.
                     </p>
-                    <Button size="lg" onClick={onClose}>
+                    <Button className="h-9" onClick={onClose}>
                       Done
                     </Button>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -543,8 +568,8 @@ export default function ExtractionProgressModal({
           )}
 
           {failed && (
-            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-              <div className="rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-3 text-sm text-hestia-danger">
+            <div className="flex flex-col gap-4 rounded-xl border border-hestia-border bg-hestia-surface p-4 shadow-sm">
+              <div className="rounded-lg bg-[color-mix(in_srgb,var(--hestia-danger)_12%,var(--hestia-surface))] px-3 py-3 text-sm text-hestia-danger">
                 <p className="font-medium">
                   {failedSessions > 0
                     ? failedSessions === 1
@@ -564,11 +589,11 @@ export default function ExtractionProgressModal({
                 </p>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="lg" onClick={onClose}>
+                <Button variant="neutral" className="h-9" onClick={onClose}>
                   Close
                 </Button>
                 <Button
-                  size="lg"
+                  className="h-9"
                   onClick={() => retryMutation.mutate()}
                   disabled={retryMutation.isPending || courseId == null}
                 >
@@ -646,32 +671,33 @@ function TopicHeader({
     : groupedSkillWord;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-hestia-bg/40 px-4 py-3">
+    // The competency table's topic row: the same tint, chevron and coloured rail.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-[color-mix(in_srgb,var(--hestia-text)_3%,var(--hestia-surface))] px-4 py-2.5">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left"
       >
-        <svg
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          className={`h-3.5 w-3.5 shrink-0 text-hestia-text-muted transition-transform ${
-            expanded ? "rotate-90" : ""
-          }`}
-        >
-          <path d="M7.5 5l5 5-5 5" />
-        </svg>
         <span
           aria-hidden="true"
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
           style={{ backgroundColor: COMPETENCY_ROLE_META.topic.color }}
         />
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+          >
+            <path d="M7 5l6 5-6 5" />
+          </svg>
+        </span>
         <span className="min-w-0 flex-1 text-sm font-semibold leading-relaxed text-hestia-text">
           <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
           {topic.goal.text}
@@ -693,7 +719,10 @@ function TopicHeader({
       ) : (
         <div className="flex shrink-0 items-center gap-1">
           {skillCount > 0 && (pendingCount > 0 ? (
-            <Button size="sm" disabled={acceptingAll} onClick={onAcceptAll}>
+            // Outlined rather than filled: a gold button on every topic turned the list into a wall
+            // of them, and Done is the one filled action here, as on the course page.
+            <Button variant="neutral" size="sm" disabled={acceptingAll} onClick={onAcceptAll}>
+              <CheckIcon />
               {acceptingAll ? "Accepting…" : "Accept all"}
             </Button>
           ) : (
@@ -771,25 +800,32 @@ function SkillRow({
       : null;
   return (
     <li
-      className={`flex items-start gap-3 py-2.5 pl-12 pr-4 transition-colors ${
-        approved ? "bg-hestia-primary-muted/20" : ""
+      className={`flex items-center gap-1 border-t border-hestia-border/60 py-2 pl-4 pr-4 transition-colors first:border-t-0 ${
+        approved ? "bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]" : ""
       }`}
     >
+      {/* Indented like the table: 20px per tier below the topic, the tier rail, then the chevron's
+          empty slot. A sub-skill standing in for a missing skill still sits a tier deeper. */}
+      <span
+        className={`${skill.role === "skill" ? "w-10" : "w-5"} shrink-0`}
+        aria-hidden="true"
+      />
       <span
         aria-hidden="true"
-        className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+        className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
         style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
       />
-      <span className="min-w-0 flex-1 text-sm leading-relaxed text-hestia-text">
+      <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+      <span className="mr-2 min-w-0 flex-1 text-[13px] leading-relaxed text-hestia-text">
         <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
         {skill.goal.text}
         {skill.role === "skill" && (
-          <span className="ml-2 whitespace-nowrap rounded-full border border-hestia-border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-[color-mix(in_srgb,var(--hestia-accent)_50%,var(--hestia-surface))] px-2 align-middle text-xs font-medium text-hestia-accent">
             {COMPETENCY_ROLE_META.skill.label}
           </span>
         )}
         {provenanceLabel && (
-          <span className="ml-2 whitespace-nowrap rounded-full border border-hestia-border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted">
             {provenanceLabel}
           </span>
         )}
@@ -830,7 +866,8 @@ function SkillRow({
               Accepted
             </Button>
           ) : (
-            <Button size="sm" disabled={accepting} onClick={() => onAccept(true)}>
+            <Button variant="neutral" size="sm" disabled={accepting} onClick={() => onAccept(true)}>
+              <CheckIcon />
               {accepting ? "Accepting…" : "Accept"}
             </Button>
           )}
@@ -879,5 +916,22 @@ function PhaseTick({
     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-hestia-border text-xs font-semibold tabular-nums text-hestia-text-muted/60">
       {index + 1}
     </span>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+    >
+      <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+    </svg>
   );
 }

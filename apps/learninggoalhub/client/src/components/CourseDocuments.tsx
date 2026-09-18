@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { DocumentResponse } from "../api/client.ts";
 import Button from "./Button.tsx";
+import { RowAction } from "./GoalInlineEditing.tsx";
 import { DOCUMENT_KIND_LABEL } from "../lib/documents.ts";
 import type { DocumentKind } from "../lib/documents.ts";
 
@@ -67,25 +68,27 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
   const documents = documentsQuery.data ?? [];
 
   return (
-    <div className="border-t border-hestia-border bg-hestia-bg/40 px-6 py-3 pl-14">
+    // Sub-rows of the course row, indented to its name column, with the same shading the
+    // competency table puts under an opened topic.
+    <div className="border-t border-hestia-border/60 bg-hestia-bg/60 shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]">
       {documentsQuery.isLoading && (
-        <p className="text-sm text-hestia-text-muted">Loading…</p>
+        <p className="py-2.5 pl-11 text-sm text-hestia-text-muted">Loading…</p>
       )}
       {documentsQuery.isError && (
-        <p className="text-sm text-hestia-danger">
+        <p className="py-2.5 pl-11 text-sm text-hestia-danger">
           {(documentsQuery.error as Error).message}
         </p>
       )}
       {!documentsQuery.isLoading && !documentsQuery.isError && documents.length === 0 && (
-        <p className="rounded-lg border border-dashed border-hestia-border p-4 text-center text-sm text-hestia-text-muted">
+        <p className="py-2.5 pl-11 text-sm text-hestia-text-muted">
           No documents uploaded for this course.
         </p>
       )}
       {kindMutation.isError && (
-        <p className="mb-2 text-sm text-hestia-danger">{(kindMutation.error as Error).message}</p>
+        <p className="py-2 pl-11 text-sm text-hestia-danger">{(kindMutation.error as Error).message}</p>
       )}
       {documents.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="divide-y divide-hestia-border/60">
           {documents.map((doc) => (
             <DocumentRow
               key={doc.id}
@@ -150,19 +153,19 @@ function DocumentRow({
   }, [editing]);
 
   const uploaded = document.uploadedAt
-    ? new Date(document.uploadedAt).toLocaleDateString()
+    ? new Date(document.uploadedAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
     : null;
   const trimmed = draft.trim();
   const canSave = trimmed !== "" && trimmed !== shown && !busy;
 
   return (
     // Unless it is being renamed, a document is one line: the columns line the upload date and the
-    // pencil up with the course row's "Created" column and its ⋮ menu.
-    <li
-      className={`rounded-lg border border-hestia-border bg-hestia-surface ${
-        editing ? "p-3" : "py-1.5 pl-3 pr-2"
-      }`}
-    >
+    // rename action up with the course row's "Created" column and its row actions.
+    <li className={`group relative pl-11 pr-4 ${editing ? "py-3" : ""}`}>
       {editing ? (
         <form
           onSubmit={(e) => {
@@ -202,8 +205,21 @@ function DocumentRow({
           </div>
         </form>
       ) : (
-        <div className="grid grid-cols-[1fr_auto_7rem_2rem] items-center gap-4">
-          <div className="flex min-w-0 items-baseline gap-2">
+        <div className="grid h-10 grid-cols-[1fr_auto_7rem_3rem] items-center gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-hestia-text-muted"
+            >
+              <path d="M11.5 2.5H5.5v15h9V5.5z" />
+              <path d="M11.5 2.5v3h3" />
+            </svg>
             <span className="truncate text-sm text-hestia-text" title={shown}>
               {shown}
             </span>
@@ -224,7 +240,7 @@ function DocumentRow({
             onChange={(e) => onKindChange(e.target.value as DocumentKind)}
             aria-label={`Kind of ${shown}`}
             title="Takes effect on the next extraction or competency tree rebuild"
-            className="rounded-sm border border-hestia-border bg-hestia-surface px-1.5 py-0.5 text-xs text-hestia-text-muted transition hover:border-hestia-primary focus:border-hestia-primary focus:outline-none disabled:opacity-50"
+            className="h-[22px] cursor-pointer rounded-md border border-hestia-border bg-hestia-surface px-1.5 text-xs font-medium text-hestia-text-muted transition hover:border-hestia-primary focus:border-hestia-primary focus:outline-none disabled:opacity-50"
           >
             {!document.kind && <option value="">No kind</option>}
             {(Object.keys(DOCUMENT_KIND_LABEL) as DocumentKind[]).map((kind) => (
@@ -233,28 +249,23 @@ function DocumentRow({
               </option>
             ))}
           </select>
-          <span className="whitespace-nowrap text-right text-xs text-hestia-text-muted">
-            {uploaded ? `Uploaded ${uploaded}` : null}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Rename document"
-            aria-label={`Rename ${shown}`}
-            onClick={onEdit}
+          <span
+            className="whitespace-nowrap text-right text-sm text-hestia-text-muted"
+            title={uploaded ? `Uploaded ${uploaded}` : undefined}
           >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
-            </svg>
-          </Button>
+            {uploaded}
+          </span>
+          <span className="flex justify-end opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+            <span className="flex rounded-md border border-hestia-border bg-hestia-surface p-0.5 shadow-sm">
+              <RowAction
+                label={`Rename ${shown}`}
+                onClick={onEdit}
+                className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+              >
+                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+              </RowAction>
+            </span>
+          </span>
         </div>
       )}
     </li>
