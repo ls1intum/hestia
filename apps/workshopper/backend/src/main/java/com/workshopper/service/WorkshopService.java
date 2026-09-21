@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 public class WorkshopService {
@@ -22,7 +21,6 @@ public class WorkshopService {
     private final LlmService llm;
     private final WorkshopSessionRepository repo;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final java.util.concurrent.ExecutorService llmExecutor = java.util.concurrent.Executors.newFixedThreadPool(20);
 
     public WorkshopService(LlmService llm, WorkshopSessionRepository repo) {
         this.llm = llm;
@@ -32,79 +30,29 @@ public class WorkshopService {
     // ── Step 1: Generate learning goal plans ──────────────────────
 
     public List<LearningGoalPlanDto> generatePlan(WorkshopInputDto input) throws Exception {
-        String systemPrompt = """
-                You are an expert learning designer specializing in constructive alignment.
-                Your task is to analyse a workshop input and decompose it into concrete, measurable learning goals.
-                Always respond with ONLY valid JSON — no prose, no markdown fences.
-                """;
-
         String sessionTypeLabel = resolveSessionType(input.sessionType(), input.sessionTypeOther());
-        String userPrompt = buildPlanPrompt(input, sessionTypeLabel);
-
-        log.debug("Generating plan for goals: {}", input.learningGoals());
-        String raw = llm.call(systemPrompt, userPrompt);
-        String json = llm.extractJsonArray(raw);
-
-        return mapper.readValue(json, new TypeReference<List<LearningGoalPlanDto>>() {
-        });
-    }
-
-    private String buildPlanPrompt(WorkshopInputDto input, String sessionTypeLabel) {
-        var sb = new StringBuilder();
-        sb.append("Workshop details:\n");
-        sb.append("- Session type: ").append(sessionTypeLabel).append("\n");
-        sb.append("- Duration: ").append(input.duration()).append(" minutes\n");
-        sb.append("- Number of participants: ").append(input.participants()).append("\n");
-
-        if (input.studentBackground() != null && !input.studentBackground().isBlank()) {
-            sb.append("- Student background: ").append(input.studentBackground()).append("\n");
-        }
+        
+        StringBuilder goalsList = new StringBuilder();
         if (input.learningGoals() != null && !input.learningGoals().isEmpty()) {
-            sb.append("- Provided learning goals:\n");
             for (String g : input.learningGoals()) {
-                // Strip any "LG1:", "LG 1:", "LG1 -" style prefixes the user may have typed
                 String cleaned = g.replaceAll("(?i)^\\s*LG\\s*\\d+\\s*[:.-]\\s*", "").trim();
-                sb.append("  * ").append(cleaned).append("\n");
+                goalsList.append("  * ").append(cleaned).append("\n");
             }
         }
-        if (input.sourceDocument() != null && !input.sourceDocument().isBlank()) {
-            sb.append("\nSource document (use to extract learning goals):\n");
-            String doc = input.sourceDocument();
-            if (doc.length() > 8000)
-                doc = doc.substring(0, 8000) + "\n[... truncated ...]";
-            sb.append(doc).append("\n");
+        
+        String doc = input.sourceDocument();
+        if (doc != null && doc.length() > 8000) {
+            doc = doc.substring(0, 8000) + "\n[... truncated ...]";
         }
-
-        sb.append("""
-
-                Return a JSON array of learning goal objects. Each object must follow this exact schema:
-                [
-                  {
-                    "id": "g1",
-                    "originalGoal": "The exact text of the inputted goal this relates to (if any)",
-                    "goal": "Participants will be able to ...",
-                    "prerequisites": [],
-                    "achieveActivities": [],
-                    "assessActivities": [],
-                    "priority": 0
-                  }
-                ]
-                Return 2–5 goals. Use verb-object format for goal statements (Bloom's taxonomy verbs preferred).
-                Always set priority to 0. Leave achieveActivities and assessActivities empty.
-                IMPORTANT: The "goal" field must NOT contain any "LG1:", "LG2:", or similar numbering prefixes. Start directly with "Participants will be able to ...".
-                """);
-
-        return sb.toString();
+        
+        log.debug("Generating plan for goals: {}", input.learningGoals());
+        return llm.generateLearningGoals(input, sessionTypeLabel, goalsList.toString(), doc);
     }
+
 
     // ── Real-time goal refinement (Step 3) ───────────────────────────
 
     public List<GoalSuggestionDto> refineGoal(RefineGoalRequestDto request) throws Exception {
-        String systemPrompt = """
-                You are an expert learning designer. Analyse a single learning goal and return
-                actionable suggestions. Always respond with ONLY a valid JSON array — no prose.
-                """;
-
         var ctx = request.context() != null ? request.context() : java.util.Map.of();
         String sessionType = ctx.getOrDefault("sessionType", "workshop").toString();
         String background = ctx.getOrDefault("studentBackground", "").toString();
@@ -118,55 +66,12 @@ public class WorkshopService {
                     + "\n\nIf the learning goal text above is a broad 'Terminal Competency' that combines many concepts, use these sub-skills as a strong hint for how to split it into distinct, actionable Workshop goals. You can combine closely related sub-skills into a single goal, or elevate major sub-skills into their own goals.";
         }
 
-        String userPrompt = String.format(
-                """
-                        Session type: %s
-                        Student background: %s
-
-                        Learning goal text to review:
-                        "%s"
-                        %s
-
-                        Task:
-                        FIRST, check if the text contains TWO OR MORE distinct learning goals in a single entry. This happens when:
-                        - The text contains newlines or line breaks between complete thoughts
-                        - Multiple complete goal sentences are separated by a period (e.g. "Students will apply X. Students will also evaluate Y")
-                        - The word "and" joins ENTIRELY DIFFERENT skills or competencies
-                        - A comma separates distinct measurable outcomes
-                        In any of these cases, you MUST return a "split" suggestion with ALL distinct goals clearly stated in the "values" array.
-
-                        THEN, if the text is a single goal:
-                        1. If the goal contains MULTIPLE distinct competencies in one sentence, suggest splitting it into separate goals.
-                        2. If the goal is vague, unmeasurable, or not phrased as an observable outcome, suggest a refined version.
-                        3. CRITICAL RULE: There must NEVER be more than one SOLO/Bloom taxonomy verb in a single learning goal. For example, "explain concept A and concept B" is allowed, but "discuss and explain concept A" is strictly forbidden. If a goal uses multiple verbs, split it into separate goals or simplify it to one core verb.
-                        4. If the goal is already clear, well-formed, and strictly uses only one core taxonomy verb, return an EMPTY array [].
-
-                        Return a JSON array with at most 2 suggestions. Each suggestion must follow this schema:
-                        [
-                          {
-                            "type": "split" | "refine",
-                            "values": ["first goal text", "second goal text", "etc (only for split, always include ALL split goals)"],
-                            "message": "Short explanation of why this suggestion is helpful (max 1 sentence)"
-                          }
-                        ]
-                        IMPORTANT: For a "split" suggestion, "values" MUST contain an array of ALL separated goal strings.
-                        """,
-                sessionType, background, request.goal(), subSkillsContext);
-
-        String raw = llm.call(systemPrompt, userPrompt);
-        String json = llm.extractJsonArray(raw);
-        return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<GoalSuggestionDto>>() {
-        });
+        return llm.refineGoal(request, sessionType, background, subSkillsContext);
     }
 
     // ── Extract LGs from uploaded document (Step 3 file upload) ─────
 
     public List<String> extractGoalsFromDocument(ExtractGoalsRequestDto request) throws Exception {
-        String systemPrompt = """
-                You are an expert learning designer. Extract explicit or implied learning goals from
-                a document. Always respond with ONLY a valid JSON array of strings — no prose.
-                """;
-
         var ctx = request.context() != null ? request.context() : java.util.Map.of();
         String sessionType = ctx.getOrDefault("sessionType", "workshop").toString();
         String background = ctx.getOrDefault("studentBackground", "").toString();
@@ -176,34 +81,7 @@ public class WorkshopService {
         if (doc != null && doc.length() > 10000)
             doc = doc.substring(0, 10000) + "\n[... truncated ...]";
 
-        String userPrompt = String.format(
-                """
-                        Session type: %s
-                        Student background: %s
-
-                        Document text:
-                        ---
-                        %s
-                        ---
-
-                        Task:
-                        Extract all distinct learning goals or intended learning outcomes from this document.
-                        - Include goals stated explicitly (e.g. "After this session, students will be able to...")
-                        - Include goals implied by section headings or topic lists
-                        - Rephrase each as a measurable outcome using a taxonomy verb.
-                        - CRITICAL RULE: There must NEVER be more than one SOLO/Bloom taxonomy verb in a single learning goal. For example, "Participants will be able to explain concept A and concept B" is allowed, but "discuss and explain concept A" is strictly forbidden. Use exactly one core measurable verb per goal.
-                        - Return between 2 and 8 goals
-                        - Each goal must be a complete sentence starting with "Participants will be able to..."
-
-                        Return a JSON array of strings, e.g.:
-                        ["Participants will be able to apply X...", "Participants will be able to evaluate Y..."]
-                        """,
-                sessionType, background, doc);
-
-        String raw = llm.call(systemPrompt, userPrompt);
-        String json = llm.extractJsonArray(raw);
-        return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {
-        });
+        return llm.extractGoalsFromDocument(sessionType, background, doc);
     }
 
     // ── Automatic grammar check for LGs ──────────────────────────────────────
@@ -211,435 +89,11 @@ public class WorkshopService {
     public List<String> fixGoalsGrammar(List<String> goals) throws Exception {
         if (goals == null || goals.isEmpty())
             return goals;
-        String systemPrompt = """
-                You are a helpful AI assistant. Fix obvious spelling and grammar errors in the provided learning goals (e.g. 'linr regression' -> 'linear regression').
-                Do not change the meaning, the structure, or the taxonomy verbs.
-                Always respond with ONLY a valid JSON array of strings — no prose.
-                """;
-
-        String userPrompt = "Learning goals:\n" + mapper.writeValueAsString(goals)
-                + "\n\nReturn the corrected JSON array of strings.";
-        String raw = llm.call(systemPrompt, userPrompt);
-        String json = llm.extractJsonArray(raw);
-        return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {
-        });
+        return llm.fixGoalsGrammar(goals);
     }
 
     // ── Step 1b: placeholder (activities are selected by user in Step 2) ─
-    public List<LearningGoalPlanDto> generateActivities(List<LearningGoalPlanDto> goals,
-            WorkshopInputDto meta,
-            String availableMaterials) throws Exception {
-        return goals;
-    }
 
-    public WorkshopSessionDto generateSession(List<LearningGoalPlanDto> goals,
-            WorkshopInputDto meta,
-            SessionSkeletonDto skeleton) throws Exception {
-        // Filter out 0-duration sections from the skeleton blocks before sending to LLM
-        List<SkeletonBlockDto> filteredBlocks = skeleton.blocks().stream()
-                .map(block -> {
-                    if (block.sections() == null || block.sections().isEmpty())
-                        return block;
-                    var filteredSections = block.sections().stream()
-                            .filter(s -> s.duration() > 0)
-                            .collect(Collectors.toList());
-                    return new SkeletonBlockDto(
-                            block.phase(), block.lgIndex(), block.duration(),
-                            block.title(), block.description(), filteredSections);
-                })
-                .collect(Collectors.toList());
-        SessionSkeletonDto filteredSkeleton = new SessionSkeletonDto(
-                skeleton.learningGoal(), filteredBlocks,
-                skeleton.omittedGoalIndices(), skeleton.sessionId());
-
-        String sessionTypeLabel = resolveSessionType(meta.sessionType(), meta.sessionTypeOther());
-
-        // 1. Generate title concurrently
-        java.util.concurrent.CompletableFuture<String> titleFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                if (meta.title() != null && !meta.title().isBlank() && !isGenericTitle(meta.title())) {
-                    return meta.title();
-                }
-                return generateSessionTitle(filteredSkeleton, goals, meta, sessionTypeLabel);
-            }, llmExecutor);
-
-            // 2. Generate blocks concurrently with concurrency limit of 3
-            java.util.concurrent.Semaphore concurrencySemaphore = new java.util.concurrent.Semaphore(3);
-            List<java.util.concurrent.CompletableFuture<ActivityBlockDto>> blockFutures = new ArrayList<>();
-            
-            for (SkeletonBlockDto block : filteredBlocks) {
-                java.util.concurrent.CompletableFuture<ActivityBlockDto> future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                try {
-                    concurrencySemaphore.acquire();
-                    log.debug("Hydrating block phase={}, lgIndex={}", block.phase(), block.lgIndex());
-                    String prompt = buildHydrationPromptForBlock(block, filteredSkeleton, goals, meta, sessionTypeLabel);
-                    String sysPrompt = "You are an expert learning designer. Return ONLY valid JSON representing the requested block.";
-                    String rawJson = llm.call(sysPrompt, prompt);
-                    String cleanedJson = llm.extractJsonObject(rawJson);
-                    return mapper.readValue(cleanedJson, ActivityBlockDto.class);
-                } catch (Exception e) {
-                    log.error("Failed to hydrate block", e);
-                    throw new RuntimeException(e);
-                } finally {
-                    concurrencySemaphore.release();
-                }
-            }, llmExecutor);
-            blockFutures.add(future);
-        }
-
-        // Wait for all blocks to finish
-        java.util.concurrent.CompletableFuture<Void> allBlocksFuture = java.util.concurrent.CompletableFuture.allOf(blockFutures.toArray(new java.util.concurrent.CompletableFuture[0]));
-        allBlocksFuture.join();
-
-        // Collect results in order
-        List<ActivityBlockDto> hydratedBlocks = blockFutures.stream()
-                .map(java.util.concurrent.CompletableFuture::join)
-                .map(this::normalizeBlockActivities)
-                .collect(Collectors.toList());
-
-        String sessionTitle = titleFuture.join();
-
-        // Build omitted goals list from skeleton indices
-        List<String> omittedGoals = new ArrayList<>();
-        if (skeleton.omittedGoalIndices() != null) {
-            for (int idx : skeleton.omittedGoalIndices()) {
-                if (idx > 0 && idx <= goals.size())
-                    omittedGoals.add(goals.get(idx - 1).goal());
-            }
-        }
-
-        String studentBg = (meta.studentBackground() != null) ? meta.studentBackground() : "";
-        String prereqs = (meta.prerequisites() != null) ? meta.prerequisites() : "";
-
-        WorkshopSessionDto session = new WorkshopSessionDto(
-                null,
-                sessionTitle,
-                skeleton.learningGoal(),
-                studentBg,
-                prereqs,
-                hydratedBlocks,
-                omittedGoals,
-                null);
-
-        // ── Persist / update in DB ────────────────────────────────────
-        String json = mapper.writeValueAsString(session);
-        try {
-            // If caller provided a draft session ID, update it; otherwise create a new
-            // record
-            WorkshopSessionEntity entity = null;
-            if (skeleton.sessionId() != null && !skeleton.sessionId().isBlank()) {
-                entity = repo.findById(skeleton.sessionId()).orElse(null);
-            }
-            if (entity == null) {
-                entity = new WorkshopSessionEntity();
-            }
-            entity.setTitle(sessionTitle);
-            entity.setLearningGoal(session.learningGoal());
-            entity.setStudentBackground(session.studentBackground());
-            entity.setPrerequisites(session.prerequisites());
-            entity.setSessionJson(json);
-            entity.setStatus("complete");
-            entity.setCurrentStep("result");
-            WorkshopSessionEntity saved = repo.save(entity);
-            session = new WorkshopSessionDto(
-                    saved.getId(), session.title(), session.learningGoal(), session.studentBackground(),
-                    session.prerequisites(), session.blocks(), session.omittedGoals(), null);
-        } catch (Exception e) {
-            log.warn("Could not persist session: {}", e.getMessage());
-        }
-
-            return session;
-    }
-
-    private String generateSessionTitle(SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel) {
-        // Extract topic keywords from learning goals for a grounded title
-        var sb = new StringBuilder();
-        sb.append("LEARNING GOALS FOR THIS SESSION:\n");
-        for (int i = 0; i < goals.size(); i++) {
-            String g = goals.get(i).goal() != null ? goals.get(i).goal() : goals.get(i).originalGoal();
-            if (g != null && !g.isBlank()) sb.append(i + 1).append(". ").append(g).append("\n");
-        }
-        if (skeleton.learningGoal() != null && !skeleton.learningGoal().isBlank()) {
-            sb.append("Overall session topic: ").append(skeleton.learningGoal()).append("\n");
-        }
-        sb.append("\nTask: Write a SHORT, SPECIFIC title (3–7 words) that names the SUBJECT MATTER of this session.\n");
-        sb.append("Rules:\n");
-        sb.append("- Derive the title ONLY from the topic domain in the learning goals (e.g. 'Introduction to Neural Networks', 'Bayesian Inference Fundamentals', 'Decision Trees and Model Evaluation').\n");
-        sb.append("- Do NOT use generic words: Lecture, Session, Workshop, Seminar, Course, Class, Learning, or Training.\n");
-        sb.append("- Do NOT start with 'An Introduction to' — just name the topic directly.\n");
-        sb.append("- Return ONLY the title as a plain string. No quotes. No JSON. No prefix.\n");
-
-        String systemPrompt = "You are an expert learning designer naming a " + sessionTypeLabel + " from its learning goals. Return ONLY the title — a plain string, no quotes, no JSON.";
-
-        try {
-            String raw = llm.call(systemPrompt, sb.toString()).trim()
-                    .replaceAll("^[\"|']+|[\"|']+$", "") // strip surrounding quotes
-                    .replaceAll("(?i)^title:\\s*", "");   // strip "Title:" prefix if LLM adds it
-            // If LLM still returned only the sessionTypeLabel, use fallback
-            if (raw.equalsIgnoreCase(sessionTypeLabel) || raw.equalsIgnoreCase(sessionTypeLabel + " session") || raw.isBlank()) {
-                log.warn("Title generation returned generic value '{}', using LG-derived fallback", raw);
-                return deriveTitleFromGoals(goals, sessionTypeLabel);
-            }
-            return raw;
-        } catch (Exception e) {
-            log.warn("Failed to generate title, using fallback", e);
-            return deriveTitleFromGoals(goals, sessionTypeLabel);
-        }
-    }
-
-    /** Hard fallback: extract the first noun phrase from the first LG's verb object. */
-    private String deriveTitleFromGoals(List<LearningGoalPlanDto> goals, String sessionTypeLabel) {
-        if (goals != null && !goals.isEmpty()) {
-            String g = goals.get(0).goal() != null ? goals.get(0).goal() : goals.get(0).originalGoal();
-            if (g != null && !g.isBlank()) {
-                // Strip leading "Participants will be able to [verb] " and take the rest (up to 60 chars)
-                String stripped = g.replaceAll("(?i)^participants will be able to \\w+\\s+", "").trim();
-                if (!stripped.isBlank()) {
-                    String title = stripped.length() > 60 ? stripped.substring(0, 60).trim() : stripped;
-                    return Character.toUpperCase(title.charAt(0)) + title.substring(1);
-                }
-            }
-        }
-        return sessionTypeLabel + " — Session Plan";
-    }
-
-    /**
-     * Returns true if the title is just a generic auto-generated session-type label
-     * (i.e. was never meaningfully set by the user) and should be regenerated.
-     */
-    private boolean isGenericTitle(String title) {
-        if (title == null) return true;
-        String t = title.trim().toLowerCase();
-        return t.equals("lecture") || t.equals("lecture session") ||
-               t.equals("workshop") || t.equals("workshop session") ||
-               t.equals("exercise session") || t.equals("seminar") ||
-               t.equals("practical course") || t.equals("other") ||
-               t.equals("workshop session plan") || t.contains(" — session plan") ||
-               t.equals("session plan");
-    }
-
-    private String buildHydrationPromptForBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton,
-            List<LearningGoalPlanDto> goals,
-            WorkshopInputDto meta,
-            String sessionTypeLabel) throws Exception {
-        var sb = new StringBuilder();
-        sb.append("SESSION CONTEXT:\n");
-        sb.append("- Type: ").append(sessionTypeLabel).append("\n");
-        sb.append("- Total duration: ").append(meta.duration()).append(" minutes\n");
-        sb.append("- Participants: ").append(meta.participants()).append("\n");
-        if (meta.interactionLevel() != null && !meta.interactionLevel().isBlank())
-            sb.append("- Interaction level: ").append(meta.interactionLevel()).append("\n");
-        if (meta.studentBackground() != null && !meta.studentBackground().isBlank())
-            sb.append("- Student background: ").append(meta.studentBackground()).append("\n");
-
-        sb.append("\nSELECTED ACTIVITIES (prefer these):");
-        if (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty()) {
-            sb.append(" ").append(String.join(", ", meta.selectedActivities())).append("\n");
-        } else {
-            sb.append(" None specified, use best pedagogical judgment.\n");
-        }
-
-        sb.append("\nLEARNING GOALS:\n");
-        for (int i = 0; i < goals.size(); i++) {
-            var g = goals.get(i);
-            sb.append("LG").append(i + 1).append(": ").append(g.goal()).append("\n");
-        }
-
-        sb.append("\nFULL SESSION OUTLINE (For context only):\n");
-        sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(skeleton.blocks()));
-
-        sb.append("\nTARGET BLOCK TO HYDRATE:\n");
-        sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(targetBlock));
-
-        // ── Custom EVALUATE time budget ────────────────────
-        int totalEvalMin = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
-        
-        var evaluateMappingStr = new StringBuilder();
-        var evaluateMappings = meta.evaluateMappings();
-
-        // AUTO-MAP FOR 1 OR 2 LGS IF EMPTY
-        if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals.size() > 0 && goals.size() <= 2) {
-            java.util.List<String> fallbacks = java.util.List.of("Quiz", "Think-Pair-Share");
-            java.util.List<String> avail = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty()) 
-                    ? meta.selectedActivities() 
-                    : fallbacks;
-            
-            evaluateMappings = new java.util.ArrayList<>();
-            for (int i = 0; i < goals.size(); i++) {
-                evaluateMappings.add(new com.workshopper.dto.EvaluateMappingDto(
-                    avail.get(i % avail.size()), 
-                    java.util.List.of(goals.get(i).id())
-                ));
-            }
-        }
-
-        if (evaluateMappings != null && !evaluateMappings.isEmpty()) {
-            int timePerBox = Math.max(1, totalEvalMin / evaluateMappings.size());
-            int boxIdx = 1;
-            for (var mapping : evaluateMappings) {
-                evaluateMappingStr.append("Activity Box ").append(boxIdx).append(" (").append(timePerBox).append(" min):\n");
-                evaluateMappingStr.append("  - Activity Method: ").append(mapping.method()).append("\n");
-                evaluateMappingStr.append("  - Assigned Learning Goals:\n");
-                for (String lgId : mapping.lgIds()) {
-                    for (int j = 0; j < goals.size(); j++) {
-                        if (lgId.equals(goals.get(j).id())) {
-                            evaluateMappingStr.append("      LG").append(j + 1).append(": ").append(goals.get(j).goal()).append("\n");
-                        }
-                    }
-                }
-                evaluateMappingStr.append("\n");
-                boxIdx++;
-            }
-        }
-
-        String evaluateRules;
-        if (evaluateMappings != null && !evaluateMappings.isEmpty()) {
-            evaluateRules = """
-                        11. When generating an 'Understanding Check' (EVALUATE), generate exactly ONE distinct activity step PER Activity Box requested by the user.
-                            CRITICAL: If there are multiple Activity Boxes, you MUST generate multiple distinct steps. Do not combine them!
-                            DO NOT break down the activity into Explain/Prompt/Activity/Summarize steps. Provide ONLY the activity prompt as a single unified step per box.
-                            
-                            REQUESTED ACTIVITY BOXES:
-%s
-                            
-                            For each Activity Box, generate exactly ONE step describing the activity.
-                            Format: "{box_minutes} min — Combined · [{method}]: [unified scenario/task description testing the assigned LGs] (Instructor note: which parts exercise which LGs)"
-                            - If only ONE Learning Goal is assigned to the box, simplify the format to targeting ONLY that LG:
-                              Format: "{box_minutes} min — Prompt LG[N] · [{method}]: [specific question or task targeting ONLY this LG]"
-                            - Strictly follow the requested 'Activity Method' for each box.
-                            - Ignore any Learning Goals that are not assigned to any Activity Box.
-                            - CRITICAL: The 'methods' JSON array on the top-level block object MUST include ALL distinct ActivityNames used (e.g., ["Quiz", "Roleplay"]). DO NOT leave it empty!
-                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
-""".formatted(evaluateMappingStr.toString());
-        } else {
-            evaluateRules = """
-                        11. When generating an 'Understanding Check' (EVALUATE):
-                            - You MUST generate a SEPARATE activity step for EACH Learning Goal.
-                            - CRITICAL: DO NOT combine the Learning Goals into a single step! If there are 2 LGs, there MUST be 2 distinct steps.
-                            - DO NOT break down an activity into Explain/Prompt/Activity/Summarize. Provide ONLY the activity prompt step for each LG.
-                            - Format for EACH step MUST be exactly: "X min — Prompt LG[Number] · [ActivityName]: [task description testing this specific LG]"
-                            (Example: "5 min — Prompt LG1 · Quiz: solve this equation")
-                            - Ensure the sum of minutes across these steps equals exactly %d min.
-                            - Pick the activity types from the SELECTED ACTIVITIES list, or choose whichever activities best fit.
-                            - CRITICAL: The 'methods' JSON array on the top-level block object MUST include ALL distinct ActivityNames used (e.g., ["Quiz", "Think-Pair-Share"]). DO NOT leave it empty!
-                            - Strictly forbid closing remarks, 'thank yous', or wrap-ups in this block.
-""".formatted(totalEvalMin);
-        }
-
-        String selectedActivitiesStr = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty())
-                ? String.join(", ", meta.selectedActivities())
-                : "use best pedagogical judgment (e.g. Case Study, Think-Pair-Share, Debate, Design Sprint)";
-
-        int totalDur = meta.duration() > 0 ? meta.duration() : 90;
-        int minClosingTime = (int) Math.round(totalDur * 0.13);
-        int maxClosingTime = (int) Math.round(totalDur * 0.20);
-
-        sb.append(String.format(
-                """
-
-                        INSTRUCTIONS:
-                        You are an expert learning designer. Your task is to generate a concrete instructor script for the TARGET BLOCK ONLY.
-                        The key output is 'sections' — each section is a phase of the block with a step-by-step timed todo list telling the instructor EXACTLY what to do.
-
-                        CRITICAL RULES:
-                        1. DO NOT invent or elaborate on the teaching content. Focus entirely on the PROCESS.
-                        2. Keep the step descriptions short and precise. Avoid fluff.
-                        3. Each step in the todo list should be timed and action-oriented. Do NOT use the word "instructor".
-                        3. Within a learning cycle block, the "You explain" section MUST list the key knowledge points the instructor will teach. Break it down into 3-5 specific, timed steps covering the key concepts (e.g. "3 min - Explain: Concept A"). Do NOT just generate a single step saying "10 min - Lecture on X". Do NOT include explanations of activities here.
-                        4. Within a learning cycle block, the "Participants Practice" section MUST be led by the chosen activity and ideally broken down into these four distinct steps:
-                           - Explain (e.g., "1 min - Explain: [provide highly specific, step-by-step instructions]")
-                           - Prompt (e.g., "1 min - Prompt: [insert the detailed prompt]")
-                           - Activity (e.g., "6 min - Activity: students do the activity in pairs")
-                           - Summarize (e.g., "2 min - Summarize: [insert possible answers]")
-                        5. VARIETY IS REQUIRED for LEARNING_CYCLE blocks: Always check what activities are already assigned to other LEARNING_CYCLE blocks in the FULL SESSION OUTLINE. Assign a DIFFERENT activity to this block — do NOT repeat any activity that has already been used in another LG cycle unless every option from the SELECTED ACTIVITIES list has already been used. Draw from the full SELECTED ACTIVITIES list and spread them evenly across all LG cycles. Do not default to any single activity.
-                        6. Every section's steps must sum exactly to that section's duration.
-                        7. CRITICAL: Do NOT change the `phase`, `lgIndex`, section titles, or section durations from what is provided in the target block.
-                        8. For ARRIVE blocks, do NOT generate process steps. Instead, the single section MUST contain exactly one step per learning goal from the LEARNING GOALS list — copy each goal verbatim as its own step string, with NO time prefix. Example: if there are 3 LGs, output exactly 3 steps: ["LG1 text verbatim", "LG2 text verbatim", "LG3 text verbatim"].
-                           For all other non-learning-cycle blocks (ACTIVATE, EVALUATE, BREAK, SUMMARY, CUSTOM, BUFFER), generate steps directly under the block in a single section. Important: for BREAK blocks, make sure to give it a proper 'phaseLabel' like "Coffee Break".
-                        9. The 'phaseLabel' should be a short, topic-focused title.
-                        10. Do NOT list "Lecture" or "Presentation" under 'methods'. Furthermore, 'Q&A Session' is strictly reserved for the 'Summary & Wrap-up' block and MUST NOT be generated in any other blocks.
-                        11. When outputting interactive activities in the 'methods' array, use EXACTLY the names provided in the SELECTED ACTIVITIES list. Do not use variations (e.g. use "Quiz / Polls" instead of "Poll" or "Quiz").
-                        %s
-
-                        12. When generating a 'Summary & Wrap-up' block:
-                            a) Start with one 'Takeaway: [key concept]' step per learning goal (no time prefix, just the text "Takeaway: [concise statement of the main concept]"). These are NOT timed.
-                            b) Then choose EXACTLY ONE student-centered closing activity based on the overall complexity of the session: if the content is highly complex, use a 'One-Minute Paper'; if it is simple/foundational, use a 'Q&A Session'.
-                            c) Consolidate final logistics into one step ≤ 3 min.
-                            d) Keep the phaseLabel strictly as "Summary & Wrap-up". Limit methods to 1 activity or 0 if unnecessary.
-                        13. Ensure the combined duration of the final evaluation and wrap-up blocks is strictly between %d and %d minutes. To maintain momentum, no single sub-step within these final blocks should exceed 4 minutes.
-                        14. When generating an 'Activate Prior Knowledge' (ACTIVATE) block, strictly limit the block to exactly ONE activity. Do NOT generate multiple different activities for this block.
-
-                        OUTPUT FORMAT (return only this JSON object, no markdown):
-                        {
-                          "phase": "LEARNING_CYCLE",
-                          "lgIndex": 1,
-                          "duration": 20,
-                          "phaseLabel": "Topic Label Here",
-                          "methods": ["Think-Pair-Share"],
-                          "materials": ["Worksheet"],
-                          "sections": [
-                            {
-                              "title": "You explain",
-                              "duration": 10,
-                              "steps": [
-                                "3 min — Explain: First key concept",
-                                "4 min — Explain: Second key concept",
-                                "3 min — Explain: Third key concept"
-                              ],
-                              "methods": [],
-                              "materials": ["Slides"]
-                            },
-                            {
-                              "title": "Participants Practice",
-                              "duration": 10,
-                              "steps": [
-                                "1 min — Explain: rules for Think-Pair-Share",
-                                "1 min — Prompt: [insert prompt]",
-                                "6 min — Activity: students discuss in pairs",
-                                "2 min — Summarize: cold-call pairs"
-                              ],
-                              "methods": ["Think-Pair-Share"],
-                              "materials": ["Worksheet"]
-                            }
-                          ]
-                        }
-                        """,
-                evaluateRules,
-                minClosingTime, maxClosingTime));
-
-        return sb.toString();
-    }
-
-    private ActivityBlockDto normalizeBlockActivities(ActivityBlockDto block) {
-        if (block == null || block.methods() == null) return block;
-        java.util.List<String> normalized = block.methods().stream().map(m -> {
-            String lower = m.toLowerCase();
-            if (lower.equals("poll") || lower.equals("polls") || lower.equals("quiz") || lower.equals("quiz / poll") || lower.equals("quiz/poll") || lower.equals("quiz/polls")) {
-                return "Quiz / Polls";
-            }
-            return m;
-        }).distinct().collect(Collectors.toList());
-        
-        java.util.List<ActivitySectionDto> normSections = block.sections();
-        if (normSections != null) {
-            normSections = normSections.stream().map(sec -> {
-                if (sec.methods() == null) return sec;
-                java.util.List<String> secNorm = sec.methods().stream().map(m -> {
-                    String lower = m.toLowerCase();
-                    if (lower.equals("poll") || lower.equals("polls") || lower.equals("quiz") || lower.equals("quiz / poll") || lower.equals("quiz/poll") || lower.equals("quiz/polls")) {
-                        return "Quiz / Polls";
-                    }
-                    return m;
-                }).distinct().collect(Collectors.toList());
-                return new ActivitySectionDto(sec.title(), sec.duration(), sec.steps(), secNorm, sec.materials());
-            }).collect(Collectors.toList());
-        }
-        
-        return new ActivityBlockDto(
-            block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
-            block.objective(), block.description(), normalized, block.materials(),
-            normSections, block.duration()
-        );
-    }
 
     // ── Draft management ──────────────────────────────────────────────
 
@@ -648,13 +102,14 @@ public class WorkshopService {
      * it;
      * otherwise creates a new entity and returns the assigned ID.
      */
-    public String saveDraft(SaveDraftRequestDto req) {
+    public String saveDraft(SaveDraftRequestDto req, String ownerId) {
         WorkshopSessionEntity entity = null;
         if (req.sessionId() != null && !req.sessionId().isBlank()) {
             entity = repo.findById(req.sessionId()).orElse(null);
         }
         if (entity == null) {
             entity = new WorkshopSessionEntity();
+            entity.setOwnerId(ownerId); // Bind the new draft to the creator
         }
         if (req.title() != null)
             entity.setTitle(req.title());
@@ -740,8 +195,8 @@ public class WorkshopService {
     }
 
     /** Lightweight list for the dashboard (no blocks payload). */
-    public List<SessionSummaryDto> listSessions() {
-        return repo.findAllOrdered().stream()
+    public List<SessionSummaryDto> listSessions(String ownerId) {
+        return repo.findByOwnerIdOrdered(ownerId).stream()
                 .map(e -> new SessionSummaryDto(
                         e.getId(),
                         e.getTitle() != null ? e.getTitle() : "Workshop Session",
@@ -763,7 +218,7 @@ public class WorkshopService {
     /** Export all child sessions of a lecture into a ZIP file. */
     public byte[] exportLectureZip(String lectureId,
             com.workshopper.service.PdfExportService pdfService,
-            com.workshopper.service.PptxExportService pptxService) throws Exception {
+            com.workshopper.usecase.AssemblePptxUseCase assemblePptxUseCase) throws Exception {
         List<WorkshopSessionEntity> children = repo.findAllByLectureIdOrdered(lectureId);
 
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
@@ -812,7 +267,7 @@ public class WorkshopService {
                     // PPTX
                     byte[] templateData = getTemplate(e.getId());
                     java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
-                    byte[] pptxBytes = pptxService.exportToPptx(requestDto, templateStream);
+                    byte[] pptxBytes = assemblePptxUseCase.execute(requestDto.session(), requestDto.meta(), null, templateStream);
                     zos.putNextEntry(new java.util.zip.ZipEntry(safeTitle + "/slides.pptx"));
                     zos.write(pptxBytes);
                     zos.closeEntry();

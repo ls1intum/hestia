@@ -11,6 +11,9 @@ public interface WorkshopSessionRepository extends JpaRepository<WorkshopSession
     @org.springframework.data.jpa.repository.Query("SELECT w FROM WorkshopSessionEntity w ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
     List<WorkshopSessionEntity> findAllOrdered();
 
+    @org.springframework.data.jpa.repository.Query("SELECT w FROM WorkshopSessionEntity w WHERE w.ownerId = :ownerId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
+    List<WorkshopSessionEntity> findByOwnerIdOrdered(@org.springframework.data.repository.query.Param("ownerId") String ownerId);
+
     @org.springframework.data.jpa.repository.Query("SELECT w FROM WorkshopSessionEntity w WHERE w.lectureId = :lectureId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
     List<WorkshopSessionEntity> findAllByLectureIdOrdered(@org.springframework.data.repository.query.Param("lectureId") String lectureId);
 }

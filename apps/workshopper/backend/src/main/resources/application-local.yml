@@ -1,0 +1,13 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# LOCAL DEVELOPMENT PROFILE
+# Activate with: SPRING_PROFILES_ACTIVE=local
+#
+# WARNING: This profile bypasses SAML authentication entirely.
+# It MUST NEVER be activated in any deployed environment (hestia-test, prod, etc.).
+# SecurityConfig enforces a hard gate preventing 'local' and 'prod' from
+# being active simultaneously.
+# ──────────────────────────────────────────────────────────────────────────────
+spring:
+  security:
+    dev-auth:
+      enabled: true

@@ -11,12 +11,7 @@ Generates the initial learning goal plans based on user input.
 - **Request Body**: `WorkshopInputDto` (Target audience, context, topic, etc.)
 - **Response**: `List<LearningGoalPlanDto>`
 
-### 2. `POST /api/workshop/activities`
-Takes the refined learning goals and generates teaching and assessment activities for each.
-- **Request Body**: `GenerateActivitiesRequestDto` (Selected goals, metadata, available materials)
-- **Response**: `List<LearningGoalPlanDto>` (Updated with activities)
-
-### 3. `POST /api/workshop/session`
+### 2. `POST /api/workshop/session`
 Generates the full, finalized timetable session from the goals and activities.
 - **Request Body**: `GenerateSessionRequestDto` (Goals, metadata, session skeleton)
 - **Response**: `WorkshopSessionDto` (The complete timetable)

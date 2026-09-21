@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions } from "@/lib/api";
+import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions, handleAuthError } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
 
@@ -100,7 +100,11 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
         });
         setSessions(valid);
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        if (!handleAuthError(e)) {
+          setError(e.message);
+        }
+      })
       .finally(() => setLoading(false));
   };
 

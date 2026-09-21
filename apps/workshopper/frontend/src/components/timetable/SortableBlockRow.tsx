@@ -710,9 +710,9 @@ export function SortableBlockRow({
                     </p>
                     {allSteps.map((s: string, i: number) => {
                       const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
-                      const lgMatch = noTime.match(/^(?:Prompt\s+LG(\d+)|(Combined))\s*[·•\-]\s*\[?([^\]:]+)\]?:\s*(.*)/i);
-                      const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
-                      const lgNum = lgMatch ? lgMatch[1] : lgFallback ? lgFallback[1] : null;
+                      const lgMatch = noTime.match(/^(?:(?:Prompt\s+)?(?:LG|Goal)\s*([\d\s&,and]+)|(Combined))\s*[·•\-]\s*\[?([^\]:]+)\]?:\s*(.*)/i);
+                      const lgFallback = !lgMatch ? noTime.match(/^(?:Prompt\s+)?(?:LG|Goal)\s*([\d\s&,and]+)[:\s]+(.*)/i) : null;
+                      const lgNum = lgMatch ? lgMatch[1]?.trim() : lgFallback ? lgFallback[1]?.trim() : null;
                       const isCombined = lgMatch ? !!lgMatch[2] : false;
                       const activity = lgMatch ? lgMatch[3].trim() : null;
                       const question = lgMatch ? lgMatch[4].trim() : lgFallback ? lgFallback[2].trim() : noTime;

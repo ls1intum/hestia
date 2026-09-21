@@ -20,7 +20,7 @@ interface Props {
 export default function WorkshopFormStep1({ onNext, isLoading = false, initialInput, entityType = "SESSION", onBack }: Props) {
   const [title, setTitle] = useState(initialInput?.title ?? "");
   const [duration, setDuration] = useState<number | "">(initialInput?.duration ?? 90);
-  const [participants, setParticipants] = useState<number | "">(initialInput?.participants ?? 15);
+  const [participants, setParticipants] = useState<number | "">(initialInput?.participants ?? 50);
   const [sessionType, setSessionType] = useState<SessionType>((initialInput?.sessionType as SessionType) ?? "lecture");
   const [sessionTypeOther, setSessionTypeOther] = useState(initialInput?.sessionTypeOther ?? "");
   const [studentBackground, setStudentBackground] = useState(initialInput?.studentBackground ?? "");
