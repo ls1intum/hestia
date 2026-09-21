@@ -1,8 +1,6 @@
 package com.workshopper.service;
 
 import org.junit.jupiter.api.Test;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
@@ -10,18 +8,23 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.apache.poi.xslf.usermodel.XSLFSlide;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestPptxExportIntegration {
-    @org.junit.jupiter.api.Disabled("Local test only")
+
+    /** Learning goal string used throughout the test — must appear in at least one slide. */
+    private static final String TEST_LEARNING_GOAL = "My Awesome Presentation";
+
     @Test
     public void generateFile() throws Exception {
-        String path = "local/path/to/template.pptx";
+        String path = "src/main/resources/templates/workshopper-default.pptx";
         byte[] templateBytes = Files.readAllBytes(Paths.get(path));
         
-        PptxExportService service = new PptxExportService(null);
+        com.workshopper.usecase.AssemblePptxUseCase service = new com.workshopper.usecase.AssemblePptxUseCase();
         
         com.workshopper.dto.WorkshopSessionDto session = new com.workshopper.dto.WorkshopSessionDto(
-            "id", "user", "My Awesome Presentation", "Goal",
+            "id", TEST_LEARNING_GOAL, "user", "Goal",
             "1h", List.of(), List.of(), null
         );
         com.workshopper.dto.WorkshopInputDto meta = new com.workshopper.dto.WorkshopInputDto("Test Title",
@@ -35,27 +38,38 @@ public class TestPptxExportIntegration {
         map.put("notes", "These are the notes");
         slidesData.add(map);
         
-        byte[] result = service.assembleFromSlides(session, meta, slidesData, new java.io.ByteArrayInputStream(templateBytes));
+        byte[] result = service.execute(session, meta, slidesData, new java.io.ByteArrayInputStream(templateBytes));
         
-        try (FileOutputStream fos = new FileOutputStream("local/path/to/out.pptx")) {
-            fos.write(result);
-        }
-        
-        // Also let's inspect the generated file
-        try (XMLSlideShow generated = new XMLSlideShow(new FileInputStream("local/path/to/out.pptx"))) {
-            System.out.println("Generated slides count: " + generated.getSlides().size());
-            for (int i = 0; i < generated.getSlides().size(); i++) {
-                System.out.println("Slide " + i + " layout name: " + generated.getSlides().get(i).getSlideLayout().getName());
-                org.apache.poi.xslf.usermodel.XSLFTextShape[] shapes = generated.getSlides().get(i).getPlaceholders();
-                for (int j = 0; j < shapes.length; j++) {
-                    System.out.println("  Placeholder " + j + " text: " + shapes[j].getText());
-                    for (int k = 0; k < shapes[j].getTextParagraphs().size(); k++) {
-                        for (int m = 0; m < shapes[j].getTextParagraphs().get(k).getTextRuns().size(); m++) {
-                            System.out.println("    Run " + m + " font size: " + shapes[j].getTextParagraphs().get(k).getTextRuns().get(m).getFontSize());
-                        }
+        // Assert the generated structure
+        try (XMLSlideShow generated = new XMLSlideShow(new java.io.ByteArrayInputStream(result))) {
+            // 1. Must have at least one slide
+            assertThat(generated.getSlides()).hasSizeGreaterThan(0);
+
+            // 2. Collect all text across all slides for assertion
+            StringBuilder allText = new StringBuilder();
+            for (XSLFSlide slide : generated.getSlides()) {
+                for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+                    if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+                        allText.append(ts.getText()).append(" ");
                     }
                 }
             }
+            String combinedText = allText.toString();
+
+            // 3. First slide must have at least one non-empty text shape (title placeholder was injected)
+            XSLFSlide firstSlide = generated.getSlides().get(0);
+            boolean firstSlideHasText = firstSlide.getShapes().stream()
+                    .anyMatch(s -> s instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts
+                            && ts.getText() != null && !ts.getText().isBlank());
+            assertThat(firstSlideHasText)
+                    .as("First slide should have at least one non-empty text shape (title was injected by AssemblePptxUseCase)")
+                    .isTrue();
+
+            // 4. At least one slide must contain the session title / learning goal used in the test
+            assertThat(combinedText)
+                    .as("At least one slide must contain the session title '%s' injected by AssemblePptxUseCase", TEST_LEARNING_GOAL)
+                    .contains(TEST_LEARNING_GOAL);
         }
     }
 }
+

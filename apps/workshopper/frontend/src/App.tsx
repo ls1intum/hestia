@@ -13,7 +13,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
-import { generateSession, getSessionDetail, saveDraft, finishSession } from "@/lib/api";
+import { generateSession, getSessionDetail, saveDraft, finishSession, handleAuthError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
   WorkshopInput,
@@ -121,6 +121,7 @@ export default function App() {
             pendingResolvers.current = [];
             resolvers.forEach(r => r(id));
           } catch (e) {
+            handleAuthError(e);
             console.warn("Draft save failed", e);
             const resolvers = pendingResolvers.current;
             pendingResolvers.current = [];
@@ -318,6 +319,7 @@ export default function App() {
       setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
+      if (handleAuthError(e)) return;
       if (opts?.silent) {
         sessionStorage.removeItem("workshopper_session_id");
       } else {
@@ -491,7 +493,26 @@ export default function App() {
     "final-review": { title: "Loading…",                sub: "" },
   };
 
+
+  // Handle browser back button
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (view === "wizard") {
+        setView("dashboard");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [view, setView]);
+
+  useEffect(() => {
+    if (view === "wizard") {
+      window.history.pushState({ page: "wizard" }, "");
+    }
+  }, [view]);
+
   // ── Dashboard view ────────────────────────────────────────────────────
+
   if (view === "dashboard") {
     return (
       <>
@@ -525,7 +546,7 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
-          <button onClick={handleReset} className="flex items-center gap-3 hover:opacity-80 transition-opacity shrink-0">
+          <button onClick={() => setView("dashboard")} className="flex items-center gap-3 hover:opacity-80 transition-opacity shrink-0">
             <ArrowLeft className="h-5 w-5 text-muted-foreground" />
             <img src={hestiaLogoLight} alt="Hestia" className="h-6 w-auto dark:hidden" />
             <img src={hestiaLogoDark} alt="Hestia" className="h-6 w-auto hidden dark:block" />
@@ -734,7 +755,7 @@ export default function App() {
                 await finishSession(sessionId);
                 toast({ title: "Session completed!" });
                 setIsFinished(true);
-                handleReset();
+                setView("dashboard");
               } catch (e) {
                 toast({ title: "Save failed", description: String(e), variant: "destructive" });
               } finally {

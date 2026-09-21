@@ -379,8 +379,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
           <div style={{ paddingLeft: 20, paddingRight: 16, paddingTop: 12, paddingBottom: 8, borderBottom: `1px solid ${CREAM2}`, flexShrink: 0 }}>
             <div style={{ fontFamily: bodyFont, fontSize: '0.65rem', fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
               {activityType
-                ? <><span style={{ color: accent, fontWeight: 800 }}>{activityType}</span> - {headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
-                : <>{headerText.toUpperCase()}{slideData.lgIndex ? ` · LG${slideData.lgIndex}` : ''}</>
+                ? <><span style={{ color: accent, fontWeight: 800 }}>{activityType}</span> - {headerText.toUpperCase()}</>
+                : <>{headerText.toUpperCase()}</>
               }
             </div>
             {!isActivityLayout && (

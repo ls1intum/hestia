@@ -11,6 +11,9 @@ public class WorkshopSessionEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Column(length = 255)
+    private String ownerId;
+
     @Column(length = 20)
     private String type = "SESSION"; // "SESSION" or "LECTURE"
 
@@ -78,6 +81,9 @@ public class WorkshopSessionEntity {
     }
 
     // ── Getters & setters ─────────────────────────────────────────
+
+    public String getOwnerId() { return ownerId; }
+    public void setOwnerId(String ownerId) { this.ownerId = ownerId; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

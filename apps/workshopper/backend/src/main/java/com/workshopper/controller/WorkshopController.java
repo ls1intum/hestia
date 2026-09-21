@@ -2,8 +2,16 @@ package com.workshopper.controller;
 
 import com.workshopper.dto.*;
 import com.workshopper.service.WorkshopService;
+import com.workshopper.facade.WorkshopSessionFacade;
+import com.workshopper.usecase.GenerateSlideBlockUseCase;
+import com.workshopper.usecase.AssemblePptxUseCase;
+
+
+import com.workshopper.facade.WorkshopSessionFacade;
+import com.workshopper.usecase.GenerateSlideBlockUseCase;
+import com.workshopper.usecase.AssemblePptxUseCase;
+
 import com.workshopper.service.PdfExportService;
-import com.workshopper.service.PptxExportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -26,7 +34,9 @@ public class WorkshopController {
 
     private final WorkshopService service;
     private final PdfExportService pdfService;
-    private final PptxExportService pptxService;
+    private final WorkshopSessionFacade facade;
+    private final GenerateSlideBlockUseCase generateSlideBlockUseCase;
+    private final AssemblePptxUseCase assemblePptxUseCase;
 
     private java.io.InputStream getTemplateStream(String sessionId) {
         byte[] templateData = (sessionId != null) ? service.getTemplate(sessionId) : null;
@@ -41,10 +51,12 @@ public class WorkshopController {
         }
     }
 
-    public WorkshopController(WorkshopService service, PdfExportService pdfService, PptxExportService pptxService) {
+    public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade, GenerateSlideBlockUseCase generateSlideBlockUseCase, AssemblePptxUseCase assemblePptxUseCase) {
         this.service = service;
         this.pdfService = pdfService;
-        this.pptxService = pptxService;
+        this.facade = facade;
+        this.generateSlideBlockUseCase = generateSlideBlockUseCase;
+        this.assemblePptxUseCase = assemblePptxUseCase;
     }
 
     /**
@@ -56,27 +68,10 @@ public class WorkshopController {
         try {
             List<LearningGoalPlanDto> plans = service.generatePlan(input);
             return ResponseEntity.ok(plans);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Plan generation failed", e);
             return ResponseEntity.internalServerError()
                     .body("Plan generation failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * POST /api/workshop/activities
-     * Step 2.2: Given refined learning goals, generate teaching & assessment activities.
-     */
-    @PostMapping("/activities")
-    public ResponseEntity<?> generateActivities(@RequestBody GenerateActivitiesRequestDto request) {
-        try {
-            List<LearningGoalPlanDto> goals = service.generateActivities(
-                    request.goals(), request.meta(), request.availableMaterials());
-            return ResponseEntity.ok(goals);
-        } catch (Exception e) {
-            log.error("Activity generation failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("error", "Activity generation failed: " + e.getMessage()));
         }
     }
 
@@ -87,9 +82,9 @@ public class WorkshopController {
     @PostMapping("/session")
     public ResponseEntity<?> generateSession(@RequestBody GenerateSessionRequestDto request) {
         try {
-            WorkshopSessionDto session = service.generateSession(request.goals(), request.meta(), request.skeleton());
+            WorkshopSessionDto session = facade.generateAndSaveSession(request);
             return ResponseEntity.ok(session);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Session generation failed", e);
             return ResponseEntity.internalServerError()
                     .body(java.util.Map.of("error", "Session generation failed: " + e.getMessage()));
@@ -110,7 +105,7 @@ public class WorkshopController {
                     .contentType(MediaType.APPLICATION_PDF)
                     .contentLength(pdfBytes.length)
                     .body(resource);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("PDF export failed", e);
             return ResponseEntity.internalServerError().build();
         }
@@ -124,14 +119,14 @@ public class WorkshopController {
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
         try {
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = pptxService.exportToPptx(request, templateStream);
+            byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), null, templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
                     .contentLength(pptxBytes.length)
                     .body(resource);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("PPTX export failed", e);
             return ResponseEntity.internalServerError().build();
         }
@@ -145,14 +140,14 @@ public class WorkshopController {
     public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) {
         try {
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = pptxService.assembleFromSlides(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
+            byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
                     .contentLength(pptxBytes.length)
                     .body(resource);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("PPTX assemble failed", e);
             return ResponseEntity.internalServerError().build();
         }
@@ -165,9 +160,9 @@ public class WorkshopController {
     @PostMapping("/export/block-slides")
     public ResponseEntity<?> exportBlockSlides(@RequestBody BlockSlidesRequestDto request) {
         try {
-            List<Map<String, Object>> slides = pptxService.generateBlockSlides(request.block(), request.meta(), request.goals());
+            List<Map<String, Object>> slides = generateSlideBlockUseCase.execute(request.block(), request.meta(), request.goals());
             return ResponseEntity.ok(slides);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Block slides generation failed", e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Block slides generation failed: " + e.getMessage()));
@@ -201,7 +196,7 @@ public class WorkshopController {
                 templateStream = getTemplateStream(session.id());
             }
 
-            byte[] pptxBytes = pptxService.assembleFromSlides(session, meta, prebuiltSlides, templateStream);
+            byte[] pptxBytes = assemblePptxUseCase.execute(session, meta, prebuiltSlides, templateStream);
             
             org.springframework.core.io.ByteArrayResource resource = new org.springframework.core.io.ByteArrayResource(pptxBytes);
             String safeTitle = (session.title() != null ? session.title() : "Workshop").replaceAll("[^a-zA-Z0-9.-]", "_");
@@ -211,7 +206,7 @@ public class WorkshopController {
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
                     .contentLength(pptxBytes.length)
                     .body(resource);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("PPTX template export failed", e);
             return ResponseEntity.internalServerError().build();
         }
@@ -224,14 +219,14 @@ public class WorkshopController {
     @GetMapping(value = "/export/lecture/{id}/zip", produces = "application/zip")
     public ResponseEntity<Resource> exportLectureZip(@PathVariable String id) {
         try {
-            byte[] zipBytes = service.exportLectureZip(id, pdfService, pptxService);
+            byte[] zipBytes = service.exportLectureZip(id, pdfService, assemblePptxUseCase);
             ByteArrayResource resource = new ByteArrayResource(zipBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"lecture-materials.zip\"")
                     .contentType(MediaType.parseMediaType("application/zip"))
                     .contentLength(zipBytes.length)
                     .body(resource);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Lecture ZIP export failed", e);
             return ResponseEntity.internalServerError().build();
         }
@@ -247,7 +242,7 @@ public class WorkshopController {
         try {
             var suggestions = service.refineGoal(request);
             return ResponseEntity.ok(suggestions);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Goal refinement failed", e);
             return ResponseEntity.internalServerError()
                     .body(java.util.Map.of("error", "Refinement failed: " + e.getMessage()));
@@ -264,7 +259,7 @@ public class WorkshopController {
         try {
             var goals = service.extractGoalsFromDocument(request);
             return ResponseEntity.ok(goals);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Goal extraction failed", e);
             return ResponseEntity.internalServerError()
                     .body(java.util.Map.of("error", "Extraction failed: " + e.getMessage()));
@@ -280,7 +275,7 @@ public class WorkshopController {
         try {
             var fixed = service.fixGoalsGrammar(goals);
             return ResponseEntity.ok(fixed);
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.warn("Grammar fix failed, falling back to original goals. Error: {}", e.getMessage());
             return ResponseEntity.ok(goals); // Fallback to original, return 200 to avoid scary console errors
         }
@@ -294,9 +289,13 @@ public class WorkshopController {
     @PostMapping("/sessions/draft")
     public ResponseEntity<?> saveDraft(@RequestBody SaveDraftRequestDto request) {
         try {
-            String id = service.saveDraft(request);
+            // Also explicitly verify ownership if it's an existing session
+            if (request.sessionId() != null && !request.sessionId().isBlank()) {
+                facade.verifyOwnership(request.sessionId());
+            }
+            String id = service.saveDraft(request, com.workshopper.config.AuthContext.getCurrentUserId());
             return ResponseEntity.ok(Map.of("id", id));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Draft save failed", e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Draft save failed: " + e.getMessage()));
@@ -309,6 +308,7 @@ public class WorkshopController {
      */
     @GetMapping("/sessions/{id}")
     public ResponseEntity<?> getSession(@PathVariable String id) {
+        facade.verifyOwnership(id);
         return service.getSession(id)
                 .<ResponseEntity<?>>map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -320,7 +320,7 @@ public class WorkshopController {
      */
     @GetMapping("/sessions")
     public ResponseEntity<List<SessionSummaryDto>> listSessions() {
-        return ResponseEntity.ok(service.listSessions());
+        return ResponseEntity.ok(service.listSessions(com.workshopper.config.AuthContext.getCurrentUserId()));
     }
 
     /**
@@ -332,7 +332,7 @@ public class WorkshopController {
         try {
             service.saveSlides(id, slidesCache);
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to save slides for session {}", id, e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
@@ -347,7 +347,7 @@ public class WorkshopController {
         try {
             service.saveTemplate(id, template.getBytes());
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to upload template for session {}", id, e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
@@ -377,10 +377,10 @@ public class WorkshopController {
                 return ResponseEntity.ok(Map.of("images", List.of()));
             }
 
-            List<String> base64Images = pptxService.renderAllSlidePreviews(detail.session(), null, allSlides, templateStream);
+            List<String> base64Images = assemblePptxUseCase.renderAllSlidePreviews(detail.session(), null, allSlides, templateStream);
             
             return ResponseEntity.ok(Map.of("images", base64Images));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to render slide previews for session {}", id, e);
             return ResponseEntity.internalServerError().build();
         }
@@ -394,7 +394,7 @@ public class WorkshopController {
         try {
             service.deleteSession(id);
             return ResponseEntity.noContent().build();
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to delete session {}", id, e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to delete session: " + e.getMessage()));
@@ -410,7 +410,7 @@ public class WorkshopController {
         try {
             service.finishSession(id);
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to finish session {}", id, e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to finish session: " + e.getMessage()));
@@ -430,7 +430,7 @@ public class WorkshopController {
             }
             service.renameSession(id, newTitle);
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to rename session {}", id, e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to rename session: " + e.getMessage()));
@@ -446,7 +446,7 @@ public class WorkshopController {
         try {
             service.reorderSessions(sessionIds);
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to reorder sessions", e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to reorder sessions: " + e.getMessage()));
@@ -463,7 +463,7 @@ public class WorkshopController {
             String lectureId = body.get("lectureId");
             service.moveSession(id, lectureId);
             return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to move session {}", id, e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to move session: " + e.getMessage()));
@@ -474,8 +474,27 @@ public class WorkshopController {
      * GET /api/workshop/health
      * Simple health check.
      */
+
+    /**
+     * GET /api/workshop/me
+     * Returns the currently authenticated user's ID.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<java.util.Map<String, String>> getCurrentUser(org.springframework.security.core.Authentication auth) {
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(401).build();
+        }
+        return ResponseEntity.ok(java.util.Map.of("id", auth.getName()));
+    }
+
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("OK");
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<String> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity.status(403).body("Access Denied");
     }
 }
