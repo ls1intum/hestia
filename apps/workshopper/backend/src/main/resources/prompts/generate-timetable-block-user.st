@@ -6,6 +6,7 @@ SESSION CONTEXT:
 - Student background: {studentBackground}
 
 SELECTED ACTIVITIES (permitted methods): {selectedActivities}
+AVAILABLE MATERIALS (physical tools/spaces): {availableMaterials}
 
 LEARNING GOALS:
 {learningGoals}
