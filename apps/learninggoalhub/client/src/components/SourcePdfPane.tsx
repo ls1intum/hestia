@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as pdfjsLib from "pdfjs-dist";
-import { API_PREFIX, type GoalSource } from "../api/client.ts";
+import { API_PREFIX, api, type GoalSource } from "../api/client.ts";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -157,6 +158,9 @@ export default function SourcePdfPane({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [paneWidth, setPaneWidth] = useState(0);
+  const [pdfDocument, setPdfDocument] = useState<PdfDocument | null>(null);
+  // The page on show; it starts on the source's page and the arrows move it through the document.
+  const [viewedPage, setViewedPage] = useState(pageNumber);
   const [loadedPage, setLoadedPage] = useState<LoadedPage | null>(null);
   const [renderedPage, setRenderedPage] = useState<RenderedPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,8 +177,14 @@ export default function SourcePdfPane({
   }, []);
 
   useEffect(() => {
+    setViewedPage(pageNumber);
+  }, [contentUrl, pageNumber, source.snippet]);
+
+  // The document loads once per file; paging through it only fetches and renders another page.
+  useEffect(() => {
     let cancelled = false;
     let loadedDocument: PdfDocument | null = null;
+    setPdfDocument(null);
     setLoadedPage(null);
     setRenderedPage(null);
     setLoading(true);
@@ -187,15 +197,43 @@ export default function SourcePdfPane({
     }
 
     const loadingTask = pdfjsLib.getDocument({ url: contentUrl });
-    const loadPage = async () => {
+    const loadDocument = async () => {
       try {
         loadedDocument = await loadingTask.promise;
-        const page = await loadedDocument.getPage(pageNumber);
-        const textContent = await page.getTextContent();
         if (cancelled) {
           await loadedDocument.destroy();
           return;
         }
+        setPdfDocument(loadedDocument);
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setError("Could not load this PDF.");
+        }
+      }
+    };
+    void loadDocument();
+
+    return () => {
+      cancelled = true;
+      if (loadedDocument) {
+        void loadedDocument.destroy();
+      } else {
+        void loadingTask.destroy();
+      }
+    };
+  }, [contentUrl]);
+
+  useEffect(() => {
+    if (!pdfDocument) return;
+    let cancelled = false;
+    const loadPage = async () => {
+      try {
+        const page = await pdfDocument.getPage(
+          Math.min(Math.max(viewedPage, 1), pdfDocument.numPages),
+        );
+        const textContent = await page.getTextContent();
+        if (cancelled) return;
         const textItems = textContent.items.filter((item) => "str" in item) as unknown as
           PdfTextItem[];
         setLoadedPage({ page, textItems });
@@ -208,16 +246,10 @@ export default function SourcePdfPane({
       }
     };
     void loadPage();
-
     return () => {
       cancelled = true;
-      if (loadedDocument) {
-        void loadedDocument.destroy();
-      } else {
-        void loadingTask.destroy();
-      }
     };
-  }, [contentUrl, pageNumber]);
+  }, [pdfDocument, viewedPage]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -240,8 +272,9 @@ export default function SourcePdfPane({
     canvas.height = Math.floor(viewport.height * outputScale);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
+    // Only the source's own page carries the highlight.
     const highlights =
-      source.evidenceKind === "FIGURE"
+      loadedPage.page.pageNumber !== pageNumber || source.evidenceKind === "FIGURE"
         ? []
         : source.highlightRects?.length
           ? convertHighlightRects(source.highlightRects, viewport)
@@ -274,22 +307,31 @@ export default function SourcePdfPane({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [loadedPage, paneWidth, source.evidenceKind, source.highlightRects, source.snippet]);
+  }, [loadedPage, paneWidth, pageNumber, source.evidenceKind, source.highlightRects, source.snippet]);
 
   useEffect(() => {
     if (renderedPage?.highlights.length) {
       highlightRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    } else if (paneRef.current) {
+      paneRef.current.scrollTop = 0;
     }
   }, [renderedPage]);
 
+  const pageCount = pdfDocument?.numPages ?? null;
+  const goToPage = (page: number) => {
+    if (pageCount != null && page >= 1 && page <= pageCount) setViewedPage(page);
+  };
+
   return (
     <section className="flex min-h-[32rem] max-h-[76vh] min-w-0 w-full flex-col overflow-hidden rounded-lg border border-hestia-border bg-hestia-surface shadow-lg lg:w-[min(44vw,42rem)]">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-hestia-border px-3.5 py-2.5">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-hestia-border px-3.5 py-2.5">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-hestia-text">
-            {source.displayName ?? source.filename ?? "Source document"}
-          </p>
-          <p className="text-xs text-hestia-text-muted">p. {pageNumber}</p>
+          <DocumentName
+            courseId={courseId}
+            documentId={source.documentId}
+            displayName={source.displayName}
+            filename={source.filename}
+          />
           {headerExtra}
           {source.evidenceKind === "FIGURE" && (
             <div className="mt-1.5 max-w-[22rem]">
@@ -306,23 +348,53 @@ export default function SourcePdfPane({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close PDF preview"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
-        >
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            className="h-4 w-4"
+        {/* The page controls sit beside the close button, so the name and session keep the left. */}
+        <div className="flex shrink-0 items-center gap-2">
+            <div className="flex items-center gap-1 text-xs text-hestia-text-muted">
+              <PageArrow
+                label="Previous page"
+                disabled={pageCount == null || viewedPage <= 1}
+                onClick={() => goToPage(viewedPage - 1)}
+                path="M12 5l-5 5 5 5"
+              />
+              <span className="tabular-nums">
+                p. {viewedPage}
+                {pageCount != null && ` of ${pageCount}`}
+              </span>
+              <PageArrow
+                label="Next page"
+                disabled={pageCount == null || viewedPage >= pageCount}
+                onClick={() => goToPage(viewedPage + 1)}
+                path="M8 5l5 5-5 5"
+              />
+              {viewedPage !== pageNumber && (
+                <button
+                  type="button"
+                  onClick={() => setViewedPage(pageNumber)}
+                  className="ml-1 whitespace-nowrap font-medium text-hestia-primary underline-offset-2 hover:underline"
+                >
+                  Back to p. {pageNumber}
+                </button>
+              )}
+            </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close PDF preview"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-hestia-text-muted transition hover:bg-hestia-text/10 hover:text-hestia-text"
           >
-            <path d="M5 5l10 10M15 5L5 15" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
       </header>
       <div ref={paneRef} className="min-h-0 flex-1 overflow-auto p-3">
         {loading ? (
@@ -372,5 +444,171 @@ export default function SourcePdfPane({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function PageArrow({
+  label,
+  disabled,
+  onClick,
+  path,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  path: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-5 w-5 items-center justify-center rounded text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text disabled:pointer-events-none disabled:opacity-40"
+    >
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="h-3.5 w-3.5"
+      >
+        <path d={path} />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * The document's name with an inline rename, like the session name under it. Renaming sets the
+ * display name only; the filename stays as provenance, and clearing the name falls back to it.
+ */
+function DocumentName({
+  courseId,
+  documentId,
+  displayName,
+  filename,
+}: {
+  courseId: number | string;
+  documentId: number | undefined;
+  displayName: string | undefined;
+  filename: string | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = displayName || filename || "Source document";
+  const rename = useMutation({
+    mutationFn: async (next: string | null) => {
+      const { error } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
+        params: { path: { courseId: Number(courseId), documentId: documentId! } },
+        body: { displayName: next ?? undefined },
+        // openapi-fetch drops undefined body keys, but clearing needs an explicit null.
+        bodySerializer: (body) => JSON.stringify({ displayName: body?.displayName ?? null }),
+      });
+      if (error) throw new Error("Could not rename the document.");
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["goals", Number(courseId)] }),
+        queryClient.invalidateQueries({ queryKey: ["documents", Number(courseId)] }),
+      ]);
+      setDraft(null);
+    },
+  });
+  const cancel = () => {
+    rename.reset();
+    setDraft(null);
+  };
+
+  if (draft == null) {
+    return (
+      <p className="flex min-w-0 items-center gap-1">
+        <span className="truncate text-xs font-semibold text-hestia-text" title={shown}>
+          {shown}
+        </span>
+        {documentId != null && (
+          <button
+            type="button"
+            aria-label={`Rename document ${shown}`}
+            title="Rename this document"
+            onClick={() => {
+              rename.reset();
+              setDraft(shown);
+            }}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-hestia-text-muted transition hover:bg-hestia-primary-muted hover:text-hestia-text"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="h-3.5 w-3.5"
+            >
+              <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+            </svg>
+          </button>
+        )}
+      </p>
+    );
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = draft.trim();
+        if (trimmed === "" || trimmed === shown) cancel();
+        else if (!rename.isPending) rename.mutate(trimmed);
+      }}
+      className="flex flex-col gap-1"
+    >
+      <input
+        value={draft}
+        autoFocus
+        disabled={rename.isPending}
+        aria-label="Document name"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          // Escape ends the rename, not the panel around it.
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            cancel();
+          }
+        }}
+        className="w-full rounded-sm border-[1.5px] border-hestia-primary bg-hestia-bg px-2 py-1 text-xs text-hestia-text outline-none"
+      />
+      <p
+        className={`text-xs leading-snug ${rename.isError ? "text-hestia-danger" : "text-hestia-text-muted"}`}
+      >
+        {rename.isError ? (
+          (rename.error as Error).message
+        ) : rename.isPending ? (
+          "Saving…"
+        ) : (
+          <>
+            Enter saves, Esc cancels.
+            {displayName && filename && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => rename.mutate(null)}
+                  className="underline transition hover:text-hestia-text"
+                >
+                  Reset to {filename}
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </p>
+    </form>
   );
 }
