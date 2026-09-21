@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         org.springframework.boot.autoconfigure.security.saml2.Saml2RelyingPartyAutoConfiguration.class
     }
 )
+@org.springframework.test.context.ActiveProfiles("test")
 @DisplayName("SecurityConfig — write endpoints require authentication")
 class WorkshopControllerSecurityTest {
 
@@ -61,6 +62,7 @@ class WorkshopControllerSecurityTest {
         mvc.perform(post("/api/workshop/session")
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{}"))
+           .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
            .andExpect(status().is4xxClientError()); // 401 or 403 — either confirms the endpoint is gated
     }
 
