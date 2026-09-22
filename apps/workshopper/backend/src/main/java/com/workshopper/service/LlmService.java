@@ -134,19 +134,22 @@ public class LlmService {
                 null, false);
     }
     
-    public ActivityBlockDto hydrateActivityBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel, String selectedActivitiesStr, String learningGoalsStr, String skeletonBlocksStr, String targetBlockStr, String evaluateRules) {
+    public ActivityBlockDto hydrateActivityBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel, String selectedActivitiesStr, String learningGoalsStr, String skeletonBlocksStr, String targetBlockStr, String evaluateRules, String availableMaterials) {
         BeanOutputConverter<ActivityBlockDto> converter = new BeanOutputConverter<>(ActivityBlockDto.class);
         return callWithStructuredOutput("generate-timetable-block-system", "generate-timetable-block-user",
-                Map.of("sessionType", sessionTypeLabel,
-                       "duration", meta.duration(),
-                       "participants", meta.participants(),
-                       "interactionLevel", meta.interactionLevel() != null ? meta.interactionLevel() : "",
-                       "studentBackground", meta.studentBackground() != null ? meta.studentBackground() : "",
-                       "selectedActivities", selectedActivitiesStr != null ? selectedActivitiesStr : "",
-                       "learningGoals", learningGoalsStr != null ? learningGoalsStr : "",
-                       "skeletonBlocks", skeletonBlocksStr != null ? skeletonBlocksStr : "",
-                       "targetBlock", targetBlockStr != null ? targetBlockStr : "",
-                       "evaluateRules", evaluateRules != null ? evaluateRules : ""),
+                java.util.Map.ofEntries(
+                       java.util.Map.entry("sessionType", sessionTypeLabel),
+                       java.util.Map.entry("duration", meta.duration()),
+                       java.util.Map.entry("participants", meta.participants()),
+                       java.util.Map.entry("interactionLevel", meta.interactionLevel() != null ? meta.interactionLevel() : ""),
+                       java.util.Map.entry("studentBackground", meta.studentBackground() != null ? meta.studentBackground() : ""),
+                       java.util.Map.entry("selectedActivities", selectedActivitiesStr != null ? selectedActivitiesStr : ""),
+                       java.util.Map.entry("learningGoals", learningGoalsStr != null ? learningGoalsStr : ""),
+                       java.util.Map.entry("skeletonBlocks", skeletonBlocksStr != null ? skeletonBlocksStr : ""),
+                       java.util.Map.entry("targetBlock", targetBlockStr != null ? targetBlockStr : ""),
+                       java.util.Map.entry("availableMaterials", availableMaterials != null ? availableMaterials : ""),
+                       java.util.Map.entry("evaluateRules", evaluateRules != null ? evaluateRules : "")
+                ),
                 converter, false);
     }
 

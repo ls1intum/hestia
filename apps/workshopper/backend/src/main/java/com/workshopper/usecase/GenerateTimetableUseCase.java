@@ -25,7 +25,8 @@ public class GenerateTimetableUseCase {
 
     public WorkshopSessionDto execute(WorkshopInputDto input, 
                                       SessionSkeletonDto skeleton, 
-                                      List<LearningGoalPlanDto> goals
+                                      List<LearningGoalPlanDto> goals,
+                                      String availableMaterials
                                       ) throws Exception {
 
         
@@ -69,11 +70,11 @@ public class GenerateTimetableUseCase {
             for (SkeletonBlockDto block : filteredBlocks) {
                 // Prepare stringified values for LLM
                 String targetBlockStr = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(block);
-                String selectedActivitiesStr = input.selectedActivities() != null ? String.join(", ", input.selectedActivities()) : "NONE";
+                String selectedActivitiesStr = input.selectedActivities() != null && !input.selectedActivities().isEmpty() ? String.join(", ", input.selectedActivities()) : "NONE";
                 
                 Future<ActivityBlockDto> future = llmExecutor.submit(() -> {
                     String rules = buildEvaluateRules(block, goals, input);
-                    return llm.hydrateActivityBlock(block, filteredSkeleton, goals, input, sessionTypeLabel, selectedActivitiesStr, goalsString, skeletonBlocksStr, targetBlockStr, rules);
+                    return llm.hydrateActivityBlock(block, filteredSkeleton, goals, input, sessionTypeLabel, selectedActivitiesStr, goalsString, skeletonBlocksStr, targetBlockStr, rules, availableMaterials);
                 });
                 blockFutures.add(future);
             }

@@ -59,6 +59,9 @@ class LlmTemplatesTest {
         dummyData.put("objective", "Objective");
         dummyData.put("schemaSnippet", "{}");
 
+        // Materials
+        dummyData.put("availableMaterials", "Whiteboard and markers");
+
         for (Resource resource : resources) {
             String content = resource.getContentAsString(StandardCharsets.UTF_8);
             PromptTemplate template = new PromptTemplate(content);
@@ -67,6 +70,10 @@ class LlmTemplatesTest {
                 String rendered = template.render(dummyData);
                 // PromptTemplate.render() uses StringSubstitutor. It might not throw, so we check for leftover {vars}
                 assertFalse(rendered.matches(".*\\{.+}.*"), "Rendered template " + resource.getFilename() + " contains unreplaced variables: " + rendered);
+                
+                if (resource.getFilename().equals("generate-timetable-block-user.st")) {
+                    assertTrue(rendered.contains("Whiteboard and markers"), "Rendered timetable block must contain the provided materials string");
+                }
             }, "Template " + resource.getFilename() + " failed to render");
         }
     }

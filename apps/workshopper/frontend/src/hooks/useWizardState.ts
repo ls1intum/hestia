@@ -1,19 +1,18 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { generateSession, getSessionDetail, saveDraft, finishSession, handleAuthError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
-import { generateSession, getSessionDetail, saveDraft, handleAuthError } from "@/lib/api";
-import { generateDefaultSkeleton } from "@/lib/workshop-generator";
 import type {
   WorkshopInput,
   LearningGoalPlan,
   WorkshopSession,
   SessionSkeleton,
-  DraftState,
-  SlideData
+  DraftState
 } from "@/lib/workshop-generator";
+import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 
-export type Step = "input-1" | "input-2" | "input-2b" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
-export const ALL_STEPS: { id: Step; label: string }[] = [
+const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "input-2b", label: "Materials" },
@@ -24,7 +23,9 @@ export const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "final-review", label: "Final Review" },
 ];
 
-export function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
+let hasRestored = false;
+
+function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
       if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
@@ -36,15 +37,16 @@ export function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: s
 
 export function useWizardState() {
   const [view, setView] = useState<"dashboard" | "wizard">("dashboard");
-  const [step, setStep] = useState<Step>("input-1");
+  const [step, setStep]         = useState<Step>("input-1");
   const [highestStepIdx, setHighestStepIdx] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  // N-2: confirmation dialog when navigating back from timeline → goals
   const [showTimelineBackConfirm, setShowTimelineBackConfirm] = useState(false);
   const isGeneratingRef = useRef(false);
 
-
+  // Current session being created/edited
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const setSessionIdSynced = (id: string | null) => {
@@ -56,28 +58,31 @@ export function useWizardState() {
       sessionStorage.removeItem("workshopper_session_id");
     }
   };
-  
   const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
   const [entityType, setEntityType] = useState<"SESSION" | "LECTURE">("SESSION");
 
-  const STEP_ORDER = computeStepOrder(entityType, currentLectureId);
+  const STEPS = ALL_STEPS.filter(s => {
+    if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+    if (!currentLectureId && s.id === "lecture-summary") return false;
+    return true;
+  });
+  const STEP_ORDER = STEPS.map((s) => s.id);
 
-  // Auto-update highestStepIdx when step changes
-  useEffect(() => {
-    const currentIdx = STEP_ORDER.indexOf(step);
-    setHighestStepIdx(prev => Math.max(prev, currentIdx));
-  }, [step, STEP_ORDER]);
-
-
+  // All form state
   const [workshopInput, setWorkshopInput] = useState<Partial<WorkshopInput>>({});
-  const [refinedGoals, setRefinedGoals] = useState<LearningGoalPlan[]>([]);
+  const [refinedGoals,  setRefinedGoals]  = useState<LearningGoalPlan[]>([]);
   const [session, setSession] = useState<WorkshopSession | null>(null);
   const [originalSession, setOriginalSession] = useState<WorkshopSession | null>(null);
   const [currentSkeleton, setCurrentSkeleton] = useState<SessionSkeleton | null>(null);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [slidesCache, setSlidesCache] = useState<Record<number, SlideData[]>>({});
 
+  // Debounce ref for draft saves
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+
+
+  /** Persist current draft state to the backend, debounced. Returns the session id. */
   const pendingResolvers = useRef<Array<(id: string) => void>>([]);
 
   const persistDraft = useCallback(
@@ -98,8 +103,8 @@ export function useWizardState() {
             pendingResolvers.current = [];
             resolvers.forEach(r => r(id));
           } catch (e) {
-            console.warn("Draft save failed", e);
             handleAuthError(e);
+            console.warn("Draft save failed", e);
             const resolvers = pendingResolvers.current;
             pendingResolvers.current = [];
             resolvers.forEach(r => r(currentSessionId ?? ""));
@@ -126,6 +131,8 @@ export function useWizardState() {
     }),
     [workshopInput, refinedGoals, currentSkeleton, session, completedTasks]
   );
+
+  // ── Navigation helpers ──────────────────────────────────────────────
 
   const startNewSession = () => {
     setSessionIdSynced(null);
@@ -180,105 +187,196 @@ export function useWizardState() {
       setCompletedTasks([]);
       setSlidesCache({});
       setIsFinished(false);
-      setHighestStepIdx(0);
-      setStep("input-1");
+      
+      const idx = ALL_STEPS.filter(s => s.id !== "lecture-summary" || true).map(s => s.id).indexOf("lecture-summary");
+      setHighestStepIdx(idx !== -1 ? idx : 2);
+      setStep("lecture-summary");
       setView("wizard");
     } catch (e) {
-      if (!handleAuthError(e)) {
-        toast({
-          title: "Failed to load lecture data",
-          description: e instanceof Error ? e.message : "Unknown error",
-          variant: "destructive",
-        });
-      }
+      toast({ title: "Error", description: "Failed to load lecture settings", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
   const resumeSession = async (id: string, opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setIsLoading(true);
+    setIsLoading(true);
     try {
       const detail = await getSessionDetail(id);
+      // R-2: resolve entity type and lectureId locally so we can compute the correct
+      // step order immediately, without waiting for React state to flush.
+      const resolvedEntityType = detail.type ?? "SESSION";
+      const resolvedLectureId = detail.lectureId ?? null;
+
       setSessionIdSynced(detail.id);
-      setEntityType(detail.type || "SESSION");
-      setCurrentLectureId(detail.lectureId || null);
-      if (detail.draftStateJson) {
-        const draft: DraftState = JSON.parse(detail.draftStateJson);
-        setWorkshopInput(draft.workshopInput || {});
-        setRefinedGoals(draft.refinedGoals || []);
-        setCurrentSkeleton(draft.skeleton || null);
-        setSession(draft.session || null);
-        setOriginalSession(draft.session ? JSON.parse(JSON.stringify(draft.session)) : null);
-        setCompletedTasks(draft.completedTasks || []);
+      setEntityType(resolvedEntityType);
+      setCurrentLectureId(resolvedLectureId);
+
+      const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
+      setIsFinished(sessionIsFinished);
+
+      // R-2: use locally computed step order, not the stale component-state STEP_ORDER
+      const localStepOrder = computeStepOrder(resolvedEntityType, resolvedLectureId);
+
+      if (sessionIsFinished && detail.session) {
+        if (detail.title) {
+          detail.session.title = detail.title;
+        }
+        // Fully generated — parse draft to restore goals/input too if available
+        if (detail.draftStateJson) {
+          try {
+            const draft: DraftState = JSON.parse(detail.draftStateJson);
+            if (draft.workshopInput) {
+              if (detail.title) draft.workshopInput.title = detail.title;
+              setWorkshopInput(draft.workshopInput);
+            }
+            if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
+            if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
+            if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
+          } catch (_) { /* best effort */ }
+        }
+        setSession(detail.session);
+        setSlidesCache(detail.session.slides || {});
+        setStep("final-review");
+        const frIdx = localStepOrder.indexOf("final-review");
+        setHighestStepIdx(frIdx >= 0 ? frIdx : localStepOrder.length - 1);
+        setView("wizard");
+        return;
       }
-      const restoredStep = detail.currentStep as Step || "input-1";
-      setStep(restoredStep);
-      const computedOrder = computeStepOrder(detail.type || "SESSION", detail.lectureId || null);
-      setHighestStepIdx(Math.max(computedOrder.indexOf(restoredStep), 0));
+
+      let hasSession = !!detail.session;
+
+      // Draft — restore all saved state
+      if (detail.draftStateJson) {
+        try {
+          const draft: DraftState = JSON.parse(detail.draftStateJson);
+          if (draft.workshopInput) {
+            if (detail.title) draft.workshopInput.title = detail.title;
+            setWorkshopInput(draft.workshopInput);
+          }
+          if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
+          if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
+          if (draft.session) {
+            hasSession = true;
+            if (detail.title) draft.session.title = detail.title;
+            // Ensure cached slides from the backend are merged into the draft session
+            if (detail.session?.slides) {
+              draft.session.slides = detail.session.slides;
+            }
+            setSession(draft.session);
+          }
+          if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
+        } catch (_) { /* best effort */ }
+      }
+      
+      // Also restore slidesCache for the draft
+      if (detail.session?.slides) {
+        setSlidesCache(detail.session.slides);
+      }
+
+      // Navigate to where the user left off
+      let targetStepStr = (detail.currentStep as string) ?? "input-1";
+      if (resolvedEntityType === "LECTURE" && targetStepStr === "result") {
+        targetStepStr = "input-2";
+      }
+      if (targetStepStr === "result" || targetStepStr === "skeleton") {
+        if (hasSession) {
+          targetStepStr = "timeline";
+        } else {
+          targetStepStr = "goals";
+        }
+      }
+      if (targetStepStr === "timeline" && !hasSession) {
+        targetStepStr = "goals";
+      }
+      if (targetStepStr === "finished") {
+        targetStepStr = "final-review";
+      }
+
+      const targetStep = targetStepStr as Step;
+      const targetIdx = localStepOrder.indexOf(targetStep);
+
+      setStep(targetStep);
+      // R-2: use localStepOrder — guaranteed to reflect resolved entity/lecture state
+      setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
-      if (!handleAuthError(e)) {
+      if (handleAuthError(e)) return;
+      if (opts?.silent) {
+        sessionStorage.removeItem("workshopper_session_id");
+      } else {
         toast({
-          title: "Failed to load session",
-          description: e instanceof Error ? e.message : "Unknown error",
+          title: "Could not load session",
+          description: e instanceof Error ? (e.stack || e.message) : "Unknown error",
           variant: "destructive",
         });
-      }
-    } finally {
-      if (!opts?.silent) setIsLoading(false);
-    }
-  };
-
-  const handleStep1 = async (input: Partial<WorkshopInput>) => {
-    const isNew = Object.keys(workshopInput).length === 0;
-    setWorkshopInput(input);
-    setIsLoading(true);
-    const draft = buildDraft(input);
-    try {
-      const id = await persistDraft(draft, "input-2", sessionIdRef.current, entityType, currentLectureId);
-      if (isNew && !sessionIdRef.current) setSessionIdSynced(id);
-      setStep("input-2");
-    } catch (err) {
-      if (!handleAuthError(err)) {
-        toast({ title: "Failed to save draft", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleStep2 = async (input: WorkshopInput) => {
+  // ── Step handlers ────────────────────────────────────────────────────
+
+  const handleStep1 = async (input: Partial<WorkshopInput>) => {
+    // B-1: guard against rapid clicks creating duplicate sessions
+    if (isLoading) return;
+    setIsLoading(true);
+    setIsFinished(false);
     setWorkshopInput(input);
-    if (entityType !== "LECTURE") setIsLoading(true);
-    const draft = buildDraft(input);
     try {
+      const draft = buildDraft(input);
+      const id = await persistDraft(draft, "input-2", sessionIdRef.current, entityType, currentLectureId);
+      if (!sessionId) setSessionIdSynced(id);
+      setStep("input-2");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Called when user confirms activity selections on step 2 and clicks Next
+  const handleStep2Activities = (activities: string[]) => {
+    setWorkshopInput(prev => ({ ...prev, selectedActivities: activities }));
+    setStep("input-2b");
+  };
+
+  const handleStep2 = async (input: WorkshopInput) => {
+    // B-1: guard against rapid clicks creating duplicate sessions
+    if (isLoading) return;
+    setIsLoading(true);
+    setIsFinished(false);
+    setWorkshopInput(input);
+    try {
+      const draft = buildDraft(input);
       const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionIdRef.current, entityType, currentLectureId);
-      if (!sessionIdRef.current) setSessionIdSynced(id);
+      if (!sessionId) setSessionIdSynced(id);
       if (entityType === "LECTURE") {
-        setIsFinished(true);
-        setStep("final-review");
+        toast({ title: "Lecture successfully created", description: "Your lecture has been saved to the dashboard." });
+        // C-3: short delay so the toast is visible before navigating away
+        setTimeout(() => handleReset(), 1500);
       } else {
         setStep("goals");
       }
-    } catch (err) {
-      if (!handleAuthError(err)) {
-        toast({ title: "Failed to save draft", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-      }
     } finally {
       if (entityType !== "LECTURE") setIsLoading(false);
+      // For LECTURE, handleReset() will run after 1500ms — keep spinner until then
     }
   };
 
   const handleGoalsEntered = async (goalsWithPriority: LearningGoalPlan[]) => {
     if (isGeneratingRef.current) return;
     isGeneratingRef.current = true;
+    setIsFinished(false);
     setRefinedGoals(goalsWithPriority);
     
-    let updatedInput = { ...workshopInput };
+    const updatedInput = { ...workshopInput };
     if (!updatedInput.evaluateMappings || updatedInput.evaluateMappings.length === 0) {
-      const avail = updatedInput.availableMaterials || [];
-      if (avail.length > 0) {
+      if (goalsWithPriority.length > 0 && goalsWithPriority.length <= 2) {
+        const fallbacks = ["Quiz", "Think-Pair-Share"];
+        const avail = (updatedInput.selectedActivities && updatedInput.selectedActivities.length > 0)
+          ? updatedInput.selectedActivities
+          : fallbacks;
+        
         updatedInput.evaluateMappings = goalsWithPriority.map((g, idx) => ({
           method: avail[idx % avail.length],
           lgIds: [g.id]
@@ -292,6 +390,7 @@ export function useWizardState() {
       const skeleton = generateDefaultSkeleton(goalsWithPriority, updatedInput.duration || 90);
       setCurrentSkeleton(skeleton);
       
+      // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
       const initialDraft = buildDraft(updatedInput, goalsWithPriority, skeleton);
       const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, entityType, currentLectureId);
       if (!sessionId) setSessionIdSynced(currentId);
@@ -315,13 +414,11 @@ export function useWizardState() {
       await persistDraft(draft, "timeline", currentId, entityType, currentLectureId);
       setStep("timeline");
     } catch (err) {
-      if (!handleAuthError(err)) {
-        toast({
-          title: "Session generation failed",
-          description: err instanceof Error ? err.message : "Unknown error",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Session generation failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
       isGeneratingRef.current = false;
@@ -330,54 +427,129 @@ export function useWizardState() {
 
   const handleReset = () => {
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
-    startNewSession();
+    setView("dashboard");
+    setSessionIdSynced(null);
+    setCurrentLectureId(null);
+    setEntityType("SESSION");
+    setWorkshopInput({});
+    setRefinedGoals([]);
+    setSession(null);
+    setCurrentSkeleton(null);
+    setCompletedTasks([]);
+    setIsFinished(false);
+    setIsLoading(false);
+    setStep("input-1");
   };
 
-  const switchStep = (target: Step) => {
-    const targetIdx = STEP_ORDER.indexOf(target);
-    const currIdx = STEP_ORDER.indexOf(step);
-    if (targetIdx > highestStepIdx) return;
-    if (step === "timeline" && targetIdx < currIdx && !showTimelineBackConfirm) {
-      setShowTimelineBackConfirm(true);
-      return;
-    }
-    setStep(target);
-    setShowTimelineBackConfirm(false);
-    if (sessionId) {
-      persistDraft(buildDraft(), target, sessionId, entityType, currentLectureId);
-    }
+  const toggleDark = () => {
+    setDarkMode((d) => {
+      const next = !d;
+      document.documentElement.classList.toggle("dark", next);
+      return next;
+    });
   };
+
+  const currentIdx = STEP_ORDER.indexOf(step);
+
+  useEffect(() => {
+    setHighestStepIdx(prev => Math.max(prev, currentIdx));
+  }, [currentIdx]);
+
+  useEffect(() => {
+    if (hasRestored) return;
+    hasRestored = true;
+    const savedId = sessionStorage.getItem("workshopper_session_id");
+    if (savedId) {
+      resumeSession(savedId, { silent: true });
+    }
+  }, []);
+
+  const loadingMessages: Record<Step, { title: string; sub: string }> = {
+    "input-1":  { title: "Loading…",                    sub: "" },
+    "input-2":  { title: "Loading…",                    sub: "" },
+    "input-2b": { title: "Loading…",                    sub: "" },
+    "lecture-summary": { title: "Loading…",             sub: "" },
+    "goals":    { title: "Loading…",                    sub: "" },
+    "timeline": { title: "Loading…", sub: "" },
+    "prepare":  { title: "Loading…",                    sub: "" },
+    "final-review": { title: "Loading…",                sub: "" },
+  };
+
+
+  // Handle browser back button
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (view === "wizard") {
+        setView("dashboard");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [view, setView]);
+
+  useEffect(() => {
+    if (view === "wizard") {
+      window.history.pushState({ page: "wizard" }, "");
+    }
+  }, [view]);
+
+  // ── Dashboard view ────────────────────────────────────────────────────
 
   return {
-    view, setView,
-    step, setStep,
-    highestStepIdx, setHighestStepIdx,
-    darkMode, setDarkMode,
-    isLoading, setIsLoading,
-    isFinished, setIsFinished,
-    showTimelineBackConfirm, setShowTimelineBackConfirm,
-    sessionId, setSessionIdSynced,
-    currentLectureId, setCurrentLectureId,
-    entityType, setEntityType,
-    workshopInput, setWorkshopInput,
-    refinedGoals, setRefinedGoals,
-    session, setSession,
-    originalSession, setOriginalSession,
-    currentSkeleton, setCurrentSkeleton,
-    completedTasks, setCompletedTasks,
-    slidesCache, setSlidesCache,
+    view,
+    setView,
+    step,
+    setStep,
+    highestStepIdx,
+    setHighestStepIdx,
+    darkMode,
+    setDarkMode,
+    isLoading,
+    setIsLoading,
+    isFinished,
+    setIsFinished,
+    showTimelineBackConfirm,
+    setShowTimelineBackConfirm,
+    isGeneratingRef,
+    sessionId,
+    setSessionId,
+    sessionIdRef,
+    setSessionIdSynced,
+    currentLectureId,
+    setCurrentLectureId,
+    entityType,
+    setEntityType,
+    STEPS,
     STEP_ORDER,
-    buildDraft,
+    workshopInput,
+    setWorkshopInput,
+    refinedGoals,
+    setRefinedGoals,
+    session,
+    setSession,
+    originalSession,
+    setOriginalSession,
+    currentSkeleton,
+    setCurrentSkeleton,
+    completedTasks,
+    setCompletedTasks,
+    slidesCache,
+    setSlidesCache,
+    draftSaveTimeout,
+    pendingResolvers,
     persistDraft,
+    buildDraft,
     startNewSession,
     startNewLecture,
     startSessionFromLecture,
     resumeSession,
     handleStep1,
+    handleStep2Activities,
     handleStep2,
     handleGoalsEntered,
     handleReset,
-    switchStep,
-    draftSaveTimeout
+    toggleDark,
+    currentIdx,
+    loadingMessages
   };
 }

@@ -51,7 +51,8 @@ public class WorkshopSessionFacade {
             WorkshopSessionDto generatedDto = generateTimetableUseCase.execute(
                 request.meta(), 
                 request.skeleton(), 
-                request.goals()
+                request.goals(),
+                request.availableMaterials()
             );
             
             // 2. Fast DB Persist (INSIDE short transaction scope)
