@@ -13,7 +13,7 @@ Generates the initial learning goal plans based on user input.
 
 ### 2. `POST /api/workshop/session`
 Generates the full, finalized timetable session from the goals and activities.
-- **Request Body**: `GenerateSessionRequestDto` (Goals, metadata, session skeleton)
+- **Request Body**: `GenerateSessionRequestDto` (Goals, metadata including `availableMaterials`, session skeleton)
 - **Response**: `WorkshopSessionDto` (The complete timetable)
 
 ## Session Management

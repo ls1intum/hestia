@@ -70,7 +70,7 @@ public class GenerateTimetableUseCase {
             for (SkeletonBlockDto block : filteredBlocks) {
                 // Prepare stringified values for LLM
                 String targetBlockStr = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(block);
-                String selectedActivitiesStr = input.selectedActivities() != null ? String.join(", ", input.selectedActivities()) : "NONE";
+                String selectedActivitiesStr = input.selectedActivities() != null && !input.selectedActivities().isEmpty() ? String.join(", ", input.selectedActivities()) : "NONE";
                 
                 Future<ActivityBlockDto> future = llmExecutor.submit(() -> {
                     String rules = buildEvaluateRules(block, goals, input);

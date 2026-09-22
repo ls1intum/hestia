@@ -27,8 +27,8 @@ All `/api/**` endpoints (except `/health`) require an authenticated principal (`
 When an unauthenticated request hits the API, Spring returns a `401 Unauthorized`.
 In the frontend (`api.ts`), the `handleAuthError` interceptor catches all 401s and automatically mutates `window.location.href` to `/saml2/authenticate/tum`, seamlessly triggering the SAML login flow.
 
-## 4. Frontend State (The Wizard Monolith)
-The frontend currently suffers from a monolithic `App.tsx` file (800+ lines) that handles all routing, session fetching, and dozens of parallel `useState` hooks for the creation wizard.
+## 4. Frontend State
+The frontend previously suffered from a monolithic `App.tsx` file (800+ lines) that handled all routing, session fetching, and dozens of parallel `useState` hooks for the creation wizard.
 
-**Migration Plan (Phase 5):**
-The `useWizardState.ts` hook was created to encapsulate all this state (Input, Goals, Skeleton, Timetable). The pending architectural migration is to destructure this state into `App.tsx` and drill it down, allowing `App.tsx` to become a clean layout/routing wrapper rather than a state machine.
+**Migration Completed (Phase 5):**
+The `useWizardState.ts` hook was fully synchronized with live fixes (including SAML `401` traps) and wired into `App.tsx`. `App.tsx` is now a clean layout/routing wrapper that simply destructures state and step-handlers from the hook. Furthermore, complex UI components within the timetable view (like `EvaluateMappingPanel` and `UnderstandingCheckSteps`) have been extracted from monolithic rows into dedicated components.
