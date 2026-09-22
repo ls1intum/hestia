@@ -18,6 +18,7 @@ export default function CoursePage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<LearningGoal | null>(null);
   const [extractionModalOpen, setExtractionModalOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const courseQuery = useQuery({
     queryKey: ["course", courseId],
@@ -62,6 +63,9 @@ export default function CoursePage() {
     && (course.skillCount ?? 0) > 0
     && course.skillsReviewedAt == null;
   const [reviewDismissed, setReviewDismissed] = useState(false);
+  // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
+  // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
+  const showReview = reviewOpen || (reviewDue && !reviewDismissed);
 
   const markReviewed = useMutation({
     mutationFn: async () => {
@@ -152,6 +156,7 @@ export default function CoursePage() {
           <h1 className="text-2xl">{courseName}</h1>
           <CourseMenu
             exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
+            onReview={(course?.skillCount ?? 0) > 0 ? () => setReviewOpen(true) : undefined}
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
@@ -255,12 +260,13 @@ export default function CoursePage() {
         </div>
       )}
 
-      {reviewDue && !reviewDismissed && (
+      {showReview && (
         <ExtractionProgressModal
           open
           reviewOnly
           courseId={courseId}
           onClose={() => {
+            setReviewOpen(false);
             setReviewDismissed(true);
             markReviewed.mutate();
           }}
@@ -270,12 +276,15 @@ export default function CoursePage() {
   );
 }
 
-/** Kebab (⋮) overflow menu holding the course's Documents, Export and Delete actions. */
+/** Kebab (⋮) overflow menu holding the course's Review, Export and Delete actions. */
 function CourseMenu({
   exportHref,
+  onReview,
   onDelete,
 }: {
   exportHref: string;
+  /** Omitted while the course has no skills to review, which hides the entry. */
+  onReview?: () => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -302,6 +311,31 @@ function CourseMenu({
           role="menu"
           className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-hestia-border bg-hestia-surface py-1 shadow-lg"
         >
+          {onReview && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onReview();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-hestia-text transition hover:bg-hestia-bg"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 text-hestia-text-muted"
+              >
+                <path d="M4 5h12M4 10h12M4 15h7" />
+                <path d="M14 15l1.5 1.5L18 14" />
+              </svg>
+              Review skills
+            </button>
+          )}
           <a
             href={exportHref}
             role="menuitem"
