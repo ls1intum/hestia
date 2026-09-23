@@ -12,13 +12,20 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private DevAuthFilter devAuthFilter;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable()) // Disable CSRF temporarily so frontend isn't blocked locally
+            .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
+                new org.springframework.security.web.authentication.HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED),
+                org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.withDefaults().matcher("/api/**")
+            ))
             .authorizeHttpRequests(authorize -> authorize
-                // Keep all existing API endpoints open for now
-                .requestMatchers("/api/**").permitAll()
+                // Require authentication for all APIs
+                .requestMatchers("/api/**").authenticated()
                 // Explicitly allow anyone to download the metadata XML (Central IT needs this!)
                 .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
                 // Require SAML authentication for any other endpoints
@@ -26,6 +33,10 @@ public class SecurityConfig {
             )
             .saml2Login(withDefaults())
             .saml2Metadata(withDefaults());
+
+        if (devAuthFilter != null) {
+            http.addFilterBefore(devAuthFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+        }
 
         return http.build();
     }
