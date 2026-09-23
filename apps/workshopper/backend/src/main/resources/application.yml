@@ -13,6 +13,11 @@ spring:
               credentials:
                 - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
                   certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
+
+            decryption:
+              credentials:
+                - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
+                  certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
             assertingparty:
               entity-id: https://tumidp.lrz.de/idp/shibboleth
               metadata-uri: https://login.tum.de/idp/shibboleth
