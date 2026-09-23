@@ -61,7 +61,9 @@ public class SecurityConfig {
                 new org.springframework.security.web.authentication.HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED),
                 org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.withDefaults().matcher("/api/**")
             ))
-            .saml2Login(withDefaults())
+            .saml2Login(saml2 -> saml2
+                .defaultSuccessUrl("/", true)
+            )
 
             .saml2Metadata(withDefaults());
 
