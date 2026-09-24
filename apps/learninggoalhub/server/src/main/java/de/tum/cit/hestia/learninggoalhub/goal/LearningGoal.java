@@ -33,6 +33,10 @@ public class LearningGoal {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    /** The generated wording, kept on the first rename; null while the goal was never renamed. */
+    @Column(name = "original_text", columnDefinition = "TEXT")
+    private String originalText;
+
     @Column(name = "short_label", columnDefinition = "TEXT")
     private String shortLabel;
 
@@ -103,6 +107,14 @@ public class LearningGoal {
 
     public void setText(String text) {
         this.text = text;
+    }
+
+    public String getOriginalText() {
+        return originalText;
+    }
+
+    public void setOriginalText(String originalText) {
+        this.originalText = originalText;
     }
 
     public String getShortLabel() {

@@ -650,6 +650,12 @@ public class LearningGoalController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
             }
             if (!text.equals(goal.getText())) {
+                // Keep the generated wording on the first rename. An instructor's own goal has no
+                // generated wording to keep.
+                if (goal.getOriginalText() == null
+                        && goal.getCreationProvenance() != GoalCreationProvenance.USER_CREATED) {
+                    goal.setOriginalText(goal.getText());
+                }
                 goal.setText(text);
                 goal.setShortLabel(null);
                 // The embedding was computed from the old wording; drop it rather than keep a stale one.
@@ -871,6 +877,7 @@ public class LearningGoalController {
 
     public record LearningGoalResponse(Long id,
                                        String text,
+                                       String originalText,
                                        String shortLabel,
                                        GoalKind kind,
                                        GoalRole role,
@@ -893,6 +900,7 @@ public class LearningGoalController {
             return new LearningGoalResponse(
                     g.getId(),
                     g.getText(),
+                    g.getOriginalText(),
                     g.getShortLabel(),
                     g.getKind(),
                     g.getRole(),
