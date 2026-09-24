@@ -30,6 +30,7 @@ const BOX_W = 224;
 const COMPACT_W = 160; // dimmed sibling boxes in a row with a focused box
 const LEAF_W = 240; // boxes in the second and third rows
 const GHOST_W = 128; // the quiet "+ New …" pill beside a row
+const HINT_W = 168; // the note standing in for the pill beside the "Additional sub-skills" row
 const GAP = 12;
 const CONNECTOR_H = 40;
 const SCROLL_STEP = 332; // one scroll-arrow press
@@ -129,7 +130,7 @@ export default function TopicMap({
     return () => window.clearTimeout(timer);
   }, [highlightId]);
   // As in the table, the skills come first and the goals hanging directly off the topic follow in
-  // one "Sub-skills without a skill" box. That box is no goal: it takes the negated topic id, which
+  // one "Additional sub-skills" box. That box is no goal: it takes the negated topic id, which
   // no goal id collides with, and opens its goals as a skill opens its sub-skills.
   const skills = topic.children.filter((node) => node.role === "capability");
   const loose = topic.children.filter((node) => node.role !== "capability");
@@ -242,9 +243,11 @@ export default function TopicMap({
           { duration: 300, easing: "cubic-bezier(0.2, 0, 0.2, 1)" },
         );
       });
-    // The highlight only steers this first centring; its fade-out must not scroll again.
+    // The highlight only steers this first centring; its fade-out must not scroll again. Keyed on
+    // ids, not nodes: the "Additional sub-skills" box is rebuilt on every render, and a re-render
+    // (the edge fades toggling at the end of a scroll) must not snap the view back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedId, subFocusedId, deepest]);
+  }, [focusedId, subFocusedId, deepest?.goal.id]);
 
   // The canvas is deterministic, but its rendered width depends on the current tree. Observe both
   // the scrollport and its canvas so the cosmetic affordances only appear when overflow exists;
@@ -276,7 +279,7 @@ export default function TopicMap({
       resizeObserver.disconnect();
       scroller.removeEventListener("scroll", updateScrollEdges);
     };
-  }, [focused, subFocused]);
+  }, [focused?.goal.id, subFocused?.goal.id]);
 
   // Clicking a focused box again folds it back into its parent's overview.
   const pickFirst = (id: number) => navigate(focusedId === id ? null : id);
@@ -324,11 +327,10 @@ export default function TopicMap({
   const secondTier = focused?.role === "capability" ? 3 : 4;
   const secondKey = focused ? `${secondTier}:${focused.goal.id}` : "";
   // A sub-skill added straight under the topic would be read back as a skill, so the group offers
-  // no "New sub-skill"; skills are added in the first row.
-  const secondReserve = ghostReserve(
-    focused != null && !focusedIsGroup,
-    creation.activeKey === secondKey,
-  );
+  // no "New sub-skill"; a note in its place points to where sub-skills are added instead.
+  const secondReserve = focusedIsGroup
+    ? HINT_W + GAP
+    : ghostReserve(focused != null, creation.activeKey === secondKey);
   // The table's numbers: a goal in the group continues the topic's count after its skills.
   const secondSequence = (index: number) =>
     focusedIsGroup
@@ -470,7 +472,25 @@ export default function TopicMap({
                   reserve={secondReserve}
                   ghost={
                     focusedIsGroup
-                      ? null
+                      ? (
+                          // Drawn like the "+ New …" pill it stands in for, but as a note: an
+                          // info mark instead of the plus, and nothing to click.
+                          <p className="flex items-start gap-1.5 rounded-xl border border-dashed border-hestia-border px-3 py-1.5 text-xs leading-snug text-hestia-text-muted">
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              aria-hidden="true"
+                              className="mt-px h-3.5 w-3.5 shrink-0"
+                            >
+                              <circle cx="10" cy="10" r="7.25" />
+                              <path d="M10 9v4.5M10 6.5v.01" />
+                            </svg>
+                            Add sub-skills under a skill, or add a new skill first.
+                          </p>
+                        )
                       : secondTier === 3
                       ? ghost("New sub-skill", COMPETENCY_ROLE_META.skill.color, 3, secondKey, focused.goal.id!)
                       : ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
@@ -567,7 +587,7 @@ export default function TopicMap({
   );
 }
 
-const LOOSE_GROUP_LABEL = "Sub-skills without a skill";
+const LOOSE_GROUP_LABEL = "Additional sub-skills";
 
 /** The first row's box gathering the topic's goals that sit in no skill. */
 function isLooseGroup(node: CompetencyNode) {
@@ -653,7 +673,8 @@ function ChildHint({
 /**
  * A row of boxes with its creation control to their left. The control hangs outside the row's
  * width, so the boxes stay centred exactly under the connector drawn for them alone; the canvas
- * padding makes room for it.
+ * padding makes room for it. It is centred on the row's first box, the one beside it, rather than
+ * on the whole row, whose height also counts the child hints beneath the boxes.
  */
 function CreationRow({
   reserve,
@@ -664,13 +685,34 @@ function CreationRow({
   ghost: ReactNode;
   children: ReactNode;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  // The first box's vertical centre within the row; null while the row has no box.
+  const [anchorTop, setAnchorTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const box = rowRef.current?.querySelector<HTMLElement>("[data-goal-id]");
+    if (!box) {
+      setAnchorTop(null);
+      return;
+    }
+    // Offsets, not client rects: they ignore the transforms of the entrance and FLIP animations.
+    const update = () => setAnchorTop(box.offsetTop + box.offsetHeight / 2);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(box);
+    return () => observer.disconnect();
+    // The boxes are the children; a new set can put a different box first.
+  }, [children]);
   return (
-    <div className="relative flex justify-center gap-3">
+    <div ref={rowRef} className="relative flex justify-center gap-3">
       {children}
       {ghost && reserve > 0 && (
         <div
-          className="absolute top-1/2 flex -translate-y-1/2 justify-end"
-          style={{ right: `calc(100% + ${GAP}px)`, width: reserve - GAP }}
+          className="absolute flex -translate-y-1/2 justify-end"
+          style={{
+            top: anchorTop ?? "50%",
+            right: `calc(100% + ${GAP}px)`,
+            width: reserve - GAP,
+          }}
         >
           {ghost}
         </div>
@@ -903,7 +945,7 @@ function Box({
   leaf?: boolean;
   /** Keeps sibling context compact without truncating the focused node. */
   clampText?: boolean;
-  /** The "Sub-skills without a skill" box: no goal, so no tier badge, number or actions. */
+  /** The "Additional sub-skills" box: no goal, so no tier badge, number or actions. */
   group?: boolean;
   /** Hierarchical lecture-order label, e.g. "2.3". */
   sequenceLabel?: string;

@@ -1498,6 +1498,9 @@
           "text": {
             "type": "string"
           },
+          "originalText": {
+            "type": "string"
+          },
           "shortLabel": {
             "type": "string"
           },
