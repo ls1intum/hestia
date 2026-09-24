@@ -304,7 +304,7 @@ function LooseGroupRow({
             </svg>
           </button>
           <span className="min-w-0 pt-px text-sm leading-relaxed text-hestia-text-muted">
-            <span className="italic">Sub-skills without a skill</span>
+            <span className="italic">Additional sub-skills</span>
             {!open && <ChildPreview role="capability" items={items} fullWording={false} />}
           </span>
         </div>
@@ -859,7 +859,7 @@ export default function CompetencyTree({
     return map;
   }, [rows, matchIds, contextIds]);
   const isOpen = (id: number) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
-  // The goals under a topic that sit in no skill, gathered under one "Sub-skills without a skill"
+  // The goals under a topic that sit in no skill, gathered under one "Additional sub-skills"
   // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
   const looseOf = (topicId: number) =>
     (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "capability");
@@ -1184,7 +1184,7 @@ export default function CompetencyTree({
     const isContext = filtering && contextIds.has(row.id);
     if (filtering && !isMatch && !isContext) return;
     const mapOpen = layout === "diagram" && !filtering && openTopicId === row.id;
-    // A goal hanging directly under a topic sits in the "Sub-skills without a skill" group, one
+    // A goal hanging directly under a topic sits in the "Additional sub-skills" group, one
     // step further in, level with the sub-skills under a skill. Its knowledge follows it in.
     const rowDepth = row.role !== "capability" && parentRole === "topic" ? depth + 1 : depth;
     // The "+" lives in the table only: the map adds in the map, and a filtered list has no place
