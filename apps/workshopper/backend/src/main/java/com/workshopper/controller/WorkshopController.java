@@ -304,6 +304,9 @@ public class WorkshopController {
             if (request.sessionId() != null && !request.sessionId().isBlank()) {
                 facade.verifyOwnership(request.sessionId());
             }
+            if (request.lectureId() != null && !request.lectureId().isBlank()) {
+                facade.verifyOwnership(request.lectureId());
+            }
             String id = service.saveDraft(request, com.workshopper.config.AuthContext.getCurrentUserId());
             return ResponseEntity.ok(Map.of("id", id));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -482,6 +485,9 @@ public class WorkshopController {
         try {
             facade.verifyOwnership(id);
             String lectureId = body.get("lectureId");
+            if (lectureId != null && !lectureId.isBlank()) {
+                facade.verifyOwnership(lectureId);
+            }
             service.moveSession(id, lectureId);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
