@@ -118,6 +118,9 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
         try {
+            if (request.session() != null && request.session().id() != null) {
+                facade.verifyOwnership(request.session().id());
+            }
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
             byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), null, templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
@@ -139,6 +142,9 @@ public class WorkshopController {
     @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) {
         try {
+            if (request.session() != null && request.session().id() != null) {
+                facade.verifyOwnership(request.session().id());
+            }
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
             byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
@@ -184,6 +190,10 @@ public class WorkshopController {
             com.workshopper.dto.WorkshopSessionDto session = mapper.readValue(sessionJson, com.workshopper.dto.WorkshopSessionDto.class);
             com.workshopper.dto.WorkshopInputDto meta = mapper.readValue(metaJson, com.workshopper.dto.WorkshopInputDto.class);
             
+            if (session.id() != null) {
+                facade.verifyOwnership(session.id());
+            }
+
             List<Map<String, Object>> prebuiltSlides = null;
             if (slidesJson != null && !slidesJson.isBlank()) {
                 prebuiltSlides = mapper.readValue(slidesJson, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
@@ -219,6 +229,7 @@ public class WorkshopController {
     @GetMapping(value = "/export/lecture/{id}/zip", produces = "application/zip")
     public ResponseEntity<Resource> exportLectureZip(@PathVariable String id) {
         try {
+            facade.verifyOwnership(id);
             byte[] zipBytes = service.exportLectureZip(id, pdfService, assemblePptxUseCase);
             ByteArrayResource resource = new ByteArrayResource(zipBytes);
             return ResponseEntity.ok()
@@ -330,6 +341,7 @@ public class WorkshopController {
     @PostMapping("/sessions/{id}/slides")
     public ResponseEntity<?> saveSlides(@PathVariable String id, @RequestBody Map<Integer, List<Map<String, Object>>> slidesCache) {
         try {
+            facade.verifyOwnership(id);
             service.saveSlides(id, slidesCache);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -345,6 +357,7 @@ public class WorkshopController {
     @PostMapping(value = "/sessions/{id}/template", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
         try {
+            facade.verifyOwnership(id);
             service.saveTemplate(id, template.getBytes());
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -360,6 +373,7 @@ public class WorkshopController {
     @GetMapping("/sessions/{id}/slides/preview")
     public ResponseEntity<Map<String, List<String>>> getSlidePreviews(@PathVariable String id) {
         try {
+            facade.verifyOwnership(id);
             com.workshopper.dto.SessionDetailDto detail = service.getSession(id)
                     .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
             java.io.InputStream templateStream = getTemplateStream(id);
@@ -392,6 +406,7 @@ public class WorkshopController {
     @DeleteMapping("/sessions/{id}")
     public ResponseEntity<?> deleteSession(@PathVariable String id) {
         try {
+            facade.verifyOwnership(id);
             service.deleteSession(id);
             return ResponseEntity.noContent().build();
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -408,6 +423,7 @@ public class WorkshopController {
     @PutMapping("/sessions/{id}/finish")
     public ResponseEntity<?> finishSession(@PathVariable String id) {
         try {
+            facade.verifyOwnership(id);
             service.finishSession(id);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -424,6 +440,7 @@ public class WorkshopController {
     @PutMapping("/sessions/{id}/rename")
     public ResponseEntity<?> renameSession(@PathVariable String id, @RequestBody Map<String, String> body) {
         try {
+            facade.verifyOwnership(id);
             String newTitle = body.get("title");
             if (newTitle == null || newTitle.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Title is required"));
@@ -444,6 +461,9 @@ public class WorkshopController {
     @PutMapping("/sessions/reorder")
     public ResponseEntity<?> reorderSessions(@RequestBody java.util.List<String> sessionIds) {
         try {
+            for (String sid : sessionIds) {
+                facade.verifyOwnership(sid);
+            }
             service.reorderSessions(sessionIds);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
@@ -460,6 +480,7 @@ public class WorkshopController {
     @PutMapping("/sessions/{id}/move")
     public ResponseEntity<?> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
         try {
+            facade.verifyOwnership(id);
             String lectureId = body.get("lectureId");
             service.moveSession(id, lectureId);
             return ResponseEntity.ok(Map.of("success", true));

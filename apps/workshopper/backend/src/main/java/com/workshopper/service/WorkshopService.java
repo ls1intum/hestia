@@ -210,8 +210,17 @@ public class WorkshopService {
                 .toList();
     }
 
-    /** Delete a session by ID. */
+    /** Delete a session by ID. If it's a Lecture, cascade-delete its child sessions too —
+     *  matches the frontend's confirmation dialog, which already warns
+     *  "This will permanently delete the lecture and its N sessions: ...". */
     public void deleteSession(String id) {
+        WorkshopSessionEntity entity = repo.findById(id).orElse(null);
+        if (entity != null && "LECTURE".equals(entity.getType())) {
+            List<WorkshopSessionEntity> children = repo.findAllByLectureIdOrdered(id);
+            if (!children.isEmpty()) {
+                repo.deleteAll(children);
+            }
+        }
         repo.deleteById(id);
     }
 
