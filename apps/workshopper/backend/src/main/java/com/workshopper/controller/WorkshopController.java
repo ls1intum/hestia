@@ -35,8 +35,11 @@ public class WorkshopController {
     private final WorkshopService service;
     private final PdfExportService pdfService;
     private final WorkshopSessionFacade facade;
-    private final GenerateSlideBlockUseCase generateSlideBlockUseCase;
-    private final AssemblePptxUseCase assemblePptxUseCase;
+    public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade) {
+        this.service = service;
+        this.pdfService = pdfService;
+        this.facade = facade;
+    }
 
     private java.io.InputStream getTemplateStream(String sessionId) {
         byte[] templateData = (sessionId != null) ? service.getTemplate(sessionId) : null;
@@ -51,14 +54,6 @@ public class WorkshopController {
         }
     }
 
-    public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade, GenerateSlideBlockUseCase generateSlideBlockUseCase, AssemblePptxUseCase assemblePptxUseCase) {
-        this.service = service;
-        this.pdfService = pdfService;
-        this.facade = facade;
-        this.generateSlideBlockUseCase = generateSlideBlockUseCase;
-        this.assemblePptxUseCase = assemblePptxUseCase;
-    }
-
     /**
      * POST /api/workshop/plan
      * Generate learning goal plans from workshop input.
@@ -66,7 +61,7 @@ public class WorkshopController {
     @PostMapping("/plan")
     public ResponseEntity<?> generatePlan(@RequestBody WorkshopInputDto input) {
         try {
-            List<LearningGoalPlanDto> plans = service.generatePlan(input);
+            List<LearningGoalPlanDto> plans = facade.generatePlan(input);
             return ResponseEntity.ok(plans);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Plan generation failed", e);
@@ -122,7 +117,7 @@ public class WorkshopController {
                 facade.verifyOwnership(request.session().id());
             }
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), null, templateStream);
+            byte[] pptxBytes = facade.assemblePptx(request.session(), request.meta(), null, templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
@@ -146,7 +141,7 @@ public class WorkshopController {
                 facade.verifyOwnership(request.session().id());
             }
             java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = assemblePptxUseCase.execute(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
+            byte[] pptxBytes = facade.assemblePptx(request.session(), request.meta(), request.prebuiltSlides(), templateStream);
             ByteArrayResource resource = new ByteArrayResource(pptxBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
@@ -166,7 +161,7 @@ public class WorkshopController {
     @PostMapping("/export/block-slides")
     public ResponseEntity<?> exportBlockSlides(@RequestBody BlockSlidesRequestDto request) {
         try {
-            List<Map<String, Object>> slides = generateSlideBlockUseCase.execute(request.block(), request.meta(), request.goals());
+            List<Map<String, Object>> slides = facade.generateBlockSlides(request.block(), request.meta(), request.goals());
             return ResponseEntity.ok(slides);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Block slides generation failed", e);
@@ -206,7 +201,7 @@ public class WorkshopController {
                 templateStream = getTemplateStream(session.id());
             }
 
-            byte[] pptxBytes = assemblePptxUseCase.execute(session, meta, prebuiltSlides, templateStream);
+            byte[] pptxBytes = facade.assemblePptx(session, meta, prebuiltSlides, templateStream);
             
             org.springframework.core.io.ByteArrayResource resource = new org.springframework.core.io.ByteArrayResource(pptxBytes);
             String safeTitle = (session.title() != null ? session.title() : "Workshop").replaceAll("[^a-zA-Z0-9.-]", "_");
@@ -230,7 +225,7 @@ public class WorkshopController {
     public ResponseEntity<Resource> exportLectureZip(@PathVariable String id) {
         try {
             facade.verifyOwnership(id);
-            byte[] zipBytes = service.exportLectureZip(id, pdfService, assemblePptxUseCase);
+            byte[] zipBytes = facade.exportLectureZip(id);
             ByteArrayResource resource = new ByteArrayResource(zipBytes);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"lecture-materials.zip\"")
@@ -251,7 +246,7 @@ public class WorkshopController {
     @PostMapping("/refine-goal")
     public ResponseEntity<?> refineGoal(@RequestBody RefineGoalRequestDto request) {
         try {
-            var suggestions = service.refineGoal(request);
+            var suggestions = facade.refineGoal(request);
             return ResponseEntity.ok(suggestions);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Goal refinement failed", e);
@@ -268,7 +263,7 @@ public class WorkshopController {
     @PostMapping("/extract-goals")
     public ResponseEntity<?> extractGoals(@RequestBody ExtractGoalsRequestDto request) {
         try {
-            var goals = service.extractGoalsFromDocument(request);
+            var goals = facade.extractGoalsFromDocument(request);
             return ResponseEntity.ok(goals);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Goal extraction failed", e);
@@ -284,7 +279,7 @@ public class WorkshopController {
     @PostMapping("/fix-goals-grammar")
     public ResponseEntity<?> fixGoalsGrammar(@RequestBody List<String> goals) {
         try {
-            var fixed = service.fixGoalsGrammar(goals);
+            var fixed = facade.fixGoalsGrammar(goals);
             return ResponseEntity.ok(fixed);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.warn("Grammar fix failed, falling back to original goals. Error: {}", e.getMessage());
@@ -394,7 +389,7 @@ public class WorkshopController {
                 return ResponseEntity.ok(Map.of("images", List.of()));
             }
 
-            List<String> base64Images = assemblePptxUseCase.renderAllSlidePreviews(detail.session(), null, allSlides, templateStream);
+            List<String> base64Images = facade.renderAllSlidePreviews(detail.session(), null, allSlides, templateStream);
             
             return ResponseEntity.ok(Map.of("images", base64Images));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
