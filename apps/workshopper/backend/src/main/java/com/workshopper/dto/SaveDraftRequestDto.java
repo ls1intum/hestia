@@ -26,9 +26,6 @@ public record SaveDraftRequestDto(
          */
         String draftStateJson,
 
-        /** "SESSION" or "LECTURE" */
-        String type,
-
-        /** ID of parent lecture, if any */
-        String lectureId
+        /** ID of parent course, if any */
+        String courseId
 ) {}

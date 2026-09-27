@@ -274,8 +274,8 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
             {/* Split items */}
             {(() => {
-              const lectures = sessions.filter(s => s.type === "LECTURE");
-              const standaloneSessions = sessions.filter(s => s.type !== "LECTURE" && !s.lectureId);
+              const lectures = sessions.filter(s => s.courseId === undefined && !s.courseId);
+              const standaloneSessions = sessions.filter(s => !s.courseId);
 
               const renderSessionCard = (session: SessionSummary, isChild = false) => (
                 <div
@@ -311,14 +311,14 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
                       try {
                         // If moving between different parents, move it first
-                        if (draggedSession.lectureId !== session.lectureId) {
-                          await moveSession(draggedId, session.lectureId || "");
+                        if (draggedSession.courseId !== session.courseId) {
+                          await moveSession(draggedId, session.courseId || "");
                         }
 
                         // Calculate new order
-                        const siblings = session.lectureId
-                          ? sessions.filter(s => s.lectureId === session.lectureId)
-                          : sessions.filter(s => s.type !== "LECTURE" && !s.lectureId);
+                        const siblings = session.courseId
+                          ? sessions.filter(s => s.courseId === session.courseId)
+                          : sessions.filter(s => !s.courseId);
 
                         const newOrderIds = siblings.map(s => s.id).filter(id => id !== draggedId);
                         const targetIndex = newOrderIds.indexOf(session.id);
@@ -402,7 +402,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                       </h3>
                       <div className="grid gap-3">
                         {lectures.map((lecture) => {
-                          const childSessions = sessions.filter(s => s.lectureId === lecture.id);
+                          const childSessions = sessions.filter(s => s.courseId === lecture.id);
                           return (
                             <div
                               key={lecture.id}
@@ -503,9 +503,9 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deletingItem?.type === "LECTURE" ? (() => {
+              {deletingItem?.type === "COURSE" ? (() => {
                 // C-1: show child session names so user knows what they're deleting
-                const children = sessions.filter(s => s.lectureId === deletingItem.id);
+                const children = sessions.filter(s => s.courseId === deletingItem.id);
                 return (
                   <>
                     This action cannot be undone. This will permanently delete the lecture

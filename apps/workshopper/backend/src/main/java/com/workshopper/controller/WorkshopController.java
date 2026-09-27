@@ -218,22 +218,22 @@ public class WorkshopController {
     }
 
     /**
-     * GET /api/workshop/export/lecture/{id}/zip
-     * Export all child sessions of a lecture into a ZIP file containing their PDFs and PPTXs.
+     * GET /api/workshop/export/course/{id}/zip
+     * Export all child sessions of a course into a ZIP file containing their PDFs and PPTXs.
      */
-    @GetMapping(value = "/export/lecture/{id}/zip", produces = "application/zip")
-    public ResponseEntity<Resource> exportLectureZip(@PathVariable String id) {
+    @GetMapping(value = "/export/course/{id}/zip", produces = "application/zip")
+    public ResponseEntity<Resource> exportCourseZip(@PathVariable String id) {
         try {
             facade.verifyOwnership(id);
-            byte[] zipBytes = facade.exportLectureZip(id);
+            byte[] zipBytes = facade.exportCourseZip(id);
             ByteArrayResource resource = new ByteArrayResource(zipBytes);
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"lecture-materials.zip\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"course-materials.zip\"")
                     .contentType(MediaType.parseMediaType("application/zip"))
                     .contentLength(zipBytes.length)
                     .body(resource);
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Lecture ZIP export failed", e);
+            log.error("Course ZIP export failed", e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -299,8 +299,8 @@ public class WorkshopController {
             if (request.sessionId() != null && !request.sessionId().isBlank()) {
                 facade.verifyOwnership(request.sessionId());
             }
-            if (request.lectureId() != null && !request.lectureId().isBlank()) {
-                facade.verifyOwnership(request.lectureId());
+            if (request.courseId() != null && !request.courseId().isBlank()) {
+                facade.verifyOwnership(request.courseId());
             }
             String id = service.saveDraft(request, com.workshopper.config.AuthContext.getCurrentUserId());
             return ResponseEntity.ok(Map.of("id", id));

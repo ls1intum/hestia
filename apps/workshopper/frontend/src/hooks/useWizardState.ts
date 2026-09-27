@@ -90,15 +90,14 @@ export function useWizardState() {
       draft: DraftState,
       currentStep: string,
       currentSessionId: string | null,
-      type: "SESSION" | "LECTURE",
-      lectureId: string | null
+      courseId: string | null
     ): Promise<string> => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
       return new Promise((resolve) => {
         pendingResolvers.current.push(resolve);
         draftSaveTimeout.current = setTimeout(async () => {
           try {
-            const id = await saveDraft(draft, currentSessionId, currentStep, type, lectureId ?? undefined);
+            const id = await saveDraft(draft, currentSessionId, currentStep, courseId ?? undefined);
             const resolvers = pendingResolvers.current;
             pendingResolvers.current = [];
             resolvers.forEach(r => r(id));
@@ -203,14 +202,14 @@ export function useWizardState() {
     setIsLoading(true);
     try {
       const detail = await getSessionDetail(id);
-      // R-2: resolve entity type and lectureId locally so we can compute the correct
-      // step order immediately, without waiting for React state to flush.
-      const resolvedEntityType = detail.type ?? "SESSION";
-      const resolvedLectureId = detail.lectureId ?? null;
+      // R-2: resolve courseId locally so we can compute the correct step order immediately
+      const resolvedCourseId = detail.courseId ?? null;
+      // Determine entity type from presence of courseId: sessions with a courseId are SESSION type
+      const resolvedEntityType: "SESSION" | "LECTURE" = "SESSION";
 
       setSessionIdSynced(detail.id);
       setEntityType(resolvedEntityType);
-      setCurrentLectureId(resolvedLectureId);
+      setCurrentLectureId(resolvedCourseId);
 
       const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
       setIsFinished(sessionIsFinished);
@@ -326,7 +325,7 @@ export function useWizardState() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, "input-2", sessionIdRef.current, entityType, currentLectureId);
+      const id = await persistDraft(draft, "input-2", sessionIdRef.current, currentLectureId);
       if (!sessionId) setSessionIdSynced(id);
       setStep("input-2");
     } finally {
@@ -348,7 +347,7 @@ export function useWizardState() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionIdRef.current, entityType, currentLectureId);
+      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionIdRef.current, currentLectureId);
       if (!sessionId) setSessionIdSynced(id);
       if (entityType === "LECTURE") {
         toast({ title: "Lecture successfully created", description: "Your lecture has been saved to the dashboard." });
@@ -392,7 +391,7 @@ export function useWizardState() {
       
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
       const initialDraft = buildDraft(updatedInput, goalsWithPriority, skeleton);
-      const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, entityType, currentLectureId);
+      const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentLectureId);
       if (!sessionId) setSessionIdSynced(currentId);
       
       const skeletonWithId: SessionSkeleton = {
@@ -411,7 +410,7 @@ export function useWizardState() {
       setOriginalSession(JSON.parse(JSON.stringify(result)));
       
       const draft = buildDraft(updatedInput, goalsWithPriority, skeleton, result);
-      await persistDraft(draft, "timeline", currentId, entityType, currentLectureId);
+      await persistDraft(draft, "timeline", currentId, currentLectureId);
       setStep("timeline");
     } catch (err) {
       toast({

@@ -1,6 +1,5 @@
 package com.workshopper.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.*;
 import com.workshopper.model.WorkshopSessionEntity;
@@ -9,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,8 +29,7 @@ public class WorkshopService {
 
     /**
      * Upsert a draft session record. If sessionId is provided and found, updates
-     * it;
-     * otherwise creates a new entity and returns the assigned ID.
+     * it; otherwise creates a new entity and returns the assigned ID.
      */
     public String saveDraft(SaveDraftRequestDto req, String ownerId) {
         WorkshopSessionEntity entity = null;
@@ -49,16 +46,24 @@ public class WorkshopService {
             entity.setLearningGoal(req.learningGoal());
         if (req.currentStep() != null)
             entity.setCurrentStep(req.currentStep());
-        if (req.type() != null)
-            entity.setType(req.type());
-        if (req.lectureId() != null)
-            entity.setLectureId(req.lectureId());
+        if (req.courseId() != null)
+            entity.setCourseId(req.courseId());
         if (req.draftStateJson() != null) {
             entity.setDraftStateJson(req.draftStateJson());
             try {
                 com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(req.draftStateJson());
                 if (rootNode.has("session") && !rootNode.get("session").isNull()) {
                     entity.setSessionJson(mapper.writeValueAsString(rootNode.get("session")));
+                }
+                // Also promote WorkshopInput scalars into real columns if present
+                com.fasterxml.jackson.databind.JsonNode inputNode = rootNode.get("workshopInput");
+                if (inputNode != null && !inputNode.isNull()) {
+                    if (inputNode.has("duration")) entity.setDuration(inputNode.get("duration").asInt());
+                    if (inputNode.has("participants")) entity.setParticipants(inputNode.get("participants").asInt());
+                    if (inputNode.has("sessionType")) entity.setSessionType(inputNode.get("sessionType").asText());
+                    if (inputNode.has("sessionTypeOther")) entity.setSessionTypeOther(inputNode.get("sessionTypeOther").asText());
+                    if (inputNode.has("interactionLevel")) entity.setInteractionLevel(inputNode.get("interactionLevel").asText());
+                    if (inputNode.has("sourceDocument")) entity.setSourceDocument(inputNode.get("sourceDocument").asText());
                 }
             } catch (Exception e) {
                 log.warn("Failed to extract session from draftStateJson", e);
@@ -108,7 +113,7 @@ public class WorkshopService {
                                 });
                         session = new WorkshopSessionDto(
                                 session.id(), session.title(), session.learningGoal(), session.studentBackground(),
-                                session.prerequisites(), session.blocks(), session.omittedGoals(), slides);
+                                session.blocks(), session.omittedGoals(), slides);
                     }
                 } catch (Exception ex) {
                     log.warn("Could not deserialise session JSON for id={}", id);
@@ -119,8 +124,7 @@ public class WorkshopService {
                     e.getTitle(),
                     e.getStatus(),
                     e.getCurrentStep(),
-                    e.getType(),
-                    e.getLectureId(),
+                    e.getCourseId(),
                     e.getDraftStateJson(),
                     session);
         });
@@ -135,32 +139,25 @@ public class WorkshopService {
                         e.getLearningGoal(),
                         e.getStatus(),
                         e.getCurrentStep(),
-                        e.getType(),
-                        e.getLectureId(),
+                        e.getCourseId(),
                         e.getCreatedAt(),
                         e.getUpdatedAt()))
                 .toList();
     }
 
-    /** Delete a session by ID. If it's a Lecture, cascade-delete its child sessions too —
-     *  matches the frontend's confirmation dialog, which already warns
-     *  "This will permanently delete the lecture and its N sessions: ...". */
+    /**
+     * Delete a session by ID.
+     * Cascade deletion of child sessions when a Course (formerly Lecture) container
+     * is deleted is now handled by the DB FK ON DELETE CASCADE — no manual loop needed.
+     */
     public void deleteSession(String id) {
-        WorkshopSessionEntity entity = repo.findById(id).orElse(null);
-        if (entity != null && "LECTURE".equals(entity.getType())) {
-            List<WorkshopSessionEntity> children = repo.findAllByLectureIdOrdered(id);
-            if (!children.isEmpty()) {
-                repo.deleteAll(children);
-            }
-        }
         repo.deleteById(id);
     }
 
-    // exportLectureZip moved to Facade
+    // exportCourseZip moved to Facade
 
     /**
-     * Mark a session as fully finished (user clicked Finish & Save on Preparation
-     * step).
+     * Mark a session as fully finished (user clicked Finish & Save on Preparation step).
      */
     public void finishSession(String id) {
         repo.findById(id).ifPresent(entity -> {
@@ -170,10 +167,10 @@ public class WorkshopService {
         });
     }
 
-    /** Move a session to a lecture. */
-    public void moveSession(String id, String lectureId) {
+    /** Move a session to a course. */
+    public void moveSession(String id, String courseId) {
         repo.findById(id).ifPresent(entity -> {
-            entity.setLectureId(lectureId);
+            entity.setCourseId(courseId);
             entity.setDisplayOrder(null);
             repo.save(entity);
         });
@@ -214,8 +211,7 @@ public class WorkshopService {
                 try {
                     com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(entity.getDraftStateJson());
                     if (rootNode.isObject() && rootNode.has("session") && rootNode.get("session").isObject()) {
-                        ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode.get("session")).put("title",
-                                newTitle);
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode.get("session")).put("title", newTitle);
                         entity.setDraftStateJson(mapper.writeValueAsString(rootNode));
                     }
                 } catch (Exception e) {
@@ -225,16 +221,5 @@ public class WorkshopService {
 
             repo.save(entity);
         });
-    }
-
-    private String resolveSessionType(String type, String other) {
-        return switch (type == null ? "workshop" : type) {
-            case "lecture" -> "Lecture";
-            case "exercise" -> "Exercise session";
-            case "seminar" -> "Seminar";
-            case "practical" -> "Practical course";
-            case "other" -> (other != null && !other.isBlank()) ? other : "Other";
-            default -> "Workshop";
-        };
     }
 }

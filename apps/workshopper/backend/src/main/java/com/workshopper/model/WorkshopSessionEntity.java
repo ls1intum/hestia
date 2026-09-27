@@ -14,11 +14,8 @@ public class WorkshopSessionEntity {
     @Column(length = 255)
     private String ownerId;
 
-    @Column(length = 20)
-    private String type = "SESSION"; // "SESSION" or "LECTURE"
-
     @Column(length = 36)
-    private String lectureId;
+    private String courseId;
 
     @Column(name = "display_order")
     private Integer displayOrder;
@@ -33,16 +30,33 @@ public class WorkshopSessionEntity {
     @Column(columnDefinition = "TEXT")
     private String studentBackground;
 
-    @Column(columnDefinition = "TEXT")
-    private String prerequisites;
+    // ── Promoted WorkshopInput scalars ────────────────────────────────────────
+    @Column
+    private Integer duration;
 
-    /** Full generated session JSON stored as a text blob (null while still in draft). */
+    @Column
+    private Integer participants;
+
+    @Column(length = 50)
+    private String sessionType;
+
+    @Column(length = 100)
+    private String sessionTypeOther;
+
+    @Column(length = 50)
+    private String interactionLevel;
+
+    @Column(columnDefinition = "TEXT")
+    private String sourceDocument;
+
+    /** Full generated session JSON stored as a JSONB blob (null while still in draft). */
     @Column(columnDefinition = "TEXT")
     private String sessionJson;
 
     /**
      * Intermediate draft state blob — stores all step inputs as JSON so the user
      * can leave mid-way and resume later. Shape mirrors the frontend DraftState type.
+     * Stored as JSONB in Postgres.
      */
     @Column(columnDefinition = "TEXT")
     private String draftStateJson;
@@ -50,7 +64,7 @@ public class WorkshopSessionEntity {
     /** Uploaded PPTX template file. */
     private byte[] templateData;
 
-    /** Generated slides stored as JSON mapping block index to slide arrays. */
+    /** Generated slides stored as JSONB mapping block index to slide arrays. */
     @Column(columnDefinition = "TEXT")
     private String slidesJson;
 
@@ -88,11 +102,8 @@ public class WorkshopSessionEntity {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-
-    public String getLectureId() { return lectureId; }
-    public void setLectureId(String lectureId) { this.lectureId = lectureId; }
+    public String getCourseId() { return courseId; }
+    public void setCourseId(String courseId) { this.courseId = courseId; }
 
     public Integer getDisplayOrder() { return displayOrder; }
     public void setDisplayOrder(Integer displayOrder) { this.displayOrder = displayOrder; }
@@ -106,24 +117,32 @@ public class WorkshopSessionEntity {
     public String getStudentBackground() { return studentBackground; }
     public void setStudentBackground(String studentBackground) { this.studentBackground = studentBackground; }
 
-    public String getPrerequisites() { return prerequisites; }
-    public void setPrerequisites(String prerequisites) { this.prerequisites = prerequisites; }
+    public Integer getDuration() { return duration; }
+    public void setDuration(Integer duration) { this.duration = duration; }
+
+    public Integer getParticipants() { return participants; }
+    public void setParticipants(Integer participants) { this.participants = participants; }
+
+    public String getSessionType() { return sessionType; }
+    public void setSessionType(String sessionType) { this.sessionType = sessionType; }
+
+    public String getSessionTypeOther() { return sessionTypeOther; }
+    public void setSessionTypeOther(String sessionTypeOther) { this.sessionTypeOther = sessionTypeOther; }
+
+    public String getInteractionLevel() { return interactionLevel; }
+    public void setInteractionLevel(String interactionLevel) { this.interactionLevel = interactionLevel; }
+
+    public String getSourceDocument() { return sourceDocument; }
+    public void setSourceDocument(String sourceDocument) { this.sourceDocument = sourceDocument; }
 
     public String getSessionJson() { return sessionJson; }
     public void setSessionJson(String sessionJson) { this.sessionJson = sessionJson; }
 
     public String getDraftStateJson() { return draftStateJson; }
-    public void setDraftStateJson(String draftStateJson) {
-        this.draftStateJson = draftStateJson;
-    }
+    public void setDraftStateJson(String draftStateJson) { this.draftStateJson = draftStateJson; }
 
-    public byte[] getTemplateData() {
-        return templateData;
-    }
-
-    public void setTemplateData(byte[] templateData) {
-        this.templateData = templateData;
-    }
+    public byte[] getTemplateData() { return templateData; }
+    public void setTemplateData(byte[] templateData) { this.templateData = templateData; }
 
     public String getSlidesJson() { return slidesJson; }
     public void setSlidesJson(String slidesJson) { this.slidesJson = slidesJson; }

@@ -134,19 +134,6 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
               </ul>
             </div>
 
-            {session.prerequisites && (
-              <div>
-                <h3 className="font-body font-semibold flex items-center gap-2 mb-1"><Target className="h-4 w-4 text-primary" /> Prerequisites</h3>
-                <ul className="text-sm font-body text-foreground/80 flex flex-wrap gap-x-4 gap-y-1.5 list-none">
-                  {session.prerequisites?.split(';').filter(p => p.trim() !== '').map((prereq, idx) => (
-                    <li key={idx} className="flex items-start gap-1.5 max-w-full">
-                      <span className="text-primary/60 mt-0.5">•</span>
-                      <span className="leading-snug text-muted-foreground">{prereq.trim()}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
 

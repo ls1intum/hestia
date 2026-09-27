@@ -117,7 +117,6 @@ public class WorkshopSessionFacade {
         entity.setTitle(session.title());
         entity.setLearningGoal(session.learningGoal());
         entity.setStudentBackground(session.studentBackground());
-        entity.setPrerequisites(session.prerequisites());
         entity.setSessionJson(json);
         entity.setStatus("complete");
         entity.setCurrentStep("result");
@@ -129,7 +128,6 @@ public class WorkshopSessionFacade {
                 session.title(),
                 session.learningGoal(),
                 session.studentBackground(),
-                session.prerequisites(),
                 session.blocks(),
                 session.omittedGoals(),
                 session.slides()
@@ -152,7 +150,7 @@ public class WorkshopSessionFacade {
         return fixGoalsGrammarUseCase.execute(goals);
     }
 
-    public List<Map<String, Object>> generateBlockSlides(com.workshopper.dto.WorkshopBlockDto block, WorkshopInputDto meta, List<String> goals) throws Exception {
+    public List<Map<String, Object>> generateBlockSlides(com.workshopper.dto.ActivityBlockDto block, WorkshopInputDto meta, List<LearningGoalPlanDto> goals) throws Exception {
         return generateSlideBlockUseCase.execute(block, meta, goals);
     }
 
@@ -164,8 +162,8 @@ public class WorkshopSessionFacade {
         return assemblePptxUseCase.renderAllSlidePreviews(session, meta, prebuiltSlides, templateStream);
     }
 
-    public byte[] exportLectureZip(String lectureId) throws Exception {
-        List<WorkshopSessionEntity> children = repo.findAllByLectureIdOrdered(lectureId);
+    public byte[] exportCourseZip(String courseId) throws Exception {
+        List<WorkshopSessionEntity> children = repo.findAllByCourseIdOrdered(courseId);
 
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
         java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos);
@@ -188,7 +186,7 @@ public class WorkshopSessionFacade {
                 if (session != null && session.title() == null && e.getTitle() != null) {
                     session = new com.workshopper.dto.WorkshopSessionDto(
                             session.id(), e.getTitle(), session.learningGoal(), session.studentBackground(),
-                            session.prerequisites(), session.blocks(), session.omittedGoals(), session.slides());
+                            session.blocks(), session.omittedGoals(), session.slides());
                 }
 
                 if (session != null) {
@@ -212,7 +210,7 @@ public class WorkshopSessionFacade {
                     counter++;
                 }
             } catch (Exception ex) {
-                log.warn("Failed to export child session {} in lecture {}", e.getId(), lectureId, ex);
+                log.warn("Failed to export child session {} in course {}", e.getId(), courseId, ex);
             }
         }
         zos.close();

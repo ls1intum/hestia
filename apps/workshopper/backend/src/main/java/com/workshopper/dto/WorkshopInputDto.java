@@ -12,7 +12,6 @@ public record WorkshopInputDto(
         String sessionType,
         String sessionTypeOther,
         String studentBackground,
-        String prerequisites,
         String sourceDocument,
         String interactionLevel,
         List<String> selectedActivities,
@@ -27,14 +26,13 @@ public record WorkshopInputDto(
             String sessionType,
             String sessionTypeOther,
             String studentBackground,
-            String prerequisites,
             String sourceDocument,
             String interactionLevel,
             List<String> selectedActivities,
             String uploadedMaterialsText
     ) {
         this(title, learningGoals, duration, participants, sessionType, sessionTypeOther,
-                studentBackground, prerequisites, sourceDocument, interactionLevel,
+                studentBackground, sourceDocument, interactionLevel,
                 selectedActivities, uploadedMaterialsText, null);
     }
 }
