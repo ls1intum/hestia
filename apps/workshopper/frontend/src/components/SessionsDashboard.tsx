@@ -88,19 +88,21 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
 
   const loadSessions = () => {
     setLoading(true);
-    listSessions()
-      .then(data => {
+    Promise.all([listSessions(), listCourses()])
+      .then(([sessionsData, coursesData]) => {
         setIsAuthenticated(true);
-        const valid = data.filter(s => {
+        const validSessions = sessionsData.filter(s => {
           if (s.status === "draft") {
-            // "Empty shells" are drafts where the user hasn't provided any learning goals yet.
-            // (title is always populated with a default like 'Workshop Session' by the backend)
             const hasGoal = s.learningGoal && s.learningGoal.trim().length > 0;
             return hasGoal;
           }
           return true;
         });
-        setSessions(valid);
+        const courseSessions = coursesData.map(c => ({
+            ...c,
+            type: "COURSE"
+        }));
+        setSessions([...validSessions, ...courseSessions]);
       })
       .catch((e: any) => {
         if (handleAuthError(e, false)) {
@@ -122,10 +124,13 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
   const confirmDelete = async () => {
     if (!deletingItem) return;
     try {
-      await deleteSession(deletingItem.id);
+      if (deletingItem.type === "COURSE") {
+        await deleteCourse(deletingItem.id);
+      } else {
+        await deleteSession(deletingItem.id);
+      }
       loadSessions();
     } catch (err: any) {
-      // A-3: use toast instead of alert()
       toast({ title: "Failed to delete", description: err.message, variant: "destructive" });
     }
     setDeletingItem(null);
