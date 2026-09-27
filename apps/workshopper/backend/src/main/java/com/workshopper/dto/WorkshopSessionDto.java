@@ -5,6 +5,7 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkshopSessionDto(
+        Boolean isLive,
         String id,
         String title,
         String learningGoal,

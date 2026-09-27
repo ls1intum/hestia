@@ -111,7 +111,7 @@ public class GenerateTimetableUseCase {
         String title = llm.generateSessionTitle(skeleton, goals, input, sessionTypeLabel, skeletonBlocksStr, goalsString).trim();
 
 
-        return new WorkshopSessionDto(
+        return new WorkshopSessionDto(null, 
                 java.util.UUID.randomUUID().toString(),
                 title,
                 input.learningGoals() != null && !input.learningGoals().isEmpty() ? input.learningGoals().get(0) : "",

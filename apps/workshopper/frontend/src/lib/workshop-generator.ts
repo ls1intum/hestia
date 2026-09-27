@@ -13,6 +13,7 @@ export type InteractionLevel = "minimal" | "moderate" | "high";
 /** Form payload sent to the backend */
 export interface WorkshopInput {
   title?: string;
+  isLive?: boolean;
   learningGoals?: string[];
   duration: number;
   participants: number;
@@ -75,6 +76,7 @@ export interface ActivityBlock {
 export interface SlideData {
   title: string;
   subtitle?: string;
+  isLive?: boolean;
   bullets?: string[];
   notes?: string;
   fixedInstructionFor?: string;
@@ -118,6 +120,7 @@ export interface SlideData {
 export interface WorkshopSession {
   id?: string;
   title?: string;
+  isLive?: boolean;
   learningGoal: string;
   studentBackground?: string;
   blocks: ActivityBlock[];
@@ -134,6 +137,7 @@ export interface SkeletonSection {
 export interface SkeletonBlock {
   phase: string;
   title?: string;
+  isLive?: boolean;
   description?: string;
   lgIndex: number;
   duration: number;

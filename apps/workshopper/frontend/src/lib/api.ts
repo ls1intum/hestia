@@ -124,7 +124,8 @@ export async function saveDraft(
   draft: DraftState,
   sessionId: string | null,
   currentStep: string,
-  courseId?: string
+  courseId?: string,
+  isLive?: boolean
 ): Promise<string> {
   const title = draft.session?.title ?? draft.workshopInput?.title ?? (draft.workshopInput?.sessionType
     ? `${draft.workshopInput.sessionType.charAt(0).toUpperCase() + draft.workshopInput.sessionType.slice(1)} Session`
@@ -140,7 +141,8 @@ export async function saveDraft(
     title,
     learningGoal,
     draftStateJson: JSON.stringify(draft),
-    courseId
+    courseId,
+    isLive
   };
 
   const res = await post<{ id: string }>("/workshop/sessions/draft", body);

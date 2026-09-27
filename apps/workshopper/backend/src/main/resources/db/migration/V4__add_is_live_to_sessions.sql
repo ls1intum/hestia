@@ -1,0 +1,1 @@
+ALTER TABLE workshop_sessions ADD COLUMN is_live BOOLEAN NOT NULL DEFAULT FALSE;

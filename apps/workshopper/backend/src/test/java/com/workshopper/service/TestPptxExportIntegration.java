@@ -23,7 +23,7 @@ public class TestPptxExportIntegration {
         
         com.workshopper.usecase.AssemblePptxUseCase service = new com.workshopper.usecase.AssemblePptxUseCase();
         
-        com.workshopper.dto.WorkshopSessionDto session = new com.workshopper.dto.WorkshopSessionDto(
+        com.workshopper.dto.WorkshopSessionDto session = new com.workshopper.dto.WorkshopSessionDto(null, 
             "id", TEST_LEARNING_GOAL, "user", "Goal",
             "1h", List.of(), List.of(), null
         );
