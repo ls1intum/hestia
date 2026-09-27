@@ -112,9 +112,26 @@ public class WorkshopService {
     public byte[] getTemplate(String sessionId) {
         WorkshopSessionEntity entity = repo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
-        if (entity.getTemplateId() == null) return null;
-        return templateRepo.findById(entity.getTemplateId())
-                .map(SlideTemplateEntity::getFileData).orElse(null);
+        String templateId = entity.getTemplateId();
+        if (templateId == null && entity.getCourseId() != null) {
+            templateId = courseRepository.findById(entity.getCourseId())
+                    .map(CourseEntity::getTemplateId)
+                    .orElse(null);
+        }
+        if (templateId == null) return null;
+        return templateRepo.findById(templateId).map(SlideTemplateEntity::getFileData).orElse(null);
+    }
+
+    public void saveCourseTemplate(String courseId, byte[] templateData) {
+        CourseEntity course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+        SlideTemplateEntity template = new SlideTemplateEntity();
+        template.setId(courseId);
+        template.setOwnerId(course.getOwnerId());
+        template.setFileData(templateData);
+        templateRepo.save(template);
+        course.setTemplateId(courseId);
+        courseRepository.save(course);
     }
 
     /** Fetch a single session by ID, returning its full detail + draft state. */

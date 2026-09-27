@@ -30,6 +30,19 @@ import com.workshopper.dto.PptxAssembleRequestDto;
 @RequestMapping("/api/workshop")
 public class WorkshopController {
 
+    @PostMapping("/courses/{id}/template")
+    public ResponseEntity<?> uploadCourseTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
+        try {
+            facade.verifyOwnership(id);
+            service.saveCourseTemplate(id, template.getBytes());
+            return ResponseEntity.ok().build();
+        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
+            log.error("Course template upload failed", e);
+            return ResponseEntity.internalServerError().body(java.util.Map.of("error", "Upload failed: " + e.getMessage()));
+        }
+    }
+
+
     private static final Logger log = LoggerFactory.getLogger(WorkshopController.class);
 
     private final WorkshopService service;

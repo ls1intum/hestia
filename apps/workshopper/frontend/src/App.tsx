@@ -210,6 +210,7 @@ export default function App() {
 
         {step === "course-summary" && currentCourseId && (
           <CourseSummary
+            courseId={currentCourseId}
             settings={workshopInput}
             onEdit={() => setStep("input-1")}
             onContinue={() => {

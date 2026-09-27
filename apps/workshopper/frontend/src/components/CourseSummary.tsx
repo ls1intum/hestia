@@ -4,15 +4,36 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Pencil } from "lucide-react";
 import { WorkshopInput } from "@/lib/workshop-generator";
+import { uploadCourseTemplate } from "@/lib/api";
+import { useState } from "react";
 
 interface Props {
+  courseId?: string;
   settings: Partial<WorkshopInput>;
   onEdit: () => void;
   onContinue: () => void;
   isLoading?: boolean;
 }
 
-export default function CourseSummary({ settings, onEdit, onContinue, isLoading = false }: Props) {
+export default function CourseSummary({ settings, onEdit, onContinue, isLoading = false, courseId }: Props) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && courseId) {
+      setUploading(true);
+      try {
+        await uploadCourseTemplate(courseId, file);
+        setUploadSuccess(true);
+      } catch (err) {
+        console.error("Upload failed", err);
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card className="border-border/60 shadow-lg">
@@ -46,6 +67,15 @@ export default function CourseSummary({ settings, onEdit, onContinue, isLoading 
                 {settings.availableMaterials?.length ? settings.availableMaterials.map(m => (
                   <Badge key={m} variant="outline">{m}</Badge>
                 )) : <span className="text-sm text-muted-foreground">None specified</span>}
+              </div>
+            </div>
+          
+            <div className="col-span-2 pt-4 border-t border-border/50">
+              <p className="text-sm font-semibold text-muted-foreground font-body mb-2">Default Course Slide Template (PPTX)</p>
+              <div className="flex items-center gap-4">
+                <input type="file" accept=".pptx" onChange={handleTemplateUpload} disabled={uploading || !courseId} className="text-sm" />
+                {uploading && <span className="text-sm text-muted-foreground">Uploading...</span>}
+                {uploadSuccess && <span className="text-sm text-green-600">Upload successful!</span>}
               </div>
             </div>
           </div>

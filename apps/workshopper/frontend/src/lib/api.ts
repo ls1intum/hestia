@@ -263,3 +263,13 @@ export function deleteCourse(id: string): Promise<void> {
 export function getCourseDetail(id: string): Promise<SessionDetail> {
   return get<SessionDetail>(`/workshop/courses/${id}`);
 }
+
+export async function uploadCourseTemplate(courseId: string, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append('template', file);
+  const res = await fetch(`${API_BASE}/workshop/courses/${courseId}/template`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Upload failed");
+}

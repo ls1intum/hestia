@@ -36,6 +36,9 @@ public class CourseEntity {
     @Column(length = 50)
     private String currentStep;
 
+    @Column(length = 255)
+    private String templateId;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -72,6 +75,9 @@ public class CourseEntity {
 
     public String getCurrentStep() { return currentStep; }
     public void setCurrentStep(String currentStep) { this.currentStep = currentStep; }
+
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
