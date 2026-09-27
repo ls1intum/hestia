@@ -1,6 +1,8 @@
 package com.workshopper.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
@@ -50,7 +52,8 @@ public class WorkshopSessionEntity {
     private String sourceDocument;
 
     /** Full generated session JSON stored as a JSONB blob (null while still in draft). */
-    @Column(columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private String sessionJson;
 
     /**
@@ -58,14 +61,16 @@ public class WorkshopSessionEntity {
      * can leave mid-way and resume later. Shape mirrors the frontend DraftState type.
      * Stored as JSONB in Postgres.
      */
-    @Column(columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private String draftStateJson;
 
     /** Uploaded PPTX template file. */
     private byte[] templateData;
 
     /** Generated slides stored as JSONB mapping block index to slide arrays. */
-    @Column(columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private String slidesJson;
 
     /**

@@ -1,6 +1,8 @@
 package com.workshopper.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,7 +26,8 @@ public class CourseEntity {
      * JSON blob stored as JSONB in Postgres — mirrors the draft state of the
      * wizard when the user is configuring the course container (e.g. title).
      */
-    @Column(columnDefinition = "TEXT")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
     private String draftStateJson;
 
     @Column(length = 20)
