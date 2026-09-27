@@ -99,8 +99,19 @@ public class AssemblePptxUseCase {
         if (prebuiltSlides != null && !prebuiltSlides.isEmpty()) {
             log.info("Assembling PPTX from {} pre-built slides", prebuiltSlides.size());
             slidesData = prebuiltSlides;
+        } else if (session != null && session.slides() != null && !session.slides().isEmpty()) {
+            log.info("Assembling PPTX using cached slides from session object");
+            List<Map<String, Object>> tempSlides = new ArrayList<>();
+            session.slides().entrySet().stream()
+                    .sorted(java.util.Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        if (entry.getValue() != null) {
+                            tempSlides.addAll(entry.getValue());
+                        }
+                    });
+            slidesData = tempSlides;
         } else {
-            log.warn("execute called without pre-built slides — returning title-only deck");
+            log.warn("execute called without pre-built slides and no session slides — returning title-only deck");
             slidesData = List.of();
         }
 
