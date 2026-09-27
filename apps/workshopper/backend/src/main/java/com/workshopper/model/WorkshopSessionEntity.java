@@ -9,9 +9,6 @@ import java.time.LocalDateTime;
 @Table(name = "workshop_sessions")
 public class WorkshopSessionEntity {
 
-    @Column(name = "is_live", nullable = false)
-    private Boolean isLive = false;
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;

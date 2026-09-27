@@ -138,7 +138,7 @@ public class WorkshopSessionFacade {
         
         WorkshopSessionEntity saved = repo.save(entity);
         
-        return new WorkshopSessionDto(null, 
+        return new WorkshopSessionDto(
                 saved.getId(),
                 session.title(),
                 session.learningGoal(),
@@ -207,7 +207,7 @@ public class WorkshopSessionFacade {
                         );
                     }
                     
-                    session = new com.workshopper.dto.WorkshopSessionDto(null, 
+                    session = new com.workshopper.dto.WorkshopSessionDto(
                             session.id(),
                             session.title() == null && e.getTitle() != null ? e.getTitle() : session.title(),
                             session.learningGoal(),

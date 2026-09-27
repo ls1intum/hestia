@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record SaveDraftRequestDto(
-        Boolean isLive,
         /** If present, update the existing session with this ID; otherwise create a new one. */
         String sessionId,
 

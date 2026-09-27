@@ -118,7 +118,7 @@ public class WorkshopService {
                                 e.getSlidesJson(),
                                 new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<Integer, List<java.util.Map<String, Object>>>>() {
                                 });
-                        session = new WorkshopSessionDto(null, 
+                        session = new WorkshopSessionDto(
                                 session.id(), session.title(), session.learningGoal(), session.studentBackground(),
                                 session.blocks(), session.omittedGoals(), slides);
                     }

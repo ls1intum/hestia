@@ -46,7 +46,7 @@ public class WorkshopSessionFacadeContractTest {
         SessionSkeletonDto skeleton = new SessionSkeletonDto(UUID.randomUUID().toString(), List.of(), List.of(), null);
         GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, materials, skeleton);
 
-        WorkshopSessionDto mockResponse = new WorkshopSessionDto(null, "id", "title", "goal", "bg", null, List.of(), List.of(), null);
+        WorkshopSessionDto mockResponse = new WorkshopSessionDto("id", "title", "goal", "bg", null, List.of(), List.of(), null);
         when(generateTimetableUseCase.execute(any(), any(), any(), anyString())).thenReturn(mockResponse);
 
         WorkshopSessionEntity mockEntity = new WorkshopSessionEntity();
