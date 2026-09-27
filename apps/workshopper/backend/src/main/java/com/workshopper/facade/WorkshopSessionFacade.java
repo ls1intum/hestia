@@ -3,6 +3,8 @@ package com.workshopper.facade;
 import com.workshopper.dto.*;
 import com.workshopper.usecase.*;
 import com.workshopper.repository.WorkshopSessionRepository;
+import com.workshopper.repository.CourseRepository;
+import com.workshopper.model.CourseEntity;
 import com.workshopper.model.WorkshopSessionEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ public class WorkshopSessionFacade {
     private final AssemblePptxUseCase assemblePptxUseCase;
     
     private final WorkshopSessionRepository repo;
+    private final CourseRepository courseRepo;
     private final ObjectMapper mapper;
     private final com.workshopper.service.PdfExportService pdfService;
     
@@ -38,7 +41,8 @@ public class WorkshopSessionFacade {
             FixGoalsGrammarUseCase fixGoalsGrammarUseCase,
             GenerateSlideBlockUseCase generateSlideBlockUseCase,
             AssemblePptxUseCase assemblePptxUseCase,
-            WorkshopSessionRepository repo, 
+            WorkshopSessionRepository repo,
+            CourseRepository courseRepo, 
             ObjectMapper mapper,
             com.workshopper.service.PdfExportService pdfService) {
         this.generateTimetableUseCase = generateTimetableUseCase;
@@ -49,6 +53,7 @@ public class WorkshopSessionFacade {
         this.generateSlideBlockUseCase = generateSlideBlockUseCase;
         this.assemblePptxUseCase = assemblePptxUseCase;
         this.repo = repo;
+        this.courseRepo = courseRepo;
         this.mapper = mapper;
         this.pdfService = pdfService;
     }
@@ -91,13 +96,23 @@ public class WorkshopSessionFacade {
         }
     }
     
-    public void verifyOwnership(String sessionId) {
-        WorkshopSessionEntity entity = repo.findById(sessionId).orElse(null);
+    public void verifyOwnership(String id) {
+        WorkshopSessionEntity entity = repo.findById(id).orElse(null);
         if (entity != null) {
-            String currentUser = com.workshopper.config.AuthContext.getCurrentUserId();
-            if (entity.getOwnerId() != null && !entity.getOwnerId().equals(currentUser)) {
-                throw new org.springframework.security.access.AccessDeniedException("User " + currentUser + " is not allowed to modify session " + sessionId);
-            }
+            checkOwner(entity.getOwnerId(), id);
+            return;
+        }
+        CourseEntity course = courseRepo.findById(id).orElse(null);
+        if (course != null) {
+            checkOwner(course.getOwnerId(), id);
+        }
+    }
+
+    private void checkOwner(String ownerId, String resourceId) {
+        String currentUser = com.workshopper.config.AuthContext.getCurrentUserId();
+        if (ownerId != null && !ownerId.equals(currentUser)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                "User " + currentUser + " is not allowed to access resource " + resourceId);
         }
     }
 

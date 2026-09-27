@@ -35,6 +35,9 @@ public class WorkshopSessionFacadeSecurityTest {
     private WorkshopSessionRepository repo;
 
     @Mock
+    private com.workshopper.repository.CourseRepository courseRepo;
+
+    @Mock
     private GenerateTimetableUseCase generateTimetableUseCase;
 
     @Mock

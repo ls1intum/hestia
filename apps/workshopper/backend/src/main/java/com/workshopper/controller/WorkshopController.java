@@ -479,7 +479,7 @@ public class WorkshopController {
     public ResponseEntity<?> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
         try {
             facade.verifyOwnership(id);
-            String lectureId = body.get("lectureId");
+            String lectureId = body.get("courseId") != null ? body.get("courseId") : body.get("lectureId");
             if (lectureId != null && !lectureId.isBlank()) {
                 facade.verifyOwnership(lectureId);
             }
