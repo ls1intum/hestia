@@ -4,6 +4,7 @@ import com.workshopper.dto.*;
 import com.workshopper.usecase.*;
 import com.workshopper.repository.WorkshopSessionRepository;
 import com.workshopper.repository.CourseRepository;
+import com.workshopper.repository.SlideTemplateRepository;
 import com.workshopper.model.CourseEntity;
 import com.workshopper.model.WorkshopSessionEntity;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class WorkshopSessionFacade {
     
     private final WorkshopSessionRepository repo;
     private final CourseRepository courseRepo;
+    private final SlideTemplateRepository slideTemplateRepo;
     private final ObjectMapper mapper;
     private final com.workshopper.service.PdfExportService pdfService;
     
@@ -40,7 +42,8 @@ public class WorkshopSessionFacade {
             GenerateSlideBlockUseCase generateSlideBlockUseCase,
             AssemblePptxUseCase assemblePptxUseCase,
             WorkshopSessionRepository repo,
-            CourseRepository courseRepo, 
+            CourseRepository courseRepo,
+            SlideTemplateRepository slideTemplateRepo, 
             ObjectMapper mapper,
             com.workshopper.service.PdfExportService pdfService) {
         this.generateTimetableUseCase = generateTimetableUseCase;
@@ -51,6 +54,7 @@ public class WorkshopSessionFacade {
         this.assemblePptxUseCase = assemblePptxUseCase;
         this.repo = repo;
         this.courseRepo = courseRepo;
+        this.slideTemplateRepo = slideTemplateRepo;
         this.mapper = mapper;
         this.pdfService = pdfService;
     }
@@ -223,7 +227,12 @@ public class WorkshopSessionFacade {
                     zos.write(pdfBytes);
                     zos.closeEntry();
 
-                    byte[] templateData = e.getTemplateData();
+                    byte[] templateData = null;
+                    if (e.getTemplateId() != null) {
+                        templateData = slideTemplateRepo.findById(e.getTemplateId())
+                                .map(com.workshopper.model.SlideTemplateEntity::getFileData)
+                                .orElse(null);
+                    }
                     java.io.InputStream templateStream;
                     if (templateData != null) {
                         templateStream = new java.io.ByteArrayInputStream(templateData);

@@ -48,8 +48,6 @@ public class WorkshopSessionEntity {
     @Column(length = 50)
     private String interactionLevel;
 
-    @Column(columnDefinition = "TEXT")
-    private String sourceDocument;
 
     /** Full generated session JSON stored as a JSONB blob (null while still in draft). */
     @JdbcTypeCode(SqlTypes.JSON)
@@ -66,7 +64,7 @@ public class WorkshopSessionEntity {
     private String draftStateJson;
 
     /** Uploaded PPTX template file. */
-    private byte[] templateData;
+    private String templateId;
 
     /** Generated slides stored as JSONB mapping block index to slide arrays. */
     @JdbcTypeCode(SqlTypes.JSON)
@@ -143,8 +141,8 @@ public class WorkshopSessionEntity {
     public String getDraftStateJson() { return draftStateJson; }
     public void setDraftStateJson(String draftStateJson) { this.draftStateJson = draftStateJson; }
 
-    public byte[] getTemplateData() { return templateData; }
-    public void setTemplateData(byte[] templateData) { this.templateData = templateData; }
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
 
     public String getSlidesJson() { return slidesJson; }
     public void setSlidesJson(String slidesJson) { this.slidesJson = slidesJson; }

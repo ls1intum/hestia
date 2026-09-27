@@ -140,9 +140,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns session summaries")
         void returnsSessionSummaries() throws Exception {
-            var summary = new SessionSummaryDto(
-                    "abc123", "My Session", "Participants will learn X",
-                    "complete", "result", "SESSION", null, null, null);
+            var summary = new SessionSummaryDto("id", "title", "draft", "goals", "courseId", "owner", null, null);
             
             when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(summary));
 
@@ -172,9 +170,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with session detail when found")
         void returns200WithDetail() throws Exception {
-            var detail = new SessionDetailDto(
-                    "abc123", "My Session", "complete", "result",
-                    "SESSION", null, null, null);
+            var detail = new SessionDetailDto("id", "title", "draft", "goals", "courseId", "{}", null);
             when(workshopService.getSession("abc123"))
                     .thenReturn(java.util.Optional.of(detail));
 

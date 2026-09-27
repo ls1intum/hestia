@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.*;
 import com.workshopper.model.WorkshopSessionEntity;
 import com.workshopper.repository.WorkshopSessionRepository;
+import com.workshopper.repository.SlideTemplateRepository;
+import com.workshopper.model.SlideTemplateEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,12 +26,14 @@ public class WorkshopService {
 
     private final LlmService llm;
     private final WorkshopSessionRepository repo;
+    private final SlideTemplateRepository templateRepo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopService(LlmService llm, WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository) {
+    public WorkshopService(LlmService llm, WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
         this.llm = llm;
         this.repo = repo;
         this.courseRepository = courseRepository;
+        this.templateRepo = templateRepo;
     }
 
     // ── Draft management ──────────────────────────────────────────────
@@ -93,15 +97,24 @@ public class WorkshopService {
         repo.save(entity);
     }
 
-    public void saveTemplate(String id, byte[] templateData) {
-        WorkshopSessionEntity entity = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
-        entity.setTemplateData(templateData);
+    public void saveTemplate(String sessionId, byte[] templateData) {
+        WorkshopSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+        SlideTemplateEntity template = new SlideTemplateEntity();
+        template.setId(sessionId); // Tier 1: 1:1 with session
+        template.setOwnerId(entity.getOwnerId());
+        template.setFileData(templateData);
+        templateRepo.save(template);
+        entity.setTemplateId(sessionId);
         repo.save(entity);
     }
 
-    public byte[] getTemplate(String id) {
-        return repo.findById(id).map(WorkshopSessionEntity::getTemplateData).orElse(null);
+    public byte[] getTemplate(String sessionId) {
+        WorkshopSessionEntity entity = repo.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+        if (entity.getTemplateId() == null) return null;
+        return templateRepo.findById(entity.getTemplateId())
+                .map(SlideTemplateEntity::getFileData).orElse(null);
     }
 
     /** Fetch a single session by ID, returning its full detail + draft state. */
