@@ -183,17 +183,32 @@ public class WorkshopSessionFacade {
                     meta = mapper.treeToValue(root.get("workshopInput"), com.workshopper.dto.WorkshopInputDto.class);
                 }
 
-                if (session != null && session.title() == null && e.getTitle() != null) {
+                if (session != null) {
+                    java.util.Map<Integer, java.util.List<java.util.Map<String, Object>>> finalSlides = session.slides();
+                    if ((finalSlides == null || finalSlides.isEmpty()) && e.getSlidesJson() != null && !e.getSlidesJson().isBlank()) {
+                        finalSlides = mapper.readValue(
+                                e.getSlidesJson(),
+                                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<Integer, java.util.List<java.util.Map<String, Object>>>>() {}
+                        );
+                    }
+                    
                     session = new com.workshopper.dto.WorkshopSessionDto(
-                            session.id(), e.getTitle(), session.learningGoal(), session.studentBackground(),
-                            session.blocks(), session.omittedGoals(), session.slides());
+                            session.id(),
+                            session.title() == null && e.getTitle() != null ? e.getTitle() : session.title(),
+                            session.learningGoal(),
+                            session.studentBackground(),
+                            session.blocks(),
+                            session.omittedGoals(),
+                            finalSlides
+                    );
                 }
 
                 if (session != null) {
                     com.workshopper.dto.PdfExportRequestDto requestDto = new com.workshopper.dto.PdfExportRequestDto(
                             session, meta, java.util.List.of());
-                    String safeTitle = (session.title() != null ? session.title() : "Session_" + counter)
+                    String safeTitle = (session.title() != null ? session.title() : "Session")
                             .replaceAll("[^a-zA-Z0-9.-]", "_");
+                    safeTitle = String.format("%02d_%s", counter, safeTitle);
 
                     byte[] pdfBytes = pdfService.exportToPdf(requestDto);
                     zos.putNextEntry(new java.util.zip.ZipEntry(safeTitle + "/timetable.pdf"));
