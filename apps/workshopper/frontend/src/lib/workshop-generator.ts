@@ -19,7 +19,6 @@ export interface WorkshopInput {
   sessionType: SessionType;
   sessionTypeOther?: string;
   studentBackground?: string;
-  sourceDocument?: string;
   interactionLevel?: InteractionLevel;
   selectedActivities?: string[];
   availableMaterials?: string[];

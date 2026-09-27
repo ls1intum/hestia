@@ -29,8 +29,7 @@ public class GenerateLearningGoalsUseCase {
                 goalsList.append("  * ").append(cleaned).append("\n");
             }
         }
-        
-        String doc = input.sourceDocument();
+        String doc = null;
         if (doc != null && doc.length() > 8000) {
             doc = doc.substring(0, 8000) + "\n[... truncated ...]";
         }

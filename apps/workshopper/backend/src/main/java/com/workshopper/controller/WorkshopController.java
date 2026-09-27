@@ -256,23 +256,6 @@ public class WorkshopController {
     }
 
     /**
-     * POST /api/workshop/extract-goals
-     * Extract learning goal strings from raw document text (e.g. uploaded PDF).
-     * Returns a JSON array of plain goal strings (not full LearningGoalPlanDto).
-     */
-    @PostMapping("/extract-goals")
-    public ResponseEntity<?> extractGoals(@RequestBody ExtractGoalsRequestDto request) {
-        try {
-            var goals = facade.extractGoalsFromDocument(request);
-            return ResponseEntity.ok(goals);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Goal extraction failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("error", "Extraction failed: " + e.getMessage()));
-        }
-    }
-
-    /**
      * POST /api/workshop/fix-goals-grammar
      * Automatically fix grammar and obvious typos in learning goals without changing meaning.
      */

@@ -18,7 +18,6 @@ public class WorkshopSessionFacade {
     private final GenerateTimetableUseCase generateTimetableUseCase;
     private final GenerateLearningGoalsUseCase generateLearningGoalsUseCase;
     private final RefineLearningGoalUseCase refineLearningGoalUseCase;
-    private final ExtractGoalsUseCase extractGoalsUseCase;
     private final FixGoalsGrammarUseCase fixGoalsGrammarUseCase;
     private final GenerateSlideBlockUseCase generateSlideBlockUseCase;
     private final AssemblePptxUseCase assemblePptxUseCase;
@@ -37,7 +36,6 @@ public class WorkshopSessionFacade {
             GenerateTimetableUseCase generateTimetableUseCase,
             GenerateLearningGoalsUseCase generateLearningGoalsUseCase,
             RefineLearningGoalUseCase refineLearningGoalUseCase,
-            ExtractGoalsUseCase extractGoalsUseCase,
             FixGoalsGrammarUseCase fixGoalsGrammarUseCase,
             GenerateSlideBlockUseCase generateSlideBlockUseCase,
             AssemblePptxUseCase assemblePptxUseCase,
@@ -48,7 +46,6 @@ public class WorkshopSessionFacade {
         this.generateTimetableUseCase = generateTimetableUseCase;
         this.generateLearningGoalsUseCase = generateLearningGoalsUseCase;
         this.refineLearningGoalUseCase = refineLearningGoalUseCase;
-        this.extractGoalsUseCase = extractGoalsUseCase;
         this.fixGoalsGrammarUseCase = fixGoalsGrammarUseCase;
         this.generateSlideBlockUseCase = generateSlideBlockUseCase;
         this.assemblePptxUseCase = assemblePptxUseCase;
@@ -155,10 +152,6 @@ public class WorkshopSessionFacade {
 
     public List<GoalSuggestionDto> refineGoal(RefineGoalRequestDto request) throws Exception {
         return refineLearningGoalUseCase.execute(request);
-    }
-
-    public List<String> extractGoalsFromDocument(ExtractGoalsRequestDto request) throws Exception {
-        return extractGoalsUseCase.execute(request);
     }
 
     public List<String> fixGoalsGrammar(List<String> goals) throws Exception {

@@ -137,9 +137,6 @@ public class WorkshopSessionEntity {
     public String getInteractionLevel() { return interactionLevel; }
     public void setInteractionLevel(String interactionLevel) { this.interactionLevel = interactionLevel; }
 
-    public String getSourceDocument() { return sourceDocument; }
-    public void setSourceDocument(String sourceDocument) { this.sourceDocument = sourceDocument; }
-
     public String getSessionJson() { return sessionJson; }
     public void setSessionJson(String sessionJson) { this.sessionJson = sessionJson; }
 

@@ -70,7 +70,6 @@ public class WorkshopService {
                     if (inputNode.has("sessionType")) entity.setSessionType(inputNode.get("sessionType").asText());
                     if (inputNode.has("sessionTypeOther")) entity.setSessionTypeOther(inputNode.get("sessionTypeOther").asText());
                     if (inputNode.has("interactionLevel")) entity.setInteractionLevel(inputNode.get("interactionLevel").asText());
-                    if (inputNode.has("sourceDocument")) entity.setSourceDocument(inputNode.get("sourceDocument").asText());
                 }
             } catch (Exception e) {
                 log.warn("Failed to extract session from draftStateJson", e);
