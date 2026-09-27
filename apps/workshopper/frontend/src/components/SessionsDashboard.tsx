@@ -282,7 +282,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                   key={session.id}
                   id={`session-card-${session.id}`}
                   className={`group text-left rounded-2xl border border-border/60 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 transition-all duration-200 p-5 flex items-center gap-4 cursor-pointer ${isChild ? "ml-8" : ""}`}
-                  onClick={() => onResumeSession(session.id)}
+                  onClick={() => onResumeSession(session.id, { type: (session as any).type === "COURSE" ? "COURSE" : "SESSION" })}
                   draggable={true}
                   onDragStart={(e) => {
                     if (session.id) {
@@ -453,7 +453,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                       <DropdownMenuItem onClick={(e) => handleRenameClick(e as any, course.id, course.title || "Untitled Course")}>
                                         <Pencil className="mr-2 h-4 w-4" /><span>Rename</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => onResumeSession(course.id)}>
+                                      <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
                                         <FileEdit className="mr-2 h-4 w-4" /><span>Edit session settings</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id)}>

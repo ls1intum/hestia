@@ -97,7 +97,15 @@ export function useWizardState() {
         pendingResolvers.current.push(resolve);
         draftSaveTimeout.current = setTimeout(async () => {
           try {
-            const id = await saveDraft(draft, currentSessionId, currentStep, courseId ?? undefined);
+            
+            let id: string;
+            // The entityType state determines if we're creating/editing a Course or a Session.
+            if (entityType === "COURSE") {
+              id = await saveCourseDraft(draft, currentSessionId, currentStep);
+            } else {
+              id = await saveDraft(draft, currentSessionId, currentStep, courseId ?? undefined);
+            }
+
             const resolvers = pendingResolvers.current;
             pendingResolvers.current = [];
             resolvers.forEach(r => r(id));
