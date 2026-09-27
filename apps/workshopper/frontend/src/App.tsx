@@ -13,7 +13,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
-import { generateSession, getSessionDetail, saveDraft, finishSession, handleAuthError } from "@/lib/api";
+import { generateSession, getSessionDetail, finishSession, handleAuthError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
   WorkshopInput,

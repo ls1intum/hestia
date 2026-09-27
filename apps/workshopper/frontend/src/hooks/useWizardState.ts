@@ -119,7 +119,7 @@ export function useWizardState() {
         }, 300);
       });
     },
-    []
+    [entityType]
   );
 
   const buildDraft = useCallback(
