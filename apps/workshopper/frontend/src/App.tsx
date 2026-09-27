@@ -24,17 +24,17 @@ import type {
 } from "@/lib/workshop-generator";
 import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 
-import LectureSummary from "@/components/LectureSummary";
+import CourseSummary from "@/components/CourseSummary";
 import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 
-type Step = "input-1" | "input-2" | "input-2b" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 // Helper: compute the ordered step IDs for a given entity configuration
-function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
+function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
-      if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
-      if (!lectureId && s.id === "lecture-summary") return false;
+      if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+      if (!courseId && s.id === "course-summary") return false;
       return true;
     })
     .map(s => s.id);
@@ -44,7 +44,7 @@ const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "input-2b", label: "Materials" },
-  { id: "lecture-summary", label: "Review" },
+  { id: "course-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
   { id: "timeline", label: "Timetable" },
   { id: "prepare",  label: "Preparation" },
@@ -63,10 +63,10 @@ export default function App() {
     sessionId, session, workshopInput, refinedGoals, currentSkeleton, slidesCache, completedTasks,
     STEP_ORDER, currentIdx, entityType, isFinished,
     handleStep1, handleStep2Activities, handleStep2, handleGoalsEntered,
-    handleReset, startNewSession, startNewLecture, startSessionFromLecture, resumeSession, persistDraft,
+    handleReset, startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
     setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentLectureId, buildDraft, draftSaveTimeout, loadingMessages
+    originalSession, currentCourseId, buildDraft, draftSaveTimeout, loadingMessages
   } = wizard;
 
   // ── Dashboard view ────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ export default function App() {
         </div>
         <SessionsDashboard
           onNewSession={startNewSession}
-          onNewLecture={startNewLecture}
-          onNewSessionFromLecture={startSessionFromLecture}
+          onNewCourse={startNewCourse}
+          onNewSessionFromCourse={startSessionFromCourse}
           onResumeSession={resumeSession}
         />
         {isLoading && (
@@ -165,13 +165,13 @@ export default function App() {
       {/* Main */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {step === "input-1" && (
-          // N-4: pass onBack when in lecture-session mode so user isn't trapped on Step 1
+          // N-4: pass onBack when in course-session mode so user isn't trapped on Step 1
           <WorkshopFormStep1
             onNext={handleStep1}
             isLoading={isLoading}
             initialInput={workshopInput}
             entityType={entityType}
-            onBack={currentLectureId ? () => setStep("lecture-summary") : undefined}
+            onBack={currentCourseId ? () => setStep("course-summary") : undefined}
           />
         )}
 
@@ -208,8 +208,8 @@ export default function App() {
           />
         )}
 
-        {step === "lecture-summary" && currentLectureId && (
-          <LectureSummary
+        {step === "course-summary" && currentCourseId && (
+          <CourseSummary
             settings={workshopInput}
             onEdit={() => setStep("input-1")}
             onContinue={() => {
@@ -223,7 +223,7 @@ export default function App() {
         {step === "goals" && (
           <WorkshopGoalEntry
             initialInput={workshopInput}
-            onBack={() => currentLectureId ? setStep("lecture-summary") : setStep("input-2b")}
+            onBack={() => currentCourseId ? setStep("course-summary") : setStep("input-2b")}
             onContinue={handleGoalsEntered}
             isLoading={isLoading}
             initialGoals={refinedGoals}
@@ -248,11 +248,11 @@ export default function App() {
             onNext={(latestSession) => {
               setSession(latestSession);
               setStep("prepare");
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, latestSession), isFinished ? "finished" : "prepare", sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, latestSession), isFinished ? "finished" : "prepare", sessionId, currentCourseId);
             }}
             onSaveSession={(updatedSession) => {
               setSession(updatedSession);
-              persistDraft(buildDraft(workshopInput, refinedGoals, undefined, updatedSession), isFinished ? "finished" : "timeline", sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, undefined, updatedSession), isFinished ? "finished" : "timeline", sessionId, currentCourseId);
             }}
           />
         )}
@@ -270,7 +270,7 @@ export default function App() {
                 const newSession = { ...session, slides: nextCache };
                 setSession(newSession);
                 // Background save of the draft so slides are persisted
-                persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, entityType, currentLectureId);
+                persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, currentCourseId);
                 return nextCache;
               });
             }}
@@ -281,12 +281,12 @@ export default function App() {
                 setIsFinished(true);
                 nextStep = "finished";
               }
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), nextStep, sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), nextStep, sessionId, currentCourseId);
             }}
             onBack={() => setStep("timeline")}
             onDone={(latestTasks) => {
               if (latestTasks) setCompletedTasks(latestTasks);
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, latestTasks ?? completedTasks), "final-review", sessionId, entityType, currentLectureId);
+              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, latestTasks ?? completedTasks), "final-review", sessionId, currentCourseId);
               setStep("final-review");
               setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
               window.scrollTo(0, 0);
@@ -309,7 +309,7 @@ export default function App() {
               }
               setIsLoading(true);
               try {
-                await persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "finished", sessionId, entityType, currentLectureId);
+                await persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "finished", sessionId, currentCourseId);
                 await finishSession(sessionId);
                 toast({ title: "Session completed!" });
                 setIsFinished(true);

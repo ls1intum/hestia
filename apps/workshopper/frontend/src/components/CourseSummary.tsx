@@ -12,14 +12,14 @@ interface Props {
   isLoading?: boolean;
 }
 
-export default function LectureSummary({ settings, onEdit, onContinue, isLoading = false }: Props) {
+export default function CourseSummary({ settings, onEdit, onContinue, isLoading = false }: Props) {
   return (
     <div className="space-y-4">
       <Card className="border-border/60 shadow-lg">
         <CardHeader>
-          <CardTitle className="font-display text-2xl">Lecture Settings Summary</CardTitle>
+          <CardTitle className="font-display text-2xl">Course Settings Summary</CardTitle>
           <CardDescription>
-            This session will be generated using the following settings inherited from the Lecture.
+            This session will be generated using the following settings inherited from the Course.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

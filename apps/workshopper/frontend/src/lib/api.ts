@@ -232,3 +232,34 @@ export async function downloadCourseZip(id: string): Promise<void> {
 export function getCurrentUser(): Promise<{ id: string }> {
   return get<{ id: string }>("/workshop/me");
 }
+
+/** Fetch all courses */
+export function listCourses(): Promise<SessionSummary[]> {
+  return get<SessionSummary[]>("/workshop/courses");
+}
+
+/** Save a course draft */
+export async function saveCourseDraft(
+  draft: DraftState,
+  sessionId: string | null,
+  currentStep: string
+): Promise<string> {
+  const title = draft.session?.title ?? draft.workshopInput?.title ?? "Workshop Course";
+  const body = {
+    sessionId: sessionId ?? undefined,
+    currentStep,
+    title,
+    draftStateJson: JSON.stringify(draft)
+  };
+  const res = await post<{ id: string }>("/workshop/courses/draft", body);
+  return res.id;
+}
+
+/** Delete a course */
+export function deleteCourse(id: string): Promise<void> {
+  return del<void>(`/workshop/courses/${id}`);
+}
+
+export function getCourseDetail(id: string): Promise<SessionDetail> {
+  return get<SessionDetail>(`/workshop/courses/${id}`);
+}

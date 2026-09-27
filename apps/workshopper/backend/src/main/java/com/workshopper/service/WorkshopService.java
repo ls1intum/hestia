@@ -1,5 +1,9 @@
 package com.workshopper.service;
 
+import com.workshopper.model.CourseEntity;
+import org.springframework.transaction.annotation.Transactional;
+
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.*;
 import com.workshopper.model.WorkshopSessionEntity;
@@ -14,15 +18,18 @@ import java.util.Optional;
 @Service
 public class WorkshopService {
 
+    private final com.workshopper.repository.CourseRepository courseRepository;
+
     private static final Logger log = LoggerFactory.getLogger(WorkshopService.class);
 
     private final LlmService llm;
     private final WorkshopSessionRepository repo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopService(LlmService llm, WorkshopSessionRepository repo) {
+    public WorkshopService(LlmService llm, WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository) {
         this.llm = llm;
         this.repo = repo;
+        this.courseRepository = courseRepository;
     }
 
     // ── Draft management ──────────────────────────────────────────────
@@ -222,4 +229,44 @@ public class WorkshopService {
             repo.save(entity);
         });
     }
+
+    @Transactional
+    public String saveCourseDraft(SaveDraftRequestDto request, String ownerId) {
+        CourseEntity course = null;
+        if (request.sessionId() != null && !request.sessionId().isBlank()) {
+            course = courseRepository.findById(request.sessionId()).orElse(null);
+            if (course != null && !course.getOwnerId().equals(ownerId)) {
+                throw new org.springframework.security.access.AccessDeniedException("Not authorized");
+            }
+        }
+        if (course == null) {
+            course = new CourseEntity();
+            course.setOwnerId(ownerId);
+            course.setStatus("draft");
+            
+        }
+
+        course.setCurrentStep(request.currentStep());
+        if (request.title() != null && !request.title().isBlank()) {
+            course.setTitle(request.title());
+        } else if (course.getTitle() == null) {
+            course.setTitle("Workshop Course");
+        }
+        
+        course.setDraftStateJson(request.draftStateJson());
+        
+
+        course = courseRepository.save(course);
+        return course.getId();
+    }
+
+    @Transactional
+    public void deleteCourse(String id, String ownerId) {
+        CourseEntity course = courseRepository.findById(id).orElseThrow();
+        if (!course.getOwnerId().equals(ownerId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Not authorized");
+        }
+        courseRepository.delete(course);
+    }
+
 }

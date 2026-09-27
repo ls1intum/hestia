@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { generateSession, getSessionDetail, saveDraft, finishSession, handleAuthError } from "@/lib/api";
+import { generateSession, getSessionDetail, getCourseDetail, saveDraft, saveCourseDraft, finishSession, handleAuthError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
   WorkshopInput,
@@ -10,13 +10,13 @@ import type {
 } from "@/lib/workshop-generator";
 import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 
-type Step = "input-1" | "input-2" | "input-2b" | "lecture-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "input-2b", label: "Materials" },
-  { id: "lecture-summary", label: "Review" },
+  { id: "course-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
   { id: "timeline", label: "Timetable" },
   { id: "prepare",  label: "Preparation" },
@@ -25,11 +25,11 @@ const ALL_STEPS: { id: Step; label: string }[] = [
 
 let hasRestored = false;
 
-function computeStepOrder(entityType: "SESSION" | "LECTURE", lectureId: string | null): Step[] {
+function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
-      if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
-      if (!lectureId && s.id === "lecture-summary") return false;
+      if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+      if (!courseId && s.id === "course-summary") return false;
       return true;
     })
     .map(s => s.id);
@@ -58,12 +58,12 @@ export function useWizardState() {
       sessionStorage.removeItem("workshopper_session_id");
     }
   };
-  const [currentLectureId, setCurrentLectureId] = useState<string | null>(null);
-  const [entityType, setEntityType] = useState<"SESSION" | "LECTURE">("SESSION");
+  const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
+  const [entityType, setEntityType] = useState<"SESSION" | "COURSE">("SESSION");
 
   const STEPS = ALL_STEPS.filter(s => {
-    if (entityType === "LECTURE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
-    if (!currentLectureId && s.id === "lecture-summary") return false;
+    if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+    if (!currentCourseId && s.id === "course-summary") return false;
     return true;
   });
   const STEP_ORDER = STEPS.map((s) => s.id);
@@ -135,7 +135,7 @@ export function useWizardState() {
 
   const startNewSession = () => {
     setSessionIdSynced(null);
-    setCurrentLectureId(null);
+    setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
     setRefinedGoals([]);
@@ -149,10 +149,10 @@ export function useWizardState() {
     setView("wizard");
   };
 
-  const startNewLecture = () => {
+  const startNewCourse = () => {
     setSessionIdSynced(null);
-    setCurrentLectureId(null);
-    setEntityType("LECTURE");
+    setCurrentCourseId(null);
+    setEntityType("COURSE");
     setWorkshopInput({});
     setRefinedGoals([]);
     setSession(null);
@@ -165,10 +165,10 @@ export function useWizardState() {
     setView("wizard");
   };
 
-  const startSessionFromLecture = async (lectureId: string) => {
+  const startSessionFromCourse = async (courseId: string) => {
     setIsLoading(true);
     try {
-      const detail = await getSessionDetail(lectureId);
+      const detail = await getSessionDetail(courseId);
       if (detail.draftStateJson) {
         const draft: DraftState = JSON.parse(detail.draftStateJson);
         if (draft.workshopInput) {
@@ -178,7 +178,7 @@ export function useWizardState() {
         }
       }
       setSessionIdSynced(null);
-      setCurrentLectureId(lectureId);
+      setCurrentCourseId(courseId);
       setEntityType("SESSION");
       setRefinedGoals([]);
       setSession(null);
@@ -187,35 +187,37 @@ export function useWizardState() {
       setSlidesCache({});
       setIsFinished(false);
       
-      const idx = ALL_STEPS.filter(s => s.id !== "lecture-summary" || true).map(s => s.id).indexOf("lecture-summary");
+      const idx = ALL_STEPS.filter(s => s.id !== "course-summary" || true).map(s => s.id).indexOf("course-summary");
       setHighestStepIdx(idx !== -1 ? idx : 2);
-      setStep("lecture-summary");
+      setStep("course-summary");
       setView("wizard");
     } catch (e) {
-      toast({ title: "Error", description: "Failed to load lecture settings", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to load course settings", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resumeSession = async (id: string, opts?: { silent?: boolean }) => {
+  const resumeSession = async (id: string, opts?: { silent?: boolean; type?: "SESSION" | "COURSE" }) => {
     setIsLoading(true);
     try {
-      const detail = await getSessionDetail(id);
+      
+      const resolvedEntityType = opts?.type ?? "SESSION";
+      const detail = resolvedEntityType === "COURSE" ? await getCourseDetail(id) : await getSessionDetail(id);
       // R-2: resolve courseId locally so we can compute the correct step order immediately
       const resolvedCourseId = detail.courseId ?? null;
       // Determine entity type from presence of courseId: sessions with a courseId are SESSION type
-      const resolvedEntityType: "SESSION" | "LECTURE" = "SESSION";
+      
 
       setSessionIdSynced(detail.id);
       setEntityType(resolvedEntityType);
-      setCurrentLectureId(resolvedCourseId);
+      setCurrentCourseId(resolvedCourseId);
 
       const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
       setIsFinished(sessionIsFinished);
 
       // R-2: use locally computed step order, not the stale component-state STEP_ORDER
-      const localStepOrder = computeStepOrder(resolvedEntityType, resolvedLectureId);
+      const localStepOrder = computeStepOrder(resolvedEntityType, resolvedCourseId);
 
       if (sessionIsFinished && detail.session) {
         if (detail.title) {
@@ -275,7 +277,7 @@ export function useWizardState() {
 
       // Navigate to where the user left off
       let targetStepStr = (detail.currentStep as string) ?? "input-1";
-      if (resolvedEntityType === "LECTURE" && targetStepStr === "result") {
+      if (resolvedEntityType === "COURSE" && targetStepStr === "result") {
         targetStepStr = "input-2";
       }
       if (targetStepStr === "result" || targetStepStr === "skeleton") {
@@ -296,7 +298,7 @@ export function useWizardState() {
       const targetIdx = localStepOrder.indexOf(targetStep);
 
       setStep(targetStep);
-      // R-2: use localStepOrder — guaranteed to reflect resolved entity/lecture state
+      // R-2: use localStepOrder — guaranteed to reflect resolved entity/course state
       setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
@@ -325,7 +327,7 @@ export function useWizardState() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, "input-2", sessionIdRef.current, currentLectureId);
+      const id = await persistDraft(draft, "input-2", sessionIdRef.current, currentCourseId);
       if (!sessionId) setSessionIdSynced(id);
       setStep("input-2");
     } finally {
@@ -347,18 +349,18 @@ export function useWizardState() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, entityType === "LECTURE" ? "result" : "goals", sessionIdRef.current, currentLectureId);
+      const id = await persistDraft(draft, entityType === "COURSE" ? "result" : "goals", sessionIdRef.current, currentCourseId);
       if (!sessionId) setSessionIdSynced(id);
-      if (entityType === "LECTURE") {
-        toast({ title: "Lecture successfully created", description: "Your lecture has been saved to the dashboard." });
+      if (entityType === "COURSE") {
+        toast({ title: "Course successfully created", description: "Your course has been saved to the dashboard." });
         // C-3: short delay so the toast is visible before navigating away
         setTimeout(() => handleReset(), 1500);
       } else {
         setStep("goals");
       }
     } finally {
-      if (entityType !== "LECTURE") setIsLoading(false);
-      // For LECTURE, handleReset() will run after 1500ms — keep spinner until then
+      if (entityType !== "COURSE") setIsLoading(false);
+      // For COURSE, handleReset() will run after 1500ms — keep spinner until then
     }
   };
 
@@ -391,7 +393,7 @@ export function useWizardState() {
       
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
       const initialDraft = buildDraft(updatedInput, goalsWithPriority, skeleton);
-      const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentLectureId);
+      const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentCourseId);
       if (!sessionId) setSessionIdSynced(currentId);
       
       const skeletonWithId: SessionSkeleton = {
@@ -410,7 +412,7 @@ export function useWizardState() {
       setOriginalSession(JSON.parse(JSON.stringify(result)));
       
       const draft = buildDraft(updatedInput, goalsWithPriority, skeleton, result);
-      await persistDraft(draft, "timeline", currentId, currentLectureId);
+      await persistDraft(draft, "timeline", currentId, currentCourseId);
       setStep("timeline");
     } catch (err) {
       toast({
@@ -428,7 +430,7 @@ export function useWizardState() {
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     setView("dashboard");
     setSessionIdSynced(null);
-    setCurrentLectureId(null);
+    setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
     setRefinedGoals([]);
@@ -467,7 +469,7 @@ export function useWizardState() {
     "input-1":  { title: "Loading…",                    sub: "" },
     "input-2":  { title: "Loading…",                    sub: "" },
     "input-2b": { title: "Loading…",                    sub: "" },
-    "lecture-summary": { title: "Loading…",             sub: "" },
+    "course-summary": { title: "Loading…",             sub: "" },
     "goals":    { title: "Loading…",                    sub: "" },
     "timeline": { title: "Loading…", sub: "" },
     "prepare":  { title: "Loading…",                    sub: "" },
@@ -514,8 +516,8 @@ export function useWizardState() {
     setSessionId,
     sessionIdRef,
     setSessionIdSynced,
-    currentLectureId,
-    setCurrentLectureId,
+    currentCourseId,
+    setCurrentCourseId,
     entityType,
     setEntityType,
     STEPS,
@@ -539,8 +541,8 @@ export function useWizardState() {
     persistDraft,
     buildDraft,
     startNewSession,
-    startNewLecture,
-    startSessionFromLecture,
+    startNewCourse,
+    startSessionFromCourse,
     resumeSession,
     handleStep1,
     handleStep2Activities,
