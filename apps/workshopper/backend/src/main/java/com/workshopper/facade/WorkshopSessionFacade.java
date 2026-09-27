@@ -216,7 +216,12 @@ public class WorkshopSessionFacade {
                     zos.closeEntry();
 
                     byte[] templateData = e.getTemplateData();
-                    java.io.InputStream templateStream = (templateData != null) ? new java.io.ByteArrayInputStream(templateData) : null;
+                    java.io.InputStream templateStream;
+                    if (templateData != null) {
+                        templateStream = new java.io.ByteArrayInputStream(templateData);
+                    } else {
+                        templateStream = new org.springframework.core.io.ClassPathResource("templates/workshopper-default.pptx").getInputStream();
+                    }
                     byte[] pptxBytes = assemblePptxUseCase.execute(requestDto.session(), requestDto.meta(), null, templateStream);
                     zos.putNextEntry(new java.util.zip.ZipEntry(safeTitle + "/slides.pptx"));
                     zos.write(pptxBytes);
