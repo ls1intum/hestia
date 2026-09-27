@@ -176,7 +176,7 @@ export function useWizardState() {
   const startSessionFromCourse = async (courseId: string) => {
     setIsLoading(true);
     try {
-      const detail = await getSessionDetail(courseId);
+      const detail = await getCourseDetail(courseId);
       if (detail.draftStateJson) {
         const draft: DraftState = JSON.parse(detail.draftStateJson);
         if (draft.workshopInput) {
