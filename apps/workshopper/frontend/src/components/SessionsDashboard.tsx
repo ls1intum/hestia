@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions, handleAuthError } from "@/lib/api";
+import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadCourseZip, reorderSessions, handleAuthError } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
 
@@ -173,10 +173,10 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
     }
   };
 
-  const handleExportLectureZip = async (e: React.MouseEvent, id: string) => {
+  const handleExportCourseZip = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await downloadLectureZip(id);
+      await downloadCourseZip(id);
     } catch (err: any) {
       // A-3: use toast instead of alert()
       toast({ title: "Failed to export Lecture ZIP", description: err.message, variant: "destructive" });
@@ -456,7 +456,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                                       <DropdownMenuItem onClick={() => onResumeSession(lecture.id)}>
                                         <FileEdit className="mr-2 h-4 w-4" /><span>Edit session settings</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={(e) => handleExportLectureZip(e as any, lecture.id)}>
+                                      <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, lecture.id)}>
                                         <Presentation className="mr-2 h-4 w-4" /><span>Export all materials (.zip)</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, lecture.id, "LECTURE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
