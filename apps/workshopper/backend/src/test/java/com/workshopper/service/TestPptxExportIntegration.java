@@ -23,13 +23,8 @@ public class TestPptxExportIntegration {
         
         com.workshopper.usecase.AssemblePptxUseCase service = new com.workshopper.usecase.AssemblePptxUseCase();
         
-        com.workshopper.dto.WorkshopSessionDto session = new com.workshopper.dto.WorkshopSessionDto(
-            "id", TEST_LEARNING_GOAL, "user", "Goal",
-            "1h", List.of(), List.of(), null
-        );
-        com.workshopper.dto.WorkshopInputDto meta = new com.workshopper.dto.WorkshopInputDto("Test Title",
-            List.of(), 60, 10, "Target", "Level", "Type", "Materials", "Space", "Methods", List.of(), "Custom"
-        );
+        com.workshopper.dto.WorkshopSessionDto session = new com.workshopper.dto.WorkshopSessionDto("id", TEST_LEARNING_GOAL, "Goal", "bg", java.util.List.of(), java.util.List.of(), null);
+        com.workshopper.dto.WorkshopInputDto meta = new com.workshopper.dto.WorkshopInputDto(TEST_LEARNING_GOAL, java.util.List.of(), 60, 20, "workshop", "other", "bg", "{}", java.util.List.of(), "material");
         
         List<Map<String, Object>> slidesData = new ArrayList<>();
         Map<String, Object> map = new HashMap<>();

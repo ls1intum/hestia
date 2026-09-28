@@ -70,8 +70,3 @@ Generates JSON representation of slides for a single timetable block (used for f
 ### `POST /api/workshop/refine-goal`
 Provides real-time feedback and suggestions on a specific learning goal string.
 
-### `POST /api/workshop/extract-goals`
-Extracts raw learning goals from uploaded PDF materials.
-
-### `POST /api/workshop/fix-goals-grammar`
-Automatically fixes grammar and typos in learning goals.

@@ -89,11 +89,9 @@ class WorkshopControllerTest {
         void returnsPlansOnSuccess() throws Exception {
             var plan = new LearningGoalPlanDto("g1", "original", "Participants will apply X",
                     List.of(), List.of(), List.of(), 0, null, null, null, null);
-            when(workshopService.generatePlan(any())).thenReturn(List.of(plan));
+            when(facade.generatePlan(any())).thenReturn(List.of(plan));
 
-            WorkshopInputDto body = new WorkshopInputDto("Test Title",
-                    List.of("Understand X"), 60, 20, "workshop",
-                    null, null, null, null, null, null, null);
+            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("Understand X"), 60, 20, "workshop", null, null, null, null, null);
 
             mvc.perform(post("/api/workshop/plan")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -106,12 +104,10 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 500 when service throws")
         void returns500OnServiceException() throws Exception {
-            when(workshopService.generatePlan(any()))
+            when(facade.generatePlan(any()))
                     .thenThrow(new RuntimeException("LLM unreachable"));
 
-            WorkshopInputDto body = new WorkshopInputDto("Test Title",
-                    List.of("A goal"), 60, 20, "workshop",
-                    null, null, null, null, null, null, null);
+            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("A goal"), 60, 20, "workshop", null, null, null, null, null);
 
             mvc.perform(post("/api/workshop/plan")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -140,7 +136,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns session summaries")
         void returnsSessionSummaries() throws Exception {
-            var summary = new SessionSummaryDto("id", "title", "draft", "goals", "courseId", "owner", null, null);
+            var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", "owner", null, null);
             
             when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(summary));
 
@@ -170,7 +166,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with session detail when found")
         void returns200WithDetail() throws Exception {
-            var detail = new SessionDetailDto("id", "title", "draft", "goals", "courseId", "{}", null);
+            var detail = new SessionDetailDto("abc123", "My Session", "draft", "goals", "courseId", "{}", null);
             when(workshopService.getSession("abc123"))
                     .thenReturn(java.util.Optional.of(detail));
 
@@ -199,7 +195,7 @@ class WorkshopControllerTest {
     @Test
     @DisplayName("POST /api/workshop/refine-goal returns 500 when service throws")
     void refineGoalReturns500OnError() throws Exception {
-        when(workshopService.refineGoal(any()))
+        when(facade.refineGoal(any()))
                 .thenThrow(new RuntimeException("LLM error"));
 
         RefineGoalRequestDto body = new RefineGoalRequestDto("A vague goal", null);

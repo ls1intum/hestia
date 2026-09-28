@@ -175,6 +175,8 @@ public class WorkshopSessionFacade {
     }
 
     public byte[] exportCourseZip(String courseId) throws Exception {
+        String courseTemplateId = courseRepo.findById(courseId)
+                .map(com.workshopper.model.CourseEntity::getTemplateId).orElse(null);
         List<WorkshopSessionEntity> children = repo.findAllByCourseIdOrdered(courseId);
 
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
@@ -227,12 +229,10 @@ public class WorkshopSessionFacade {
                     zos.write(pdfBytes);
                     zos.closeEntry();
 
-                    byte[] templateData = null;
-                    if (e.getTemplateId() != null) {
-                        templateData = slideTemplateRepo.findById(e.getTemplateId())
-                                .map(com.workshopper.model.SlideTemplateEntity::getFileData)
-                                .orElse(null);
-                    }
+                    String effectiveTemplateId = e.getTemplateId() != null ? e.getTemplateId() : courseTemplateId;
+                    byte[] templateData = effectiveTemplateId == null ? null
+                            : slideTemplateRepo.findById(effectiveTemplateId)
+                                    .map(com.workshopper.model.SlideTemplateEntity::getFileData).orElse(null);
                     java.io.InputStream templateStream;
                     if (templateData != null) {
                         templateStream = new java.io.ByteArrayInputStream(templateData);

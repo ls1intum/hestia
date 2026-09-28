@@ -14,6 +14,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
+import com.workshopper.model.CourseEntity;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -63,6 +66,22 @@ public class WorkshopSessionFacadeSecurityTest {
         } catch (Exception ignored) {}
     }
 
+
+    @Test
+    public void verifyOwnership_shouldThrow_whenCourseBelongsToAnotherUser() {
+        CourseEntity course = new CourseEntity();
+        course.setId("course-1"); course.setOwnerId("user-A");
+        when(courseRepo.findById("course-1")).thenReturn(Optional.of(course));
+        assertThrows(AccessDeniedException.class, () -> facade.verifyOwnership("course-1"));
+    }
+
+    @Test
+    public void verifyOwnership_shouldAllow_whenCourseBelongsToCurrentUser() {
+        CourseEntity course = new CourseEntity();
+        course.setId("course-1"); course.setOwnerId("user-B");
+        when(courseRepo.findById("course-1")).thenReturn(Optional.of(course));
+        assertDoesNotThrow(() -> facade.verifyOwnership("course-1"));
+    }
     @Test
     public void generateAndSaveSession_shouldThrowAccessDenied_whenSessionBelongsToAnotherUser() {
         // Arrange: session in DB belongs to "user-A"

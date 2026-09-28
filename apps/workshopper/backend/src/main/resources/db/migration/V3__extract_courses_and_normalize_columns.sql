@@ -59,7 +59,7 @@ UPDATE workshop_sessions SET
     participants       = (draft_state_json -> 'workshopInput' ->> 'participants')::int,
     session_type       = draft_state_json -> 'workshopInput' ->> 'sessionType',
     session_type_other = draft_state_json -> 'workshopInput' ->> 'sessionTypeOther',
-    interaction_level  = draft_state_json -> \'workshopInput\' ->> \'interactionLevel\'
+    interaction_level  = draft_state_json -> 'workshopInput' ->> 'interactionLevel'
 WHERE draft_state_json IS NOT NULL
   AND draft_state_json -> 'workshopInput' IS NOT NULL;
 
