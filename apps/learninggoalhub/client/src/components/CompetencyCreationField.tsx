@@ -24,6 +24,7 @@ export default function CompetencyCreationField({
   className = "",
   style,
   stacked = false,
+  autoFocus = true,
 }: {
   value: string;
   placeholder: string;
@@ -31,7 +32,8 @@ export default function CompetencyCreationField({
   pending: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
-  onCancel: () => void;
+  /** Closes the field. Without it the field stays open: no Cancel, no closing on blur or Escape. */
+  onCancel?: () => void;
   /**
    * Offers "Generate with AI" beside "Add": the typed text is created together with goals an AI
    * writes beneath it. Without it, the field only adds exactly what was typed.
@@ -45,6 +47,8 @@ export default function CompetencyCreationField({
   style?: CSSProperties;
   /** Stacks the field above its buttons, for the map's fixed-width boxes where a row would overflow. */
   stacked?: boolean;
+  /** Focuses the field on mount; off for a field that is always on screen. */
+  autoFocus?: boolean;
 }) {
   return (
     <form
@@ -64,15 +68,15 @@ export default function CompetencyCreationField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onBlur={() => {
-            if (value.trim() === "" && !pending) onCancel();
+            if (value.trim() === "" && !pending) onCancel?.();
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
-              if (!pending) onCancel();
+              if (!pending) onCancel?.();
             }
           }}
-          autoFocus
+          autoFocus={autoFocus}
           disabled={pending}
           placeholder={placeholder}
           className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-surface px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
@@ -82,14 +86,16 @@ export default function CompetencyCreationField({
             stacked ? "justify-end" : ""
           }`}
         >
-          <Button
-            variant="neutral"
-            size="sm"
-            onClick={onCancel}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
+          {onCancel && (
+            <Button
+              variant="neutral"
+              size="sm"
+              onClick={onCancel}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+          )}
           {onFind && (
             <Button
               variant="neutral"

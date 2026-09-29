@@ -459,6 +459,7 @@ export interface components {
             /** Format: int64 */
             id?: number;
             text?: string;
+            originalText?: string;
             shortLabel?: string;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";

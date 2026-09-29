@@ -429,6 +429,45 @@ class LearningGoalControllerTest {
     }
 
     @Test
+    void patchKeepsGeneratedWordingOnFirstRenameOnly() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+
+        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"APPROVED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalText").doesNotExist());
+
+        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Apply test-driven development.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalText").value("Apply TDD."));
+
+        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Practise test-driven development.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.text").value("Practise test-driven development."))
+                .andExpect(jsonPath("$.originalText").value("Apply TDD."));
+    }
+
+    @Test
+    void patchKeepsNoOriginalForInstructorCreatedGoal() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
+        goal = goalRepository.save(goal);
+
+        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Apply test-driven development.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalText").doesNotExist());
+    }
+
+    @Test
     void patchApprovesAndUnapprovesGoal() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
