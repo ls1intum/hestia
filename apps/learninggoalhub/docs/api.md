@@ -109,6 +109,17 @@ exam as an ordered list of blocks; each block is either shared `CONTEXT` or a `T
 - The generated goals are persisted with origin `EXAM` under the course's `EXAM` hierarchy
   root (created on first use) and review status `PENDING`. Posting the same exam twice creates
   the goals twice — there is no deduplication yet.
+- Goals are worded like extracted outcomes: `text` is an action-noun phrase (a gerund in
+  English) without a closing period, with a compact `shortLabel` (`null` when none came back).
+- Each goal's `role` follows its Bloom level like an extracted outcome's: `SKILL` from `APPLY` up,
+  `KNOWLEDGE` below, `null` when classification failed.
+- The blocks themselves are stored too, and every goal carries the task it came from in
+  `examTask` (see below). Each request counts as one exam, told apart by when it was submitted.
+- When the course already has a competency tree, the new goals are placed into it (a
+  `CONTRIBUTES_TO` relationship with origin `SYNTHESIS`): a `SKILL` goal under the skill it
+  belongs to, or directly under its topic when it fits none of the topic's skills; a `KNOWLEDGE`
+  goal directly under its topic. A goal no topic covers stays unlinked. Rebuilding the tree assigns every exam goal
+  again. The assignment is best effort and never fails the request.
 
 The response echoes each **task** block's `blockId` (context blocks yield no entry) with the
 goals created for it, in the same `LearningGoalResponse` shape as the other endpoints
@@ -117,7 +128,7 @@ goals created for it, in the same `LearningGoalResponse` shape as the other endp
 
 ```json
 [
-  { "blockId": "2", "goals": [ { "id": 512, "text": "Recall basic integer addition.", ... } ] },
+  { "blockId": "2", "goals": [ { "id": 512, "text": "Recalling basic integer addition", "shortLabel": "Recall integer addition", ... } ] },
   { "blockId": "3", "goals": [ { "id": 513, "text": "..." }, { "id": 514, "text": "..." } ] }
 ]
 ```
@@ -144,7 +155,8 @@ a group whose `level` is `EXAM` and whose `label` is `Exam`.
   "sources": [ { "documentId": 68, "filename": "Chapters 1-10.pdf", "snippet": "…bias-variance…" } ],
   "relationships": [
     { "type": "CONTRIBUTES_TO", "targetGoalId": 430, "targetText": "…", "confidence": 1.0, "origin": "HIERARCHY" }
-  ]
+  ],
+  "examTask": null
 }
 ```
 
@@ -159,6 +171,10 @@ Field semantics:
 - `bloomLevel` (`REMEMBER` … `CREATE`) and `soloLevel` (`PRESTRUCTURAL` … `EXTENDED_ABSTRACT`)
   — taxonomy classification; `null` when not (yet) classified.
 - `sources` — document provenance with a text snippet per supporting document.
+- `examTask` — for an exam goal, the task it was derived from: `submissionId` and `submittedAt`
+  (the request it arrived in), `taskNumber` (1-based among that exam's task blocks), `taskType`,
+  `text` (the task statement) and `context` (the preceding context blocks, joined). `null` for
+  every other goal and for exam goals created before the blocks were stored.
 - `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (a goal feeds the goal
   above it in the competency tree). `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy types
   that may still appear on courses extracted before mid-2026; new extractions no longer

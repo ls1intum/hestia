@@ -21,7 +21,11 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunner.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.MenuTopic;
+import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.Placement;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.PlannedTopic;
+import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
@@ -40,8 +44,9 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionOperations;
 
 /**
- * Exercise outcomes are evidence beneath the lecture tree: they never name, get assigned or get
- * structured with the lecture outcomes, and are placed onto the finished topics afterwards.
+ * Exercise outcomes and exam goals are evidence beneath the lecture tree: they never name, get
+ * assigned or get structured with the lecture outcomes, and are placed onto the finished topics
+ * afterwards.
  */
 class ExtractionRunnerExercisePlacementTest {
 
@@ -55,48 +60,122 @@ class ExtractionRunnerExercisePlacementTest {
     private final LearningGoal practisedSorting = goal(3L, "Implementing merge sort", DocumentKind.EXERCISE, 2);
     private final LearningGoal notIntroduced = goal(4L, "Designing a compiler", DocumentKind.EXERCISE, 3);
 
+    private static final List<MenuTopic> TOPICS = List.of(
+            new MenuTopic("Sorting", List.of()), new MenuTopic("Hashing", List.of()));
+
     @Test
     void onlyLectureAndKindlessOutcomesNameTheTopics() {
         stubCourse(List.of(lecture, practisedSorting, kindless, notIntroduced));
         stubLecturePlan();
-        when(synthesizer.assign(any(), any(), isNull())).thenReturn(Map.of(0, 0, 1, TopicTreeSynthesizer.UNMATCHED));
+        when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
         runner().rebuildCompetencyTree(1L, null, false);
 
         verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
-        verify(synthesizer).assign(eq(List.of("Sorting", "Hashing")),
+        verify(synthesizer).place(eq(TOPICS),
                 eq(List.of("Implementing merge sort", "Designing a compiler")), isNull());
     }
 
     @Test
-    void assignedExerciseOutcomesHangDirectlyUnderTheirTopicAndUnassignedOnesAreCounted() {
+    void placedExerciseOutcomesHangDirectlyUnderTheirTopicAndUnplacedOnesAreCounted() {
         stubCourse(List.of(lecture, practisedSorting, kindless, notIntroduced));
         stubLecturePlan();
-        when(synthesizer.assign(any(), any(), isNull())).thenReturn(Map.of(0, 0, 1, TopicTreeSynthesizer.UNMATCHED));
+        when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
         CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
 
         assertThat(result.competencies()).isEqualTo(2);
         assertThat(result.unmatchedGoals()).isEqualTo(1);
-        ArgumentCaptor<GoalRelationship> edges = ArgumentCaptor.forClass(GoalRelationship.class);
-        verify(relationshipRepository, org.mockito.Mockito.atLeastOnce()).save(edges.capture());
-        assertThat(edges.getAllValues())
-                .extracting(edge -> edge.getSource().getText() + " -> " + edge.getTarget().getText())
-                .containsExactlyInAnyOrder(
-                        "Applying sorting -> Sorting",
-                        "Implementing merge sort -> Sorting",
-                        "Applying hashing -> Hashing");
+        assertThat(edges()).containsExactlyInAnyOrder(
+                "Applying sorting -> Sorting",
+                "Implementing merge sort -> Sorting",
+                "Applying hashing -> Hashing");
     }
 
     @Test
-    void aCourseWithoutExercisesMakesNoAssignmentCall() {
+    void anExerciseOutcomeCanBePlacedUnderASkillOfItsTopic() {
+        stubCourse(List.of(lecture, kindless, practisedSorting));
+        when(synthesizer.synthesize(anyList(), anyString(), isNull())).thenReturn(new TopicTreeSynthesizer.Plan(
+                List.of(new PlannedTopic("Sorting",
+                        List.of(new TopicTreeSynthesizer.PlannedCapability("Apply sorting and hashing", List.of(0, 1))),
+                        List.of())),
+                List.of()));
+        when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, 0)));
+        // The generated skill is linked by id, which the database would assign on save.
+        java.util.concurrent.atomic.AtomicLong ids = new java.util.concurrent.atomic.AtomicLong(100);
+        when(goalRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            LearningGoal saved = invocation.getArgument(0);
+            org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", ids.incrementAndGet());
+            return saved;
+        });
+
+        runner().rebuildCompetencyTree(1L, null, false);
+
+        verify(synthesizer).place(eq(List.of(new MenuTopic("Sorting", List.of("Apply sorting and hashing")))),
+                eq(List.of("Implementing merge sort")), isNull());
+        assertThat(edges()).containsExactlyInAnyOrder(
+                "Apply sorting and hashing -> Sorting",
+                "Applying sorting -> Apply sorting and hashing",
+                "Applying hashing -> Apply sorting and hashing",
+                "Implementing merge sort -> Apply sorting and hashing");
+    }
+
+    @Test
+    void aCourseWithoutExercisesMakesNoPlacementCall() {
         stubCourse(List.of(lecture, kindless));
         stubLecturePlan();
 
         CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
 
         assertThat(result.unmatchedGoals()).isZero();
-        verify(synthesizer, never()).assign(anyList(), anyList(), any());
+        verify(synthesizer, never()).place(anyList(), anyList(), any());
+    }
+
+    @Test
+    void examGoalsNeverSeedTheTreeAndAreOfferedSkillsOnlyWhenSkillTier() {
+        LearningGoal examined = examGoal(5L, "Apply merge sort to a given list", null, BloomLevel.APPLY);
+        LearningGoal notTaught = examGoal(6L, "Design a lexer", GoalRole.SKILL, BloomLevel.CREATE);
+        LearningGoal recalled = examGoal(7L, "Recall what a hash collision is", GoalRole.KNOWLEDGE, BloomLevel.REMEMBER);
+        stubCourse(List.of(lecture, kindless, examined, notTaught, recalled));
+        when(goalRepository.findByCourseIdAndOriginIn(1L, List.of(GoalOrigin.EXAM)))
+                .thenReturn(List.of(examined, notTaught, recalled));
+        stubLecturePlan();
+        when(synthesizer.place(any(), eq(List.of("Apply merge sort to a given list", "Design a lexer")), isNull()))
+                .thenReturn(Map.of(0, new Placement(0, null)));
+        when(synthesizer.place(any(), eq(List.of("Recall what a hash collision is")), isNull()))
+                .thenReturn(Map.of(0, new Placement(1, null)));
+
+        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+
+        verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
+        verify(synthesizer).place(eq(TOPICS), eq(List.of("Recall what a hash collision is")), isNull());
+        assertThat(result.unmatchedGoals()).isZero();
+        assertThat(edges()).containsExactlyInAnyOrder(
+                "Applying sorting -> Sorting",
+                "Applying hashing -> Hashing",
+                "Apply merge sort to a given list -> Sorting",
+                "Recall what a hash collision is -> Hashing");
+    }
+
+    @Test
+    void aFailedExamPlacementStillBuildsTheTree() {
+        LearningGoal examined = examGoal(5L, "Apply merge sort to a given list", null, BloomLevel.APPLY);
+        stubCourse(List.of(lecture, kindless, examined));
+        when(goalRepository.findByCourseIdAndOriginIn(1L, List.of(GoalOrigin.EXAM))).thenReturn(List.of(examined));
+        stubLecturePlan();
+        when(synthesizer.place(any(), any(), isNull())).thenThrow(new IllegalStateException("model down"));
+
+        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+
+        assertThat(result.competencies()).isEqualTo(2);
+    }
+
+    private List<String> edges() {
+        ArgumentCaptor<GoalRelationship> edges = ArgumentCaptor.forClass(GoalRelationship.class);
+        verify(relationshipRepository, org.mockito.Mockito.atLeastOnce()).save(edges.capture());
+        return edges.getAllValues().stream()
+                .map(edge -> edge.getSource().getText() + " -> " + edge.getTarget().getText())
+                .toList();
     }
 
     private void stubLecturePlan() {
@@ -121,6 +200,20 @@ class ExtractionRunnerExercisePlacementTest {
                 mock(DocumentSectionRepository.class), synthesizer, mock(HierarchyNodeRepository.class),
                 mock(TaxonomyService.class), new ExtractionProgressTracker(),
                 TransactionOperations.withoutTransaction(), 1, 1, false, null);
+    }
+
+    /** An exam goal as the exam endpoint stores it: on the EXAM root, no document. */
+    private static LearningGoal examGoal(long id, String text, GoalRole role, BloomLevel bloom) {
+        HierarchyNode node = mock(HierarchyNode.class);
+        when(node.getLevel()).thenReturn(HierarchyLevel.EXAM);
+        LearningGoal goal = mock(LearningGoal.class);
+        when(goal.getId()).thenReturn(id);
+        when(goal.getText()).thenReturn(text);
+        when(goal.getRole()).thenReturn(role);
+        when(goal.getBloomLevel()).thenReturn(bloom);
+        when(goal.getOrigin()).thenReturn(GoalOrigin.EXAM);
+        when(goal.getHierarchyNode()).thenReturn(node);
+        return goal;
     }
 
     private static LearningGoal goal(long id, String text, DocumentKind kind, int lectureOrder) {

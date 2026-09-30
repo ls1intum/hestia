@@ -17,6 +17,7 @@ export type CourseSummary = Schemas["CourseSummaryResponse"];
 export type DocumentResponse = Schemas["DocumentResponse"];
 export type LearningGoal = Schemas["LearningGoalResponse"];
 export type GoalSource = Schemas["GoalSourceResponse"];
+export type ExamTask = Schemas["ExamTaskResponse"];
 export type GoalRelationship = Schemas["GoalRelationshipResponse"];
 export type ExtractionSummary = Schemas["ExtractionSummary"];
 export type ExtractionStatus = Schemas["Snapshot"];

@@ -1585,6 +1585,9 @@
           "lectureOrder": {
             "type": "integer",
             "format": "int32"
+          },
+          "examTask": {
+            "$ref": "#/components/schemas/ExamTaskResponse"
           }
         }
       },
@@ -2367,6 +2370,38 @@
         "properties": {
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "ExamTaskResponse": {
+        "type": "object",
+        "properties": {
+          "submissionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "taskNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "taskType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }
