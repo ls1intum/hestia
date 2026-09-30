@@ -609,6 +609,8 @@ export interface components {
             /** Format: int64 */
             goalCount?: number;
             /** Format: int64 */
+            topicCount?: number;
+            /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
             skillsReviewedAt?: string;

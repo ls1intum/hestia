@@ -1950,6 +1950,10 @@
             "type": "integer",
             "format": "int64"
           },
+          "topicCount": {
+            "type": "integer",
+            "format": "int64"
+          },
           "skillCount": {
             "type": "integer",
             "format": "int64"
