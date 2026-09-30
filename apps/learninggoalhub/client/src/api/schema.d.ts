@@ -482,6 +482,7 @@ export interface components {
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
             /** Format: int32 */
             lectureOrder?: number;
+            examTask?: components["schemas"]["ExamTaskResponse"];
         };
         AddChildRequest: {
             text?: string;
@@ -745,6 +746,17 @@ export interface components {
         };
         TopicRequest: {
             text?: string;
+        };
+        ExamTaskResponse: {
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int32 */
+            taskNumber?: number;
+            taskType?: string | null;
+            text?: string;
+            context?: string | null;
         };
     };
     responses: never;

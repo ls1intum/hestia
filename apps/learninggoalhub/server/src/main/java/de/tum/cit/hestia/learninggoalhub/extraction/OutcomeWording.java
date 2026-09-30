@@ -3,12 +3,12 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import java.util.Locale;
 
 /** Shared wording contract for learner-facing outcome text and its compact label. */
-final class OutcomeWording {
+public final class OutcomeWording {
 
     private OutcomeWording() {
     }
 
-    static String instruction() {
+    public static String instruction() {
         return "Outcome wording invariant: text and shortLabel must express the same single action but "
                 + "must never be identical. text must be an expanded action-noun phrase with meaningful "
                 + "scope, context, method, or purpose beyond shortLabel; never use direct address or a "
