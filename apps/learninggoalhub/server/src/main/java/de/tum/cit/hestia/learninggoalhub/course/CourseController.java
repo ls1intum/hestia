@@ -64,6 +64,9 @@ public class CourseController {
         Map<Long, Long> goalCounts = ids.isEmpty()
                 ? Map.of()
                 : toCountMap(courseRepository.countGoalsByCourseIds(ids));
+        Map<Long, Long> topicCounts = ids.isEmpty()
+                ? Map.of()
+                : toCountMap(courseRepository.countTopicsByCourseIds(ids));
         Map<Long, Long> skillCounts = ids.isEmpty()
                 ? Map.of()
                 : toCountMap(courseRepository.countSkillsByCourseIds(ids));
@@ -81,6 +84,7 @@ public class CourseController {
                 course.getCreatedAt(),
                 documentCounts.getOrDefault(course.getId(), 0L),
                 goalCounts.getOrDefault(course.getId(), 0L),
+                topicCounts.getOrDefault(course.getId(), 0L),
                 skillCounts.getOrDefault(course.getId(), 0L),
                 course.getSkillsReviewedAt(),
                 extractionStatuses.get(course.getId()))));
@@ -92,6 +96,7 @@ public class CourseController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
         List<Long> ids = List.of(course.getId());
         long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
+        long topicCount = toCountMap(courseRepository.countTopicsByCourseIds(ids)).getOrDefault(id, 0L);
         long skillCount = toCountMap(courseRepository.countSkillsByCourseIds(ids)).getOrDefault(id, 0L);
         long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
         ExtractionRun.Status extractionStatus = extractionRunRepository
@@ -101,7 +106,7 @@ public class CourseController {
         return new CourseSummaryResponse(
                 course.getId(), course.getName(), course.getOutputLanguage(), course.isFiguresEnabled(),
                 course.getCreatedAt(),
-                documentCount, goalCount, skillCount, course.getSkillsReviewedAt(), extractionStatus);
+                documentCount, goalCount, topicCount, skillCount, course.getSkillsReviewedAt(), extractionStatus);
     }
 
     /**
@@ -199,7 +204,8 @@ public class CourseController {
 
     public record CourseSummaryResponse(
             Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
-            long documentCount, long goalCount, long skillCount, OffsetDateTime skillsReviewedAt,
+            long documentCount, long goalCount, long topicCount, long skillCount,
+            OffsetDateTime skillsReviewedAt,
             ExtractionRun.Status extractionStatus) {
     }
 
