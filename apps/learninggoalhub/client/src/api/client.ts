@@ -11,6 +11,14 @@ export const API_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 // requests hit /<prefix>/api/... — same-origin, routed by the proxy to the server.
 export const api = createClient<paths>({ baseUrl: API_PREFIX });
 
+api.use({
+  onResponse({ response }) {
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent("lgh:unauthorized"));
+    }
+  },
+});
+
 export type Schemas = components["schemas"];
 export type CourseResponse = Schemas["CourseResponse"];
 export type CourseSummary = Schemas["CourseSummaryResponse"];
