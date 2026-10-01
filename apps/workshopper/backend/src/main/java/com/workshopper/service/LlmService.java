@@ -132,7 +132,6 @@ public class LlmService {
                        java.util.Map.entry("sessionType", sessionTypeLabel),
                        java.util.Map.entry("duration", meta.duration()),
                        java.util.Map.entry("participants", meta.participants()),
-                       java.util.Map.entry("interactionLevel", meta.interactionLevel() != null ? meta.interactionLevel() : ""),
                        java.util.Map.entry("studentBackground", meta.studentBackground() != null ? meta.studentBackground() : ""),
                        java.util.Map.entry("selectedActivities", selectedActivitiesStr != null ? selectedActivitiesStr : ""),
                        java.util.Map.entry("learningGoals", learningGoalsStr != null ? learningGoalsStr : ""),

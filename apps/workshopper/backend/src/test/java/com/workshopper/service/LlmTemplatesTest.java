@@ -29,7 +29,6 @@ class LlmTemplatesTest {
         dummyData.put("participants", 20);
         dummyData.put("studentBackground", "Beginners");
         dummyData.put("learningGoals", "- LG1\n- LG2");
-        dummyData.put("interactionLevel", "High");
         
         // Goals
         dummyData.put("goal", "Learn Spring");

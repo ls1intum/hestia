@@ -93,7 +93,7 @@ public class WorkshopSessionFacadeSecurityTest {
         when(repo.findById(sessionId)).thenReturn(Optional.of(mockEntity));
 
         SessionSkeletonDto skeleton = new SessionSkeletonDto("Goal", List.of(), List.of(), sessionId);
-        WorkshopInputDto meta = new WorkshopInputDto("Title", List.of(), 60, 20, "workshop", "", "", "", List.of(), "");
+        WorkshopInputDto meta = new WorkshopInputDto("Title", List.of(), 60, 20, "workshop", "", "", List.of(), "");
         GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, "{}", skeleton);
 
         // Act & Assert: "user-B" cannot generate-and-save on "user-A"'s session

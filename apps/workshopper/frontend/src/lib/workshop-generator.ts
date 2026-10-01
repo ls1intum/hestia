@@ -8,7 +8,6 @@ export type SessionType =
   | "practical"
   | "other";
 
-export type InteractionLevel = "minimal" | "moderate" | "high";
 
 /** Form payload sent to the backend */
 export interface WorkshopInput {
@@ -19,7 +18,6 @@ export interface WorkshopInput {
   sessionType: SessionType;
   sessionTypeOther?: string;
   studentBackground?: string;
-  interactionLevel?: InteractionLevel;
   selectedActivities?: string[];
   availableMaterials?: string[];
   evaluateMappings?: { method: string; lgIds: string[] }[];

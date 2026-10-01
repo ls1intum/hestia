@@ -91,7 +91,7 @@ class WorkshopControllerTest {
                     List.of(), List.of(), List.of(), 0, null, null, null, null);
             when(facade.generatePlan(any())).thenReturn(List.of(plan));
 
-            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("Understand X"), 60, 20, "workshop", null, null, null, null, null);
+            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("Understand X"), 60, 20, "workshop", null, null, null, null);
 
             mvc.perform(post("/api/workshop/plan")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -107,7 +107,7 @@ class WorkshopControllerTest {
             when(facade.generatePlan(any()))
                     .thenThrow(new RuntimeException("LLM unreachable"));
 
-            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("A goal"), 60, 20, "workshop", null, null, null, null, null);
+            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("A goal"), 60, 20, "workshop", null, null, null, null);
 
             mvc.perform(post("/api/workshop/plan")
                             .contentType(MediaType.APPLICATION_JSON)
