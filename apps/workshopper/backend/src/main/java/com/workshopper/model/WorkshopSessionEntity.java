@@ -45,9 +45,6 @@ public class WorkshopSessionEntity {
     @Column(length = 100)
     private String sessionTypeOther;
 
-    @Column(length = 50)
-    private String interactionLevel;
-
 
     /** Full generated session JSON stored as a JSONB blob (null while still in draft). */
     @JdbcTypeCode(SqlTypes.JSON)
@@ -131,9 +128,6 @@ public class WorkshopSessionEntity {
 
     public String getSessionTypeOther() { return sessionTypeOther; }
     public void setSessionTypeOther(String sessionTypeOther) { this.sessionTypeOther = sessionTypeOther; }
-
-    public String getInteractionLevel() { return interactionLevel; }
-    public void setInteractionLevel(String interactionLevel) { this.interactionLevel = interactionLevel; }
 
     public String getSessionJson() { return sessionJson; }
     public void setSessionJson(String sessionJson) { this.sessionJson = sessionJson; }

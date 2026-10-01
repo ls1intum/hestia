@@ -50,7 +50,6 @@ ALTER TABLE workshop_sessions ADD COLUMN duration INTEGER;
 ALTER TABLE workshop_sessions ADD COLUMN participants INTEGER;
 ALTER TABLE workshop_sessions ADD COLUMN session_type VARCHAR(50);
 ALTER TABLE workshop_sessions ADD COLUMN session_type_other VARCHAR(100);
-ALTER TABLE workshop_sessions ADD COLUMN interaction_level VARCHAR(50);
 
 -- 8. Backfill scalar values from existing draft_state_json blobs
 --    (load-bearing: without this, sessions created before this migration lose these values)
@@ -58,8 +57,7 @@ UPDATE workshop_sessions SET
     duration           = (draft_state_json -> 'workshopInput' ->> 'duration')::int,
     participants       = (draft_state_json -> 'workshopInput' ->> 'participants')::int,
     session_type       = draft_state_json -> 'workshopInput' ->> 'sessionType',
-    session_type_other = draft_state_json -> 'workshopInput' ->> 'sessionTypeOther',
-    interaction_level  = draft_state_json -> 'workshopInput' ->> 'interactionLevel'
+    session_type_other = draft_state_json -> 'workshopInput' ->> 'sessionTypeOther'
 WHERE draft_state_json IS NOT NULL
   AND draft_state_json -> 'workshopInput' IS NOT NULL;
 
