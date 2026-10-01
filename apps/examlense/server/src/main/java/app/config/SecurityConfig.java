@@ -3,9 +3,11 @@ package app.config;
 import app.security.RateLimitFilter;
 import app.security.TokenPrincipalResolver;
 import app.security.UserTokenAuthFilter;
+import app.security.Saml2AuthenticationSuccessHandler;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -134,9 +136,12 @@ public class SecurityConfig {
      * needs a session to hold the in-flight authn request, and the API chain is
      * deliberately stateless.
      */
+    @Autowired(required = false)
+    private DevAuthFilter devAuthFilter;
+
     @Bean
     @Order(1)
-    public SecurityFilterChain samlFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain samlFilterChain(HttpSecurity http, Saml2AuthenticationSuccessHandler successHandler) throws Exception {
         http
             .securityMatcher("/saml2/**", "/login/saml2/**")
             .csrf(csrf -> csrf.disable())
@@ -145,8 +150,13 @@ public class SecurityConfig {
                 // Central IT fetches this to register us; it must stay open.
                 .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
                 .anyRequest().authenticated())
-            .saml2Login(withDefaults())
+            .saml2Login(saml2 -> saml2.successHandler(successHandler))
             .saml2Metadata(withDefaults());
+
+        if (devAuthFilter != null) {
+            http.addFilterBefore(devAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        }
+
         return http.build();
     }
 
