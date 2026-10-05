@@ -6,12 +6,7 @@ The Workshopper backend provides a set of REST endpoints under the `/api/worksho
 
 The workshop generation is a multi-step process:
 
-### 1. `POST /api/workshop/plan`
-Generates the initial learning goal plans based on user input.
-- **Request Body**: `WorkshopInputDto` (Target audience, context, topic, etc.)
-- **Response**: `List<LearningGoalPlanDto>`
-
-### 2. `POST /api/workshop/session`
+### 1. `POST /api/workshop/session`
 Generates the full, finalized timetable session from the goals and activities.
 - **Request Body**: `GenerateSessionRequestDto` (Goals, metadata including `availableMaterials`, session skeleton)
 - **Response**: `WorkshopSessionDto` (The complete timetable)

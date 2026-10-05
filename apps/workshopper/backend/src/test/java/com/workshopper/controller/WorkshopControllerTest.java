@@ -60,8 +60,6 @@ class WorkshopControllerTest {
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private com.workshopper.usecase.AssemblePptxUseCase assemblePptxUseCase;
 
-    @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private com.workshopper.usecase.GenerateLearningGoalsUseCase generateLearningGoalsUseCase;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private com.workshopper.usecase.RefineLearningGoalUseCase refineLearningGoalUseCase;
@@ -77,46 +75,6 @@ class WorkshopControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("OK"));
     }
-
-    // ── /plan ─────────────────────────────────────────────────────────────────
-
-    @Nested
-    @DisplayName("POST /api/workshop/plan")
-    class PlanEndpointTests {
-
-        @Test
-        @DisplayName("returns 200 with list of plans on success")
-        void returnsPlansOnSuccess() throws Exception {
-            var plan = new LearningGoalPlanDto("g1", "original", "Participants will apply X",
-                    List.of(), List.of(), List.of(), 0, null, null, null, null);
-            when(facade.generatePlan(any())).thenReturn(List.of(plan));
-
-            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("Understand X"), 60, 20, "workshop", null, null, null, null);
-
-            mvc.perform(post("/api/workshop/plan")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(body)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].id").value("g1"))
-                    .andExpect(jsonPath("$[0].goal").value("Participants will apply X"));
-        }
-
-        @Test
-        @DisplayName("returns 500 when service throws")
-        void returns500OnServiceException() throws Exception {
-            when(facade.generatePlan(any()))
-                    .thenThrow(new RuntimeException("LLM unreachable"));
-
-            WorkshopInputDto body = new WorkshopInputDto("Test Title", List.of("A goal"), 60, 20, "workshop", null, null, null, null);
-
-            mvc.perform(post("/api/workshop/plan")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(body)))
-                    .andExpect(status().isInternalServerError());
-        }
-    }
-
-    // ── /sessions ─────────────────────────────────────────────────────────────
 
     @Nested
     @DisplayName("GET /api/workshop/sessions")

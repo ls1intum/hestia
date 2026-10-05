@@ -17,7 +17,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class WorkshopSessionFacade {
 
     private final GenerateTimetableUseCase generateTimetableUseCase;
-    private final GenerateLearningGoalsUseCase generateLearningGoalsUseCase;
     private final RefineLearningGoalUseCase refineLearningGoalUseCase;
     private final FixGoalsGrammarUseCase fixGoalsGrammarUseCase;
     private final GenerateSlideBlockUseCase generateSlideBlockUseCase;
@@ -36,7 +35,6 @@ public class WorkshopSessionFacade {
 
     public WorkshopSessionFacade(
             GenerateTimetableUseCase generateTimetableUseCase,
-            GenerateLearningGoalsUseCase generateLearningGoalsUseCase,
             RefineLearningGoalUseCase refineLearningGoalUseCase,
             FixGoalsGrammarUseCase fixGoalsGrammarUseCase,
             GenerateSlideBlockUseCase generateSlideBlockUseCase,
@@ -47,7 +45,6 @@ public class WorkshopSessionFacade {
             ObjectMapper mapper,
             com.workshopper.service.PdfExportService pdfService) {
         this.generateTimetableUseCase = generateTimetableUseCase;
-        this.generateLearningGoalsUseCase = generateLearningGoalsUseCase;
         this.refineLearningGoalUseCase = refineLearningGoalUseCase;
         this.fixGoalsGrammarUseCase = fixGoalsGrammarUseCase;
         this.generateSlideBlockUseCase = generateSlideBlockUseCase;
@@ -148,10 +145,6 @@ public class WorkshopSessionFacade {
                 session.omittedGoals(),
                 session.slides()
         );
-    }
-
-    public List<LearningGoalPlanDto> generatePlan(WorkshopInputDto input) throws Exception {
-        return generateLearningGoalsUseCase.execute(input);
     }
 
     public List<GoalSuggestionDto> refineGoal(RefineGoalRequestDto request) throws Exception {

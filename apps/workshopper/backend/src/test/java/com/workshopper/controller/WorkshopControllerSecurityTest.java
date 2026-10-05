@@ -4,7 +4,6 @@ import com.workshopper.facade.WorkshopSessionFacade;
 import com.workshopper.service.PdfExportService;
 import com.workshopper.service.WorkshopService;
 import com.workshopper.usecase.AssemblePptxUseCase;
-import com.workshopper.usecase.GenerateLearningGoalsUseCase;
 import com.workshopper.usecase.GenerateSlideBlockUseCase;
 import com.workshopper.usecase.RefineLearningGoalUseCase;
 import org.junit.jupiter.api.DisplayName;
@@ -52,7 +51,6 @@ class WorkshopControllerSecurityTest {
     @MockitoBean private WorkshopSessionFacade facade;
     @MockitoBean private GenerateSlideBlockUseCase generateSlideBlockUseCase;
     @MockitoBean private AssemblePptxUseCase assemblePptxUseCase;
-    @MockitoBean private GenerateLearningGoalsUseCase generateLearningGoalsUseCase;
     @MockitoBean private RefineLearningGoalUseCase refineLearningGoalUseCase;
     @MockitoBean private org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
 

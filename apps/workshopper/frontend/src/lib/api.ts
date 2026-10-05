@@ -91,9 +91,6 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 /** Step 1: Generate initial learning goal drafts from user input */
-export function generatePlan(input: WorkshopInput): Promise<LearningGoalPlan[]> {
-  return post<LearningGoalPlan[]>("/workshop/plan", input);
-}
 
 /** Step 3: Generate the full session timetable from goals + activities */
 export function generateSession(

@@ -71,17 +71,6 @@ public class WorkshopController {
      * POST /api/workshop/plan
      * Generate learning goal plans from workshop input.
      */
-    @PostMapping("/plan")
-    public ResponseEntity<?> generatePlan(@RequestBody WorkshopInputDto input) {
-        try {
-            List<LearningGoalPlanDto> plans = facade.generatePlan(input);
-            return ResponseEntity.ok(plans);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Plan generation failed", e);
-            return ResponseEntity.internalServerError()
-                    .body("Plan generation failed: " + e.getMessage());
-        }
-    }
 
     /**
      * POST /api/workshop/session
