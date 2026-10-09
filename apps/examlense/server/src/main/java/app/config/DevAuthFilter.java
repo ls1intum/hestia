@@ -38,7 +38,8 @@ public class DevAuthFilter extends OncePerRequestFilter {
             String token = userService.mintToken(user.getId(), "Local Dev Bypass");
 
             // Redirect back to the frontend with the token
-            response.sendRedirect("/#token=" + token);
+            String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+            response.sendRedirect(contextPath + "/#token=" + token);
             return;
         }
 
