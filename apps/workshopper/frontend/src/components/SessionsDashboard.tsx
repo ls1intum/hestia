@@ -17,15 +17,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions, handleAuthError } from "@/lib/api";
+import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadCourseZip, reorderSessions, handleAuthError, listCourses, deleteCourse } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
 
 interface Props {
   onNewSession: () => void;
-  onNewLecture: () => void;
-  onNewSessionFromLecture: (id: string) => void;
-  onResumeSession: (id: string) => void;
+  onNewCourse: () => void;
+  onNewSessionFromCourse: (id: string) => void;
+  onResumeSession: (id: string, opts?: { type?: "SESSION" | "COURSE" }) => void;
 }
 
 function parseDate(dateStr: string | unknown): Date {
@@ -62,19 +62,19 @@ const STEP_LABELS: Record<string, string> = {
   "result": "Complete",
 };
 
-export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSessionFromLecture, onResumeSession }: Props) {
+export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSessionFromCourse, onResumeSession }: Props) {
   const { toast } = useToast();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [collapsedLectures, setCollapsedLectures] = useState<Set<string>>(new Set());
+  const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState<string>("");
-  const [deletingItem, setDeletingItem] = useState<{ id: string, type: "SESSION" | "LECTURE" } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ id: string, type: "SESSION" | "COURSE" } | null>(null);
 
-  const toggleLecture = (id: string) => {
-    setCollapsedLectures(prev => {
+  const toggleCourse = (id: string) => {
+    setCollapsedCourses(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -88,19 +88,21 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
   const loadSessions = () => {
     setLoading(true);
-    listSessions()
-      .then(data => {
+    Promise.all([listSessions(), listCourses()])
+      .then(([sessionsData, coursesData]) => {
         setIsAuthenticated(true);
-        const valid = data.filter(s => {
+        const validSessions = sessionsData.filter(s => {
           if (s.status === "draft") {
-            // "Empty shells" are drafts where the user hasn't provided any learning goals yet.
-            // (title is always populated with a default like 'Workshop Session' by the backend)
             const hasGoal = s.learningGoal && s.learningGoal.trim().length > 0;
             return hasGoal;
           }
           return true;
         });
-        setSessions(valid);
+        const courseSessions = coursesData.map(c => ({
+            ...c,
+            type: "COURSE"
+        }));
+        setSessions([...validSessions, ...courseSessions]);
       })
       .catch((e: any) => {
         if (handleAuthError(e, false)) {
@@ -114,7 +116,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
       .finally(() => setLoading(false));
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, id: string, type: "SESSION" | "LECTURE") => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string, type: "SESSION" | "COURSE") => {
     e.stopPropagation();
     setDeletingItem({ id, type });
   };
@@ -122,10 +124,13 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
   const confirmDelete = async () => {
     if (!deletingItem) return;
     try {
-      await deleteSession(deletingItem.id);
+      if (deletingItem.type === "COURSE") {
+        await deleteCourse(deletingItem.id);
+      } else {
+        await deleteSession(deletingItem.id);
+      }
       loadSessions();
     } catch (err: any) {
-      // A-3: use toast instead of alert()
       toast({ title: "Failed to delete", description: err.message, variant: "destructive" });
     }
     setDeletingItem(null);
@@ -173,13 +178,13 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
     }
   };
 
-  const handleExportLectureZip = async (e: React.MouseEvent, id: string) => {
+  const handleExportCourseZip = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await downloadLectureZip(id);
+      await downloadCourseZip(id);
     } catch (err: any) {
       // A-3: use toast instead of alert()
-      toast({ title: "Failed to export Lecture ZIP", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to export Course ZIP", description: err.message, variant: "destructive" });
     }
   };
 
@@ -211,7 +216,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
             </div>
             <h2 className="font-display font-semibold text-3xl text-foreground mb-4">Welcome to Workshopper</h2>
             <p className="text-muted-foreground font-body max-w-lg mx-auto mb-8">
-              Log in with your TUM account to create, manage, and export your workshop sessions and lectures.
+              Log in with your TUM account to create, manage, and export your workshop sessions and courses.
             </p>
             <Button 
               onClick={() => window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum"} 
@@ -238,12 +243,12 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
             </div>
             <h2 className="font-display font-semibold text-2xl text-foreground mb-2">No items yet</h2>
             <p className="text-muted-foreground font-body mb-6">
-              Create your first lecture or standalone session to get started.
+              Create your first course or standalone session to get started.
             </p>
             <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={onNewLecture} className="gap-2 rounded-xl">
+              <Button variant="outline" onClick={onNewCourse} className="gap-2 rounded-xl">
                 <Plus className="h-4 w-4" />
-                Create Lecture
+                Create Course
               </Button>
               <Button id="empty-new-session-btn" onClick={onNewSession} className="gap-2 rounded-xl shadow-sm">
                 <Plus className="h-4 w-4" />
@@ -261,9 +266,9 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                 </span>
               </h2>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={onNewLecture} className="gap-2 rounded-xl">
+                <Button variant="outline" onClick={onNewCourse} className="gap-2 rounded-xl">
                   <Plus className="h-4 w-4" />
-                  New Lecture
+                  New Course
                 </Button>
                 <Button id="new-session-btn" onClick={onNewSession} className="gap-2 rounded-xl shadow-sm">
                   <Plus className="h-4 w-4" />
@@ -274,15 +279,15 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
             {/* Split items */}
             {(() => {
-              const lectures = sessions.filter(s => s.type === "LECTURE");
-              const standaloneSessions = sessions.filter(s => s.type !== "LECTURE" && !s.lectureId);
+              const courses = sessions.filter(s => s.courseId === undefined && !s.courseId);
+              const standaloneSessions = sessions.filter(s => !s.courseId);
 
               const renderSessionCard = (session: SessionSummary, isChild = false) => (
                 <div
                   key={session.id}
                   id={`session-card-${session.id}`}
                   className={`group text-left rounded-2xl border border-border/60 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 transition-all duration-200 p-5 flex items-center gap-4 cursor-pointer ${isChild ? "ml-8" : ""}`}
-                  onClick={() => onResumeSession(session.id)}
+                  onClick={() => onResumeSession(session.id, { type: (session as any).type === "COURSE" ? "COURSE" : "SESSION" })}
                   draggable={true}
                   onDragStart={(e) => {
                     if (session.id) {
@@ -311,14 +316,14 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
                       try {
                         // If moving between different parents, move it first
-                        if (draggedSession.lectureId !== session.lectureId) {
-                          await moveSession(draggedId, session.lectureId || "");
+                        if (draggedSession.courseId !== session.courseId) {
+                          await moveSession(draggedId, session.courseId || "");
                         }
 
                         // Calculate new order
-                        const siblings = session.lectureId
-                          ? sessions.filter(s => s.lectureId === session.lectureId)
-                          : sessions.filter(s => s.type !== "LECTURE" && !s.lectureId);
+                        const siblings = session.courseId
+                          ? sessions.filter(s => s.courseId === session.courseId)
+                          : sessions.filter(s => !s.courseId);
 
                         const newOrderIds = siblings.map(s => s.id).filter(id => id !== draggedId);
                         const targetIndex = newOrderIds.indexOf(session.id);
@@ -395,17 +400,17 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
               return (
                 <div className="grid gap-6">
-                  {lectures.length > 0 && (
+                  {courses.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="font-display font-semibold text-lg text-foreground flex items-center gap-2">
-                        <BookOpen className="h-5 w-5 text-primary" /> Lectures
+                        <BookOpen className="h-5 w-5 text-primary" /> Courses
                       </h3>
                       <div className="grid gap-3">
-                        {lectures.map((lecture) => {
-                          const childSessions = sessions.filter(s => s.lectureId === lecture.id);
+                        {courses.map((course) => {
+                          const childSessions = sessions.filter(s => s.courseId === course.id);
                           return (
                             <div
-                              key={lecture.id}
+                              key={course.id}
                               className="grid gap-2 border border-border/30 bg-primary/5 p-4 rounded-3xl transition-all duration-200"
                               onDragOver={(e) => {
                                 e.preventDefault();
@@ -418,9 +423,9 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                                 e.preventDefault();
                                 e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
                                 const sessionId = e.dataTransfer.getData("text/plain");
-                                if (sessionId && sessionId !== lecture.id) {
+                                if (sessionId && sessionId !== course.id) {
                                   try {
-                                    await moveSession(sessionId, lecture.id);
+                                    await moveSession(sessionId, course.id);
                                     loadSessions(); // refresh the list
                                   } catch (err: any) {
                                     // A-3: use toast instead of alert()
@@ -430,17 +435,17 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                               }}
                             >
                               <div className="flex items-center justify-between pl-2">
-                                <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleLecture(lecture.id)}>
+                                <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleCourse(course.id)}>
                                   <div className="text-muted-foreground hover:text-foreground transition-colors p-1 -ml-1 rounded-md hover:bg-foreground/5">
-                                    {collapsedLectures.has(lecture.id) ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                                    {collapsedCourses.has(course.id) ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                                   </div>
                                   <div>
-                                    <h4 className="font-display font-semibold text-foreground text-lg hover:underline decoration-primary/30 decoration-2 underline-offset-4">{lecture.title || "Untitled Lecture"}</h4>
-                                    <p className="text-sm text-muted-foreground font-body">Created {formatRelativeTime(lecture.createdAt)} • {childSessions.length} {childSessions.length === 1 ? 'session' : 'sessions'}</p>
+                                    <h4 className="font-display font-semibold text-foreground text-lg hover:underline decoration-primary/30 decoration-2 underline-offset-4">{course.title || "Untitled Course"}</h4>
+                                    <p className="text-sm text-muted-foreground font-body">Created {formatRelativeTime(course.createdAt)} • {childSessions.length} {childSessions.length === 1 ? 'session' : 'sessions'}</p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Button variant="outline" size="sm" onClick={() => onNewSessionFromLecture(lecture.id)} className="gap-2 bg-background">
+                                  <Button variant="outline" size="sm" onClick={() => onNewSessionFromCourse(course.id)} className="gap-2 bg-background">
                                     <Plus className="h-3 w-3" /> Add Session
                                   </Button>
                                   <DropdownMenu>
@@ -450,23 +455,23 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-56 font-body">
-                                      <DropdownMenuItem onClick={(e) => handleRenameClick(e as any, lecture.id, lecture.title || "Untitled Lecture")}>
+                                      <DropdownMenuItem onClick={(e) => handleRenameClick(e as any, course.id, course.title || "Untitled Course")}>
                                         <Pencil className="mr-2 h-4 w-4" /><span>Rename</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => onResumeSession(lecture.id)}>
+                                      <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
                                         <FileEdit className="mr-2 h-4 w-4" /><span>Edit session settings</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={(e) => handleExportLectureZip(e as any, lecture.id)}>
+                                      <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id)}>
                                         <Presentation className="mr-2 h-4 w-4" /><span>Export all materials (.zip)</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, lecture.id, "LECTURE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                        <Trash2 className="mr-2 h-4 w-4" /><span>Delete Lecture</span>
+                                      <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, course.id, "COURSE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                        <Trash2 className="mr-2 h-4 w-4" /><span>Delete Course</span>
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>
                               </div>
-                              {!collapsedLectures.has(lecture.id) && childSessions.length > 0 && (
+                              {!collapsedCourses.has(course.id) && childSessions.length > 0 && (
                                 <div className="grid gap-2 mt-2">
                                   {childSessions.map(s => renderSessionCard(s, true))}
                                 </div>
@@ -480,7 +485,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
                   {standaloneSessions.length > 0 && (
                     <div className="space-y-3">
-                      {lectures.length > 0 && (
+                      {courses.length > 0 && (
                         <h3 className="font-display font-semibold text-lg text-foreground flex items-center gap-2 pt-4">
                           <FileText className="h-5 w-5 text-muted-foreground" /> Standalone Sessions
                         </h3>
@@ -503,12 +508,12 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deletingItem?.type === "LECTURE" ? (() => {
+              {deletingItem?.type === "COURSE" ? (() => {
                 // C-1: show child session names so user knows what they're deleting
-                const children = sessions.filter(s => s.lectureId === deletingItem.id);
+                const children = sessions.filter(s => s.courseId === deletingItem.id);
                 return (
                   <>
-                    This action cannot be undone. This will permanently delete the lecture
+                    This action cannot be undone. This will permanently delete the course
                     {children.length > 0 ? (
                       <> and its <strong>{children.length} {children.length === 1 ? "session" : "sessions"}</strong>: {children.map(c => c.title || "Untitled").join(", ")}.</>
                     ) : (

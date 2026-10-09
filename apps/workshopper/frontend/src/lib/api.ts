@@ -91,9 +91,6 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 /** Step 1: Generate initial learning goal drafts from user input */
-export function generatePlan(input: WorkshopInput): Promise<LearningGoalPlan[]> {
-  return post<LearningGoalPlan[]>("/workshop/plan", input);
-}
 
 /** Step 3: Generate the full session timetable from goals + activities */
 export function generateSession(
@@ -124,8 +121,7 @@ export async function saveDraft(
   draft: DraftState,
   sessionId: string | null,
   currentStep: string,
-  type?: "SESSION" | "LECTURE",
-  lectureId?: string
+  courseId?: string
 ): Promise<string> {
   const title = draft.session?.title ?? draft.workshopInput?.title ?? (draft.workshopInput?.sessionType
     ? `${draft.workshopInput.sessionType.charAt(0).toUpperCase() + draft.workshopInput.sessionType.slice(1)} Session`
@@ -141,8 +137,7 @@ export async function saveDraft(
     title,
     learningGoal,
     draftStateJson: JSON.stringify(draft),
-    type,
-    lectureId
+    courseId
   };
 
   const res = await post<{ id: string }>("/workshop/sessions/draft", body);
@@ -164,9 +159,9 @@ export function renameSession(id: string, title: string): Promise<void> {
   return put<void>(`/workshop/sessions/${id}/rename`, { title });
 }
 
-/** Move a session to a lecture */
-export function moveSession(id: string, lectureId: string): Promise<void> {
-  return put<void>(`/workshop/sessions/${id}/move`, { lectureId });
+/** Move a session to a course */
+export function moveSession(id: string, courseId: string): Promise<void> {
+  return put<void>(`/workshop/sessions/${id}/move`, { courseId });
 }
 
 /** Reorder sessions */
@@ -220,17 +215,58 @@ export async function downloadPptx(id: string): Promise<void> {
   saveAs(blob, `slides-${id}.pptx`);
 }
 
-/** Download ZIP of all Lecture Sessions */
-export async function downloadLectureZip(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/workshop/export/lecture/${id}/zip`, {
+/** Download ZIP of all Course Sessions */
+export async function downloadCourseZip(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/workshop/export/course/${id}/zip`, {
     method: "GET",
   });
   if (!res.ok) throw new Error("ZIP export failed");
   const blob = await res.blob();
-  saveAs(blob, `lecture-${id}.zip`);
+  saveAs(blob, `course-${id}.zip`);
 }
 
 /** Fetch currently authenticated user */
 export function getCurrentUser(): Promise<{ id: string }> {
   return get<{ id: string }>("/workshop/me");
+}
+
+/** Fetch all courses */
+export function listCourses(): Promise<SessionSummary[]> {
+  return get<SessionSummary[]>("/workshop/courses");
+}
+
+/** Save a course draft */
+export async function saveCourseDraft(
+  draft: DraftState,
+  sessionId: string | null,
+  currentStep: string
+): Promise<string> {
+  const title = draft.session?.title ?? draft.workshopInput?.title ?? "Workshop Course";
+  const body = {
+    sessionId: sessionId ?? undefined,
+    currentStep,
+    title,
+    draftStateJson: JSON.stringify(draft)
+  };
+  const res = await post<{ id: string }>("/workshop/courses/draft", body);
+  return res.id;
+}
+
+/** Delete a course */
+export function deleteCourse(id: string): Promise<void> {
+  return del<void>(`/workshop/courses/${id}`);
+}
+
+export function getCourseDetail(id: string): Promise<SessionDetail> {
+  return get<SessionDetail>(`/workshop/courses/${id}`);
+}
+
+export async function uploadCourseTemplate(courseId: string, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append('template', file);
+  const res = await fetch(`${API_BASE}/workshop/courses/${courseId}/template`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Upload failed");
 }

@@ -36,7 +36,6 @@ interface Props {
     participants?: number;
     sessionType?: string;
     studentBackground?: string;
-    interactionLevel?: string;
   };
   onBack: () => void;
   onContinue: (goals: LearningGoalPlan[]) => void;

@@ -14,6 +14,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
+import com.workshopper.model.CourseEntity;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -33,6 +36,12 @@ public class WorkshopSessionFacadeSecurityTest {
 
     @Mock
     private WorkshopSessionRepository repo;
+
+    @Mock
+    private com.workshopper.repository.CourseRepository courseRepo;
+
+    @Mock
+    private com.workshopper.repository.SlideTemplateRepository slideTemplateRepo;
 
     @Mock
     private GenerateTimetableUseCase generateTimetableUseCase;
@@ -57,6 +66,22 @@ public class WorkshopSessionFacadeSecurityTest {
         } catch (Exception ignored) {}
     }
 
+
+    @Test
+    public void verifyOwnership_shouldThrow_whenCourseBelongsToAnotherUser() {
+        CourseEntity course = new CourseEntity();
+        course.setId("course-1"); course.setOwnerId("user-A");
+        when(courseRepo.findById("course-1")).thenReturn(Optional.of(course));
+        assertThrows(AccessDeniedException.class, () -> facade.verifyOwnership("course-1"));
+    }
+
+    @Test
+    public void verifyOwnership_shouldAllow_whenCourseBelongsToCurrentUser() {
+        CourseEntity course = new CourseEntity();
+        course.setId("course-1"); course.setOwnerId("user-B");
+        when(courseRepo.findById("course-1")).thenReturn(Optional.of(course));
+        assertDoesNotThrow(() -> facade.verifyOwnership("course-1"));
+    }
     @Test
     public void generateAndSaveSession_shouldThrowAccessDenied_whenSessionBelongsToAnotherUser() {
         // Arrange: session in DB belongs to "user-A"
@@ -68,7 +93,7 @@ public class WorkshopSessionFacadeSecurityTest {
         when(repo.findById(sessionId)).thenReturn(Optional.of(mockEntity));
 
         SessionSkeletonDto skeleton = new SessionSkeletonDto("Goal", List.of(), List.of(), sessionId);
-        WorkshopInputDto meta = new WorkshopInputDto("Title", List.of(), 60, 20, "workshop", "", "", "", "", "", List.of(), "");
+        WorkshopInputDto meta = new WorkshopInputDto("Title", List.of(), 60, 20, "workshop", "", "", List.of(), "");
         GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, "{}", skeleton);
 
         // Act & Assert: "user-B" cannot generate-and-save on "user-A"'s session

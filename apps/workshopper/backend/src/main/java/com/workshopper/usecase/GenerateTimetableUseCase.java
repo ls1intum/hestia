@@ -36,8 +36,25 @@ public class GenerateTimetableUseCase {
 
         StringBuilder goalsStr = new StringBuilder();
         if (goals != null) {
+            goalsStr.append("For each learning goal below: match the complexity of generated content and activities to its Bloom's/SOLO level; ")
+                    .append("use its listed prerequisite concepts as the core content to teach during that goal's Inform phase; ")
+                    .append("treat its suggested activity as a starting point for that goal's Process/Practice activity, adapted to fit the session's selected activity types and materials.\n\n");
             for (int i = 0; i < goals.size(); i++) {
-                goalsStr.append("Goal ").append(i + 1).append(": ").append(goals.get(i).goal()).append("\n");
+                var g = goals.get(i);
+                goalsStr.append("Goal ").append(i + 1).append(": ").append(g.goal());
+                if (g.bloomLevel() != null && !g.bloomLevel().isBlank()) {
+                    goalsStr.append(" [Bloom's Level: ").append(g.bloomLevel()).append("]");
+                }
+                if (g.soloLevel() != null && !g.soloLevel().isBlank()) {
+                    goalsStr.append(" [Target SOLO Level: ").append(g.soloLevel()).append("]");
+                }
+                goalsStr.append("\n");
+                if (g.prerequisites() != null && !g.prerequisites().isEmpty()) {
+                    goalsStr.append("  Content to teach: ").append(String.join("; ", g.prerequisites())).append("\n");
+                }
+                if (g.achieveActivities() != null && !g.achieveActivities().isEmpty()) {
+                    goalsStr.append("  Suggested learning-cycle activity: ").append(String.join("; ", g.achieveActivities())).append("\n");
+                }
             }
         }
         String goalsString = goalsStr.toString();
@@ -99,7 +116,6 @@ public class GenerateTimetableUseCase {
                 title,
                 input.learningGoals() != null && !input.learningGoals().isEmpty() ? input.learningGoals().get(0) : "",
                 input.studentBackground(),
-                null,
                 generatedBlocks,
                 null,
                 null
@@ -114,18 +130,16 @@ public class GenerateTimetableUseCase {
         var evaluateMappingStr = new StringBuilder();
         var evaluateMappings = meta.evaluateMappings();
 
-        if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals.size() > 0 && goals.size() <= 2) {
-            java.util.List<String> fallbacks = java.util.List.of("Quiz", "Think-Pair-Share");
-            java.util.List<String> avail = (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty()) 
-                    ? meta.selectedActivities() 
-                    : fallbacks;
-            
+        if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals != null && !goals.isEmpty()) {
             evaluateMappings = new java.util.ArrayList<>();
             for (int i = 0; i < goals.size(); i++) {
-                evaluateMappings.add(new com.workshopper.dto.EvaluateMappingDto(
-                    avail.get(i % avail.size()), 
-                    java.util.List.of(goals.get(i).id())
-                ));
+                var g = goals.get(i);
+                String method = (g.assessActivities() != null && !g.assessActivities().isEmpty())
+                        ? g.assessActivities().get(0)
+                        : (meta.selectedActivities() != null && !meta.selectedActivities().isEmpty()
+                                ? meta.selectedActivities().get(i % meta.selectedActivities().size())
+                                : "Quiz"); // last-resort only, no longer the default path
+                evaluateMappings.add(new com.workshopper.dto.EvaluateMappingDto(method, java.util.List.of(g.id())));
             }
         }
 

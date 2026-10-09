@@ -6,8 +6,6 @@ Workshop details:
 - Provided learning goals:
 {learningGoals}
 
-Source document (use to extract learning goals):
-{sourceDocument}
 
 Return 2–5 goals. Use verb-object format for goal statements (Bloom's taxonomy verbs preferred).
 Always set priority to 0. Leave achieveActivities and assessActivities empty.

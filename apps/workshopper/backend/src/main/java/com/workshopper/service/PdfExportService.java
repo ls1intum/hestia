@@ -60,11 +60,6 @@ public class PdfExportService {
                 renderer.addText(session.learningGoal(), 12, false);
                 renderer.addSpace(10);
             }
-            if (session.prerequisites() != null && !session.prerequisites().isBlank()) {
-                renderer.addText("Prerequisites:", 13, true);
-                renderer.addText(session.prerequisites(), 12, false);
-                renderer.addSpace(10);
-            }
             renderer.addSpace(10);
 
             // --- 2. Overall Time Table ---

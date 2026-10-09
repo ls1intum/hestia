@@ -8,7 +8,6 @@ export type SessionType =
   | "practical"
   | "other";
 
-export type InteractionLevel = "minimal" | "moderate" | "high";
 
 /** Form payload sent to the backend */
 export interface WorkshopInput {
@@ -19,9 +18,6 @@ export interface WorkshopInput {
   sessionType: SessionType;
   sessionTypeOther?: string;
   studentBackground?: string;
-  prerequisites?: string;
-  sourceDocument?: string;
-  interactionLevel?: InteractionLevel;
   selectedActivities?: string[];
   availableMaterials?: string[];
   evaluateMappings?: { method: string; lgIds: string[] }[];
@@ -121,7 +117,6 @@ export interface WorkshopSession {
   title?: string;
   learningGoal: string;
   studentBackground?: string;
-  prerequisites?: string;
   blocks: ActivityBlock[];
   /** Goals omitted by the LLM because there was not enough time to cover them. */
   omittedGoals?: string[];
@@ -164,8 +159,7 @@ export interface SessionSummary {
   learningGoal?: string;
   status: "draft" | "complete";
   currentStep?: string;
-  type?: "SESSION" | "LECTURE";
-  lectureId?: string;
+  courseId?: string;
   /** May be an ISO string or a Java-serialized array [year, month, day, hour, minute, second] */
   createdAt: unknown;
   updatedAt: unknown;
@@ -177,8 +171,7 @@ export interface SessionDetail {
   title: string;
   status: "draft" | "complete";
   currentStep?: string;
-  type?: "SESSION" | "LECTURE";
-  lectureId?: string;
+  courseId?: string;
   draftStateJson?: string;
   session?: WorkshopSession;
 }

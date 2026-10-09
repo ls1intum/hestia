@@ -86,8 +86,7 @@ public class LlmService {
                        "duration", input.duration(),
                        "participants", input.participants(),
                        "studentBackground", input.studentBackground() != null ? input.studentBackground() : "",
-                       "learningGoals", learningGoalsList != null ? learningGoalsList : "",
-                       "sourceDocument", documentContext != null ? documentContext : ""),
+                       "learningGoals", learningGoalsList != null ? learningGoalsList : ""),
                 converter, false);
     }
     
@@ -101,14 +100,6 @@ public class LlmService {
                 converter, false);
     }
     
-    public List<String> extractGoalsFromDocument(String sessionType, String studentBackground, String documentText) {
-        BeanOutputConverter<List<String>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<String>>() {});
-        return callWithStructuredOutput("extract-goals-system", "extract-goals-user",
-                Map.of("sessionType", sessionType,
-                       "studentBackground", studentBackground != null ? studentBackground : "",
-                       "document", documentText != null ? documentText : ""),
-                converter, false);
-    }
     
     public List<String> fixGoalsGrammar(List<String> goals) {
         BeanOutputConverter<List<String>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<String>>() {});
@@ -141,7 +132,6 @@ public class LlmService {
                        java.util.Map.entry("sessionType", sessionTypeLabel),
                        java.util.Map.entry("duration", meta.duration()),
                        java.util.Map.entry("participants", meta.participants()),
-                       java.util.Map.entry("interactionLevel", meta.interactionLevel() != null ? meta.interactionLevel() : ""),
                        java.util.Map.entry("studentBackground", meta.studentBackground() != null ? meta.studentBackground() : ""),
                        java.util.Map.entry("selectedActivities", selectedActivitiesStr != null ? selectedActivitiesStr : ""),
                        java.util.Map.entry("learningGoals", learningGoalsStr != null ? learningGoalsStr : ""),

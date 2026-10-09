@@ -9,7 +9,6 @@ public record WorkshopSessionDto(
         String title,
         String learningGoal,
         String studentBackground,
-        String prerequisites,
         List<ActivityBlockDto> blocks,
         /** Goals that were omitted because there was genuinely not enough time to cover them. May be null or empty. */
         List<String> omittedGoals,

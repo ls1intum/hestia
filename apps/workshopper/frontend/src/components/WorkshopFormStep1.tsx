@@ -11,8 +11,8 @@ interface Props {
   onNext: (input: Partial<WorkshopInput>) => void;
   isLoading?: boolean;
   initialInput?: Partial<WorkshopInput>;
-  entityType?: "SESSION" | "LECTURE";
-  /** N-4: when provided, renders a Back button (used when editing lecture session settings) */
+  entityType?: "SESSION" | "COURSE";
+  /** N-4: when provided, renders a Back button (used when editing course session settings) */
   onBack?: () => void;
 }
 
@@ -21,7 +21,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
   const [title, setTitle] = useState(initialInput?.title ?? "");
   const [duration, setDuration] = useState<number | "">(initialInput?.duration ?? 90);
   const [participants, setParticipants] = useState<number | "">(initialInput?.participants ?? 50);
-  const [sessionType, setSessionType] = useState<SessionType>((initialInput?.sessionType as SessionType) ?? "lecture");
+  const [sessionType, setSessionType] = useState<SessionType>((initialInput?.sessionType as SessionType) ?? "course");
   const [sessionTypeOther, setSessionTypeOther] = useState(initialInput?.sessionTypeOther ?? "");
   const [studentBackground, setStudentBackground] = useState(initialInput?.studentBackground ?? "");
 
@@ -48,7 +48,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
   };
 
   // I-1: require at least 10 minutes so the AI can produce a meaningful timetable
-  const canSubmit = !isLoading && Number(duration) >= 10 && (entityType !== "LECTURE" || title.trim() !== "");
+  const canSubmit = !isLoading && Number(duration) >= 10 && (entityType !== "COURSE" || title.trim() !== "");
 
   return (
     <Card className="border-border/60 shadow-lg">
@@ -60,19 +60,19 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title — required for lectures, optional for sessions */}
+          {/* Title — required for courses, optional for sessions */}
           <div className="space-y-2">
             <Label htmlFor="title" className="font-body font-medium">
-              {entityType === "LECTURE" ? "Lecture Title" : "Session Title"}
+              {entityType === "COURSE" ? "Course Title" : "Session Title"}
               {entityType === "SESSION" && <span className="text-muted-foreground font-normal"> (optional)</span>}
             </Label>
             <Input
               id="title"
-              placeholder={entityType === "LECTURE" ? "e.g. Introduction to Machine Learning" : "e.g. Week 3 — Regression Analysis"}
+              placeholder={entityType === "COURSE" ? "e.g. Introduction to Machine Learning" : "e.g. Week 3 — Regression Analysis"}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={isLoading}
-              required={entityType === "LECTURE"}
+              required={entityType === "COURSE"}
               maxLength={200}
             />
           </div>
@@ -85,7 +85,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
                 <SelectValue placeholder="Select a session type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lecture">Lecture</SelectItem>
+                <SelectItem value="course">Course</SelectItem>
                 <SelectItem value="workshop">Workshop</SelectItem>
                 <SelectItem value="exercise">Exercise session</SelectItem>
                 <SelectItem value="seminar">Seminar</SelectItem>
@@ -169,7 +169,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
           )}
 
           <div className="flex justify-between pt-2">
-            {/* N-4: back button when in lecture-session editing mode */}
+            {/* N-4: back button when in course-session editing mode */}
             {onBack ? (
               <Button type="button" variant="outline" onClick={onBack} disabled={isLoading} className="gap-2 font-body">
                 <ArrowLeft className="h-4 w-4" /> Back

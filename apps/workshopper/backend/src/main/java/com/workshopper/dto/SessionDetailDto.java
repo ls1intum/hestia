@@ -1,7 +1,6 @@
 package com.workshopper.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import java.util.List;
 
 /**
  * Full session detail including the draft state JSON blob for resumption.
@@ -13,8 +12,7 @@ public record SessionDetailDto(
         String title,
         String status,
         String currentStep,
-        String type,
-        String lectureId,
+        String courseId,
         /** Draft state blob (opaque JSON string for the frontend to parse) */
         String draftStateJson,
         /** Only populated when status == "complete" */

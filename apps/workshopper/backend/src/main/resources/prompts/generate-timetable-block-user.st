@@ -2,7 +2,6 @@ SESSION CONTEXT:
 - Type: {sessionType}
 - Total duration: {duration} minutes
 - Participants: {participants}
-- Interaction level: {interactionLevel}
 - Student background: {studentBackground}
 
 SELECTED ACTIVITIES (permitted methods): {selectedActivities}
