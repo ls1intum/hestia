@@ -23,6 +23,9 @@ export function SiteHeader() {
           <a href="#material" className="text-sm font-medium text-hestia-text-muted hover:text-hestia-text">
             {t.header.donate}
           </a>
+          <a href="/workshopper/saml2/authenticate/tum" className="text-sm font-semibold text-hestia-primary hover:text-hestia-primary-hover bg-hestia-primary-muted px-3 py-1 rounded-full">
+            Login
+          </a>
           <div
             role="group"
             aria-label={t.header.languageGroup}

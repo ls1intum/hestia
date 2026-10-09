@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
+import de.tum.cit.hestia.learninggoalhub.exam.SubmittedExamBlock;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -33,6 +34,10 @@ public class LearningGoal {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    /** The generated wording, kept on the first rename; null while the goal was never renamed. */
+    @Column(name = "original_text", columnDefinition = "TEXT")
+    private String originalText;
+
     @Column(name = "short_label", columnDefinition = "TEXT")
     private String shortLabel;
 
@@ -59,6 +64,11 @@ public class LearningGoal {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hierarchy_node_id")
     private HierarchyNode hierarchyNode;
+
+    /** The exam task an EXAM goal was derived from; null for every other goal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exam_block_id")
+    private SubmittedExamBlock examBlock;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "bloom_level", length = 32)
@@ -103,6 +113,14 @@ public class LearningGoal {
 
     public void setText(String text) {
         this.text = text;
+    }
+
+    public String getOriginalText() {
+        return originalText;
+    }
+
+    public void setOriginalText(String originalText) {
+        this.originalText = originalText;
     }
 
     public String getShortLabel() {
@@ -155,6 +173,14 @@ public class LearningGoal {
 
     public void setHierarchyNode(HierarchyNode hierarchyNode) {
         this.hierarchyNode = hierarchyNode;
+    }
+
+    public SubmittedExamBlock getExamBlock() {
+        return examBlock;
+    }
+
+    public void setExamBlock(SubmittedExamBlock examBlock) {
+        this.examBlock = examBlock;
     }
 
     public BloomLevel getBloomLevel() {

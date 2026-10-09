@@ -11,6 +11,7 @@ import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
+import de.tum.cit.hestia.learninggoalhub.exam.SubmittedExamBlock;
 import de.tum.cit.hestia.learninggoalhub.extraction.SkillSuggestionSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
@@ -650,6 +651,12 @@ public class LearningGoalController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
             }
             if (!text.equals(goal.getText())) {
+                // Keep the generated wording on the first rename. An instructor's own goal has no
+                // generated wording to keep.
+                if (goal.getOriginalText() == null
+                        && goal.getCreationProvenance() != GoalCreationProvenance.USER_CREATED) {
+                    goal.setOriginalText(goal.getText());
+                }
                 goal.setText(text);
                 goal.setShortLabel(null);
                 // The embedding was computed from the old wording; drop it rather than keep a stale one.
@@ -871,6 +878,7 @@ public class LearningGoalController {
 
     public record LearningGoalResponse(Long id,
                                        String text,
+                                       String originalText,
                                        String shortLabel,
                                        GoalKind kind,
                                        GoalRole role,
@@ -883,7 +891,8 @@ public class LearningGoalController {
                                        Integer lectureOrder,
                                        OffsetDateTime createdAt,
                                        List<GoalSourceResponse> sources,
-                                       List<GoalRelationshipResponse> relationships) {
+                                       List<GoalRelationshipResponse> relationships,
+                                       @Schema(nullable = true) ExamTaskResponse examTask) {
         public static LearningGoalResponse from(LearningGoal g,
                                                 List<GoalSourceResponse> sources,
                                                 List<GoalRelationshipResponse> relationships) {
@@ -893,6 +902,7 @@ public class LearningGoalController {
             return new LearningGoalResponse(
                     g.getId(),
                     g.getText(),
+                    g.getOriginalText(),
                     g.getShortLabel(),
                     g.getKind(),
                     g.getRole(),
@@ -905,7 +915,22 @@ public class LearningGoalController {
                     g.getLectureOrder(),
                     g.getCreatedAt(),
                     sources,
-                    relationships);
+                    relationships,
+                    g.getExamBlock() == null ? null : ExamTaskResponse.from(g.getExamBlock()));
+        }
+    }
+
+    /**
+     * The exam task an exam goal was derived from. {@code submittedAt} tells submissions apart: the
+     * consumer sends no exam name, so each request to the exam-goal endpoint is its own exam.
+     */
+    public record ExamTaskResponse(Long submissionId, OffsetDateTime submittedAt, Integer taskNumber,
+                                   @Schema(nullable = true) String taskType,
+                                   String text,
+                                   @Schema(nullable = true) String context) {
+        static ExamTaskResponse from(SubmittedExamBlock block) {
+            return new ExamTaskResponse(block.getSubmission().getId(), block.getSubmission().getCreatedAt(),
+                    block.getTaskNumber(), block.getTaskType(), block.getDescription(), block.getContext());
         }
     }
 

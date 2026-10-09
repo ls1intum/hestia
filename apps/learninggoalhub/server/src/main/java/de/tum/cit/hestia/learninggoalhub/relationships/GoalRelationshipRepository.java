@@ -21,5 +21,9 @@ public interface GoalRelationshipRepository extends JpaRepository<GoalRelationsh
     @Query("select r from GoalRelationship r join fetch r.target where r.source.id in :sourceIds")
     List<GoalRelationship> findBySourceIdInWithTarget(@Param("sourceIds") Collection<Long> sourceIds);
 
+    /** Loads relationships into the given target goals with their source goal fetched eagerly. */
+    @Query("select r from GoalRelationship r join fetch r.source where r.target.id in :targetIds")
+    List<GoalRelationship> findByTargetIdInWithSource(@Param("targetIds") Collection<Long> targetIds);
+
     boolean existsBySourceIdAndTargetIdAndType(Long sourceId, Long targetId, RelationshipType type);
 }

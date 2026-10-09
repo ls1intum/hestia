@@ -25,13 +25,15 @@ export class ApiError extends Error {
  * Handles common auth errors globally. 
  * Throws the error onward if it's not auth-related so the caller can handle it.
  */
-export function handleAuthError(err: unknown): boolean {
+export function handleAuthError(err: unknown, autoRedirect = true): boolean {
   if (err && typeof err === 'object' && 'status' in err) {
     if (err.status === 401) {
-      console.warn("401 Unauthorized: Redirecting to SAML login");
-      // Use BASE_URL (e.g. /workshopper/) and append saml2 path
-      // Note: Central IT SAML ACS endpoint configuration must match this domain
-      window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum";
+      if (autoRedirect) {
+        console.warn("401 Unauthorized: Redirecting to SAML login");
+        // Use BASE_URL (e.g. /workshopper/) and append saml2 path
+        // Note: Central IT SAML ACS endpoint configuration must match this domain
+        window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum";
+      }
       return true;
     }
     if (err.status === 403) {

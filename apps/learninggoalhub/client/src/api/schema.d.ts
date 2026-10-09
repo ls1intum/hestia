@@ -459,6 +459,7 @@ export interface components {
             /** Format: int64 */
             id?: number;
             text?: string;
+            originalText?: string;
             shortLabel?: string;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";
@@ -481,6 +482,7 @@ export interface components {
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
             /** Format: int32 */
             lectureOrder?: number;
+            examTask?: components["schemas"]["ExamTaskResponse"];
         };
         AddChildRequest: {
             text?: string;
@@ -606,6 +608,8 @@ export interface components {
             documentCount?: number;
             /** Format: int64 */
             goalCount?: number;
+            /** Format: int64 */
+            topicCount?: number;
             /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
@@ -744,6 +748,17 @@ export interface components {
         };
         TopicRequest: {
             text?: string;
+        };
+        ExamTaskResponse: {
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int32 */
+            taskNumber?: number;
+            taskType?: string | null;
+            text?: string;
+            context?: string | null;
         };
     };
     responses: never;

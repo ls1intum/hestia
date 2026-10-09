@@ -15,6 +15,7 @@ import iconLight from "../assets/logos/icon-light.svg";
 import iconDark from "../assets/logos/icon-dark.svg";
 import Button from "./Button.tsx";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import { RenameField, RowAction } from "./GoalInlineEditing.tsx";
 import TopicSearchDialog from "./TopicSearchDialog.tsx";
 
 type Props = {
@@ -51,9 +52,11 @@ export default function ExtractionProgressModal({
   // The topic or skill whose dismissal waits for a second click, and the topics folded open. Topics
   // start folded shut, so the review opens on the course's outline.
   const [confirmingGoal, setConfirmingGoal] = useState<number | null>(null);
+  // The skill whose name is being edited in place.
+  const [renamingGoal, setRenamingGoal] = useState<number | null>(null);
   const [expandedTopics, setExpandedTopics] = useState<Set<number>>(() => new Set());
-  // The wording of a topic being added, or null while the add field is closed.
-  const [newTopic, setNewTopic] = useState<string | null>(null);
+  // The wording of a topic being added.
+  const [newTopic, setNewTopic] = useState("");
   // The typed topic being looked up in the slides, over the review.
   const [findingTopic, setFindingTopic] = useState<string | null>(null);
   const treeOnlyRetry = status?.status === "FAILED"
@@ -116,7 +119,8 @@ export default function ExtractionProgressModal({
   useEffect(() => {
     if (!open) {
       setConfirmingGoal(null);
-      setNewTopic(null);
+      setRenamingGoal(null);
+      setNewTopic("");
       retryMutation.reset();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- reset modal-local mutations on close
@@ -132,9 +136,8 @@ export default function ExtractionProgressModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, reviewLocked, onClose]);
 
-  // The review only triages: accept or dismiss. Renaming and adding happen afterwards in the table,
-  // so "accepted" keeps one meaning — the generated item was right as it stood. Accepting flips the
-  // goal out of PENDING; dismissing has no state of its own, the item is deleted.
+  // The review triages: accept, rename or dismiss. Accepting flips the goal out of PENDING;
+  // dismissing has no state of its own, the item is deleted.
   const approveMutation = useMutation({
     mutationFn: async (vars: { goalId: number; approved: boolean }) => {
       const { error: updateError } = await api.PATCH(
@@ -145,6 +148,23 @@ export default function ExtractionProgressModal({
         },
       );
       if (updateError) throw new Error("Could not update the skill.");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+  });
+
+  // Renaming a skill accepts it in its new wording; a topic is renamed only, it is never accepted.
+  // The server keeps the generated wording on the first rename, so the evaluation still tells a
+  // reworded item from one accepted as it stood.
+  const renameMutation = useMutation({
+    mutationFn: async (vars: { goalId: number; text: string; accept: boolean }) => {
+      const { error: updateError } = await api.PATCH(
+        "/api/courses/{courseId}/learning-goals/{goalId}",
+        {
+          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
+          body: vars.accept ? { text: vars.text, status: "APPROVED" } : { text: vars.text },
+        },
+      );
+      if (updateError) throw new Error("Could not rename it.");
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
   });
@@ -190,7 +210,7 @@ export default function ExtractionProgressModal({
     mutationFn: (vars: { text: string; generate: boolean }) =>
       createTopic(courseId as number, vars.text, vars.generate),
     onSuccess: async (topic) => {
-      setNewTopic(null);
+      setNewTopic("");
       const topicId = topic.id;
       if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
@@ -199,7 +219,7 @@ export default function ExtractionProgressModal({
     },
   });
   const submitNewTopic = (generate: boolean) => {
-    const text = (newTopic ?? "").trim();
+    const text = newTopic.trim();
     if (text !== "") createTopicMutation.mutate({ text, generate });
   };
 
@@ -228,7 +248,7 @@ export default function ExtractionProgressModal({
       ? "Analysis failed"
       : "Analyzing course materials";
   const subtitle = done
-    ? "Accept or dismiss each skill we extracted, grouped by topic."
+    ? "Accept, rename or dismiss each skill we extracted, grouped by topic."
     : failed
       ? null
       : "This runs once per upload. You can review and adjust everything afterwards.";
@@ -378,9 +398,9 @@ export default function ExtractionProgressModal({
                       </span>
                     )}
                   </div>
-                  {/* Sized to the window: the title, the band, "Add topic" and the footer take about
-                      20rem around it, so the card ends just above the window's bottom edge. */}
-                  <div className="max-h-[calc(100vh-20rem)] min-h-40 overflow-y-auto">
+                  {/* Sized to the window: the title, the band, the add-topic field and the footer take about
+                      22rem around it, so the card ends just above the window's bottom edge. */}
+                  <div className="max-h-[calc(100vh-22rem)] min-h-40 overflow-y-auto">
                     {goalsQuery.isLoading && (
                       <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
                         Loading skills…
@@ -447,6 +467,17 @@ export default function ExtractionProgressModal({
                                 onConfirmDismiss={() => {
                                   if (topicId != null) deleteGoalMutation.mutate(topicId);
                                 }}
+                                renaming={topicId != null && renamingGoal === topicId}
+                                onStartRename={() => {
+                                  renameMutation.reset();
+                                  setRenamingGoal(topicId ?? null);
+                                }}
+                                onRename={(text) => {
+                                  setRenamingGoal(null);
+                                  if (text != null && topicId != null) {
+                                    renameMutation.mutate({ goalId: topicId, text, accept: false });
+                                  }
+                                }}
                               />
                               {expanded && (
                                 <ul className="border-t border-hestia-border/60">
@@ -466,6 +497,23 @@ export default function ExtractionProgressModal({
                                         deleteGoalMutation.isPending
                                         && deleteGoalMutation.variables === skill.goal.id
                                       }
+                                      renaming={
+                                        skill.goal.id != null && renamingGoal === skill.goal.id
+                                      }
+                                      onStartRename={() => {
+                                        renameMutation.reset();
+                                        setRenamingGoal(skill.goal.id ?? null);
+                                      }}
+                                      onRename={(text) => {
+                                        setRenamingGoal(null);
+                                        if (text != null && skill.goal.id != null) {
+                                          renameMutation.mutate({
+                                            goalId: skill.goal.id,
+                                            text,
+                                            accept: true,
+                                          });
+                                        }
+                                      }}
                                       onAccept={(approved) => {
                                         if (skill.goal.id != null) {
                                           approveMutation.mutate({ goalId: skill.goal.id, approved });
@@ -488,59 +536,45 @@ export default function ExtractionProgressModal({
                   </div>
                   {!goalsQuery.isLoading && !goalsQuery.isError && courseId != null && (
                     <div className="border-t border-hestia-border px-4 py-3">
-                      {newTopic != null ? (
-                        <CompetencyCreationField
-                          value={newTopic}
-                          placeholder="Name a topic that is missing…"
-                          error={
-                            createTopicMutation.isError
-                              ? (createTopicMutation.error as Error).message
-                              : undefined
-                          }
-                          pending={createTopicMutation.isPending}
-                          onChange={(value) => {
-                            if (createTopicMutation.isError) createTopicMutation.reset();
-                            setNewTopic(value);
-                          }}
-                          onSubmit={() => submitNewTopic(false)}
-                          onCancel={() => {
-                            if (createTopicMutation.isPending) return;
-                            createTopicMutation.reset();
-                            setNewTopic(null);
-                          }}
-                          onGenerate={() => submitNewTopic(true)}
-                          generating={createTopicMutation.variables?.generate === true}
-                          onFind={() => {
-                            const text = newTopic.trim();
-                            if (text !== "") setFindingTopic(text);
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setNewTopic("")}
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-hestia-primary transition hover:text-hestia-primary-hover"
-                        >
-                          <svg
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            aria-hidden="true"
-                            className="h-4 w-4"
-                          >
-                            <path d="M10 4v12M4 10h12" />
-                          </svg>
-                          Add topic
-                        </button>
-                      )}
+                      {/* Always open, so the three ways in are visible without clicking first. */}
+                      <p className="mb-2 text-sm text-hestia-text-muted">
+                        <span className="font-semibold text-hestia-text">Missing a topic?</span>{" "}
+                        Name it, then add it as is, generate its skills with AI, or find it in the
+                        slides.
+                      </p>
+                      <CompetencyCreationField
+                        value={newTopic}
+                        placeholder="Name a topic that is missing…"
+                        autoFocus={false}
+                        error={
+                          createTopicMutation.isError
+                            ? (createTopicMutation.error as Error).message
+                            : undefined
+                        }
+                        pending={createTopicMutation.isPending}
+                        onChange={(value) => {
+                          if (createTopicMutation.isError) createTopicMutation.reset();
+                          setNewTopic(value);
+                        }}
+                        onSubmit={() => submitNewTopic(false)}
+                        onGenerate={() => submitNewTopic(true)}
+                        generating={createTopicMutation.variables?.generate === true}
+                        onFind={() => {
+                          const text = newTopic.trim();
+                          if (text !== "") setFindingTopic(text);
+                        }}
+                      />
                     </div>
                   )}
                   <div className="flex flex-col gap-3 border-t border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-3">
                   {acceptAllMutation.isError && (
                     <p className="text-sm text-hestia-danger">
                       {(acceptAllMutation.error as Error).message}
+                    </p>
+                  )}
+                  {renameMutation.isError && (
+                    <p className="text-sm text-hestia-danger">
+                      {(renameMutation.error as Error).message}
                     </p>
                   )}
                   {approveMutation.isError && (
@@ -555,7 +589,7 @@ export default function ExtractionProgressModal({
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs text-hestia-text-muted">
-                      Rename or add skills afterwards in the table.
+                      Add sub-skills afterwards in the table.
                     </p>
                     <Button className="h-9" onClick={onClose}>
                       Done
@@ -613,7 +647,7 @@ export default function ExtractionProgressModal({
           onClose={() => setFindingTopic(null)}
           onCreated={(topic) => {
             setFindingTopic(null);
-            setNewTopic(null);
+            setNewTopic("");
             const topicId = topic.id;
             if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
           }}
@@ -626,7 +660,8 @@ export default function ExtractionProgressModal({
 /**
  * A topic's row: its name, how many skills it groups, and what an instructor can do to a topic —
  * accept all of its skills at once, or dismiss it. Dismissing deletes everything beneath the topic
- * with it, so it asks once more in place. Clicking the name folds the group.
+ * with it, so it asks once more in place. Clicking the name folds the group; the pencil renames it
+ * in place, as in the table.
  */
 function TopicHeader({
   topic,
@@ -644,6 +679,9 @@ function TopicHeader({
   onDismiss,
   onCancelDismiss,
   onConfirmDismiss,
+  renaming,
+  onStartRename,
+  onRename,
 }: {
   topic: CompetencyNode;
   /** The topic's lecture-order number, as the table shows it: "3". */
@@ -664,46 +702,68 @@ function TopicHeader({
   onDismiss: () => void;
   onCancelDismiss: () => void;
   onConfirmDismiss: () => void;
+  renaming: boolean;
+  onStartRename: () => void;
+  /** Gets the new name, or null when nothing changed or the edit was dropped. */
+  onRename: (text: string | null) => void;
 }) {
   const groupedSkillWord = groupedSkillCount === 1 ? "1 skill" : `${groupedSkillCount} skills`;
   const countLabel = groupedSkillCount === 0 && subSkillCount > 0
     ? subSkillCount === 1 ? "1 sub-skill" : `${subSkillCount} sub-skills`
     : groupedSkillWord;
 
+  const name = (
+    <>
+      <span
+        aria-hidden="true"
+        className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
+        style={{ backgroundColor: COMPETENCY_ROLE_META.topic.color }}
+      />
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
+          <path d="M7 5l6 5-6 5" />
+        </svg>
+      </span>
+      <span className="flex min-w-0 flex-1 items-center text-sm font-semibold leading-relaxed text-hestia-text">
+        <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
+        {renaming ? (
+          <RenameField text={topic.goal.text ?? ""} onDone={onRename} />
+        ) : (
+          topic.goal.text
+        )}
+        {topic.goal.originalText != null && !renaming && (
+          <span
+            title={`Generated as: ${topic.goal.originalText}`}
+            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+          >
+            Edited
+          </span>
+        )}
+      </span>
+      <span className="shrink-0 tabular-nums text-xs text-hestia-text-muted">{countLabel}</span>
+    </>
+  );
+
   return (
     // The competency table's topic row: the same tint, chevron and coloured rail.
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-[color-mix(in_srgb,var(--hestia-text)_3%,var(--hestia-surface))] px-4 py-2.5">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left"
-      >
-        <span
-          aria-hidden="true"
-          className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
-          style={{ backgroundColor: COMPETENCY_ROLE_META.topic.color }}
-        />
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
-          >
-            <path d="M7 5l6 5-6 5" />
-          </svg>
-        </span>
-        <span className="min-w-0 flex-1 text-sm font-semibold leading-relaxed text-hestia-text">
-          <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
-          {topic.goal.text}
-        </span>
-        <span className="shrink-0 tabular-nums text-xs text-hestia-text-muted">{countLabel}</span>
-      </button>
+    <div className="group flex flex-wrap items-center gap-x-3 gap-y-2 bg-[color-mix(in_srgb,var(--hestia-text)_3%,var(--hestia-surface))] px-4 py-2.5">
+      {/* A field can't sit inside a button, so the row stops folding while it is renamed. */}
+      {renaming ? (
+        <div className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left">{name}</div>
+      ) : (
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left">
+          {name}
+        </button>
+      )}
       {confirming ? (
         <div className="flex shrink-0 items-center gap-1">
           <span className="mr-1 text-xs text-hestia-text-muted">
@@ -718,6 +778,17 @@ function TopicHeader({
         </div>
       ) : (
         <div className="flex shrink-0 items-center gap-1">
+          {!renaming && (
+            <span className="opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+              <RowAction
+                label="Rename this topic"
+                onClick={onStartRename}
+                className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+              >
+                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+              </RowAction>
+            </span>
+          )}
           {skillCount > 0 && (pendingCount > 0 ? (
             // Outlined rather than filled: a gold button on every topic turned the list into a wall
             // of them, and Done is the one filled action here, as on the course page.
@@ -762,7 +833,8 @@ function reviewItemsOf(topic: CompetencyNode): CompetencyNode[] {
 
 /**
  * One skill under its topic, or a sub-skill standing in for a topic without skills: Accept marks it
- * reviewed, Dismiss deletes it after asking once more in place, like a topic.
+ * reviewed, the pencil renames it in place as in the table, Dismiss deletes it after asking once more in
+ * place, like a topic.
  */
 function SkillRow({
   skill,
@@ -770,10 +842,13 @@ function SkillRow({
   accepting,
   confirming,
   dismissing,
+  renaming,
   onAccept,
   onDismiss,
   onCancelDismiss,
   onConfirmDismiss,
+  onStartRename,
+  onRename,
 }: {
   skill: CompetencyNode;
   /**
@@ -788,6 +863,11 @@ function SkillRow({
   onDismiss: () => void;
   onCancelDismiss: () => void;
   onConfirmDismiss: () => void;
+  /** The name is an open field, as in the table; Enter or leaving it saves, Escape cancels. */
+  renaming: boolean;
+  onStartRename: () => void;
+  /** Gets the new name, or null when nothing changed or the edit was dropped. */
+  onRename: (text: string | null) => void;
 }) {
   const approved = skill.goal.status === "APPROVED";
   const noun = COMPETENCY_ROLE_META[skill.role].label.toLowerCase();
@@ -800,7 +880,7 @@ function SkillRow({
       : null;
   return (
     <li
-      className={`flex items-center gap-1 border-t border-hestia-border/60 py-2 pl-4 pr-4 transition-colors first:border-t-0 ${
+      className={`group flex items-center gap-1 border-t border-hestia-border/60 py-2 pl-4 pr-4 transition-colors first:border-t-0 ${
         approved ? "bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]" : ""
       }`}
     >
@@ -816,9 +896,21 @@ function SkillRow({
         style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
       />
       <span className="h-5 w-5 shrink-0" aria-hidden="true" />
-      <span className="mr-2 min-w-0 flex-1 text-[13px] leading-relaxed text-hestia-text">
+      <span className="mr-2 flex min-w-0 flex-1 flex-wrap items-center gap-y-1 text-[13px] leading-relaxed text-hestia-text">
         <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
-        {skill.goal.text}
+        {renaming ? (
+          <RenameField text={skill.goal.text ?? ""} onDone={onRename} />
+        ) : (
+          skill.goal.text
+        )}
+        {skill.goal.originalText != null && !renaming && (
+          <span
+            title={`Generated as: ${skill.goal.originalText}`}
+            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+          >
+            Edited
+          </span>
+        )}
         {skill.role === "skill" && (
           <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-[color-mix(in_srgb,var(--hestia-accent)_50%,var(--hestia-surface))] px-2 align-middle text-xs font-medium text-hestia-accent">
             {COMPETENCY_ROLE_META.skill.label}
@@ -846,6 +938,18 @@ function SkillRow({
         </div>
       ) : (
         <div className="flex shrink-0 items-center gap-1">
+          {!renaming && (
+            // The table's rename action, revealed on hover or keyboard focus as it is there.
+            <span className="opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+              <RowAction
+                label={`Rename this ${noun}`}
+                onClick={onStartRename}
+                className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+              >
+                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+              </RowAction>
+            </span>
+          )}
           {approved ? (
             <Button
               variant="ghost"
