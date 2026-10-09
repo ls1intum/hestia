@@ -70,9 +70,10 @@ export async function apiRequest<T = unknown>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { json, body, headers, skipAuth, ...rest } = options;
+  const sentToken = getToken();
   const finalHeaders: Record<string, string> = {
     Accept: "application/json",
-    ...(skipAuth ? {} : authHeader()),
+    ...(skipAuth ? {} : (sentToken ? { Authorization: `Bearer ${sentToken}` } : {})),
     ...(headers ?? {}),
   };
 
@@ -100,7 +101,12 @@ export async function apiRequest<T = unknown>(
     // A rejected credential is unrecoverable for this session, so drop it and let
     // the gate take over rather than leaving every subsequent call to fail too.
     // `skipAuth` calls are unauthenticated by nature and say nothing about it.
-    if (resp.status === 401 && !skipAuth) clearToken();
+    // IMPORTANT: Only clear if the token hasn't changed while the request was in flight!
+    if (resp.status === 401 && !skipAuth) {
+      if (getToken() === sentToken) {
+        clearToken();
+      }
+    }
     throw new ApiError(resp.status, text, message);
   }
 
