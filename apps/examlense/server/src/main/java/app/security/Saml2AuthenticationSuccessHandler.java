@@ -39,7 +39,9 @@ public class Saml2AuthenticationSuccessHandler implements AuthenticationSuccessH
         String token = userService.mintToken(user.getId(), "SAML Login");
 
         // Redirect back to the React app with the token in the URL fragment.
-        // Spring Boot's forward-headers-strategy will automatically prepend the /examlense prefix.
-        response.sendRedirect("/#token=" + token);
+        // We must prepend the context path (which ForwardedHeaderFilter populates from X-Forwarded-Prefix)
+        // because sendRedirect("/") always goes to the root of the domain.
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        response.sendRedirect(contextPath + "/#token=" + token);
     }
 }
