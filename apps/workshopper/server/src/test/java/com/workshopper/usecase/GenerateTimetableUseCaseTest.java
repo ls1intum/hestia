@@ -45,4 +45,41 @@ class GenerateTimetableUseCaseTest {
         assertThat(result.methods()).containsExactly("Group Discussion");
         assertThat(result.materials()).isEmpty();
     }
+
+    @Test
+    void normalizeEvaluateStepsMergesSplitQuestionsIntoOnePerBox() {
+        var section = new ActivitySectionDto("Check", 10, List.of(
+                "5 min - Goal 1 & 2 - Worked Problem: Solve a problem on decision regions.",
+                "5 min - Goal 3 - Worked Problem: Solve a multiclass problem using the Iris dataset."), List.of(), List.of());
+        var block = new ActivityBlockDto("b1", "EVALUATE", "Check Understanding", "", "", "",
+                List.of("Worked Problem"), List.of(), List.of(section), 10);
+        var slots = List.of(new GenerateTimetableUseCase.EvaluateSlot("Worked Problem", List.of(1, 2, 3), 10));
+
+        var result = GenerateTimetableUseCase.normalizeEvaluateSteps(block, slots);
+
+        assertThat(result.sections()).hasSize(1);
+        assertThat(result.sections().get(0).steps()).containsExactly(
+                "10 min - Goal 1, 2 & 3 - Worked Problem: Solve a problem on decision regions. "
+                        + "Solve a multiclass problem using the Iris dataset.");
+        assertThat(result.duration()).isEqualTo(10);
+    }
+
+    @Test
+    void normalizeEvaluateStepsKeepsOneStepPerBoxInMappingOrder() {
+        var section = new ActivitySectionDto("Check", 10, List.of(
+                "4 min - Goal 3 & 4 - Debate: Argue which model fits better.",
+                "6 min - Goal 1 - Quiz / Polls: Name the two parameters of a linear classifier."), List.of(), List.of());
+        var block = new ActivityBlockDto("b1", "EVALUATE", "Check Understanding", "", "", "",
+                List.of(), List.of(), List.of(section), 10);
+        var slots = List.of(
+                new GenerateTimetableUseCase.EvaluateSlot("Quiz / Polls", List.of(1, 2), 5),
+                new GenerateTimetableUseCase.EvaluateSlot("Debate", List.of(3, 4), 5));
+
+        var result = GenerateTimetableUseCase.normalizeEvaluateSteps(block, slots);
+
+        assertThat(result.sections().get(0).steps()).containsExactly(
+                "5 min - Goal 1 & 2 - Quiz / Polls: Name the two parameters of a linear classifier.",
+                "5 min - Goal 3 & 4 - Debate: Argue which model fits better.");
+        assertThat(result.methods()).containsExactly("Quiz / Polls", "Debate");
+    }
 }

@@ -106,14 +106,16 @@ public class GenerateTimetableUseCase {
                 String selectedActivitiesStr = activitiesRestricted ? String.join(", ", input.selectedActivities()) : "ANY";
                 
                 String cycleActivity = learningCycleActivity(block, goals, input.selectedActivities());
+                List<EvaluateSlot> evaluateSlots = evaluateSlots(block, goals, input);
 
                 Future<ActivityBlockDto> future = llmExecutor.submit(() -> {
                     String rules = cycleActivity != null
                             ? buildLearningCycleRules(cycleActivity)
-                            : buildEvaluateRules(block, goals, input);
+                            : buildEvaluateRules(evaluateSlots);
                     ActivityBlockDto hydrated = llm.hydrateActivityBlock(block, filteredSkeleton, goals, input, sessionTypeLabel, selectedActivitiesStr, goalsString, skeletonBlocksStr, targetBlockStr, rules, materialsStr);
                     ActivityBlockDto restricted = restrictToSelections(hydrated, allowedActivities, materials);
-                    return cycleActivity != null ? withSingleMethod(restricted, cycleActivity) : restricted;
+                    if (cycleActivity != null) return withSingleMethod(restricted, cycleActivity);
+                    return normalizeEvaluateSteps(restricted, evaluateSlots);
                 });
                 blockFutures.add(future);
             }
@@ -144,13 +146,20 @@ public class GenerateTimetableUseCase {
     }
 
     
-    private String buildEvaluateRules(SkeletonBlockDto targetBlock, List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
-        if (!"EVALUATE".equalsIgnoreCase(targetBlock.phase())) return "";
-        int totalEvalMin = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
-        
-        var evaluateMappingStr = new StringBuilder();
-        var evaluateMappings = meta.evaluateMappings();
+    /** One assessment box of the Check Understanding block: an activity, the goals it covers and its minutes. */
+    record EvaluateSlot(String method, List<Integer> goalNumbers, int minutes) {
+        /** The step prefix the client parses, e.g. "Goal 1, 2 & 3 - Worked Problem". */
+        String label() {
+            List<String> nums = goalNumbers.stream().map(String::valueOf).collect(java.util.stream.Collectors.toList());
+            String goalsPart = nums.size() == 1 ? nums.get(0)
+                    : String.join(", ", nums.subList(0, nums.size() - 1)) + " & " + nums.get(nums.size() - 1);
+            return "Goal " + goalsPart + " - " + method;
+        }
+    }
 
+    /** The user's activity-to-goal mapping, or the Bloom's/SOLO default when there is none. */
+    private List<EvaluateMappingDto> resolveEvaluateMappings(List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
+        var evaluateMappings = meta.evaluateMappings();
         if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals != null && !goals.isEmpty()) {
             // Goals that end up with the same activity share one assessment, like a user-made mapping
             Map<String, List<String>> goalsByMethod = new java.util.LinkedHashMap<>();
@@ -169,41 +178,114 @@ public class GenerateTimetableUseCase {
                 }
                 goalsByMethod.computeIfAbsent(method, k -> new ArrayList<>()).add(g.id());
             }
-            evaluateMappings = new java.util.ArrayList<>();
+            evaluateMappings = new ArrayList<>();
             for (var e : goalsByMethod.entrySet()) {
-                evaluateMappings.add(new com.workshopper.dto.EvaluateMappingDto(e.getKey(), e.getValue()));
+                evaluateMappings.add(new EvaluateMappingDto(e.getKey(), e.getValue()));
             }
+        }
+        return evaluateMappings != null ? evaluateMappings : List.of();
+    }
+
+    /** Turns the mapping into boxes with goal numbers and minutes that add up to the block's duration. */
+    private List<EvaluateSlot> evaluateSlots(SkeletonBlockDto targetBlock, List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
+        if (!"EVALUATE".equalsIgnoreCase(targetBlock.phase()) || goals == null) return List.of();
+        List<EvaluateSlot> slots = new ArrayList<>();
+        List<EvaluateMappingDto> mappings = resolveEvaluateMappings(goals, meta).stream()
+                .filter(m -> m.method() != null && m.lgIds() != null && !m.lgIds().isEmpty())
+                .collect(java.util.stream.Collectors.toList());
+        if (mappings.isEmpty()) return slots;
+
+        int total = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
+        int base = Math.max(1, total / mappings.size());
+        int remainder = Math.max(0, total - base * mappings.size());
+        for (int m = 0; m < mappings.size(); m++) {
+            List<Integer> nums = new ArrayList<>();
+            for (String id : mappings.get(m).lgIds()) {
+                for (int i = 0; i < goals.size(); i++) {
+                    if (goals.get(i).id().equals(id)) nums.add(i + 1);
+                }
+            }
+            if (nums.isEmpty()) continue;
+            java.util.Collections.sort(nums);
+            slots.add(new EvaluateSlot(mappings.get(m).method(), nums, base + (m < remainder ? 1 : 0)));
+        }
+        return slots;
+    }
+
+    private String buildEvaluateRules(List<EvaluateSlot> slots) {
+        if (slots.isEmpty()) return "";
+        var sb = new StringBuilder();
+        sb.append("The user has mapped evaluation activities to learning goals. Each activity is ONE assessment that checks all of its goals together.\n\n");
+        sb.append("CRITICAL INSTRUCTION FOR STEPS ARRAY FORMATTING:\n");
+        sb.append("Return EXACTLY ").append(slots.size()).append(slots.size() == 1 ? " step" : " steps")
+                .append(", in this order, by replacing <...> with ONE combined question or task:\n");
+        for (var slot : slots) {
+            sb.append("  \"").append(slot.minutes()).append(" min - ").append(slot.label())
+                    .append(": <one question or task that checks ")
+                    .append(slot.goalNumbers().size() == 1 ? "this goal" : "all of these goals together")
+                    .append(">\"\n");
+        }
+        sb.append("Keep each prefix exactly as given. Do NOT split a step into several questions, and do NOT add any other steps.\n");
+        return sb.toString();
+    }
+
+    private static final java.util.regex.Pattern EVALUATE_STEP = java.util.regex.Pattern.compile(
+            "^(?:\\d+\\s*(?:min|m)[\\s—:-]*)?(?:(?:Prompt\\s+)?(?:LG|Goal)s?\\s*([\\d\\s&,and]+))?\\s*(?:[·•\\-]\\s*\\[?[^\\]:]*\\]?)?:?\\s*(.*)$",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Rebuilds the Check Understanding steps so there is exactly one per mapped activity,
+     * whatever the LLM returned: questions written for the same activity are joined into one.
+     */
+    static ActivityBlockDto normalizeEvaluateSteps(ActivityBlockDto block, List<EvaluateSlot> slots) {
+        if (block == null || slots.isEmpty()) return block;
+        List<String> allSteps = block.sections() == null ? List.of() : block.sections().stream()
+                .flatMap(s -> s.steps() == null ? java.util.stream.Stream.<String>empty() : s.steps().stream())
+                .collect(java.util.stream.Collectors.toList());
+
+        List<List<String>> questions = new ArrayList<>();
+        slots.forEach(s -> questions.add(new ArrayList<>()));
+        List<String> unmatched = new ArrayList<>();
+        for (String step : allSteps) {
+            var m = EVALUATE_STEP.matcher(step.trim());
+            List<Integer> nums = new ArrayList<>();
+            String question = step.trim();
+            if (m.matches()) {
+                if (m.group(1) != null) {
+                    var digits = java.util.regex.Pattern.compile("\\d+").matcher(m.group(1));
+                    while (digits.find()) nums.add(Integer.parseInt(digits.group()));
+                }
+                question = m.group(2).trim();
+            }
+            if (question.isEmpty()) continue;
+            int target = -1;
+            for (int i = 0; i < slots.size() && target < 0; i++) {
+                for (int n : nums) {
+                    if (slots.get(i).goalNumbers().contains(n)) { target = i; break; }
+                }
+            }
+            if (target >= 0) questions.get(target).add(question); else unmatched.add(question);
+        }
+        // Questions without a goal number fill boxes that got nothing, in order
+        for (int i = 0; i < slots.size() && !unmatched.isEmpty(); i++) {
+            if (questions.get(i).isEmpty()) questions.get(i).add(unmatched.remove(0));
         }
 
-        if (evaluateMappings != null && !evaluateMappings.isEmpty()) {
-            evaluateMappingStr.append("The user has explicitly requested the following mapping of evaluation methods to learning goals:\n");
-            
-            int timePerActivity = Math.max(1, totalEvalMin / evaluateMappings.size());
-            
-            for (var mapping : evaluateMappings) {
-                String lgLabels = mapping.lgIds().stream().map(id -> {
-                    for (int i = 0; i < goals.size(); i++) {
-                        if (goals.get(i).id().equals(id)) return "Goal " + (i + 1);
-                    }
-                    return id;
-                }).collect(java.util.stream.Collectors.joining(", "));
-                
-                evaluateMappingStr.append(String.format(" - Use '%s' to evaluate %s (approx %dm)\n", 
-                        mapping.method(), lgLabels, timePerActivity));
-            }
-            
-            evaluateMappingStr.append("\nCRITICAL INSTRUCTION FOR STEPS ARRAY FORMATTING:\n");
-            evaluateMappingStr.append("You MUST create exactly ONE combined step for each activity mapping above.\n");
-            evaluateMappingStr.append("Do NOT generate 4 separate steps if the user mapped 4 goals to 2 activities. You must generate exactly 2 steps!\n\n");
-            evaluateMappingStr.append("Format each step string exactly like this to map it to the correct goal(s):\n");
-            evaluateMappingStr.append("If evaluating a single goal:\n");
-            evaluateMappingStr.append("  \"Goal 1 - Quiz: Describe the three components of MVC.\"\n");
-            evaluateMappingStr.append("If evaluating multiple goals in one activity, combine their numbers:\n");
-            evaluateMappingStr.append("  \"Goal 1 & 2 - Concept Mapping: Create a diagram relating MVC and REST APIs.\"\n");
-            evaluateMappingStr.append("Do NOT split them into separate steps. Do NOT deviate from this prefix format.\n");
+        List<String> steps = new ArrayList<>();
+        for (int i = 0; i < slots.size(); i++) {
+            var slot = slots.get(i);
+            String question = questions.get(i).isEmpty()
+                    ? "Question to be added"
+                    : String.join(" ", questions.get(i));
+            steps.add(slot.minutes() + " min - " + slot.label() + ": " + question);
         }
-        
-        return evaluateMappingStr.toString();
+        int total = slots.stream().mapToInt(EvaluateSlot::minutes).sum();
+        String title = block.sections() != null && !block.sections().isEmpty() && block.sections().get(0).title() != null
+                ? block.sections().get(0).title() : "Check Understanding";
+        List<String> methods = slots.stream().map(EvaluateSlot::method).distinct().collect(java.util.stream.Collectors.toList());
+        return new ActivityBlockDto(block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
+                block.objective(), block.description(), methods, block.materials(),
+                List.of(new ActivitySectionDto(title, total, steps, List.of(), List.of())), total);
     }
 
     /** Splits the newline-separated materials string sent by the client into clean entries. */
