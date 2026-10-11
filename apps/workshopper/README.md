@@ -9,9 +9,9 @@ A full-stack prototype for generating structured teaching sessions using AI.
 
 | Layer     | Tech                                              |
 |-----------|---------------------------------------------------|
-| Frontend  | Vite + React 18 + TypeScript + Tailwind CSS       |
+| Client  | Vite + React 18 + TypeScript + Tailwind CSS       |
 | UI        | shadcn/ui (Radix UI primitives)                   |
-| Backend   | Spring Boot 3.3 (Java 21)                         |
+| Server   | Spring Boot 3.3 (Java 21)                         |
 | Database  | PostgreSQL (with pgvector)                        |
 | LLM       | Spring AI (configured via `libs:shared-llm`)      |
 
@@ -37,18 +37,18 @@ From the `apps/workshopper` directory, start the local PostgreSQL container:
 docker compose up -d
 ```
 
-### 3. Start the Backend
+### 3. Start the Server
 
-From the repository root, start the backend using Gradle:
+From the repository root, start the server using Gradle:
 ```bash
-WORKSHOPPER_SAIA_API_KEY="your-api-key-here" ./gradlew :apps:workshopper:backend:bootRun
+WORKSHOPPER_SAIA_API_KEY="your-api-key-here" ./gradlew :apps:workshopper:server:bootRun
 # → Starts on http://localhost:8081
 ```
 
-### 4. Start the Frontend
+### 4. Start the Client
 
 ```bash
-cd apps/workshopper/frontend
+cd apps/workshopper/client
 npm install
 npm run dev
 # → Opens http://localhost:5173
@@ -68,12 +68,12 @@ npm run dev
 
 ```
 workshopper/
-├── frontend/           ← Vite React app
+├── client/           ← Vite React app
 │   └── src/
 │       ├── components/ ← UI components and workshop flow
 │       ├── lib/        ← Types, API client, PDF parser
 │       └── hooks/      ← Custom hooks
-└── backend/            ← Spring Boot app
+└── server/           ← Spring Boot app
     └── src/main/java/com/workshopper/
         ├── controller/ ← REST endpoints
         ├── service/    ← LLM + business logic + Document Export (PDF/PPTX)

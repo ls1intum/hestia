@@ -14,10 +14,10 @@ Core Workshopper concepts:
 - session persistence and interactive draft management
 
 ## Technical Direction
-- backend: Spring Boot (Java 21)
+- server: Spring Boot (Java 21)
 - LLM integration: Spring AI (via Hestia's `libs:shared-llm` module)
 - database: PostgreSQL
-- frontend: React, Vite, Tailwind CSS
+- client: React, Vite, Tailwind CSS
 - build system: Gradle (multi-module)
 
 ---
@@ -31,10 +31,10 @@ If you say a migration is complete, you must prove it by showing the `grep` resu
 
 ### 2. Contract Mismatch Awareness
 When modifying DTOs (`RequestDto` / `ResponseDto`), you must manually trace the data flow through the Facade into the `UseCase`.
-If the frontend sends `availableMaterials`, ensure it isn't silently dropped by the Facade before reaching `GenerateTimetableUseCase`. The backend compiler will not catch dropped fields.
+If the client sends `availableMaterials`, ensure it isn't silently dropped by the Facade before reaching `GenerateTimetableUseCase`. The server compiler will not catch dropped fields.
 
 ### 3. Strangler Pattern Enforcement
-The backend has migrated away from a monolithic `WorkshopService` to a UseCase pattern.
+The server has migrated away from a monolithic `WorkshopService` to a UseCase pattern.
 **Rule:** Controllers (`WorkshopController`) may ONLY call `WorkshopSessionFacade`. Controllers may NEVER call a `UseCase` directly. `WorkshopService` is now legacy and should only be used for CRUD operations, not generation logic.
 
 ### 4. Auth Bypass Awareness

@@ -2,7 +2,7 @@
 
 **Audience:** coding agent (Claude Code or similar) working in the `hestia` monorepo, `workshopper` app.
 **Goal:** take Workshopper from "functional prototype" to "final product" without breaking existing behavior.
-**Chosen architecture:** Option 2 from the architecture report — Feature-Sliced Design + Zustand/React Query on the frontend; Use-Case pattern + Facade layer on the backend. Do NOT adopt XState or Hexagonal Architecture (Option 3) — out of scope, too much ceremony for this project's size and timeline. DO borrow two Option 1 items as prerequisites: externalized prompt templates and Spring AI's `StructuredOutputConverter`.
+**Chosen architecture:** Option 2 from the architecture report — Feature-Sliced Design + Zustand/React Query on the client; Use-Case pattern + Facade layer on the server. Do NOT adopt XState or Hexagonal Architecture (Option 3) — out of scope, too much ceremony for this project's size and timeline. DO borrow two Option 1 items as prerequisites: externalized prompt templates and Spring AI's `StructuredOutputConverter`.
 
 Work through the phases **in order**. Do not start refactoring (Phase 2+) before Phase 0 (safety net) exists and passes. Each phase should end with a commit and a short summary of what changed and what was verified.
 
@@ -13,8 +13,8 @@ Work through the phases **in order**. Do not start refactoring (Phase 2+) before
 Purpose: create a regression net so refactors can be verified mechanically, not just "looks right."
 
 1. Write end-to-end / integration smoke tests for the current happy path BEFORE any refactor:
-   - Backend: a Spring Boot Test (with Testcontainers + Postgres) that drives the full flow — create session → generate timetable → edit a block → generate slides → export PDF → export PPTX. Assert on response shapes/status codes, not internal implementation.
-   - Frontend: one or two Playwright/Cypress (or RTL if no e2e tool is set up) tests covering: complete the 4-step wizard input, review/edit generated timetable, go through the prep step, download exports.
+   - Server: a Spring Boot Test (with Testcontainers + Postgres) that drives the full flow — create session → generate timetable → edit a block → generate slides → export PDF → export PPTX. Assert on response shapes/status codes, not internal implementation.
+   - Client: one or two Playwright/Cypress (or RTL if no e2e tool is set up) tests covering: complete the 4-step wizard input, review/edit generated timetable, go through the prep step, download exports.
    - Mock the actual LLM calls in these tests (fixed fixture responses) so tests are deterministic and don't burn API credits.
 2. Snapshot current DB schema (Flyway/Liquibase migration state, or a schema dump) so later authz/query changes can be diffed against a known baseline.
 3. Do not proceed to Phase 2 until these tests pass against the CURRENT (pre-refactor) code.
@@ -30,7 +30,7 @@ Run Phase 0 tests after this phase. They must still pass (behavior should be unc
 
 ---
 
-## Phase 2 — Backend restructure: Use-Case pattern + Facade
+## Phase 2 — Server restructure: Use-Case pattern + Facade
 
 1. Break `WorkshopService` (~900 lines) into single-responsibility use cases, e.g.:
    - `GenerateTimetableUseCase`
@@ -47,7 +47,7 @@ Run Phase 0 tests after this phase.
 
 ---
 
-## Phase 3 — Frontend restructure: Feature-Sliced Design + Zustand/React Query
+## Phase 3 — Client restructure: Feature-Sliced Design + Zustand/React Query
 
 1. Introduce **Zustand** for cross-cutting UI state (current wizard step, draft/save status, lecture-vs-session mode) and **`@tanstack/react-query`** for all server communication (timetable generation, slide generation, LearningGoalHub fetches, export calls). Remove manual `useEffect`-based fetching and manual loading/error state once migrated.
 2. Reorganize `src/` by feature, not by technical layer, e.g.:
@@ -72,12 +72,12 @@ Run Phase 0 tests after this phase.
 
 ## Phase 4 — Resilience against misuse ("dumb user" hardening)
 
-This is NOT just a frontend concern — assume every frontend guard can be bypassed (refresh, direct API calls, browser back/forward, double-click, multiple tabs). Backend must independently enforce correctness.
+This is NOT just a client concern — assume every client guard can be bypassed (refresh, direct API calls, browser back/forward, double-click, multiple tabs). Server must independently enforce correctness.
 
-1. **State transition validation is server-side.** The backend, not just the UI, must reject invalid transitions (e.g. trying to generate slides for a session with no timetable yet, or editing a session after it's been marked exported/final if that's a real constraint). Return clear 4xx errors the frontend can surface.
+1. **State transition validation is server-side.** The server, not just the UI, must reject invalid transitions (e.g. trying to generate slides for a session with no timetable yet, or editing a session after it's been marked exported/final if that's a real constraint). Return clear 4xx errors the client can surface.
 2. **Idempotency on generation/submit endpoints.** Double-clicking "Generate" or refreshing mid-request must not create duplicate LLM calls, duplicate DB rows, or duplicate exports. Use an idempotency key (client-generated UUID per generation attempt) or debounce+lock server-side per session ID while a generation is in flight; return the in-flight/last result instead of starting a second one.
-3. **Refresh-safe drafts.** Since users already asked for session persistence (per prior feedback), make sure draft state is saved to the backend (not just localStorage) frequently enough that a refresh mid-wizard doesn't lose meaningful progress, and that reloading the page restores the correct step.
-4. **Back/forward navigation safety.** Jumping between wizard steps via browser back/forward must not desync the Zustand store from what's actually persisted server-side — on mount/step-entry, reconcile against the backend's view of the session rather than trusting only client memory.
+3. **Refresh-safe drafts.** Since users already asked for session persistence (per prior feedback), make sure draft state is saved to the server (not just localStorage) frequently enough that a refresh mid-wizard doesn't lose meaningful progress, and that reloading the page restores the correct step.
+4. **Back/forward navigation safety.** Jumping between wizard steps via browser back/forward must not desync the Zustand store from what's actually persisted server-side — on mount/step-entry, reconcile against the server's view of the session rather than trusting only client memory.
 5. **Repeated-click guards.** Disable/debounce action buttons while a request is in flight; show a clear loading state rather than allowing stacked requests.
 
 Add targeted tests for each of these (see Phase 6).
@@ -109,7 +109,7 @@ Priority order — do not spend equal effort everywhere; the DB/authz layer is h
    - One unit test per use case introduced in Phase 2, covering the main success path and at least one failure/edge path (e.g. LLM returns malformed structured output — should fail gracefully, not throw an unhandled exception to the client).
 3. **Integration tests:**
    - Testcontainers-backed tests for repository queries and the full controller → facade → use case → repository path for the core flows (generate timetable, generate slides, export).
-4. **Frontend:**
+4. **Client:**
    - React Query hooks tested with MSW (Mock Service Worker) to simulate API responses/errors.
    - Component tests for the wizard steps' validation logic (rejecting invalid/incomplete input before allowing "Next").
    - Keep the Phase 0 e2e smoke tests running in CI going forward.
@@ -122,8 +122,8 @@ Wire these into CI (GitHub Actions or whatever the monorepo already uses) so the
 
 Create/update:
 
-1. **`workshopper/README.md`** (human-facing): what the app does, tech stack, how to run it locally (frontend + backend + DB), how to run tests, how to run migrations, environment variables required.
-2. **`workshopper/ARCHITECTURE.md`**: the Feature-Sliced Design layout on the frontend and Use-Case/Facade layout on the backend, with a short "why" referencing this migration (evolutionary from monolithic → feature-sliced). Include a diagram if easy (even ASCII) showing Controller → Facade → Use Case → Repository, and Wizard → Zustand store → React Query → API.
+1. **`workshopper/README.md`** (human-facing): what the app does, tech stack, how to run it locally (client + server + DB), how to run tests, how to run migrations, environment variables required.
+2. **`workshopper/ARCHITECTURE.md`**: the Feature-Sliced Design layout on the client and Use-Case/Facade layout on the server, with a short "why" referencing this migration (evolutionary from monolithic → feature-sliced). Include a diagram if easy (even ASCII) showing Controller → Facade → Use Case → Repository, and Wizard → Zustand store → React Query → API.
 3. **`workshopper/AGENTS.md`** (or `CLAUDE.md`, agent-facing): explicit conventions for a coding agent working in this repo —
    - where new features go (which feature folder / which use-case pattern to follow)
    - naming conventions for use cases, hooks, stores
@@ -139,8 +139,8 @@ Create/update:
 
 0. Safety-net tests against current code
 1. Externalize prompts + adopt structured output converter
-2. Backend: use cases + facade + repository query audit
-3. Frontend: Zustand + React Query + feature-sliced reorg
+2. Server: use cases + facade + repository query audit
+3. Client: Zustand + React Query + feature-sliced reorg
 4. Misuse resilience (idempotency, server-side state validation, draft persistence)
 5. Security hardening (authz, injection audit, rate limiting, secrets)
 6. Fill out risk-prioritized test suite, wire into CI

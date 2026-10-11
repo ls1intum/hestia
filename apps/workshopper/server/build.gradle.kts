@@ -1,0 +1,44 @@
+plugins {
+    id("org.springframework.boot") version "3.5.14"
+    id("io.spring.dependency-management") version "1.1.7"
+    java
+}
+
+dependencyManagement {
+    imports {
+        mavenBom("org.springframework.ai:spring-ai-bom:1.1.6")
+    }
+}
+
+tasks.bootJar {
+    archiveBaseName.set("workshopper-server")
+}
+
+tasks.jar {
+    archiveBaseName.set("workshopper-server")
+}
+
+dependencies {
+    implementation(project(":libs:shared-llm"))
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.security:spring-security-saml2-service-provider")
+    implementation("org.apache.pdfbox:pdfbox:3.0.2")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("org.apache.poi:poi-scratchpad:5.2.5")
+    runtimeOnly("org.postgresql:postgresql")
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.springframework.security:spring-security-test")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}

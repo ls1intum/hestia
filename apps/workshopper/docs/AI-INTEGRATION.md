@@ -1,6 +1,6 @@
 # AI/LLM Prompts & Integration Guide
 
-The Workshopper backend leverages Spring AI to orchestrate LLM prompts that convert user metadata into structured workshop sessions.
+The Workshopper server leverages Spring AI to orchestrate LLM prompts that convert user metadata into structured workshop sessions.
 
 ## Multi-Stage Prompt Pipeline
 

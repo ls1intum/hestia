@@ -2,7 +2,7 @@
 
 This document captures the core architectural decisions and boundaries of the Workshopper application, ensuring future developers (and AI agents) understand *why* things are built the way they are.
 
-## 1. Backend: The UseCase & Facade Pattern
+## 1. Server: The UseCase & Facade Pattern
 Originally, all generation logic (LLM calls, PPTX building, DB saving) lived in a massive, monolithic `WorkshopService.java`. This made testing impossible and caused transaction timeouts.
 
 We migrated to a strict **UseCase Architecture**:
@@ -25,13 +25,13 @@ To solve this, we built a secure bypass:
 ## 3. API Authorization & Error Handling
 All `/api/**` endpoints (except `/health`) require an authenticated principal (`.authenticated()`). 
 When an unauthenticated request hits the API, Spring returns a `401 Unauthorized`.
-In the frontend (`api.ts`), the `handleAuthError` interceptor catches all 401s and automatically mutates `window.location.href` to `/saml2/authenticate/tum`, seamlessly triggering the SAML login flow.
+In the client (`api.ts`), the `handleAuthError` interceptor catches all 401s and automatically mutates `window.location.href` to `/saml2/authenticate/tum`, seamlessly triggering the SAML login flow.
 
 **Per-Resource Authorization (IDOR Protection):**
 While Spring Security enforces authentication globally, it does *not* automatically enforce resource ownership. Every controller endpoint that reads, modifies, or deletes a specific resource by ID (including setting grouping IDs like `lectureId`) must explicitly call `facade.verifyOwnership(id)`. This prevents Insecure Direct Object Reference (IDOR) vulnerabilities (e.g., modifying another user's session, or planting a session inside another user's lecture). The Facade throws an `AccessDeniedException` on failure, which the global `@ExceptionHandler` automatically translates to a `403 Forbidden`.
 
-## 4. Frontend State
-The frontend previously suffered from a monolithic `App.tsx` file (800+ lines) that handled all routing, session fetching, and dozens of parallel `useState` hooks for the creation wizard.
+## 4. Client State
+The client previously suffered from a monolithic `App.tsx` file (800+ lines) that handled all routing, session fetching, and dozens of parallel `useState` hooks for the creation wizard.
 
 **Migration Completed (Phase 5):**
 The `useWizardState.ts` hook was fully synchronized with live fixes (including SAML `401` traps) and wired into `App.tsx`. `App.tsx` is now a clean layout/routing wrapper that simply destructures state and step-handlers from the hook. Furthermore, complex UI components within the timetable view (like `EvaluateMappingPanel` and `UnderstandingCheckSteps`) have been extracted from monolithic rows into dedicated components.

@@ -1,6 +1,6 @@
 # Workshopper API Documentation
 
-The Workshopper backend provides a set of REST endpoints under the `/api/workshop` base path. These endpoints handle the AI-driven workshop generation process, session management, and document export.
+The Workshopper server provides a set of REST endpoints under the `/api/workshop` base path. These endpoints handle the AI-driven workshop generation process, session management, and document export.
 
 ## Workshop Generation Flow
 
@@ -58,7 +58,7 @@ Assembles a PPTX from pre-built/cached slides without calling the LLM.
 Upload a custom PPTX template, and export the session using the template.
 
 ### `POST /api/workshop/export/block-slides`
-Generates JSON representation of slides for a single timetable block (used for frontend preview).
+Generates JSON representation of slides for a single timetable block (used for client preview).
 
 ## Utility Endpoints
 

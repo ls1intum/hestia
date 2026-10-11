@@ -1,0 +1,1035 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  ActivityBlock,
+  ActivitySection,
+  LearningGoalPlan,
+  WorkshopInput,
+  WorkshopSession,
+} from "@/lib/workshop-generator";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  ArrowLeft, ArrowRight, GripVertical, ChevronDown, ChevronUp,
+  Clock, Trash2, Plus, Loader2, Pencil, Save, X
+} from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { toast } from "@/hooks/use-toast";
+import { SortableBlockRow } from "./timetable/SortableBlockRow";
+import { InlineEditText } from "./timetable/InlineEditText";
+
+import { phaseEmojis, phaseRowColors, getStepEmoji, getStepColorClass, DEFAULT_ACTIVITIES } from "@/lib/constants";
+import { parseStepDuration } from "@/lib/utils";
+import { ADDABLE_BLOCK_TYPES, createBlockFromTemplate } from "@/lib/block-templates";
+
+// ── Editing state ──────────────────────────────────────────────────
+export type EditTarget =
+  | { type: "sessionTitle" }
+  | { type: "title"; blockId: string }
+  | { type: "step"; blockId: string; sectionIdx: number; stepIdx: number }
+  | { type: "stepTime"; blockId: string; sectionIdx: number; stepIdx: number }
+  | { type: "blockDuration"; blockId: string }
+  | { type: "sectionDuration"; blockId: string; sectionIdx: number }
+  | null;
+
+// ── Internal block with stable dnd ID ─────────────────────────────
+export interface DndActivityBlock extends ActivityBlock {
+  dndId: string;
+  lgIndex?: number;
+}
+
+// ── Props ──────────────────────────────────────────────────────────
+interface Props {
+  session: WorkshopSession;
+  goals: LearningGoalPlan[];
+  meta: WorkshopInput;
+  onBack: () => void;
+  onNext: (latestSession: WorkshopSession) => void;
+  onSaveSession?: (session: WorkshopSession) => void;
+  onGoalsChanged?: (goals: LearningGoalPlan[]) => void;
+  onMetaChanged?: (meta: import('@/lib/workshop-generator').WorkshopInput) => void;
+}
+
+// ── Inline editable text component removed and imported ───────────────────────────────────────────
+
+// ── Sortable block row component removed and imported ─────────────────────────────────────────────
+
+// ── Main component ─────────────────────────────────────────────────
+export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged }: Props) {
+  const onSaveSessionRef = useRef(onSaveSession);
+  useEffect(() => {
+    onSaveSessionRef.current = onSaveSession;
+  }, [onSaveSession]);
+
+  const onNextRef = useRef(onNext);
+  useEffect(() => {
+    onNextRef.current = onNext;
+  }, [onNext]);
+
+  const [blocks, setBlocks] = useState<DndActivityBlock[]>(() =>
+    (initialSession.blocks || []).map((b, i) => ({
+      ...b,
+      dndId: b.blockId || `block-${i}`,
+      lgIndex: (b as any).lgIndex ?? 0,
+    }))
+  );
+  const [sessionTitle, setSessionTitle] = useState(initialSession.title || "");
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<EditTarget>(null);
+  const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
+
+  // Edit Mode State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [originalBlocks, setOriginalBlocks] = useState<DndActivityBlock[] | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
+  const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
+
+  const toggleEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId) {
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+      onSaveSessionRef.current?.(buildSession());
+    } else {
+      setEditingBlockId(dndId);
+      const block = blocks.find(b => b.dndId === dndId);
+      if (block) setEditingBlockOriginal(JSON.parse(JSON.stringify(block)));
+    }
+  };
+
+  const cancelEditBlock = (dndId: string) => {
+    if (editingBlockId === dndId && editingBlockOriginal) {
+      setBlocks(prev => prev.map(b => b.dndId === dndId ? editingBlockOriginal : b));
+      setEditingBlockId(null);
+      setEditingBlockOriginal(null);
+    }
+  };
+
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const toggleExpand = (dndId: string) =>
+    setExpandedBlocks(prev => ({ ...prev, [dndId]: !prev[dndId] }));
+
+  const updateBlock = (dndId: string, patch: Partial<DndActivityBlock>) =>
+    setBlocks(prev => prev.map(b => b.dndId === dndId ? { ...b, ...patch } : b));
+
+  const buildSession = useCallback((): WorkshopSession => ({
+    ...initialSession,
+    title: sessionTitle,
+    blocks: blocks.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+  }), [initialSession, sessionTitle, blocks]);
+
+  const persistBlocks = (next: DndActivityBlock[]) => {
+    if (!isEditMode && onSaveSession) {
+      setTimeout(() => {
+        onSaveSessionRef.current?.({
+          ...initialSession,
+          title: sessionTitle,
+          blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+        });
+      }, 0);
+    }
+  };
+
+  const handleSaveTitle = (dndId: string, v: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => b.dndId === dndId ? { ...b, phaseLabel: v } : b);
+      persistBlocks(next);
+      return next;
+    });
+    setEditing(null);
+  };
+
+  const handleSaveObjective = (dndId: string, v: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => b.dndId === dndId ? { ...b, objective: v } : b);
+      persistBlocks(next);
+      return next;
+    });
+  };
+
+  const handleSaveStep = (dndId: string, sectionIdx: number, stepIdx: number, v: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId || !b.sections) return b;
+        const sections = b.sections.map((sec, si) => {
+          if (si !== sectionIdx) return sec;
+          const steps = (sec.steps || []).map((st, ti) => {
+            if (ti !== stepIdx) return st;
+            // The editor hands back the full step text, time prefix included; only add one if it is missing
+            if (/^\d+\s*(?:min|m)\b/i.test(v)) return v;
+            const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
+            const timePrefix = match ? `${match[1]} min - ` : "";
+            return timePrefix + v;
+          });
+          return { ...sec, steps };
+        });
+        return { ...b, sections };
+      });
+      persistBlocks(next);
+      return next;
+    });
+    setEditing(null);
+  };
+
+  const handleSaveBlockDuration = (dndId: string, v: string) => {
+    let num = parseInt(v, 10);
+    if (isNaN(num) || num < 0) num = 0;
+    
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId) return b;
+        // With a single section, the section carries the same time box as the block
+        const sections = b.sections && b.sections.length === 1
+          ? [{ ...b.sections[0], duration: num }]
+          : b.sections;
+        return { ...b, sections, duration: num };
+      });
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+    setEditing(null);
+  };
+
+  const handleSaveSectionDuration = (dndId: string, sectionIdx: number, v: string) => {
+    const num = parseInt(v, 10);
+    if (!isNaN(num) && num >= 0) {
+      setBlocks(prev => {
+        const next = prev.map(b => {
+          if (b.dndId !== dndId || !b.sections) return b;
+          const sections = b.sections.map((sec, si) => si === sectionIdx ? { ...sec, duration: num } : sec);
+          const newDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+          return { ...b, sections, duration: newDuration };
+        });
+        
+        if (!isEditMode && onSaveSession) {
+          setTimeout(() => {
+            onSaveSessionRef.current?.({
+              ...initialSession,
+              title: sessionTitle,
+              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+            });
+          }, 0);
+        }
+        return next;
+      });
+    }
+    setEditing(null);
+  };
+
+  const handleSaveStepTime = (dndId: string, sectionIdx: number, stepIdx: number, newTime: string) => {
+    let num = parseInt(newTime, 10);
+    if (isNaN(num) || num < 0) num = 0;
+    
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId || !b.sections) return b;
+        const sections = b.sections.map((sec, si) => {
+          let steps = sec.steps || [];
+          if (si === sectionIdx) {
+            steps = steps.map((st, ti) => {
+              if (ti !== stepIdx) return st;
+              const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
+              const contentText = match ? match[2] : st;
+              return `${num} min - ${contentText}`;
+            });
+          }
+          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
+          const finalDuration = steps.length > 0 ? newDuration : (sec.duration || 0);
+          return { ...sec, steps, duration: finalDuration };
+        });
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
+      });
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+    setEditing(null);
+  };
+
+  const handleAddStep = (dndId: string, text: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId) return b;
+        const sections = b.sections ? [...b.sections] : [];
+        if (sections.length === 0) {
+          sections.push({ title: "", duration: 5, steps: [`5 min - ${text}`], methods: [], materials: [] });
+        } else {
+          const lastSection = { ...sections[sections.length - 1] };
+          lastSection.steps = [...(lastSection.steps || []), `5 min - ${text}`];
+          lastSection.duration = (lastSection.duration || 0) + 5;
+          sections[sections.length - 1] = lastSection;
+        }
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
+      });
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteStep = (dndId: string, sectionIdx: number, stepIdx: number) => {
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId || !b.sections) return b;
+        const sections = b.sections.map((sec, si) => {
+          if (si !== sectionIdx) return sec;
+          const steps = (sec.steps || []).filter((_, ti) => ti !== stepIdx);
+          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
+          return { ...sec, steps, duration: newDuration };
+        });
+        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
+        return { ...b, sections, duration: newBlockDuration };
+      });
+      
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleAddBlock = (phase: string) => {
+    const dndId = `custom-${Date.now()}`;
+    const newBlock: DndActivityBlock = {
+      ...createBlockFromTemplate(phase, goals, meta.selectedActivities || []),
+      dndId,
+      lgIndex: 0,
+    };
+    setBlocks(prev => {
+      const next = [...prev, newBlock];
+      persistBlocks(next);
+      return next;
+    });
+    // Breaks and buffers have nothing to fill in: they stay a single collapsed row
+    if (newBlock.phase === "BREAK" || newBlock.phase === "BUFFER") return;
+    setExpandedBlocks(prev => ({ ...prev, [dndId]: true }));
+    // Open the new block for editing so its fields can be filled in straight away.
+    // Evaluate blocks are edited through the mapping panel instead, so they open read-only.
+    if (newBlock.phase !== "EVALUATE") {
+      setEditingBlockId(dndId);
+      setEditingBlockOriginal(JSON.parse(JSON.stringify(newBlock)));
+    }
+  };
+
+  const handleDeleteBlock = (dndId: string) => {
+    setBlocks(prev => {
+      const index = prev.findIndex(b => b.dndId === dndId);
+      const deleted = prev[index];
+      if (deleted) setLastDeletedBlock({ block: deleted, index });
+      const next = prev.filter(b => b.dndId !== dndId);
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleUndoDelete = () => {
+    if (!lastDeletedBlock) return;
+    setBlocks(prev => {
+      const next = [...prev];
+      next.splice(lastDeletedBlock.index, 0, lastDeletedBlock.block);
+      return next;
+    });
+    setLastDeletedBlock(null);
+  };
+
+  const handleDeleteActivity = (dndId: string, methodToRemove: string) => {
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.dndId !== dndId) return b;
+        const newMethods = (b.methods || []).filter(m => m !== methodToRemove);
+        const newSections = (b.sections || []).map(s => ({
+          ...s,
+          methods: (s.methods || []).filter(m => m !== methodToRemove),
+        }));
+        return { ...b, methods: newMethods, sections: newSections };
+      });
+      if (!isEditMode && onSaveSession) {
+        setTimeout(() => {
+          onSaveSessionRef.current?.({
+            ...initialSession,
+            title: sessionTitle,
+            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+          });
+        }, 0);
+      }
+      return next;
+    });
+  };
+
+  const handleAddActivity = async (dndId: string, methodToAdd: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
+
+      // Try to find the existing practice/activity section to use as a baseline duration
+      const practiceSection = (block.sections || []).find(s => {
+        const t = (s.title || "").toLowerCase();
+        return t.includes("activity") || t.includes("practice") || t.includes("application");
+      });
+      const requestedDuration = practiceSection?.duration 
+        ? practiceSection.duration 
+        : Math.max(10, Math.floor((block.duration || 40) / 2));
+
+      // Generate a fresh set of sections for the new activity
+      const singleBlockSkeleton = {
+        sessionId: initialSession.id,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: (block.objective || "") + "\nIMPORTANT: Only generate the interactive participant practice section and setup. Skip the 'Explain' or 'Lecture' phase since it was already covered.",
+          lgIndex,
+          duration: requestedDuration,
+          sections: [], // Empty sections so AI generates a fresh loop
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availableMaterials: meta.availableMaterials?.join("\n") || "",
+          goals,
+          meta: { ...meta, selectedActivities: [methodToAdd] },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to add activity");
+      const newSession = await res.json();
+      
+      if (newSession.blocks?.[0]) {
+        const generatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            
+            // Append the new sections (filtering out intro/explain since it's an addition to an existing block)
+            const filteredSections = (generatedBlock.sections || []).filter((s: any) => {
+              const t = (s.title || "").toLowerCase();
+              return !t.includes("explain") && !t.includes("lecture") && !t.includes("introduction") && !t.includes("theory");
+            });
+            const newSections = [...(b.sections || []), ...filteredSections];
+            const newDuration = (b.duration || 0) + filteredSections.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
+            
+            return {
+              ...b,
+              sections: newSections,
+              duration: newDuration,
+              methods: Array.from(new Set([...(b.methods || []), methodToAdd])),
+            };
+          });
+          
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSessionRef.current?.({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity added", description: `Added ${methodToAdd}` });
+      }
+    } catch (e) {
+      toast({ title: "Addition failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setBlocks((items) => {
+        const oldIndex = items.findIndex((item) => item.dndId === active.id);
+        const newIndex = items.findIndex((item) => item.dndId === over.id);
+        const next = arrayMove(items, oldIndex, newIndex);
+        if (!isEditMode && onSaveSession) {
+          setTimeout(() => {
+            onSaveSessionRef.current?.({
+              ...initialSession,
+              title: sessionTitle,
+              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+            });
+          }, 0);
+        }
+        return next;
+      });
+    }
+  };
+
+  const enterEditMode = () => {
+    setOriginalBlocks(JSON.parse(JSON.stringify(blocks)));
+    setIsEditMode(true);
+  };
+
+  const saveEditMode = () => {
+    const latest = buildSession();
+    onSaveSessionRef.current?.(latest);
+    setIsEditMode(false);
+    setOriginalBlocks(null);
+  };
+
+  const cancelEditMode = () => {
+    if (originalBlocks) setBlocks(originalBlocks);
+    setIsEditMode(false);
+    setOriginalBlocks(null);
+    setEditing(null);
+  };
+
+  const executePendingNavigation = () => {
+    if (pendingNavigation === "back") {
+      onBack();
+    } else if (pendingNavigation === "next") {
+      const latest = buildSession();
+      onNextRef.current?.(latest);
+    }
+    setPendingNavigation(null);
+  };
+
+  const confirmNavigation = () => {
+    cancelEditMode();
+    executePendingNavigation();
+  };
+
+  const handleBack = () => {
+    if (isEditMode) {
+      setPendingNavigation("back");
+    } else {
+      onBack();
+    }
+  };
+
+  const handleNext = () => {
+    if (isEditMode) {
+      setPendingNavigation("next");
+    } else {
+      const latest = buildSession();
+      onSaveSessionRef.current?.(latest);
+      onNextRef.current?.(latest);
+    }
+  };
+
+  const switchActivity = async (dndId: string, oldActivity: string, newActivity: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
+
+      const currentMethods = block.methods || [];
+      const newMethods = [...currentMethods];
+      const methodIndex = newMethods.indexOf(oldActivity);
+      if (methodIndex !== -1) {
+        newMethods[methodIndex] = newActivity;
+      } else {
+        newMethods.push(newActivity);
+      }
+
+      const singleBlockSkeleton = {
+        sessionId: initialSession.id,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex,
+          duration: block.duration,
+          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availableMaterials: meta.availableMaterials?.join("\n") || "",
+          goals,
+          meta: { ...meta, selectedActivities: newMethods },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to regenerate activity");
+      const newSession = await res.json();
+      if (newSession.blocks?.[0]) {
+        const updatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            
+            // If the server returns a generic phase name as the label, preserve the user's custom label
+            const finalPhaseLabel = (updatedBlock.phaseLabel && updatedBlock.phaseLabel !== updatedBlock.phase)
+              ? updatedBlock.phaseLabel
+              : (b.phaseLabel || b.phase);
+
+            return {
+              ...b,
+              ...updatedBlock,
+              phaseLabel: finalPhaseLabel,
+              methods: updatedBlock.methods || newMethods,
+              dndId,
+              lgIndex,
+              blockId: block.blockId,
+            };
+          });
+          
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSessionRef.current?.({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity updated", description: `Switched to ${newActivity}` });
+      }
+    } catch (e) {
+      toast({ title: "Generation failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+
+
+  const [hasConfirmedEvaluatePriorities, setHasConfirmedEvaluatePriorities] = useState(
+    goals.length <= 2 || (meta.evaluateMappings && meta.evaluateMappings.length > 0)
+  );
+
+  const confirmEvaluateMappings = async (dndId: string, mappings: { method: string; lgIds: string[] }[]) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      const newMeta = { ...meta, evaluateMappings: mappings };
+      onMetaChanged?.(newMeta);
+      setHasConfirmedEvaluatePriorities(true);
+
+      const singleBlockSkeleton = {
+        sessionId: initialSession.id,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex: block.lgIndex ?? 0,
+          duration: block.duration,
+          methods: mappings.map(m => m.method),
+          materials: []
+        }]
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availableMaterials: meta.availableMaterials?.join("\n") || "",
+          skeleton: singleBlockSkeleton,
+          meta: newMeta,
+          goals: goals
+        })
+      });
+      if (!res.ok) throw new Error("Failed to regenerate");
+      const generated = await res.json();
+      
+      if (generated.blocks && generated.blocks.length > 0) {
+        setBlocks(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(b => b.dndId === dndId);
+          if (idx !== -1) {
+            const updatedBlock = generated.blocks[0];
+            const originalBlock = prev[idx];
+
+            next[idx] = { 
+              ...updatedBlock, 
+              dndId: originalBlock.dndId,
+              phaseLabel: originalBlock.phaseLabel || originalBlock.phase
+            };
+            if (!isEditMode && onSaveSession) {
+              setTimeout(() => {
+                const sessionTitle = initialSession.title || meta.title || "Workshop Session";
+                onSaveSessionRef.current?.({
+                  ...initialSession,
+                  title: sessionTitle,
+                  blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+                });
+              }, 0);
+            }
+          }
+          return next;
+        });
+        setHasConfirmedEvaluatePriorities(true);
+        toast({ title: "Mappings updated", description: "Understanding Check regenerated." });
+      }
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+  const switchEvaluateActivity = async (dndId: string, targetLgNum: number, newActivity: string) => {
+    setRegeneratingBlockId(dndId);
+    try {
+      const block = blocks.find(b => b.dndId === dndId);
+      if (!block) return;
+      
+      const exactMappings: string[] = [];
+      const section = (block.sections || [])[0];
+      if (section && section.steps) {
+        section.steps.forEach((s: string) => {
+          const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
+          const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•\-]\s*([^:]+):\s*(.*)/i);
+          const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
+          
+          const lgNumStr = lgMatch ? lgMatch[1] : (lgFallback ? lgFallback[1] : null);
+          const currentAct = lgMatch ? lgMatch[2].trim() : null;
+
+          if (lgNumStr) {
+            const num = parseInt(lgNumStr);
+            if (num === targetLgNum) {
+              exactMappings.push(`LG${num}:${newActivity}`);
+            } else if (currentAct) {
+              exactMappings.push(`LG${num}:${currentAct}`);
+            }
+          }
+        });
+      }
+      
+      // If the LLM failed to include methods correctly, we force our exactMappings as the block methods fallback
+      const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
+
+      const singleBlockSkeleton = {
+        sessionId: initialSession.id,
+        omittedGoalIndices: [],
+        blocks: [{
+          phase: block.phase,
+          title: block.phaseLabel || block.phase,
+          description: block.objective,
+          lgIndex: block.lgIndex ?? 0,
+          duration: block.duration,
+          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
+        }],
+      };
+
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availableMaterials: meta.availableMaterials?.join("\n") || "",
+          goals,
+          meta: { ...meta, selectedActivities: exactMappings },
+          skeleton: singleBlockSkeleton,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to regenerate evaluate activity");
+      const newSession = await res.json();
+      if (newSession.blocks?.[0]) {
+        const updatedBlock = newSession.blocks[0];
+        setBlocks(prev => {
+          const next = prev.map(b => {
+            if (b.dndId !== dndId) return b;
+            return {
+              ...b,
+              ...updatedBlock,
+              phaseLabel: b.phaseLabel || b.phase,
+              methods: (updatedBlock.methods && updatedBlock.methods.length > 0) ? updatedBlock.methods : derivedMethods,
+              dndId,
+              lgIndex: b.lgIndex,
+              blockId: b.blockId,
+            };
+          });
+          if (!isEditMode && onSaveSession) {
+            setTimeout(() => {
+              onSaveSessionRef.current?.({
+                ...initialSession,
+                title: sessionTitle,
+                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+              });
+            }, 0);
+          }
+          return next;
+        });
+        toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
+      }
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+    } finally {
+      setRegeneratingBlockId(null);
+    }
+  };
+
+  const evaluateBlockNeedsPrioritySelection = goals.length > 2 && !hasConfirmedEvaluatePriorities;
+  const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
+  const targetDuration = meta.duration || totalDuration;
+  const timePercentage = Math.min(100, Math.round((totalDuration / targetDuration) * 100));
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-border/60 shadow-lg">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="font-display font-bold text-3xl text-foreground mt-0.5">
+                {isEditMode ? (
+                  <Input
+                    value={sessionTitle}
+                    onChange={(e) => setSessionTitle(e.target.value)}
+                    className="font-display text-3xl font-bold h-auto py-1 px-2 -ml-2 border-primary/50 focus-visible:ring-1 focus-visible:ring-primary w-[400px]"
+                    placeholder="Workshop Title"
+                  />
+                ) : (
+                  <span className="py-1">{sessionTitle || "Workshop Title"}</span>
+                )}
+              </h2>
+              <CardDescription className="mt-1">
+                Edit any title, activity, or step inline. Click an activity badge to switch it.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={blocks.map(b => b.dndId)} strategy={verticalListSortingStrategy}>
+              {blocks.map(block => {
+                const isNeedsPriority = (goals.length > 2 && !hasConfirmedEvaluatePriorities) && block.phase === "EVALUATE";
+                return (
+                  <SortableBlockRow
+                    key={block.dndId}
+                    block={block}
+                    goals={goals}
+                    needsEvaluatePriority={isNeedsPriority}
+                    onConfirmEvaluateMappings={(mappings) => confirmEvaluateMappings(block.dndId, mappings)}
+                    onResetEvaluatePriority={() => setHasConfirmedEvaluatePriorities(false)}
+                  isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
+                  editing={editing}
+                  meta={meta}
+                  isRegenerating={regeneratingBlockId === block.dndId}
+                  selectedActivities={meta.selectedActivities || []}
+                  isEditMode={editingBlockId === block.dndId}
+                  onToggleEditMode={() => toggleEditBlock(block.dndId)}
+                  onCancelEditMode={() => cancelEditBlock(block.dndId)}
+                  onToggleExpand={() => toggleExpand(block.dndId)}
+                  onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
+                  onSaveTitle={v => handleSaveTitle(block.dndId, v)}
+                  onEditStep={(sIdx, stIdx) => setEditing({ type: "step", blockId: block.dndId, sectionIdx: sIdx, stepIdx: stIdx })}
+                  onSaveStep={(sIdx, stIdx, v) => handleSaveStep(block.dndId, sIdx, stIdx, v)}
+                  onEditStepTime={(sIdx, stIdx) => setEditing({ type: "stepTime", blockId: block.dndId, sectionIdx: sIdx, stepIdx: stIdx })}
+                  onSaveStepTime={(sIdx, stIdx, v) => handleSaveStepTime(block.dndId, sIdx, stIdx, v)}
+                  onEditBlockDuration={() => setEditing({ type: "blockDuration", blockId: block.dndId })}
+                  onSaveBlockDuration={v => handleSaveBlockDuration(block.dndId, v)}
+                  onSaveObjective={v => handleSaveObjective(block.dndId, v)}
+                  onEditSectionDuration={(sIdx) => setEditing({ type: "sectionDuration", blockId: block.dndId, sectionIdx: sIdx })}
+                  onSaveSectionDuration={(sIdx, v) => handleSaveSectionDuration(block.dndId, sIdx, v)}
+                  onDeleteBlock={() => handleDeleteBlock(block.dndId)}
+                  onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
+                  onSwitchEvaluateActivity={(lgNum, newAct) => switchEvaluateActivity(block.dndId, lgNum, newAct)}
+                  onDeleteActivity={method => handleDeleteActivity(block.dndId, method)}
+                  onAddActivity={method => handleAddActivity(block.dndId, method)}
+                  onAddStep={text => handleAddStep(block.dndId, text)}
+                  onDeleteStep={(sIdx, stIdx) => handleDeleteStep(block.dndId, sIdx, stIdx)}
+                />
+                );
+              })}
+            </SortableContext>
+            
+            <div className="mt-4 flex justify-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full border-dashed border-2 py-6 text-muted-foreground hover:text-foreground hover:border-primary/50"
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Add Block <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  {ADDABLE_BLOCK_TYPES.map(t => (
+                    <DropdownMenuItem key={t.phase} onClick={() => handleAddBlock(t.phase)}>
+                      <span className="mr-2">{phaseEmojis[t.phase]}</span>{t.label}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleAddBlock("CUSTOM")}>
+                    <span className="mr-2">{phaseEmojis.CUSTOM}</span>Custom Block
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </DndContext>
+        </CardContent>
+
+        {/* Sticky footer */}
+        <div className="sticky bottom-4 z-20 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-xl p-3 flex items-center justify-between gap-4 transition-all">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBack}
+            className="gap-2 font-body shrink-0 bg-transparent border-[1.5px] border-primary text-primary hover:bg-primary/5 transition-all duration-150"
+          >
+            <ArrowLeft className="h-4 w-4" /> Previous
+          </Button>
+
+          <div className="flex-1 flex items-center justify-center gap-4 text-sm font-medium">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Clock className={`h-4 w-4 ${totalDuration > targetDuration ? "text-destructive" : "text-primary"}`} />
+              <span className="hidden sm:inline">Time Allocated</span>
+            </div>
+            {totalDuration > targetDuration ? (
+              <span className="flex items-center gap-1.5 bg-destructive/15 text-foreground border border-destructive/50 px-2.5 py-0.5 rounded-md font-bold shadow-sm">
+                <span className="text-destructive">⚠</span> {totalDuration} / {targetDuration} min
+              </span>
+            ) : (
+              <span className="text-foreground font-bold">
+                {totalDuration} / {targetDuration} min
+              </span>
+            )}
+            <div className="hidden sm:block h-1 w-[128px] bg-muted/60 rounded-full overflow-hidden shadow-inner">
+              <div
+                className={`h-full transition-all duration-500 ease-out ${totalDuration > targetDuration ? "bg-destructive" : "bg-primary"}`}
+                style={{ width: `${timePercentage}%` }}
+              />
+            </div>
+          </div>
+
+          {totalDuration > targetDuration ? (
+            <Button size="sm" disabled className="gap-2 shadow-md bg-muted text-muted-foreground font-semibold shrink-0 rounded-lg">
+              {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <div 
+              title={evaluateBlockNeedsPrioritySelection ? "please review Understanding Check first" : undefined}
+              className={evaluateBlockNeedsPrioritySelection ? "shrink-0 cursor-help" : "shrink-0"}
+            >
+              <Button 
+                size="sm" 
+                onClick={handleNext} 
+                disabled={evaluateBlockNeedsPrioritySelection || regeneratingBlockId !== null} 
+                className={`gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150 ${evaluateBlockNeedsPrioritySelection ? "pointer-events-none" : ""}`}
+              >
+                {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
+
+
+
+      {/* Undo delete banner */}
+      {lastDeletedBlock && (
+        <div className="fixed bottom-24 right-4 z-50 flex items-center gap-3 bg-foreground text-background text-sm font-body px-4 py-3 rounded-xl shadow-xl border border-border/10">
+          <span className="opacity-80">Block deleted</span>
+          <button
+            onClick={handleUndoDelete}
+            className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity whitespace-nowrap"
+          >
+            Undo
+          </button>
+          <button
+            onClick={() => setLastDeletedBlock(null)}
+            className="opacity-50 hover:opacity-100 transition-opacity ml-1"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={pendingNavigation !== null} onOpenChange={(open) => {
+        if (!open) setPendingNavigation(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You have unsaved work</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to proceed?
+              <br/><br/>
+              If you click <strong>Yes</strong>, your recent edits will be undone.
+              <br/>
+              If you click <strong>No</strong>, you will remain on this page with your edits intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingNavigation(null)}>No, stay here</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmNavigation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Yes, undo changes & proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

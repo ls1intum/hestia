@@ -4,10 +4,10 @@ name: workshopper CI/CD
 # reusable workflows. Scoped to workshopper via paths so other apps in the monorepo
 # are unaffected.
 #
-#   PR               -> [test backend] -> build images (pr-<N> tags), no deploy   [validation]
-#   push to main     -> [test backend] -> build (latest) + deploy to Staging
-#   release published -> [test backend] -> build (<tag>)  + deploy to Production (approval gate via the env)
-#   workflow_dispatch -> [test backend] -> build + deploy to the chosen environment/tag (manual)
+#   PR               -> [test server] -> build images (pr-<N> tags), no deploy   [validation]
+#   push to main     -> [test server] -> build (latest) + deploy to Staging
+#   release published -> [test server] -> build (<tag>)  + deploy to Production (approval gate via the env)
+#   workflow_dispatch -> [test server] -> build + deploy to the chosen environment/tag (manual)
 #
 # Everything runs on GitHub-hosted runners. The VMs sit behind the LRZ VPN, so the deploy
 # reusable reaches them over SSH through the chair's shared deployment gateway/bastion
@@ -60,9 +60,9 @@ permissions:
 
 jobs:
   # ── Test ────────────────────────────────────────────────────────────────────
-  # Runs the backend unit + slice tests. build-server and build-client only
+  # Runs the server unit + slice tests. build-server and build-client only
   # start after this job succeeds, so a test failure blocks the whole pipeline.
-  test-backend:
+  test-server:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,46 +76,46 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Workshopper backend tests
-        run: ./gradlew :apps:workshopper:backend:test --tests "com.workshopper.*"
+      - name: Run Workshopper server tests
+        run: ./gradlew :apps:workshopper:server:test --tests "com.workshopper.*"
 
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: workshopper-test-report
-          path: apps/workshopper/backend/build/reports/tests/test/
+          path: apps/workshopper/server/build/reports/tests/test/
 
   # ── Build ────────────────────────────────────────────────────────────────────
-  build-backend:
-    needs: test-backend
+  build-server:
+    needs: test-server
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/workshopper/backend
-      docker-file: apps/workshopper/backend/Dockerfile
-      # Repo root: the backend is a multi-module Gradle build (depends on :libs:shared-llm).
+      image-name: ${{ github.repository }}/workshopper/server
+      docker-file: apps/workshopper/server/Dockerfile
+      # Repo root: the server is a multi-module Gradle build (depends on :libs:shared-llm).
       docker-context: .
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
-  build-frontend:
-    needs: test-backend
+  build-client:
+    needs: test-server
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
-      image-name: ${{ github.repository }}/workshopper/frontend
-      docker-file: apps/workshopper/frontend/Dockerfile
-      docker-context: apps/workshopper/frontend
+      image-name: ${{ github.repository }}/workshopper/client
+      docker-file: apps/workshopper/client/Dockerfile
+      docker-context: apps/workshopper/client
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
   # ── Deploy ───────────────────────────────────────────────────────────────────
   deploy:
-    needs: [build-backend, build-frontend]
+    needs: [build-server, build-client]
     # PRs only validate the build; everything else deploys.
     if: github.event_name != 'pull_request'
     uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/workshopper/compose.prod.yaml
-      main-image-name: ${{ github.repository }}/workshopper/backend
+      main-image-name: ${{ github.repository }}/workshopper/server
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/workshopper
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
