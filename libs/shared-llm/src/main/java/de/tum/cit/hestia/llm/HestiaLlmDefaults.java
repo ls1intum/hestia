@@ -7,66 +7,36 @@ import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
+/**
+ * Low-priority LLM defaults: the TUM AET Logos gateway, which speaks the OpenAI API. Anything an
+ * app sets itself — properties, environment variables, system properties — still wins.
+ *
+ * <p>Chat and vision run on Logos. Embeddings do not: Logos serves no {@code /v1/embeddings}
+ * endpoint, so the embedding base URL points at GWDG SAIA and an app that embeds supplies a SAIA
+ * key under {@code spring.ai.openai.embedding.api-key}.
+ */
 public class HestiaLlmDefaults implements EnvironmentPostProcessor {
 
     static final String PROPERTY_SOURCE_NAME = "hestiaLlmDefaults";
 
-    /** Switches from the default TUM AET Logos gateway back to GWDG SAIA; both speak the OpenAI API. */
-    static final String SAIA_PROFILE = "saia";
+    static final String LOGOS_BASE_URL = "https://logos.aet.cit.tum.de";
 
     static final String SAIA_BASE_URL = "https://chat-ai.academiccloud.de";
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        Map<String, Object> defaults = saiaRequested(environment) ? saia() : logos();
-        environment.getPropertySources().addLast(new MapPropertySource(PROPERTY_SOURCE_NAME, defaults));
+        environment.getPropertySources().addLast(new MapPropertySource(PROPERTY_SOURCE_NAME, defaults()));
     }
 
-    /**
-     * Logos publishes the same weights under provider-prefixed ids, and its catalogue holds no
-     * embedding model, so embeddings keep going to SAIA: an app that embeds sets
-     * {@code spring.ai.openai.embedding.api-key} to its SAIA key.
-     */
-    private static Map<String, Object> logos() {
-        Map<String, Object> defaults = common();
-        defaults.put("spring.ai.openai.base-url", "https://logos.aet.cit.tum.de");
+    /** Logos publishes its two models under provider-prefixed ids. */
+    private static Map<String, Object> defaults() {
+        Map<String, Object> defaults = new HashMap<>();
+        defaults.put("spring.ai.openai.base-url", LOGOS_BASE_URL);
         defaults.put("spring.ai.openai.chat.options.model", "openai/gpt-oss-120b");
         defaults.put("spring.ai.openai.chat.options.vision-model", "Qwen/Qwen3.8-27B");
-        defaults.put("spring.ai.openai.embedding.base-url", SAIA_BASE_URL);
-        return defaults;
-    }
-
-    private static Map<String, Object> saia() {
-        Map<String, Object> defaults = common();
-        defaults.put("spring.ai.openai.base-url", SAIA_BASE_URL);
-        defaults.put("spring.ai.openai.chat.options.model", "openai-gpt-oss-120b");
-        defaults.put("spring.ai.openai.chat.options.vision-model", "qwen3.5-27b");
-        return defaults;
-    }
-
-    private static Map<String, Object> common() {
-        Map<String, Object> defaults = new HashMap<>();
         defaults.put("spring.ai.openai.chat.options.temperature", "0.0");
+        defaults.put("spring.ai.openai.embedding.base-url", SAIA_BASE_URL);
         defaults.put("spring.ai.openai.embedding.options.model", "e5-mistral-7b-instruct");
         return defaults;
-    }
-
-    /**
-     * Reads the requested profiles rather than the resolved ones: this runs before configuration
-     * files are loaded, so it sees SPRING_PROFILES_ACTIVE, -Dspring.profiles.active and the command
-     * line — the ways a provider is chosen for a run — but not a profile named inside a config file.
-     */
-    private static boolean saiaRequested(ConfigurableEnvironment environment) {
-        for (String property : new String[] {"spring.profiles.active", "spring.profiles.include"}) {
-            String value = environment.getProperty(property);
-            if (value != null) {
-                for (String profile : value.split(",")) {
-                    if (SAIA_PROFILE.equalsIgnoreCase(profile.trim())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
     }
 }
