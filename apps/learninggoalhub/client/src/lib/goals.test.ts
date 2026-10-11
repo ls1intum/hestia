@@ -38,6 +38,10 @@ describe("coverageOf", () => {
     expect(coverageOf(goal({ kinds: ["LECTURE", "EXERCISE"] }))).toBe("both");
   });
 
+  it("is exam for an exam goal, which has no document source", () => {
+    expect(coverageOf(goal({ origin: "EXAM", role: undefined }))).toBe("exam");
+  });
+
   it("is unknown for sources without a kind and null without any source", () => {
     expect(coverageOf(goal({ kinds: [undefined] }))).toBe("unknown");
     expect(coverageOf(goal({ kinds: [undefined, "LECTURE"] }))).toBe("lecture");
@@ -46,7 +50,7 @@ describe("coverageOf", () => {
 });
 
 describe("coverageCounts", () => {
-  it("rolls sub-skills up to their skill and topic, ignoring knowledge and source-less nodes", () => {
+  it("rolls sub-skills up to their skill and topic, ignoring knowledge, source-less and exam nodes", () => {
     const root = topic();
     const capability = goal({ origin: "SYNTHESIZED", parent: root });
     const goals = [
@@ -56,6 +60,7 @@ describe("coverageCounts", () => {
       goal({ kinds: ["LECTURE", "EXERCISE"], parent: capability }),
       goal({ kinds: ["EXERCISE"], parent: root }),
       goal({ kinds: [undefined], parent: root }),
+      goal({ origin: "EXAM", role: undefined, bloomLevel: "APPLY", parent: root }),
     ];
     const knowledgeParent = goals[2];
     goals.push(goal({ role: "KNOWLEDGE", kinds: ["EXERCISE"], parent: knowledgeParent }));
@@ -66,12 +71,27 @@ describe("coverageCounts", () => {
       lecture: 1,
       exercise: 1,
       both: 1,
+      exam: 0,
       unknown: 1,
       total: 4,
       practised: 2,
     });
     const skill = tree.children.find((child) => child.role === "capability")!;
     expect(coverageCounts(skill)).toMatchObject({ total: 2, practised: 1, lecture: 1, both: 1 });
+  });
+});
+
+describe("buildCompetencyForest", () => {
+  it("gives an exam goal under a topic the tier its role or Bloom level says", () => {
+    const root = topic();
+    const apply = goal({ origin: "EXAM", role: "SKILL", bloomLevel: "APPLY", parent: root, lectureOrder: 0 });
+    const recall = goal({ origin: "EXAM", role: "KNOWLEDGE", bloomLevel: "REMEMBER", parent: root, lectureOrder: 1 });
+    // Exam goals created before the tier was stored fall back to Bloom.
+    const legacy = goal({ origin: "EXAM", role: undefined, bloomLevel: "UNDERSTAND", parent: root, lectureOrder: 2 });
+
+    const [tree] = buildCompetencyForest([root, apply, recall, legacy]);
+
+    expect(tree.children.map((child) => child.role)).toEqual(["skill", "knowledge", "knowledge"]);
   });
 });
 

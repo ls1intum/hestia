@@ -169,6 +169,34 @@ class TopicTreeSynthesizerTest {
     }
 
     @Test
+    void placeOffersTopicsWithTheirSkillsAndMapsEachEntryBackToItsTopicAndSkill() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.options(any())).thenReturn(spec);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(new TopicTreeSynthesizer.Assignments(List.of(
+                        List.of(0, 2), List.of(1, 3), List.of(2, -1), List.of(3, 99))));
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        List<TopicTreeSynthesizer.MenuTopic> menu = List.of(
+                new TopicTreeSynthesizer.MenuTopic("Sorting", List.of("Implement comparison sorts", "Analyse sorting cost")),
+                new TopicTreeSynthesizer.MenuTopic("Hashing", List.of()));
+        List<String> outcomes = List.of("Derive the cost of merge sort", "Explain collisions",
+                "Design a compiler", "Invented index");
+
+        Map<Integer, TopicTreeSynthesizer.Placement> placements = new TopicTreeSynthesizer(builder, "planner", 0.0)
+                .place(menu, outcomes, null);
+
+        verify(spec).user(TopicTreeSynthesizer.PLACEMENT_PROMPT.formatted(
+                "[0] TOPIC: Sorting\n[1]     SKILL: Implement comparison sorts\n[2]     SKILL: Analyse sorting cost\n"
+                        + "[3] TOPIC: Hashing\n",
+                "[0] Derive the cost of merge sort\n[1] Explain collisions\n[2] Design a compiler\n[3] Invented index\n"));
+        assertThat(placements).containsOnly(
+                Map.entry(0, new TopicTreeSynthesizer.Placement(0, 1)),
+                Map.entry(1, new TopicTreeSynthesizer.Placement(1, null)));
+    }
+
+    @Test
     void shortLabelsLeaveEveryNameWithoutALabelWhenTheCallFails() {
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt();

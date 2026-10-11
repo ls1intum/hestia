@@ -776,18 +776,19 @@ public class ExtractionRunner {
      *
      * <p>Topics are named, assigned and structured from lecture outcomes only; outcomes of documents
      * without a kind count as lecture outcomes, so existing courses build as before. Exercise
-     * material is evidence, not a topic namer: exercise outcomes are then assigned onto the finished
-     * topic labels and hang directly under their topic, never inside a lecture capability, so the
-     * validated structuring prompt only ever groups lecture outcomes. An exercise outcome
-     * no topic covers is practised but not introduced; it is counted and left out, not forced in.
+     * material is evidence, not a topic namer: once topics and capabilities stand, exercise outcomes
+     * and exam goals are placed into them, under a capability or directly under a topic, so the
+     * validated structuring prompt only ever groups lecture outcomes. An exercise outcome no topic
+     * covers is practised but not introduced; it is counted and left out, not forced in.
      */
     private CompetencyTreePlan planFullCompetencyTree(Course course, String modelOverride,
                                                       String languageName) {
         // Only skill-tier session/exercise goals are tree candidates. Role is structural for V24+
-        // data, while role-null legacy goals retain the Bloom fallback.
+        // data, while role-null legacy goals retain the Bloom fallback. Exam goals are role-null
+        // too, so the level check keeps them out: they are assigned onto the finished topics below.
         List<LearningGoal> skillTier = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
-                .filter(g -> g.getHierarchyNode().getLevel() != HierarchyLevel.MODULE
-                        && g.getHierarchyNode().getLevel() != HierarchyLevel.COMPETENCY)
+                .filter(g -> g.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
+                        || g.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE)
                 .filter(ExtractionRunner::isSkillTier)
                 .sorted(Comparator.comparing(
                                 LearningGoal::getLectureOrder,
@@ -829,38 +830,40 @@ public class ExtractionRunner {
         List<TaxonomyClassification> classifications = capabilityNames.isEmpty()
                 ? List.of()
                 : safeClassifyBatch(capabilityNames, modelOverride);
-        List<List<Integer>> practisedByTopic;
-        List<Integer> notIntroduced;
-        if (exercises.isEmpty()) {
-            practisedByTopic = Collections.nCopies(plan.topics().size(), List.of());
-            notIntroduced = List.of();
-        } else {
-            Map<Integer, Integer> assignment;
-            try {
-                assignment = topicTreeSynthesizer.assign(
-                        plan.topics().stream().map(TopicTreeSynthesizer.PlannedTopic::label).toList(),
-                        exercises.stream().map(LearningGoal::getText).toList(), modelOverride);
-            } catch (RuntimeException ex) {
-                throw new IllegalStateException("Exercise outcome assignment failed: " + errorMessage(ex), ex);
-            }
-            practisedByTopic = TopicTreeSynthesizer.membersByTopic(assignment, exercises.size(), plan.topics().size());
-            notIntroduced = TopicTreeSynthesizer.unmatched(assignment, exercises.size());
+        // Exercise outcomes and exam goals are placed into the finished tree: under a skill, directly
+        // under a topic, or nowhere. They never decide the topics or skills themselves.
+        List<TopicTreeSynthesizer.MenuTopic> menu = plan.topics().stream()
+                .map(topic -> new TopicTreeSynthesizer.MenuTopic(topic.label(),
+                        topic.capabilities().stream().map(TopicTreeSynthesizer.PlannedCapability::name).toList()))
+                .toList();
+        TreePlacement practised;
+        try {
+            practised = TreePlacement.place(topicTreeSynthesizer, menu, exercises, modelOverride);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("Exercise outcome assignment failed: " + errorMessage(ex), ex);
         }
+        List<LearningGoal> notIntroduced = practised.unplaced();
+        TreePlacement examined = placeExamGoals(course, menu,
+                goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXAM)), modelOverride);
         List<PlannedCompetency> planned = new ArrayList<>();
         int capabilityIndex = 0;
         int topicIndex = 0;
         for (TopicTreeSynthesizer.PlannedTopic topic : plan.topics()) {
             List<PlannedCapability> capabilities = new ArrayList<>();
+            int skillIndex = 0;
             for (TopicTreeSynthesizer.PlannedCapability capability : topic.capabilities()) {
                 List<LearningGoal> members = capability.outcomes().stream().map(candidates::get).toList();
+                List<LearningGoal> placed = new ArrayList<>(practised.underSkill().get(topicIndex).get(skillIndex));
+                placed.addAll(examined.underSkill().get(topicIndex).get(skillIndex++));
                 capabilities.add(new PlannedCapability(capability.name(), capability.shortLabel(),
                         atLeastChildLevels(classifications.get(capabilityIndex++),
                                 bloomLevels(members), soloLevels(members)),
-                        members));
+                        members, placed));
             }
             List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
-            List<LearningGoal> practised = practisedByTopic.get(topicIndex++).stream().map(exercises::get).toList();
-            planned.add(new PlannedCompetency(topic.label(), capabilities, direct, practised));
+            List<LearningGoal> placed = new ArrayList<>(practised.underTopic().get(topicIndex));
+            placed.addAll(examined.underTopic().get(topicIndex++));
+            planned.add(new PlannedCompetency(topic.label(), capabilities, direct, placed));
         }
         planned.sort(Comparator.comparingInt(ExtractionRunner::medianLectureOrder));
         int unmatched = plan.unmatched().size();
@@ -875,6 +878,29 @@ public class ExtractionRunner {
                     + "(no lecture topic covers them)", course.getId(), notIntroduced.size(), exercises.size());
         }
         return new CompetencyTreePlan(planned, unmatched + notIntroduced.size());
+    }
+
+    /**
+     * Places a course's exam goals into the finished tree with the call exercise outcomes go through.
+     * Exam goals are evidence about the tree, not part of what builds it, so a failed call leaves them
+     * all unplaced instead of failing the tree. An exam goal no topic covers is examined but not
+     * taught; it stays under the EXAM root.
+     */
+    private TreePlacement placeExamGoals(Course course, List<TopicTreeSynthesizer.MenuTopic> menu,
+                                         List<LearningGoal> examGoals, String modelOverride) {
+        TreePlacement placement;
+        try {
+            placement = TreePlacement.place(topicTreeSynthesizer, menu, examGoals, modelOverride);
+        } catch (RuntimeException ex) {
+            log.warn("Exam goal placement failed for course {}, leaving {} exam goal(s) unplaced: {}",
+                    course.getId(), examGoals.size(), errorMessage(ex));
+            return TreePlacement.empty(menu);
+        }
+        if (!placement.unplaced().isEmpty()) {
+            log.info("Competency tree for course {}: {} of {} exam goals are examined but not taught "
+                    + "(no lecture topic covers them)", course.getId(), placement.unplaced().size(), examGoals.size());
+        }
+        return placement;
     }
 
     /** An outcome extracted from a document uploaded as an exercise. */
@@ -902,18 +928,19 @@ public class ExtractionRunner {
      * @param text         the topic label.
      * @param capabilities generated capabilities, each over at least two extracted outcomes.
      * @param direct       extracted lecture outcomes that hang directly under the topic.
-     * @param practised    extracted exercise outcomes assigned to the topic; they hang directly under
-     *                     it too, but do not decide where the topic sits in the course.
+     * @param placed       exercise outcomes and exam goals placed directly under the topic; they do
+     *                     not decide where the topic sits in the course.
      */
     private record PlannedCompetency(String text, List<PlannedCapability> capabilities,
-                                     List<LearningGoal> direct, List<LearningGoal> practised) {}
+                                     List<LearningGoal> direct, List<LearningGoal> placed) {}
 
     /**
-     * A generated capability: its name, its levels, and the extracted outcomes beneath it. Both its
-     * Bloom and its SOLO level are at least the highest among its members.
+     * A generated capability: its name, its levels, the lecture outcomes it was built from, and the
+     * exercise outcomes and exam goals placed beneath it afterwards. Both its Bloom and its SOLO level
+     * are at least the highest among its members; placed goals do not raise them.
      */
     private record PlannedCapability(String text, String shortLabel, TaxonomyClassification classification,
-                                     List<LearningGoal> members) {}
+                                     List<LearningGoal> members, List<LearningGoal> placed) {}
 
     private static List<BloomLevel> bloomLevels(List<LearningGoal> goals) {
         return goals.stream().map(LearningGoal::getBloomLevel).filter(java.util.Objects::nonNull).toList();
@@ -979,7 +1006,7 @@ public class ExtractionRunner {
     /**
      * Writes a planned tree: the {@code COMPETENCY} root, one terminal goal per topic, one generated
      * goal per capability, and the CONTRIBUTES_TO edges capability → topic, skill →
-     * capability, and ungrouped or exercise skill → topic. Knowledge → skill edges were created during extraction.
+     * capability, exercise or exam goal → capability, and ungrouped, exercise or exam goal → topic. Knowledge → skill edges were created during extraction.
      * All LLM work is already done by the time this runs.
      */
     private void persistCompetencyTree(Course course, CompetencyTreePlan plan) {
@@ -1008,9 +1035,10 @@ public class ExtractionRunner {
                 goalRepository.saveAndFlush(capability);
                 linkSynthesized(List.of(capability), terminal, RelationshipType.CONTRIBUTES_TO);
                 linkSynthesized(planned.members(), capability, RelationshipType.CONTRIBUTES_TO);
+                linkSynthesized(planned.placed(), capability, RelationshipType.CONTRIBUTES_TO);
             }
             linkSynthesized(competency.direct(), terminal, RelationshipType.CONTRIBUTES_TO);
-            linkSynthesized(competency.practised(), terminal, RelationshipType.CONTRIBUTES_TO);
+            linkSynthesized(competency.placed(), terminal, RelationshipType.CONTRIBUTES_TO);
         }
     }
 

@@ -60,7 +60,7 @@ export default function CoursePage() {
     queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
   }, [courseId, extractionStatusQuery.data?.status, queryClient]);
   const reviewDue = course != null
-    && (course.skillCount ?? 0) > 0
+    && (course.topicCount ?? 0) > 0
     && course.skillsReviewedAt == null;
   const [reviewDismissed, setReviewDismissed] = useState(false);
   // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
@@ -156,7 +156,7 @@ export default function CoursePage() {
           <h1 className="text-2xl">{courseName}</h1>
           <CourseMenu
             exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
-            onReview={(course?.skillCount ?? 0) > 0 ? () => setReviewOpen(true) : undefined}
+            onReview={(course?.topicCount ?? 0) > 0 ? () => setReviewOpen(true) : undefined}
             onDelete={() => setConfirmDelete(true)}
           />
         </div>

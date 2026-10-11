@@ -37,6 +37,9 @@ import org.springframework.stereotype.Service;
  *       capabilities without a short label.</li>
  * </ol>
  *
+ * <p>Once the tree stands, {@link #place} puts further outcomes into it — exercise outcomes and exam
+ * goals — under a topic's skill or directly under the topic, without changing the tree itself.
+ *
  * <p>The model's answers are normalised rather than validated: an index that is invented or repeated
  * is ignored, a skill the assignment omits is left out like an unmatched one, and a skill the
  * structuring omits stays directly under its topic. Nothing is retried, so a run costs exactly one
@@ -126,6 +129,59 @@ public class TopicTreeSynthesizer {
             ---
 
             Extracted outcomes to assign:
+            ---
+            %s
+            ---
+            """;
+
+    static final String PLACEMENT_PROMPT = """
+            Place each learning outcome below in the fixed competency tree of a university course.
+
+            The tree is fixed. Each TOPIC names a subject of the course; the SKILL entries indented beneath a
+            topic are the skills the course builds within that topic. Do not rename, add or rewrite entries.
+
+            HOW TO DECIDE
+
+            For each outcome:
+            1. Read the complete outcome and identify what it is about: the content a student works with.
+            2. Find the topic that covers that content.
+            3. Within that topic, choose the skill the outcome is part of: doing the outcome practises or
+               demonstrates that skill. Return the skill's index.
+            4. If the outcome belongs to the topic but to none of its skills, return the topic's index.
+            5. Return -1 if no topic covers it.
+
+            - Ignore the cognitive level when choosing the topic. Recalling, understanding, applying or
+              analysing the same content belong to the same topic.
+            - Decide by what the outcome is about, not by a word it shares with an entry. A method the
+              outcome only uses as a tool, or a subject it only mentions in passing, does not decide the match.
+            - Choose a skill only when the outcome genuinely belongs to it. Do not force an outcome into the
+              nearest skill: the topic entry is the right answer for an outcome that fits the topic but no
+              single skill.
+            - When several entries fit, choose the most specific one. If still tied, choose the lowest index.
+            - Judge each outcome on its content. Do not balance entry sizes or try to give every entry members.
+
+            NO SUITABLE ENTRY
+
+            Use -1 when no topic covers the outcome's content. An honest -1 is better than a forced match.
+
+            OUTPUT
+
+            Return only structured JSON:
+            {"assignments":[[0,3],[1,-1],[2,0]]}
+
+            Each pair is [outcome index, entry index].
+
+            - Use the exact indices supplied below.
+            - Every supplied outcome index must appear exactly once, in ascending order.
+            - Each entry index must be one listed below, or -1.
+            - Do not return explanations or additional fields.
+
+            Competency tree:
+            ---
+            %s
+            ---
+
+            Outcomes to place:
             ---
             %s
             ---
@@ -240,6 +296,19 @@ public class TopicTreeSynthesizer {
         }
     }
 
+    /** One topic of a finished tree as a placement offers it: its label and its skills' names. */
+    public record MenuTopic(String label, List<String> skills) {
+        public MenuTopic {
+            skills = List.copyOf(skills);
+        }
+    }
+
+    /**
+     * Where an outcome was placed: a topic index into the menu, and the index of one of that topic's
+     * skills, or null when it goes directly under the topic.
+     */
+    public record Placement(int topic, Integer skill) {}
+
     // The prompts above are kept verbatim from the runs that validated them, where the tiers were
     // still called capability and sub-capability. Their nouns are an experimental variable — the
     // label count moves with the wording — so the reply keys stay as measured and the records carry
@@ -321,23 +390,6 @@ public class TopicTreeSynthesizer {
         }
     }
 
-    /**
-     * Assigns {@code outcomes} to the fixed {@code labels} with the same batched assignment call
-     * {@link #synthesize} runs after naming. Nothing is named or structured.
-     *
-     * @return outcome index -> label index, or {@link #UNMATCHED}; an outcome the model left out of
-     *         its batch's answer is absent. {@link #membersByTopic} and {@link #unmatched} read it.
-     * @throws RuntimeException when a call fails.
-     */
-    public Map<Integer, Integer> assign(List<String> labels, List<String> outcomes, String modelOverride) {
-        if (labels.isEmpty() || outcomes.isEmpty()) {
-            return Map.of();
-        }
-        try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
-            return assign(executor, labels, outcomes, effectiveModel(modelOverride));
-        }
-    }
-
     private Map<Integer, Integer> assign(ExecutorService executor, List<String> labels, List<String> outcomes,
                                          String effectiveModel) {
         String menu = numbered(labels, 0, labels.size());
@@ -353,6 +405,54 @@ public class TopicTreeSynthesizer {
         Map<Integer, Integer> assignment = new LinkedHashMap<>();
         batches.forEach(batch -> assignment.putAll(join(batch)));
         return assignment;
+    }
+
+    /**
+     * Places {@code outcomes} into a finished tree: under one of a topic's skills, directly under a
+     * topic, or nowhere. Exercise outcomes and exam goals go through this after the tree was built
+     * from lecture outcomes, so it only reads the tree. A menu whose topics list no skills can only
+     * place directly under topics.
+     *
+     * @return outcome index -> placement; an outcome placed nowhere, or left out of its batch's
+     *         answer, is absent.
+     * @throws RuntimeException when a call fails.
+     */
+    public Map<Integer, Placement> place(List<MenuTopic> menu, List<String> outcomes, String modelOverride) {
+        if (menu.isEmpty() || outcomes.isEmpty()) {
+            return Map.of();
+        }
+        List<Placement> entries = new ArrayList<>();
+        StringBuilder tree = new StringBuilder();
+        for (int topic = 0; topic < menu.size(); topic++) {
+            tree.append('[').append(entries.size()).append("] TOPIC: ").append(menu.get(topic).label()).append('\n');
+            entries.add(new Placement(topic, null));
+            List<String> skills = menu.get(topic).skills();
+            for (int skill = 0; skill < skills.size(); skill++) {
+                tree.append('[').append(entries.size()).append("]     SKILL: ").append(skills.get(skill)).append('\n');
+                entries.add(new Placement(topic, skill));
+            }
+        }
+        String effectiveModel = effectiveModel(modelOverride);
+        Map<Integer, Placement> result = new LinkedHashMap<>();
+        try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
+            List<CompletableFuture<Map<Integer, Integer>>> batches = new ArrayList<>();
+            for (int start = 0; start < outcomes.size(); start += ASSIGNMENT_BATCH) {
+                int from = start;
+                int to = Math.min(start + ASSIGNMENT_BATCH, outcomes.size());
+                batches.add(async(executor, () -> normalizeAssignments(call(
+                        PLACEMENT_PROMPT.formatted(tree, numbered(outcomes, from, to)),
+                        effectiveModel, new ParameterizedTypeReference<Assignments>() {}),
+                        from, to, entries.size())));
+            }
+            for (CompletableFuture<Map<Integer, Integer>> batch : batches) {
+                join(batch).forEach((outcome, entry) -> {
+                    if (entry != UNMATCHED) {
+                        result.put(outcome, entries.get(entry));
+                    }
+                });
+            }
+        }
+        return result;
     }
 
     /**

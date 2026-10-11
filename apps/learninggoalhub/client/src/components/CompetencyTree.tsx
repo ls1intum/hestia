@@ -14,7 +14,7 @@ import {
 } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
-import type { LearningGoal } from "../api/client.ts";
+import type { ExamTask, LearningGoal } from "../api/client.ts";
 import CompetencyCreationField from "./CompetencyCreationField.tsx";
 import TopicSearchDialog from "./TopicSearchDialog.tsx";
 import { createTopic } from "../lib/createTopic.ts";
@@ -162,15 +162,18 @@ const AI_INFERRED_KIND = "AI_INFERRED";
 const MANUAL_KIND = "MANUAL";
 const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
 // Coverage filter values for goals with a source: sourced only from lectures, only from exercises,
-// or from both. Goals without a source, or whose documents have no kind, match none.
+// or from both; exam goals are their own value. Goals without a source, or whose documents have no
+// kind, match none.
 const LECTURE_ONLY = "LECTURE_ONLY";
 const EXERCISE_ONLY = "EXERCISE_ONLY";
 const BOTH = "BOTH";
-const COVERAGE_ORDER = [LECTURE_ONLY, EXERCISE_ONLY, BOTH];
+const EXAM = "EXAM";
+const COVERAGE_ORDER = [LECTURE_ONLY, EXERCISE_ONLY, BOTH, EXAM];
 const COVERAGE_VALUE: Partial<Record<Coverage, string>> = {
   lecture: LECTURE_ONLY,
   exercise: EXERCISE_ONLY,
   both: BOTH,
+  exam: EXAM,
 };
 const ROLE_ORDER: CompetencyRole[] = [
   "topic",
@@ -304,7 +307,7 @@ function LooseGroupRow({
             </svg>
           </button>
           <span className="min-w-0 pt-px text-sm leading-relaxed text-hestia-text-muted">
-            <span className="italic">Sub-skills without a skill</span>
+            <span className="italic">Additional sub-skills</span>
             {!open && <ChildPreview role="capability" items={items} fullWording={false} />}
           </span>
         </div>
@@ -412,6 +415,7 @@ function displayValue(key: FilterKey, value: string): string {
   if (value === LECTURE_ONLY) return "Lecture only";
   if (value === EXERCISE_ONLY) return "Exercise only";
   if (value === BOTH) return "Both";
+  if (value === EXAM) return "Exam";
   if (value === AI_INFERRED_KIND) return "AI-inferred";
   if (value === MANUAL_KIND) return "Manual";
   return value ? titleCase(value) : "—";
@@ -859,7 +863,7 @@ export default function CompetencyTree({
     return map;
   }, [rows, matchIds, contextIds]);
   const isOpen = (id: number) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
-  // The goals under a topic that sit in no skill, gathered under one "Sub-skills without a skill"
+  // The goals under a topic that sit in no skill, gathered under one "Additional sub-skills"
   // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
   const looseOf = (topicId: number) =>
     (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "capability");
@@ -1184,7 +1188,7 @@ export default function CompetencyTree({
     const isContext = filtering && contextIds.has(row.id);
     if (filtering && !isMatch && !isContext) return;
     const mapOpen = layout === "diagram" && !filtering && openTopicId === row.id;
-    // A goal hanging directly under a topic sits in the "Sub-skills without a skill" group, one
+    // A goal hanging directly under a topic sits in the "Additional sub-skills" group, one
     // step further in, level with the sub-skills under a skill. Its knowledge follows it in.
     const rowDepth = row.role !== "capability" && parentRole === "topic" ? depth + 1 : depth;
     // The "+" lives in the table only: the map adds in the map, and a filtered list has no place
@@ -2077,11 +2081,11 @@ function TierGuideMenu({
             <ul className="flex flex-col gap-1.5 border-t border-hestia-border pt-3 text-xs leading-snug text-hestia-text-muted">
               <li>
                 <b className="font-semibold text-hestia-text">Source:</b> hover it to read the quote,
-                click it to open the page beside the table.
+                click it to open the page beside the table. An exam goal shows the exam task instead.
               </li>
               <li>
                 <b className="font-semibold text-hestia-text">Coverage:</b> whether a sub-skill was found
-                in a lecture or an exercise.
+                in a lecture or an exercise, or derived from an exam task.
               </li>
               <li>
                 <b className="font-semibold text-hestia-text">Kind:</b> Manual marks goals you added,
@@ -2759,6 +2763,7 @@ function DiagramAttributes({
   const showSource =
     columns.includes("source") &&
     (row.goal.sources?.[0] != null ||
+      row.goal.examTask != null ||
       (isGrouping(row.role) && row.goal.creationProvenance !== "USER_CREATED"));
   if (!showCoverage && !showKind && scales.length === 0 && !showSource) return null;
   return (
@@ -2834,6 +2839,7 @@ function SourceChip({
   open: boolean;
   onOpen: (trigger: HTMLElement) => void;
 }) {
+  if (row.goal.examTask) return <ExamTaskChip task={row.goal.examTask} />;
   const source = row.goal.sources?.[0];
   if (!source) {
     return isGrouping(row.role) && row.goal.creationProvenance !== "USER_CREATED" ? (
@@ -2927,6 +2933,62 @@ function SourceChip({
           </span>
         )}
       </button>
+    </InfoTooltip>
+  );
+}
+
+/**
+ * Where an exam goal came from: the exam task it was derived from, read on hover. There is no page
+ * to open, so unlike a document source it is not a button. The consumer sends no exam name, so the
+ * exam is told apart by the day it was submitted.
+ */
+function ExamTaskChip({ task }: { task: ExamTask }) {
+  const exam = task.submittedAt
+    ? `Exam of ${new Date(task.submittedAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })}`
+    : "Exam";
+  const taskLabel = task.taskNumber != null ? `Task ${task.taskNumber}` : "Task";
+  const context = task.context?.trim();
+  return (
+    <InfoTooltip
+      className="flex max-w-full min-w-0"
+      content={
+        <div className="flex flex-col gap-2.5 text-xs text-hestia-text">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-hestia-accent">
+            From an exam task
+          </p>
+          {task.text && (
+            <p className="line-clamp-6 border-l-[3px] border-[color-mix(in_srgb,var(--hestia-accent)_25%,transparent)] pl-2.5 leading-snug">
+              “{task.text.trim()}”
+            </p>
+          )}
+          {context && (
+            <p className="line-clamp-4 leading-snug text-hestia-text-muted">
+              <span className="font-medium">Context: </span>
+              {context}
+            </p>
+          )}
+          <p className="text-hestia-text-muted">
+            {exam} · {taskLabel}
+            {task.taskType ? ` · ${task.taskType}` : ""}
+          </p>
+        </div>
+      }
+    >
+      <span
+        tabIndex={0}
+        aria-label={`Source: ${exam}, ${taskLabel}`}
+        // Reading the task is not a click on the row it sits in.
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="flex max-w-full min-w-0 flex-col items-start rounded-md border border-hestia-border/60 bg-hestia-text/3 px-1.5 py-0.5 text-left outline-none"
+      >
+        <span className="max-w-full truncate">{exam}</span>
+        <span className="max-w-full truncate opacity-75">{taskLabel}</span>
+      </span>
     </InfoTooltip>
   );
 }

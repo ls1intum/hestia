@@ -191,11 +191,11 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
 // Every source carries the kind of the document it was quoted from, so whether a sub-skill is
 // introduced in a lecture, practised in an exercise, or both is read straight off its sources.
 // Documents uploaded before kinds existed have none; their sub-skills are "unknown" and show no
-// badge.
+// badge. Exam goals have no document source; they come from an exam task and are "exam".
 // ────────────────────────────────────────────────────────────────────────────
 
 /** Where a sub-skill's evidence comes from. */
-export type Coverage = "lecture" | "exercise" | "both" | "unknown";
+export type Coverage = "lecture" | "exercise" | "both" | "exam" | "unknown";
 
 export const COVERAGE_META: Record<
   Exclude<Coverage, "unknown">,
@@ -207,10 +207,15 @@ export const COVERAGE_META: Record<
     label: "Both",
     color: "color-mix(in srgb, var(--hestia-primary) 50%, var(--hestia-accent))",
   },
+  exam: { label: "Exam", color: "var(--hestia-accent)" },
 };
 
-/** A goal's coverage from its sources' document kinds; null when it has no source at all. */
+/**
+ * A goal's coverage from its sources' document kinds; null when it has no source at all. An exam
+ * goal is "exam" whether or not the task it came from was stored.
+ */
 export function coverageOf(goal: LearningGoal): Coverage | null {
+  if (goal.origin === "EXAM") return "exam";
   const sources = goal.sources ?? [];
   if (sources.length === 0) return null;
   const lecture = sources.some((source) => source.documentKind === "LECTURE");
@@ -218,7 +223,7 @@ export function coverageOf(goal: LearningGoal): Coverage | null {
   return lecture && exercise ? "both" : exercise ? "exercise" : lecture ? "lecture" : "unknown";
 }
 
-/** How a branch's source-backed sub-skills split by coverage. */
+/** How a branch's source-backed sub-skills split by coverage. Exam goals are not counted. */
 export type CoverageCounts = Record<Coverage, number> & {
   /** Sub-skills with a source, whatever their coverage. */
   total: number;
@@ -229,7 +234,8 @@ export type CoverageCounts = Record<Coverage, number> & {
 function subSkillsOf(node: CompetencyNode): CompetencyNode[] {
   const found: CompetencyNode[] = [];
   const walk = (current: CompetencyNode) => {
-    if (current.role === "skill" && coverageOf(current.goal) != null) found.push(current);
+    const coverage = coverageOf(current.goal);
+    if (current.role === "skill" && coverage != null && coverage !== "exam") found.push(current);
     current.children.forEach(walk);
   };
   node.children.forEach(walk);
@@ -242,6 +248,7 @@ export function coverageCounts(node: CompetencyNode): CoverageCounts {
     lecture: 0,
     exercise: 0,
     both: 0,
+    exam: 0,
     unknown: 0,
     total: 0,
     practised: 0,

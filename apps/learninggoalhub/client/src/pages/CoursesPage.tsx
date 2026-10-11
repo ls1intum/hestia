@@ -208,9 +208,10 @@ export default function CoursesPage() {
           <ul>
             <li className="flex items-center border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-2 text-xs font-semibold text-hestia-text-muted">
               <span className="mr-2 w-5 shrink-0" aria-hidden />
-              <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_3rem] gap-4">
+              <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_4.5rem_7rem_7rem_3rem] gap-4">
                 <span>Course</span>
                 <span className="text-right">Docs</span>
+                <span className="text-right">Topics</span>
                 <span className="text-right">Skills</span>
                 <span>Status</span>
                 <span className="text-right">Created</span>
@@ -262,11 +263,14 @@ export default function CoursesPage() {
                         }
                       }}
                       aria-haspopup={isExtracting || extractionProblem ? "dialog" : undefined}
-                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_3rem] items-center gap-4 self-stretch text-sm"
+                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_4.5rem_7rem_7rem_3rem] items-center gap-4 self-stretch text-sm"
                     >
                       <span className="font-medium text-hestia-text">{course.name}</span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
                         {course.documentCount ?? 0}
+                      </span>
+                      <span className="text-right tabular-nums text-hestia-text-muted">
+                        {course.topicCount ?? 0}
                       </span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
                         {course.skillCount ?? 0}
