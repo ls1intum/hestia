@@ -36,8 +36,12 @@ spring:
     open-in-view: false
   ai:
     openai:
-      api-key: ${SAIA_API_KEY:}
-    # SAIA rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
+      # Chat and vision run on the TUM AET Logos gateway (the shared-llm default). Logos serves no
+      # embeddings endpoint, so the exam-goal similarity search embeds on GWDG SAIA with its own key.
+      api-key: ${LOGOS_API_KEY:}
+      embedding:
+        api-key: ${SAIA_API_KEY:}
+    # The gateway rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
     # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
     # so the hundreds of classify/embed/synthesis calls in one run spread out under the limit.
     retry:
@@ -59,7 +63,7 @@ spring:
 hestia:
   figures:
     # Vision model used to describe eligible text-poor slide pages during extraction.
-    vision-model: qwen3.6-35b-a3b
+    vision-model: Qwen/Qwen3.8-27B
     # Concurrent page-description calls. Below the text phases' width: each call carries several
     # rendered pages, so a wide burst of them draws 429s and the oversized payloads also provoke
     # 500s. This is spent on batches within a document, not on documents — spread across documents
@@ -74,13 +78,13 @@ hestia:
     # Vision model that names a bookmark-less PDF (slide deck/exercise) from its first rendered
     # pages. A VLM reads the slide layout to tell the session topic from the repeated course banner,
     # which flat text extraction cannot. On any failure the session falls back to the filename.
-    vision-model: qwen3.6-35b-a3b
+    vision-model: Qwen/Qwen3.8-27B
   bookmark:
     # Text model that judges whether a PDF's top-level bookmarks are separate course units (split into
     # a session each) or one lecture's internal outline (treat as a single session). Only the grey
     # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
     # any failure the document is split, the original bookmark behaviour.
-    judge-model: openai-gpt-oss-120b
+    judge-model: openai/gpt-oss-120b
   extraction:
     # Concurrent session calls. Sixteen once burst the provider badly enough to be cut to four, but
     # that was when a call carried a whole section — up to the old 80,000-character budget. Units are
@@ -107,7 +111,7 @@ hestia:
     assignment-temperature: 0.0
     # Model for the competency tree: naming the course's topics, assigning skills to them, and
     # structuring each topic into capabilities. All three calls run at assignment-temperature.
-    taxonomy-planner-model: openai-gpt-oss-120b
+    taxonomy-planner-model: openai/gpt-oss-120b
   topic-search:
     # Most pages one "Find in the slides" search may read. Each page range is extracted like a
     # session, so this caps the calls and the wait of a single search.
