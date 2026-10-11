@@ -33,6 +33,6 @@ To ensure high-quality output, the generation is split into multiple distinct LL
 ## Configuration
 
 LLM connections are configured via the `libs:shared-llm` module and `application.yml`.
-The API Key is provided via the `WORKSHOPPER_SAIA_API_KEY` environment variable.
+Requests go to the TUM AET Logos gateway (the `shared-llm` default); the API key is provided via the `WORKSHOPPER_LOGOS_API_KEY` environment variable.
 
 The models are usually configured for high structure (temperature = 0.0) for the JSON-returning endpoints to ensure reliable parsing by Jackson.
