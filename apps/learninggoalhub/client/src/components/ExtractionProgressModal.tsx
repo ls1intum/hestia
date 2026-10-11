@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
 import { api } from "../api/client.ts";
 import { EXTRACTION_PHASES } from "../lib/extraction.ts";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
-import { buildCompetencyForest, COMPETENCY_ROLE_META } from "../lib/goals.ts";
+import { createTopic } from "../lib/createTopic.ts";
+import {
+  buildCompetencyForest,
+  COMPETENCY_ROLE_META,
+  type CompetencyNode,
+} from "../lib/goals.ts";
 import { useTheme } from "../theme/context.ts";
 import iconLight from "../assets/logos/icon-light.svg";
 import iconDark from "../assets/logos/icon-dark.svg";
 import Button from "./Button.tsx";
+import CompetencyCreationField from "./CompetencyCreationField.tsx";
+import { RenameField, RowAction } from "./GoalInlineEditing.tsx";
+import TopicSearchDialog from "./TopicSearchDialog.tsx";
 
 type Props = {
   open: boolean;
@@ -26,11 +34,6 @@ type Props = {
   onClose: () => void;
 };
 
-type SkillSuggestion = {
-  text: string;
-  shortLabel?: string | null;
-};
-
 /**
  * "Analyzing course materials" overlay driven by the live status snapshot. Once the run succeeds it
  * switches to the existing summary and skill-review flow.
@@ -46,13 +49,16 @@ export default function ExtractionProgressModal({
   const { resolved } = useTheme();
   const flame = resolved === "dark" ? iconDark : iconLight;
   const queryClient = useQueryClient();
-  const [adding, setAdding] = useState(false);
-  const [newSkill, setNewSkill] = useState("");
-  const [suggestions, setSuggestions] = useState<SkillSuggestion[]>([]);
-  const [suggestionErrors, setSuggestionErrors] = useState<Record<string, string>>({});
-  // The AI suggestions live in a side panel the instructor opens deliberately: asking the model is
-  // a round trip, and the review reads as a finished list until they do.
-  const [suggestOpen, setSuggestOpen] = useState(false);
+  // The topic or skill whose dismissal waits for a second click, and the topics folded open. Topics
+  // start folded shut, so the review opens on the course's outline.
+  const [confirmingGoal, setConfirmingGoal] = useState<number | null>(null);
+  // The skill whose name is being edited in place.
+  const [renamingGoal, setRenamingGoal] = useState<number | null>(null);
+  const [expandedTopics, setExpandedTopics] = useState<Set<number>>(() => new Set());
+  // The wording of a topic being added.
+  const [newTopic, setNewTopic] = useState("");
+  // The typed topic being looked up in the slides, over the review.
+  const [findingTopic, setFindingTopic] = useState<string | null>(null);
   const treeOnlyRetry = status?.status === "FAILED"
     && status.phase === "SYNTHESIZING"
     && (status.summary?.goalsCreated ?? 0) > 0
@@ -87,21 +93,6 @@ export default function ExtractionProgressModal({
     },
   });
 
-  // The skill that was just added by hand or accepted from a suggestion. The list is alphabetical,
-  // so a new skill lands anywhere in it — the row scrolls itself into view and stays lit for a beat
-  // so the addition is visibly the same list, not a silent write.
-  const [justAddedId, setJustAddedId] = useState<number | null>(null);
-  const justAddedTimer = useRef<number | null>(null);
-  const flashAdded = (goalId?: number) => {
-    if (goalId == null) return;
-    if (justAddedTimer.current != null) window.clearTimeout(justAddedTimer.current);
-    setJustAddedId(goalId);
-    justAddedTimer.current = window.setTimeout(() => setJustAddedId(null), 6000);
-  };
-  useEffect(() => () => {
-    if (justAddedTimer.current != null) window.clearTimeout(justAddedTimer.current);
-  }, []);
-
   const done = reviewOnly || status?.status === "SUCCEEDED";
   // The review is a one-way, deliberate step: no backdrop click, no Escape, no ✕. "Done" is the
   // only exit, and it is what records the review as taken care of.
@@ -116,17 +107,20 @@ export default function ExtractionProgressModal({
     () => goalsQuery.data ?? [],
     [goalsQuery.data],
   );
-  const skills = useMemo(
-    () => buildCompetencyForest(goals),
+  // The review walks the tree two tiers deep: each topic, and the skills grouped beneath it. A topic
+  // is never accepted — it is a noun phrase naming an area of the course, with nothing in it for an
+  // instructor to agree or disagree with.
+  const topics = useMemo(
+    () => buildCompetencyForest(goals).filter((node) => node.role === "topic"),
     [goals],
   );
+  const skills = useMemo(() => topics.flatMap(reviewItemsOf), [topics]);
 
   useEffect(() => {
     if (!open) {
-      setSuggestions([]);
-      setSuggestionErrors({});
-      setJustAddedId(null);
-      setSuggestOpen(false);
+      setConfirmingGoal(null);
+      setRenamingGoal(null);
+      setNewTopic("");
       retryMutation.reset();
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- reset modal-local mutations on close
@@ -142,23 +136,8 @@ export default function ExtractionProgressModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, reviewLocked, onClose]);
 
-  const renameMutation = useMutation({
-    mutationFn: async (vars: { goalId: number; text: string }) => {
-      const { error: updateError } = await api.PATCH(
-        "/api/courses/{courseId}/learning-goals/{goalId}",
-        {
-          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
-          body: { text: vars.text },
-        },
-      );
-      if (updateError) throw new Error("Could not rename the skill.");
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
-  });
-
-  // Accepting is the review's positive half: it flips the goal out of PENDING so the rest of the
-  // app can tell a reviewed skill from an untouched one. Dismissing has no state of its own — a
-  // skill the instructor does not want is deleted, exactly like a rejected AI suggestion.
+  // The review triages: accept, rename or dismiss. Accepting flips the goal out of PENDING;
+  // dismissing has no state of its own, the item is deleted.
   const approveMutation = useMutation({
     mutationFn: async (vars: { goalId: number; approved: boolean }) => {
       const { error: updateError } = await api.PATCH(
@@ -173,102 +152,76 @@ export default function ExtractionProgressModal({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
   });
 
+  // Renaming a skill accepts it in its new wording; a topic is renamed only, it is never accepted.
+  // The server keeps the generated wording on the first rename, so the evaluation still tells a
+  // reworded item from one accepted as it stood.
+  const renameMutation = useMutation({
+    mutationFn: async (vars: { goalId: number; text: string; accept: boolean }) => {
+      const { error: updateError } = await api.PATCH(
+        "/api/courses/{courseId}/learning-goals/{goalId}",
+        {
+          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
+          body: vars.accept ? { text: vars.text, status: "APPROVED" } : { text: vars.text },
+        },
+      );
+      if (updateError) throw new Error("Could not rename it.");
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+  });
+
+  // Accepts every skill of one topic that is still pending, one PATCH per skill. The topic itself is
+  // never accepted — it only groups the skills.
+  const acceptAllMutation = useMutation({
+    mutationFn: async (vars: { topicId: number; goalIds: number[] }) => {
+      const results = await Promise.all(
+        vars.goalIds.map((goalId) =>
+          api.PATCH("/api/courses/{courseId}/learning-goals/{goalId}", {
+            params: { path: { courseId: courseId as number, goalId } },
+            body: { status: "APPROVED" },
+          }),
+        ),
+      );
+      if (results.some((result) => result.error)) {
+        throw new Error("Could not accept every skill of this topic.");
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+  });
+
   const deleteGoalMutation = useMutation({
     mutationFn: async (goalId: number) => {
       const { error: deleteError } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         { params: { path: { courseId: courseId as number, goalId } } },
       );
-      if (deleteError) throw new Error("Could not delete the skill.");
+      if (deleteError) throw new Error("Could not remove it.");
     },
     onSuccess: async () => {
+      setConfirmingGoal(null);
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
     },
   });
 
-  const addSkillMutation = useMutation({
-    mutationFn: async (text: string) => {
-      const result = await api.POST(
-        "/api/courses/{courseId}/learning-goals/terminal",
-        { params: { path: { courseId: courseId as number } }, body: { text } },
-      );
-      if (!result.data) {
-        throw new Error(
-          result.response.status === 409
-            ? "A skill with that wording already exists."
-            : "Could not add the skill.",
-        );
-      }
-      return result.data;
-    },
-    onSuccess: async (created) => {
-      // Adding is done: fold the field away rather than leaving an empty one sitting open, so the
-      // two entry points are what remains on screen.
-      setAdding(false);
-      setNewSkill("");
+  // A topic the run missed can be named here, before the review closes. It opens straight away, so
+  // skills generated beneath it come up for review like every other skill.
+  const createTopicMutation = useMutation({
+    mutationFn: (vars: { text: string; generate: boolean }) =>
+      createTopic(courseId as number, vars.text, vars.generate),
+    onSuccess: async (topic) => {
+      setNewTopic("");
+      const topicId = topic.id;
+      if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
-      flashAdded(created.id);
     },
   });
-
-  const suggestSkillsMutation = useMutation({
-    mutationFn: async (): Promise<SkillSuggestion[]> => {
-      const result = await api.POST(
-        "/api/courses/{courseId}/learning-goals/skill-suggestions",
-        { params: { path: { courseId: courseId as number } } },
-      );
-      if (!result.data) throw new Error("Could not fetch AI skill suggestions.");
-      return result.data
-        .filter((item) => typeof item.text === "string" && item.text.trim() !== "")
-        .map((item) => ({ text: item.text as string, shortLabel: item.shortLabel }));
-    },
-    onSuccess: (newSuggestions) => {
-      setSuggestions(newSuggestions);
-      setSuggestionErrors({});
-    },
-  });
-
-  const generateSkillMutation = useMutation({
-    mutationFn: async (candidate: SkillSuggestion) => {
-      const result = await api.POST(
-        "/api/courses/{courseId}/learning-goals/terminal/generated",
-        {
-          params: { path: { courseId: courseId as number } },
-          body: { text: candidate.text, shortLabel: candidate.shortLabel ?? undefined },
-        },
-      );
-      if (!result.data) {
-        throw new Error(
-          result.response.status === 409
-            ? "This skill already exists."
-            : "Could not add the AI skill.",
-        );
-      }
-      return result.data;
-    },
-    onSuccess: async (created, candidate) => {
-      setSuggestions((current) => current.filter((item) => item.text !== candidate.text));
-      setSuggestionErrors((current) => {
-        const next = { ...current };
-        delete next[candidate.text];
-        return next;
-      });
-      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
-      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
-      await queryClient.invalidateQueries({ queryKey: ["courses"] });
-      flashAdded(created.id);
-    },
-    onError: (mutationError, candidate) => {
-      setSuggestionErrors((current) => ({
-        ...current,
-        [candidate.text]: mutationError.message,
-      }));
-    },
-  });
+  const submitNewTopic = (generate: boolean) => {
+    const text = newTopic.trim();
+    if (text !== "") createTopicMutation.mutate({ text, generate });
+  };
 
   if (!open) return null;
 
@@ -295,7 +248,7 @@ export default function ExtractionProgressModal({
       ? "Analysis failed"
       : "Analyzing course materials";
   const subtitle = done
-    ? "Accept, dismiss or rename each skill we extracted."
+    ? "Accept, rename or dismiss each skill we extracted, grouped by topic."
     : failed
       ? null
       : "This runs once per upload. You can review and adjust everything afterwards.";
@@ -332,8 +285,8 @@ export default function ExtractionProgressModal({
         {/* One animation for the whole panel rather than per card, as in the other two dialogs. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`comp-unfold flex w-full flex-col gap-3.5 sm:mt-[6vh] ${
-            done && suggestOpen ? "max-w-5xl" : "max-w-2xl"
+          className={`comp-unfold flex w-full flex-col gap-4 ${
+            "max-w-2xl"
           }`}
         >
           {/* The header spans both columns, so the close button never rides on one of them. */}
@@ -342,23 +295,20 @@ export default function ExtractionProgressModal({
               <img
                 src={flame}
                 alt=""
-                className={`h-6 w-6 shrink-0 ${running ? "animate-pulse" : ""}`}
+                className={`h-8 w-8 shrink-0 ${running ? "animate-pulse" : ""}`}
               />
               <div className="flex min-w-0 flex-col gap-1">
-                <span
-                  id="extraction-progress-title"
-                  className="text-xs font-semibold uppercase tracking-wider text-hestia-text"
-                >
+                <h2 id="extraction-progress-title" className="text-2xl">
                   {title}
-                </span>
-                {subtitle && <p className="text-xs text-hestia-text-muted">{subtitle}</p>}
+                </h2>
+                {subtitle && <p className="text-sm text-hestia-text-muted">{subtitle}</p>}
               </div>
             </div>
             {!reviewLocked && closeButton}
           </div>
 
           {running && (
-            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+            <div className="flex flex-col gap-4 rounded-xl border border-hestia-border bg-hestia-surface p-4 shadow-sm">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted">
                 {total > 0 ? (
                   <div
@@ -407,26 +357,40 @@ export default function ExtractionProgressModal({
             </div>
           )}
 
-          {/* The course's own skills on the left, what the AI proposes adding to them on the right —
-              the same "what it is / what goes into it" split the create-course dialog uses. The
-              suggestions column can grow long without pushing the review actions out of view. */}
           {done && (
-            <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-stretch">
-              <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
+            <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-stretch">
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
                 {failedSessions > 0 && (
-                  <p className="rounded-lg border border-hestia-warning/40 bg-hestia-warning/10 px-4 py-3 text-sm text-hestia-text shadow-lg">
-                    <span aria-hidden="true">⚠ </span>
+                  // The table's warning tint: the warning hue is too light for text, so the text
+                  // stays in the text colour and only the icon carries the hue.
+                  <p className="flex items-start gap-2.5 rounded-xl bg-[color-mix(in_srgb,var(--hestia-warning)_22%,var(--hestia-surface))] px-4 py-3 text-sm text-hestia-text">
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-[color-mix(in_srgb,var(--hestia-warning)_70%,var(--hestia-text))]"
+                    >
+                      <path d="M10 3.5l7 12.5H3z" />
+                      <path d="M10 8.5v3.5M10 14.2v.01" />
+                    </svg>
+                    <span>
                     {failedSessions === 1
                       ? "One session could not be analysed and contributed no skills."
                       : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
-                    Add anything that is missing below.
+                    You can add anything that is missing afterwards in the table.
+                    </span>
                   </p>
                 )}
 
-                <div className="flex flex-col rounded-lg border border-hestia-border bg-hestia-surface shadow-lg">
-                  <div className="flex items-center justify-between gap-3 border-b border-hestia-border px-4 py-3">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-                      Skills
+                {/* One card: the column-name band, the topics, adding a topic, and the footer. */}
+                <div className="flex flex-col overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-2">
+                    <span className="text-xs font-semibold text-hestia-text-muted">
+                      Skills by topic
                     </span>
                     {skills.length > 0 && (
                       <span className="tabular-nums text-xs text-hestia-text-muted">
@@ -434,7 +398,9 @@ export default function ExtractionProgressModal({
                       </span>
                     )}
                   </div>
-                  <div className="max-h-96 overflow-y-auto">
+                  {/* Sized to the window: the title, the band, the add-topic field and the footer take about
+                      22rem around it, so the card ends just above the window's bottom edge. */}
+                  <div className="max-h-[calc(100vh-22rem)] min-h-40 overflow-y-auto">
                     {goalsQuery.isLoading && (
                       <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
                         Loading skills…
@@ -445,89 +411,165 @@ export default function ExtractionProgressModal({
                         {(goalsQuery.error as Error).message}
                       </p>
                     )}
-                    {!goalsQuery.isLoading && !goalsQuery.isError && skills.length === 0 && (
+                    {!goalsQuery.isLoading && !goalsQuery.isError && topics.length === 0 && (
                       <p className="px-4 py-6 text-center text-sm text-hestia-text-muted">
                         No skills were extracted for this course.
                       </p>
                     )}
-                    {skills.length > 0 && (
-                      <ul className="divide-y divide-hestia-border">
-                        {skills.map((skill) => (
-                          <SkillRow
-                            key={skill.goal.id ?? skill.goal.text}
-                            skill={skill}
-                            highlight={skill.goal.id != null && skill.goal.id === justAddedId}
-                            renaming={renameMutation.isPending}
-                            accepting={
-                              approveMutation.isPending
-                              && approveMutation.variables?.goalId === skill.goal.id
-                            }
-                            dismissing={
-                              deleteGoalMutation.isPending
-                              && deleteGoalMutation.variables === skill.goal.id
-                            }
-                            onRename={(goalId, text) => renameMutation.mutate({ goalId, text })}
-                            onAccept={(approved) => {
-                              if (skill.goal.id != null) {
-                                approveMutation.mutate({ goalId: skill.goal.id, approved });
-                              }
-                            }}
-                            onDismiss={() => {
-                              if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
-                            }}
-                          />
-                        ))}
+                    {topics.length > 0 && (
+                      <ul className="divide-y divide-hestia-border/60">
+                        {topics.map((topic, topicIndex) => {
+                          const topicId = topic.goal.id;
+                          const topicSkills = topic.children.filter(
+                            (child) => child.role === "capability",
+                          );
+                          const reviewItems = reviewItemsOf(topic);
+                          const pendingSkillIds = reviewItems
+                            .filter((item) => item.goal.status !== "APPROVED")
+                            .map((item) => item.goal.id)
+                            .filter((id): id is number => id != null);
+                          const expanded = topicId == null || expandedTopics.has(topicId);
+                          return (
+                            <li key={topicId ?? topic.goal.text}>
+                              <TopicHeader
+                                topic={topic}
+                                number={`${topicIndex + 1}`}
+                                skillCount={reviewItems.length}
+                                groupedSkillCount={topicSkills.length}
+                                subSkillCount={topicSkills.length === 0 ? reviewItems.length : 0}
+                                pendingCount={pendingSkillIds.length}
+                                acceptingAll={
+                                  acceptAllMutation.isPending
+                                  && acceptAllMutation.variables?.topicId === topicId
+                                }
+                                onAcceptAll={() => {
+                                  if (topicId != null && pendingSkillIds.length > 0) {
+                                    acceptAllMutation.mutate({ topicId, goalIds: pendingSkillIds });
+                                  }
+                                }}
+                                expanded={expanded}
+                                confirming={topicId != null && confirmingGoal === topicId}
+                                dismissing={
+                                  deleteGoalMutation.isPending
+                                  && deleteGoalMutation.variables === topicId
+                                }
+                                onToggle={() => {
+                                  if (topicId == null) return;
+                                  setExpandedTopics((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(topicId)) next.delete(topicId);
+                                    else next.add(topicId);
+                                    return next;
+                                  });
+                                }}
+                                onDismiss={() => setConfirmingGoal(topicId ?? null)}
+                                onCancelDismiss={() => setConfirmingGoal(null)}
+                                onConfirmDismiss={() => {
+                                  if (topicId != null) deleteGoalMutation.mutate(topicId);
+                                }}
+                                renaming={topicId != null && renamingGoal === topicId}
+                                onStartRename={() => {
+                                  renameMutation.reset();
+                                  setRenamingGoal(topicId ?? null);
+                                }}
+                                onRename={(text) => {
+                                  setRenamingGoal(null);
+                                  if (text != null && topicId != null) {
+                                    renameMutation.mutate({ goalId: topicId, text, accept: false });
+                                  }
+                                }}
+                              />
+                              {expanded && (
+                                <ul className="border-t border-hestia-border/60">
+                                  {reviewItems.map((skill) => (
+                                    <SkillRow
+                                      key={skill.goal.id ?? skill.goal.text}
+                                      skill={skill}
+                                      number={`${topicIndex + 1}.${topic.children.indexOf(skill) + 1}`}
+                                      accepting={
+                                        approveMutation.isPending
+                                        && approveMutation.variables?.goalId === skill.goal.id
+                                      }
+                                      confirming={
+                                        skill.goal.id != null && confirmingGoal === skill.goal.id
+                                      }
+                                      dismissing={
+                                        deleteGoalMutation.isPending
+                                        && deleteGoalMutation.variables === skill.goal.id
+                                      }
+                                      renaming={
+                                        skill.goal.id != null && renamingGoal === skill.goal.id
+                                      }
+                                      onStartRename={() => {
+                                        renameMutation.reset();
+                                        setRenamingGoal(skill.goal.id ?? null);
+                                      }}
+                                      onRename={(text) => {
+                                        setRenamingGoal(null);
+                                        if (text != null && skill.goal.id != null) {
+                                          renameMutation.mutate({
+                                            goalId: skill.goal.id,
+                                            text,
+                                            accept: true,
+                                          });
+                                        }
+                                      }}
+                                      onAccept={(approved) => {
+                                        if (skill.goal.id != null) {
+                                          approveMutation.mutate({ goalId: skill.goal.id, approved });
+                                        }
+                                      }}
+                                      onDismiss={() => setConfirmingGoal(skill.goal.id ?? null)}
+                                      onCancelDismiss={() => setConfirmingGoal(null)}
+                                      onConfirmDismiss={() => {
+                                        if (skill.goal.id != null) deleteGoalMutation.mutate(skill.goal.id);
+                                      }}
+                                    />
+                                  ))}
+                                </ul>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
-                </div>
-
-                {/* Everything that acts on the list sits in one bar: the two ways to add a skill on
-                    the left, the exit on the right. */}
-                <div className="flex flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-                  {adding && (
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const trimmed = newSkill.trim();
-                        if (trimmed === "" || addSkillMutation.isPending) return;
-                        addSkillMutation.mutate(trimmed);
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <input
-                        value={newSkill}
-                        onChange={(event) => setNewSkill(event.target.value)}
-                        autoFocus
-                        disabled={addSkillMutation.isPending}
-                        placeholder="Describe a skill students should master…"
-                        className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:outline-none"
-                      />
-                      <Button
-                        variant="neutral"
-                        onClick={() => {
-                          setAdding(false);
-                          setNewSkill("");
-                          addSkillMutation.reset();
+                  {!goalsQuery.isLoading && !goalsQuery.isError && courseId != null && (
+                    <div className="border-t border-hestia-border px-4 py-3">
+                      {/* Always open, so the three ways in are visible without clicking first. */}
+                      <p className="mb-2 text-sm text-hestia-text-muted">
+                        <span className="font-semibold text-hestia-text">Missing a topic?</span>{" "}
+                        Name it, then add it as is, generate its skills with AI, or find it in the
+                        slides.
+                      </p>
+                      <CompetencyCreationField
+                        value={newTopic}
+                        placeholder="Name a topic that is missing…"
+                        autoFocus={false}
+                        error={
+                          createTopicMutation.isError
+                            ? (createTopicMutation.error as Error).message
+                            : undefined
+                        }
+                        pending={createTopicMutation.isPending}
+                        onChange={(value) => {
+                          if (createTopicMutation.isError) createTopicMutation.reset();
+                          setNewTopic(value);
                         }}
-                        disabled={addSkillMutation.isPending}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={newSkill.trim() === "" || addSkillMutation.isPending}
-                      >
-                        Add
-                      </Button>
-                    </form>
+                        onSubmit={() => submitNewTopic(false)}
+                        onGenerate={() => submitNewTopic(true)}
+                        generating={createTopicMutation.variables?.generate === true}
+                        onFind={() => {
+                          const text = newTopic.trim();
+                          if (text !== "") setFindingTopic(text);
+                        }}
+                      />
+                    </div>
                   )}
-                  {addSkillMutation.isPending && (
-                    <IndeterminateProgress label="Generating the skill’s sub-skills and knowledge…" />
-                  )}
-                  {addSkillMutation.isError && (
+                  <div className="flex flex-col gap-3 border-t border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-3">
+                  {acceptAllMutation.isError && (
                     <p className="text-sm text-hestia-danger">
-                      {(addSkillMutation.error as Error).message}
+                      {(acceptAllMutation.error as Error).message}
                     </p>
                   )}
                   {renameMutation.isError && (
@@ -546,159 +588,22 @@ export default function ExtractionProgressModal({
                     </p>
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!adding && (
-                        <Button
-                          variant="neutral"
-                          onClick={() => setAdding(true)}
-                          className="text-hestia-primary"
-                        >
-                          <span aria-hidden="true" className="text-base leading-none">
-                            +
-                          </span>
-                          Add a skill
-                        </Button>
-                      )}
-                      <Button
-                        variant="secondary"
-                        aria-expanded={suggestOpen}
-                        onClick={() => {
-                          const opening = !suggestOpen;
-                          setSuggestOpen(opening);
-                          // Opening it is the request — this button is the only way to ask. It
-                          // keeps suggestions nobody has acted on yet and asks again once the
-                          // panel would otherwise open empty.
-                          if (opening && suggestions.length === 0 && !suggestSkillsMutation.isPending) {
-                            suggestSkillsMutation.mutate();
-                          }
-                        }}
-                      >
-                        Suggest new skills using AI
-                      </Button>
-                    </div>
-                    <Button size="lg" onClick={onClose}>
+                    <p className="text-xs text-hestia-text-muted">
+                      Add sub-skills afterwards in the table.
+                    </p>
+                    <Button className="h-9" onClick={onClose}>
                       Done
                     </Button>
                   </div>
+                  </div>
                 </div>
               </div>
-
-              {suggestOpen && (
-              /* Taken out of flow at `lg`, like the create-course dialog's file column: a long list
-                 of suggestions then cannot outgrow the review beside it. The wrapper carries the
-                 width and takes its height from the skills column; the list inside scrolls. */
-              <div className="w-full min-w-0 lg:relative lg:w-96 lg:shrink-0">
-              <div className="flex w-full flex-col gap-3 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:absolute lg:inset-0 lg:min-h-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-                      AI suggestions
-                    </span>
-                    <p className="text-xs text-hestia-text-muted">
-                      Skills your list may be missing, suggested from the goals already extracted
-                      from your materials.
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setSuggestOpen(false)}
-                    aria-label="Hide AI suggestions"
-                  >
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      className="h-4 w-4"
-                    >
-                      <path d="M5 5l10 10M15 5L5 15" />
-                    </svg>
-                  </Button>
-                </div>
-                {suggestSkillsMutation.isPending && (
-                  <IndeterminateProgress label="Looking for skills your list is missing…" />
-                )}
-                {suggestSkillsMutation.isError && (
-                  <p className="text-sm text-hestia-danger">
-                    {(suggestSkillsMutation.error as Error).message}
-                  </p>
-                )}
-                {!suggestSkillsMutation.isPending
-                  && suggestSkillsMutation.isSuccess
-                  && suggestions.length === 0 && (
-                  <p className="text-xs text-hestia-text-muted">
-                    Nothing left to suggest. Close this panel and open it again to ask once more.
-                  </p>
-                )}
-                {suggestions.length > 0 && (
-                  <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                    {suggestions.map((suggestion) => {
-                      const accepting =
-                        generateSkillMutation.isPending
-                        && generateSkillMutation.variables?.text === suggestion.text;
-                      return (
-                        <div
-                          key={suggestion.text}
-                          className="rounded-lg border border-hestia-primary/40 bg-hestia-primary-muted/30 px-3 py-3"
-                        >
-                          <p className="text-sm font-medium leading-relaxed text-hestia-text">
-                            {suggestion.text}
-                          </p>
-                          {suggestion.shortLabel && (
-                            <p className="mt-1 text-xs text-hestia-text-muted">
-                              {suggestion.shortLabel}
-                            </p>
-                          )}
-                          <div className="mt-2 flex items-center gap-1">
-                            <Button
-                              size="sm"
-                              disabled={generateSkillMutation.isPending}
-                              onClick={() => generateSkillMutation.mutate(suggestion)}
-                            >
-                              Accept
-                            </Button>
-                            <Button
-                              variant="neutral"
-                              size="sm"
-                              disabled={accepting}
-                              onClick={() => {
-                                setSuggestions((current) =>
-                                  current.filter((item) => item.text !== suggestion.text),
-                                );
-                                setSuggestionErrors((current) => {
-                                  const next = { ...current };
-                                  delete next[suggestion.text];
-                                  return next;
-                                });
-                              }}
-                            >
-                              Dismiss
-                            </Button>
-                          </div>
-                          {accepting && (
-                            <IndeterminateProgress label="Adding it to your skills…" />
-                          )}
-                          {suggestionErrors[suggestion.text] && (
-                            <p className="mt-2 text-xs text-hestia-danger">
-                              {suggestionErrors[suggestion.text]}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              </div>
-              )}
             </div>
           )}
 
           {failed && (
-            <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-              <div className="rounded-md border border-hestia-danger/40 bg-hestia-danger/10 px-3 py-3 text-sm text-hestia-danger">
+            <div className="flex flex-col gap-4 rounded-xl border border-hestia-border bg-hestia-surface p-4 shadow-sm">
+              <div className="rounded-lg bg-[color-mix(in_srgb,var(--hestia-danger)_12%,var(--hestia-surface))] px-3 py-3 text-sm text-hestia-danger">
                 <p className="font-medium">
                   {failedSessions > 0
                     ? failedSessions === 1
@@ -718,11 +623,11 @@ export default function ExtractionProgressModal({
                 </p>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="lg" onClick={onClose}>
+                <Button variant="neutral" className="h-9" onClick={onClose}>
                   Close
                 </Button>
                 <Button
-                  size="lg"
+                  className="h-9"
                   onClick={() => retryMutation.mutate()}
                   disabled={retryMutation.isPending || courseId == null}
                 >
@@ -735,56 +640,237 @@ export default function ExtractionProgressModal({
           )}
         </div>
       </div>
+      {findingTopic != null && courseId != null && (
+        <TopicSearchDialog
+          courseId={courseId}
+          topic={findingTopic}
+          onClose={() => setFindingTopic(null)}
+          onCreated={(topic) => {
+            setFindingTopic(null);
+            setNewTopic("");
+            const topicId = topic.id;
+            if (topicId != null) setExpandedTopics((current) => new Set(current).add(topicId));
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /**
- * A server round trip with no percentage to report — adding a skill generates its whole sub-skill
- * and knowledge subtree — so the bar sweeps instead of pretending to fill.
+ * A topic's row: its name, how many skills it groups, and what an instructor can do to a topic —
+ * accept all of its skills at once, or dismiss it. Dismissing deletes everything beneath the topic
+ * with it, so it asks once more in place. Clicking the name folds the group; the pencil renames it
+ * in place, as in the table.
  */
-function IndeterminateProgress({ label }: { label: string }) {
-  return (
-    <div className="mt-2">
-      <span className="text-xs text-hestia-text-muted" aria-live="polite">
-        {label}
+function TopicHeader({
+  topic,
+  number,
+  skillCount,
+  groupedSkillCount,
+  subSkillCount,
+  pendingCount,
+  acceptingAll,
+  onAcceptAll,
+  expanded,
+  confirming,
+  dismissing,
+  onToggle,
+  onDismiss,
+  onCancelDismiss,
+  onConfirmDismiss,
+  renaming,
+  onStartRename,
+  onRename,
+}: {
+  topic: CompetencyNode;
+  /** The topic's lecture-order number, as the table shows it: "3". */
+  number: string;
+  /** Items up for review in this topic: its skills, or its sub-skills when it has no skills. */
+  skillCount: number;
+  /** Skills grouped under the topic. */
+  groupedSkillCount: number;
+  /** Sub-skills reviewed in place of skills; non-zero only for a topic without skills. */
+  subSkillCount: number;
+  pendingCount: number;
+  acceptingAll: boolean;
+  onAcceptAll: () => void;
+  expanded: boolean;
+  confirming: boolean;
+  dismissing: boolean;
+  onToggle: () => void;
+  onDismiss: () => void;
+  onCancelDismiss: () => void;
+  onConfirmDismiss: () => void;
+  renaming: boolean;
+  onStartRename: () => void;
+  /** Gets the new name, or null when nothing changed or the edit was dropped. */
+  onRename: (text: string | null) => void;
+}) {
+  const groupedSkillWord = groupedSkillCount === 1 ? "1 skill" : `${groupedSkillCount} skills`;
+  const countLabel = groupedSkillCount === 0 && subSkillCount > 0
+    ? subSkillCount === 1 ? "1 sub-skill" : `${subSkillCount} sub-skills`
+    : groupedSkillWord;
+
+  const name = (
+    <>
+      <span
+        aria-hidden="true"
+        className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
+        style={{ backgroundColor: COMPETENCY_ROLE_META.topic.color }}
+      />
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
+          <path d="M7 5l6 5-6 5" />
+        </svg>
       </span>
-      <div
-        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-hestia-primary-muted"
-        role="progressbar"
-        aria-label={label}
-      >
-        <div className="progress-sweep h-full rounded-full bg-hestia-primary" />
-      </div>
+      <span className="flex min-w-0 flex-1 items-center text-sm font-semibold leading-relaxed text-hestia-text">
+        <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
+        {renaming ? (
+          <RenameField text={topic.goal.text ?? ""} onDone={onRename} />
+        ) : (
+          topic.goal.text
+        )}
+        {topic.goal.originalText != null && !renaming && (
+          <span
+            title={`Generated as: ${topic.goal.originalText}`}
+            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+          >
+            Edited
+          </span>
+        )}
+      </span>
+      <span className="shrink-0 tabular-nums text-xs text-hestia-text-muted">{countLabel}</span>
+    </>
+  );
+
+  return (
+    // The competency table's topic row: the same tint, chevron and coloured rail.
+    <div className="group flex flex-wrap items-center gap-x-3 gap-y-2 bg-[color-mix(in_srgb,var(--hestia-text)_3%,var(--hestia-surface))] px-4 py-2.5">
+      {/* A field can't sit inside a button, so the row stops folding while it is renamed. */}
+      {renaming ? (
+        <div className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left">{name}</div>
+      ) : (
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-1 self-stretch text-left">
+          {name}
+        </button>
+      )}
+      {confirming ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="mr-1 text-xs text-hestia-text-muted">
+            {topic.children.length === 0 ? "Remove this topic?" : "Remove it and everything beneath it?"}
+          </span>
+          <Button variant="neutral" size="sm" disabled={dismissing} onClick={onCancelDismiss}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" disabled={dismissing} onClick={onConfirmDismiss}>
+            {dismissing ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          {!renaming && (
+            <span className="opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+              <RowAction
+                label="Rename this topic"
+                onClick={onStartRename}
+                className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+              >
+                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+              </RowAction>
+            </span>
+          )}
+          {skillCount > 0 && (pendingCount > 0 ? (
+            // Outlined rather than filled: a gold button on every topic turned the list into a wall
+            // of them, and Done is the one filled action here, as on the course page.
+            <Button variant="neutral" size="sm" disabled={acceptingAll} onClick={onAcceptAll}>
+              <CheckIcon />
+              {acceptingAll ? "Accepting…" : "Accept all"}
+            </Button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-hestia-primary">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
+                <path
+                  fillRule="evenodd"
+                  d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              All accepted
+            </span>
+          ))}
+          <Button
+            variant="neutral"
+            size="sm"
+            title="Remove this topic and everything beneath it from the course"
+            onClick={onDismiss}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * One extracted skill. The three review actions sit side by side: rename fixes the wording, Accept
- * marks it reviewed, Dismiss deletes it — the same accept/dismiss pair the AI suggestions carry.
+ * What a topic puts up for review: its skills, or — for a topic the structuring left without skills,
+ * which would otherwise show nothing — the sub-skills directly beneath it.
+ */
+function reviewItemsOf(topic: CompetencyNode): CompetencyNode[] {
+  const skills = topic.children.filter((child) => child.role === "capability");
+  return skills.length > 0 ? skills : topic.children.filter((child) => child.role === "skill");
+}
+
+/**
+ * One skill under its topic, or a sub-skill standing in for a topic without skills: Accept marks it
+ * reviewed, the pencil renames it in place as in the table, Dismiss deletes it after asking once more in
+ * place, like a topic.
  */
 function SkillRow({
   skill,
-  highlight,
-  renaming,
+  number,
   accepting,
+  confirming,
   dismissing,
-  onRename,
+  renaming,
   onAccept,
   onDismiss,
+  onCancelDismiss,
+  onConfirmDismiss,
+  onStartRename,
+  onRename,
 }: {
-  skill: ReturnType<typeof buildCompetencyForest>[number];
-  highlight: boolean;
-  renaming: boolean;
+  skill: CompetencyNode;
+  /**
+   * Lecture-order number as the table shows it, "3.2": counted over every child of the topic, so a
+   * skill keeps the number it has in the table.
+   */
+  number: string;
   accepting: boolean;
+  confirming: boolean;
   dismissing: boolean;
-  onRename: (goalId: number, text: string) => void;
   onAccept: (approved: boolean) => void;
   onDismiss: () => void;
+  onCancelDismiss: () => void;
+  onConfirmDismiss: () => void;
+  /** The name is an open field, as in the table; Enter or leaving it saves, Escape cancels. */
+  renaming: boolean;
+  onStartRename: () => void;
+  /** Gets the new name, or null when nothing changed or the edit was dropped. */
+  onRename: (text: string | null) => void;
 }) {
-  const current = skill.goal.text ?? "";
   const approved = skill.goal.status === "APPROVED";
+  const noun = COMPETENCY_ROLE_META[skill.role].label.toLowerCase();
   // Extraction leaves this null, so a tag here means the skill did not come out of the materials.
   const provenance = skill.goal.creationProvenance;
   const provenanceLabel = provenance === "USER_CREATED"
@@ -792,136 +878,113 @@ function SkillRow({
     : provenance === "WIZARD_AI_SUBTREE"
       ? "AI added"
       : null;
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(current);
-  const row = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    if (editing) setDraft(current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset the draft only when editing starts
-  }, [editing]);
-
-  // The list is alphabetical and scrolls, so a skill added at the bottom of the dialog can land
-  // out of sight. Bring it to the reader rather than making them hunt for it.
-  useEffect(() => {
-    if (highlight) row.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [highlight]);
-
-  const trimmed = draft.trim();
-  const canSave = trimmed !== "" && trimmed !== current && !renaming;
-
-  if (editing) {
-    return (
-      <li className="px-4 py-3">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (canSave && skill.goal.id != null) {
-              onRename(skill.goal.id, trimmed);
-              setEditing(false);
-            }
-          }}
-          className="flex items-center gap-2"
-        >
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            autoFocus
-            className="min-w-0 flex-1 rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-1.5 text-sm text-hestia-text transition focus:border-hestia-primary focus:outline-none"
-          />
-          <Button variant="neutral" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!canSave}>
-            Save
-          </Button>
-        </form>
-      </li>
-    );
-  }
-
   return (
     <li
-      ref={row}
-      className={`flex items-start gap-3 px-4 py-3 transition-colors duration-700 ${
-        highlight
-          ? "bg-hestia-primary-muted"
-          : approved
-            ? "bg-hestia-primary-muted/20"
-            : ""
+      className={`group flex items-center gap-1 border-t border-hestia-border/60 py-2 pl-4 pr-4 transition-colors first:border-t-0 ${
+        approved ? "bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]" : ""
       }`}
     >
+      {/* Indented like the table: 20px per tier below the topic, the tier rail, then the chevron's
+          empty slot. A sub-skill standing in for a missing skill still sits a tier deeper. */}
+      <span
+        className={`${skill.role === "skill" ? "w-10" : "w-5"} shrink-0`}
+        aria-hidden="true"
+      />
       <span
         aria-hidden="true"
-        className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+        className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
         style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
       />
-      <span className="min-w-0 flex-1 text-sm leading-relaxed text-hestia-text">
-        {current}
+      <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+      <span className="mr-2 flex min-w-0 flex-1 flex-wrap items-center gap-y-1 text-[13px] leading-relaxed text-hestia-text">
+        <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
+        {renaming ? (
+          <RenameField text={skill.goal.text ?? ""} onDone={onRename} />
+        ) : (
+          skill.goal.text
+        )}
+        {skill.goal.originalText != null && !renaming && (
+          <span
+            title={`Generated as: ${skill.goal.originalText}`}
+            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+          >
+            Edited
+          </span>
+        )}
+        {skill.role === "skill" && (
+          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-[color-mix(in_srgb,var(--hestia-accent)_50%,var(--hestia-surface))] px-2 align-middle text-xs font-medium text-hestia-accent">
+            {COMPETENCY_ROLE_META.skill.label}
+          </span>
+        )}
         {provenanceLabel && (
-          <span className="ml-2 whitespace-nowrap rounded-full border border-hestia-border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-text-muted">
+          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted">
             {provenanceLabel}
           </span>
         )}
-        {highlight && (
-          <span className="ml-2 whitespace-nowrap rounded-full bg-hestia-primary px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-hestia-on-primary">
-            Just added
-          </span>
-        )}
       </span>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Rename skill"
-          aria-label="Rename skill"
-          onClick={() => setEditing(true)}
-        >
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4 w-4"
-          >
-            <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
-          </svg>
-        </Button>
-        {approved ? (
+      {confirming ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="mr-1 text-xs text-hestia-text-muted">
+            {skill.children.length > 0
+              ? `Remove this ${noun} and everything beneath it?`
+              : `Remove this ${noun}?`}
+          </span>
+          <Button variant="neutral" size="sm" disabled={dismissing} onClick={onCancelDismiss}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="sm" disabled={dismissing} onClick={onConfirmDismiss}>
+            {dismissing ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          {!renaming && (
+            // The table's rename action, revealed on hover or keyboard focus as it is there.
+            <span className="opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+              <RowAction
+                label={`Rename this ${noun}`}
+                onClick={onStartRename}
+                className="hover:bg-hestia-primary-muted hover:text-hestia-text"
+              >
+                <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
+              </RowAction>
+            </span>
+          )}
+          {approved ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={accepting}
+              title="Accepted — click to undo"
+              aria-label="Undo accept"
+              onClick={() => onAccept(false)}
+              className="text-hestia-primary"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
+                <path
+                  fillRule="evenodd"
+                  d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Accepted
+            </Button>
+          ) : (
+            <Button variant="neutral" size="sm" disabled={accepting} onClick={() => onAccept(true)}>
+              <CheckIcon />
+              {accepting ? "Accepting…" : "Accept"}
+            </Button>
+          )}
           <Button
-            variant="ghost"
+            variant="neutral"
             size="sm"
-            disabled={accepting}
-            title="Accepted — click to undo"
-            aria-label="Undo accept"
-            onClick={() => onAccept(false)}
-            className="text-hestia-primary"
+            title={`Remove this ${noun} from the course`}
+            onClick={onDismiss}
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-3.5 w-3.5">
-              <path
-                fillRule="evenodd"
-                d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Accepted
+            Dismiss
           </Button>
-        ) : (
-          <Button size="sm" disabled={accepting} onClick={() => onAccept(true)}>
-            {accepting ? "Accepting…" : "Accept"}
-          </Button>
-        )}
-        <Button
-          variant="neutral"
-          size="sm"
-          title="Remove this skill from the course"
-          disabled={dismissing}
-          onClick={onDismiss}
-        >
-          {dismissing ? "Dismissing…" : "Dismiss"}
-        </Button>
-      </div>
+        </div>
+      )}
     </li>
   );
 }
@@ -957,5 +1020,22 @@ function PhaseTick({
     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-hestia-border text-xs font-semibold tabular-nums text-hestia-text-muted/60">
       {index + 1}
     </span>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+    >
+      <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+    </svg>
   );
 }

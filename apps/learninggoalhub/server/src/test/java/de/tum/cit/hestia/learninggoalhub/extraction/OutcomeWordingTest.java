@@ -40,6 +40,29 @@ class OutcomeWordingTest {
                 .withMessageContaining("must begin with an action noun");
     }
 
+    /**
+     * The split salvage relies on: a caption that repeats its outcome is a label defect, and the
+     * outcome text beside it is still perfectly usable. One run aborted at 70% because every skill
+     * in a session captioned itself this way and salvage dropped them all.
+     */
+    @Test
+    void acceptsAnIdenticalLabelWhenOnlyTheOutcomeTextIsJudged() {
+        OutcomeWording.validateOutcomeText(
+                "Applying Cauchy's theorem to contour integrals", "Applying Cauchy's theorem to contour integrals",
+                "English", "Skill");
+    }
+
+    /** A defect in the text itself is still fatal, however the label reads. */
+    @Test
+    void stillRejectsTextThatIsNotAnActionNounWhenOnlyTheOutcomeTextIsJudged() {
+        assertThatIllegalArgumentException().isThrownBy(() -> OutcomeWording.validateOutcomeText(
+                        "Apply Cauchy's theorem to contour integrals", "Apply Cauchy", "English", "Skill"))
+                .withMessageContaining("gerund");
+        assertThatIllegalArgumentException().isThrownBy(() -> OutcomeWording.validateOutcomeText(
+                        "  ", "Apply Cauchy", "English", "Skill"))
+                .withMessageContaining("non-blank text");
+    }
+
     @Test
     void rejectsIdenticalShortAndLongTextInEveryLanguage() {
         assertThatIllegalArgumentException().isThrownBy(() -> OutcomeWording.validate(

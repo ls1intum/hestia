@@ -1,9 +1,9 @@
 package app;
 
-import app.shared.DefaultUser;
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -20,20 +20,33 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The core data-isolation guarantee. The authenticated principal is always the
- * single seeded user ({@link DefaultUser#ID}); this test seeds a second exam
- * owned by a DIFFERENT user and proves that principal can never read, mutate, or
- * delete it — a 403 across every representative controller. This is the guard
- * against a controller forgetting its {@code access.requireExam(...)} call.
+ * The core data-isolation guarantee. Two real users, each holding their own
+ * token, and the proof that neither can read, mutate, or delete the other's exam
+ * — a 403 across every representative controller, plus absence from the list.
+ *
+ * <p>Both identities are genuine here (their own {@code users} row and their own
+ * {@code user_tokens} row), so this exercises the whole path from bearer token
+ * through principal resolution to the ownership check. That is the guard against
+ * a controller forgetting its {@code access.requireExamination(...)} call, and against a
+ * regression in the filter handing out the wrong principal.
  */
 @AutoConfigureMockMvc
 class OwnershipIsolationIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
-    @Autowired ExamRepository exams;
+    @Autowired ExaminationRepository exams;
 
-    private Exam seedExam(UUID owner, String title) {
-        Exam e = new Exam();
+    private TestUser alice;
+    private TestUser bob;
+
+    @BeforeEach
+    void seedUsers() {
+        alice = createUser("alice-" + UUID.randomUUID());
+        bob = createUser("bob-" + UUID.randomUUID());
+    }
+
+    private Examination seedExamination(UUID owner, String title) {
+        Examination e = new Examination();
         e.setOwnerId(owner);
         e.setTitle(title);
         e.setSource("manual");
@@ -41,68 +54,100 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         return exams.save(e);
     }
 
-    private MockHttpServletRequestBuilder auth(MockHttpServletRequestBuilder b) {
-        return b.header("Authorization", "Bearer " + TEST_TOKEN);
+    /** Authenticate as Bob, who owns nothing in these tests. */
+    private MockHttpServletRequestBuilder asBob(MockHttpServletRequestBuilder b) {
+        return b.header("Authorization", "Bearer " + bob.token());
+    }
+
+    private MockHttpServletRequestBuilder asAlice(MockHttpServletRequestBuilder b) {
+        return b.header("Authorization", "Bearer " + alice.token());
     }
 
     @Test
-    void ownerCanReadTheirOwnExam() throws Exception {
-        Exam mine = seedExam(DefaultUser.ID, "mine");
+    void ownerCanReadTheirOwnExamination() throws Exception {
+        Examination mine = seedExamination(alice.id(), "mine");
 
-        mvc.perform(auth(get("/api/exams/" + mine.getId())))
+        mvc.perform(asAlice(get("/api/exams/" + mine.getId())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(mine.getId().toString()));
     }
 
     @Test
-    void readingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(UUID.randomUUID(), "someone else's");
+    void readingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(auth(get("/api/exams/" + foreign.getId())))
+        mvc.perform(asBob(get("/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void patchingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(UUID.randomUUID(), "someone else's");
+    void patchingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(auth(patch("/api/exams/" + foreign.getId()))
+        mvc.perform(asBob(patch("/api/exams/" + foreign.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"hijacked\"}"))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void deletingAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(UUID.randomUUID(), "someone else's");
+    void deletingAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(auth(delete("/api/exams/" + foreign.getId())))
+        mvc.perform(asBob(delete("/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void uploadingAPdfToAnotherUsersExamIsForbidden() throws Exception {
-        Exam foreign = seedExam(UUID.randomUUID(), "someone else's");
+    void uploadingAPdfToAnotherUsersExaminationIsForbidden() throws Exception {
+        Examination foreign = seedExamination(alice.id(), "alice's");
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
-        mvc.perform(auth(multipart("/api/exams/" + foreign.getId() + "/pdf").file(file)))
+        mvc.perform(asBob(multipart("/api/exams/" + foreign.getId() + "/pdf").file(file)))
             .andExpect(status().isForbidden());
     }
 
     @Test
-    void unknownExamIsNotFound() throws Exception {
-        mvc.perform(auth(get("/api/exams/" + UUID.randomUUID())))
+    void unknownExaminationIsNotFound() throws Exception {
+        mvc.perform(asBob(get("/api/exams/" + UUID.randomUUID())))
             .andExpect(status().isNotFound());
     }
 
     @Test
-    void listReturnsOnlyMyExamsNeverAnotherUsers() throws Exception {
-        Exam mine = seedExam(DefaultUser.ID, "mine-" + UUID.randomUUID());
-        Exam foreign = seedExam(UUID.randomUUID(), "foreign-" + UUID.randomUUID());
+    void listReturnsOnlyMyExaminationsNeverAnotherUsers() throws Exception {
+        Examination alices = seedExamination(alice.id(), "alice-" + UUID.randomUUID());
+        Examination bobs = seedExamination(bob.id(), "bob-" + UUID.randomUUID());
 
-        mvc.perform(auth(get("/api/exams")))
+        mvc.perform(asBob(get("/api/exams")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[?(@.id == '" + mine.getId() + "')]").exists())
-            .andExpect(jsonPath("$[?(@.id == '" + foreign.getId() + "')]").doesNotExist());
+            .andExpect(jsonPath("$[?(@.id == '" + bobs.getId() + "')]").exists())
+            .andExpect(jsonPath("$[?(@.id == '" + alices.getId() + "')]").doesNotExist());
+    }
+
+    /**
+     * A brand-new user sees an empty dashboard. Worth pinning separately from the
+     * filtering test above: the regression this change exists to prevent was
+     * every user seeing every exam, which an "is mine present" assertion alone
+     * would not have caught.
+     */
+    @Test
+    void freshUserSeesNoExaminationsAtAll() throws Exception {
+        seedExamination(alice.id(), "alice-" + UUID.randomUUID());
+        TestUser newcomer = createUser("newcomer-" + UUID.randomUUID());
+
+        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + newcomer.token()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void noTokenIsUnauthorized() throws Exception {
+        mvc.perform(get("/api/exams")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unknownTokenIsUnauthorized() throws Exception {
+        mvc.perform(get("/api/exams").header("Authorization", "Bearer exl_not-a-real-token"))
+            .andExpect(status().isUnauthorized());
     }
 }

@@ -60,11 +60,11 @@ import {
   itemId,
   taskMissingScore,
   totalPoints,
-  type BlockItem,
-  type Exam,
+  type Block,
+  type Examination,
   type Section,
-  type Task,
-  type TaskType,
+  type TaskBlock,
+  type TaskBlockType,
 } from "@/lib/exam/exam-helpers";
 import {
   useSectionGroups,
@@ -77,7 +77,7 @@ import {
 } from "@/components/shared/exam-content/SectionSidebar";
 import { ConfirmDeleteDialog } from "@/components/shared/exam-content/ConfirmDeleteDialog";
 
-const lastPositionIn = (group: { tasks: Task[]; items: BlockItem[] }) => {
+const lastPositionIn = (group: { tasks: TaskBlock[]; items: Block[] }) => {
   let max = 0;
   for (const it of group.items) if (it.position > max) max = it.position;
   return max;
@@ -401,7 +401,7 @@ const ExamEditInner = () => {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const handleDragEnd = (group: { items: BlockItem[] }) =>
+  const handleDragEnd = (group: { items: Block[] }) =>
     (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
@@ -413,7 +413,7 @@ const ExamEditInner = () => {
       void persistReorder(newOrder);
     };
 
-  const renderBlockItem = (item: BlockItem) => (
+  const renderBlockItem = (item: Block) => (
     <BlockItemComponent
       key={itemId(item)}
       item={item}
@@ -520,7 +520,7 @@ const ExamEditInner = () => {
   // Expand + scroll to any block (task, context, or figure) — generalises
   // jumpToTask for the "Content missing" wayfinding.
   const jumpToItem = useCallback(
-    (item: BlockItem) => scrollToBlock(itemId(item), blockDomId(item)),
+    (item: Block) => scrollToBlock(itemId(item), blockDomId(item)),
     [scrollToBlock],
   );
 
@@ -781,19 +781,19 @@ const ExamEditInner = () => {
 // ----------------------------------------------------------------------------
 
 interface CarouselViewProps {
-  exam: Exam;
+  exam: Examination;
   grouped: Array<{
     section: Section | null;
-    tasks: Task[];
-    items: BlockItem[];
+    tasks: TaskBlock[];
+    items: Block[];
     slug: string;
   }>;
   sensors: ReturnType<typeof useSensors>;
-  handleDragEnd: (g: { items: BlockItem[] }) => (e: DragEndEvent) => void;
-  renderBlockItem: (item: BlockItem) => React.ReactNode;
+  handleDragEnd: (g: { items: Block[] }) => (e: DragEndEvent) => void;
+  renderBlockItem: (item: Block) => React.ReactNode;
   taskLetterById: Map<string, string>;
-  lastPositionIn: (g: { tasks: Task[]; items: BlockItem[] }) => number;
-  addTask: (type: TaskType, afterPosition: number, sectionId: string | null) => void;
+  lastPositionIn: (g: { tasks: TaskBlock[]; items: Block[] }) => number;
+  addTask: (type: TaskBlockType, afterPosition: number, sectionId: string | null) => void;
   addContextBlock: (afterPosition: number, sectionId: string) => void;
   addFigureBlock: (afterPosition: number, sectionId: string) => void;
   patchSection: (sectionId: string, patch: Partial<Section>) => void;

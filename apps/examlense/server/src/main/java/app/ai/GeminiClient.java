@@ -83,7 +83,7 @@ final class GeminiClient {
                 if (p instanceof AiProvider.TextPart tp) {
                     parts.add(Map.of("text", tp.text()));
                 } else if (p instanceof AiProvider.ImageUrlPart ip) {
-                    // ParseExamService encodes rasterized page images as data URLs.
+                    // ParseExaminationService encodes rasterized page images as data URLs.
                     parts.add(inlineFromDataUrl(ip.url()));
                 } else if (p instanceof AiProvider.FilePart fp) {
                     parts.add(Map.of("inline_data", Map.of(

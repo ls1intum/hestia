@@ -1,4 +1,4 @@
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { isParseFailure } from "@/lib/exam/exam-helpers";
 import { parsePhasePercent, parsePhaseLabel } from "@/hooks/data/use-exam-progress";
 
@@ -25,7 +25,7 @@ export interface ExamProgress {
 const pct = (num: number, denom: number): number | null =>
   denom > 0 ? Math.round((num / denom) * 100) : null;
 
-export const examProgress = (exam: ExamListItem): ExamProgress => {
+export const examProgress = (exam: ExaminationListItem): ExamProgress => {
   const total = exam.task_count;
   switch (exam.status) {
     case "parsing":
@@ -59,7 +59,7 @@ export const examProgress = (exam: ExamListItem): ExamProgress => {
  * Comparable value for sorting the Progress column. Failed/absent progress sorts
  * lowest (-1) so completed/high-progress exams surface first on a descending sort.
  */
-export const progressSortValue = (exam: ExamListItem): number =>
+export const progressSortValue = (exam: ExaminationListItem): number =>
   examProgress(exam).percent ?? -1;
 
 /**
@@ -101,7 +101,7 @@ export interface ExamJourney {
 /** "task" / "tasks" — pluralise the remaining-count noun in the tooltip copy. */
 const plural = (n: number, noun: string): string => (n === 1 ? noun : `${noun}s`);
 
-export const examJourney = (exam: ExamListItem): ExamJourney => {
+export const examJourney = (exam: ExaminationListItem): ExamJourney => {
   const total = exam.task_count;
 
   if (exam.status === "failed") {

@@ -8,14 +8,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { Task } from "@/lib/exam/exam-helpers";
-import { effectiveScore, type TaskAnswer, type TaskGrade } from "@/lib/grading/grading";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
+import { effectiveScore, type AIAnswer, type Grade } from "@/lib/grading/grading";
 import { SCORE_FILL_HSL, scoreTier } from "@/lib/grading/score-color";
 
 interface Props {
-  tasks: Task[];
-  grades: Map<string, TaskGrade>;
-  answers: Map<string, TaskAnswer>;
+  tasks: TaskBlock[];
+  grades: Map<string, Grade>;
+  answers: Map<string, AIAnswer>;
   labelById: Map<string, string>;
   /** Open a task in the "All tasks" view (jumps to its section + scrolls). */
   onOpenTask: (taskId: string) => void;
@@ -131,7 +131,7 @@ export const TaskScoreBarChart = ({ tasks, grades, answers, labelById, onOpenTas
     <div className="hestia-card">
       <div className="mb-hestia-3 flex flex-wrap items-center justify-between gap-hestia-2">
         <h2 className="hestia-eyebrow text-hestia-text-muted">
-          Score per Task
+          Score per TaskBlock
         </h2>
         <div className="flex items-center gap-hestia-3 hestia-eyebrow text-hestia-text-muted">
           <LegendDot color={colorFor(1)} label="≥ 80%" />

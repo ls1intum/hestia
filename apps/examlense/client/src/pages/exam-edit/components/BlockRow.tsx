@@ -8,7 +8,7 @@ interface Props {
   kind: BlockRowKind;
   /** Header label — for tasks: "Question a)", for context/figure: their title. */
   label: ReactNode;
-  /** Task-only warning shown when the task has no score yet. */
+  /** TaskBlock-only warning shown when the task has no score yet. */
   missingScore?: boolean;
   /** Pre-built type badge (rendered on the right). */
   badge: ReactNode;

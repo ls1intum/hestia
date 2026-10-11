@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * SSE subscription endpoints (replace the Supabase realtime channels). Note:
  * the browser EventSource API cannot set an Authorization header, so callers
- * pass the token as a {@code ?token=} query param (honored by StaticTokenAuthFilter).
+ * pass the token as a {@code ?token=} query param (honored by UserTokenAuthFilter).
  */
 @RestController
 @RequestMapping("/api")
@@ -52,7 +52,7 @@ public class SseController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/events")
     public SseEmitter examEvents(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExam(Access.id(examId), userId);
+        access.requireExamination(Access.id(examId), userId);
         return hub.register("exam:" + examId);
     }
 
@@ -61,12 +61,13 @@ public class SseController {
         summary = "Subscribe to exam-list events",
         description = """
             Dashboard-level stream. Emits a single `exam` event with an \
-            `{ "exam_id": "<uuid>" }` payload whenever any exam changes status or makes solve \
-            progress, so the list can refresh without one subscription per row.""")
+            `{ "exam_id": "<uuid>" }` payload whenever one of **the caller's own** exams \
+            changes status or makes solve progress, so the list can refresh without one \
+            subscription per row.""")
     @ApiResponse(responseCode = "200", description = "Event stream opened.",
         content = @Content(mediaType = "text/event-stream"))
     @GetMapping("/exams/events")
     public SseEmitter listEvents(@CurrentUser String userId) {
-        return hub.register("exams");
+        return hub.register("exams:" + userId);
     }
 }

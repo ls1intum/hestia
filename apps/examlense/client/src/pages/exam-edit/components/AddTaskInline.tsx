@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Plus, FileText, Image as ImageIcon, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { TASK_TYPES, type TaskType } from "@/lib/exam/exam-helpers";
+import { TASK_TYPES, type TaskBlockType } from "@/lib/exam/exam-helpers";
 import { TASK_TYPE_LABELS } from "@/lib/exam/labels";
 
 export type AddBlockChoice =
-  | { kind: "task"; type: TaskType }
+  | { kind: "task"; type: TaskBlockType }
   | { kind: "context" };
 
 export const AddTaskInline = ({
@@ -14,7 +14,7 @@ export const AddTaskInline = ({
   onAddFigure,
   variant = "between",
 }: {
-  onAdd: (type: TaskType) => void;
+  onAdd: (type: TaskBlockType) => void;
   /** When provided, the popover also offers a "Context" entry. */
   onAddContext?: () => void;
   /** When provided, the popover also offers a "Figure" entry. */
@@ -32,7 +32,7 @@ export const AddTaskInline = ({
       <PopoverTrigger asChild>
         <button type="button" className={linkBtn}>
           <Plus size={14} />
-          Add Task
+          Add TaskBlock
           <ChevronDown size={12} />
         </button>
       </PopoverTrigger>

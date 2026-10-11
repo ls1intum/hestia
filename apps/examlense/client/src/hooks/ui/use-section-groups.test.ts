@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { computeSectionGroups, computeTaskLetters } from "./use-section-groups";
-import { figureLabelsForBlocks, type Section, type SectionBlock, type Task } from "@/lib/exam/exam-helpers";
+import { figureLabelsForBlocks, type Section, type SectionBlock, type TaskBlock } from "@/lib/exam/exam-helpers";
 
 const section = (id: string, position: number, name = ""): Section =>
   ({ id, position, name }) as Section;
 
-const task = (id: string, position: number, sectionId: string | null): Task =>
-  ({ id, position, section_id: sectionId, created_at: `2024-01-0${position + 1}` }) as Task;
+const task = (id: string, position: number, sectionId: string | null): TaskBlock =>
+  ({ id, position, section_id: sectionId, created_at: `2024-01-0${position + 1}` }) as TaskBlock;
 
 const figure = (id: string, position: number, sectionId: string): SectionBlock =>
   ({ id, position, section_id: sectionId, kind: "figure", created_at: "2024-01-01" }) as SectionBlock;

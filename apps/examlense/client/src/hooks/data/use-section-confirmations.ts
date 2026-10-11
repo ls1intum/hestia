@@ -6,7 +6,7 @@ import {
 } from "@/lib/api/api-client";
 import { sectionsKey } from "@/hooks/data/use-sections";
 import { taskAnswersKey } from "@/hooks/data/use-task-answers";
-import type { Section, Task } from "@/lib/exam/exam-helpers";
+import type { Section, TaskBlock } from "@/lib/exam/exam-helpers";
 import { solveSection } from "@/lib/api/api-solve";
 
 /**
@@ -25,7 +25,7 @@ import { solveSection } from "@/lib/api/api-solve";
 export const useSectionConfirmations = (
   examId: string | undefined,
   sections: Section[] | undefined,
-  tasks: Task[] | undefined,
+  tasks: TaskBlock[] | undefined,
 ) => {
   const qc = useQueryClient();
   const inFlightRef = useRef<Map<string, Promise<unknown>>>(new Map());

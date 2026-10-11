@@ -344,6 +344,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{courseId}/learning-goals/topic-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/topic-search/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["pages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/topic-search/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -376,6 +424,8 @@ export interface components {
             documentId?: number;
             filename?: string;
             displayName?: string;
+            /** @enum {string|null} */
+            documentKind?: "LECTURE" | "EXERCISE" | null;
             snippet?: string;
             /** Format: int32 */
             page?: number;
@@ -409,6 +459,7 @@ export interface components {
             /** Format: int64 */
             id?: number;
             text?: string;
+            originalText?: string;
             shortLabel?: string;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";
@@ -431,10 +482,13 @@ export interface components {
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
             /** Format: int32 */
             lectureOrder?: number;
+            examTask?: components["schemas"]["ExamTaskResponse"];
         };
         AddChildRequest: {
             text?: string;
             shortLabel?: string;
+            /** @enum {string} */
+            role?: "SKILL" | "KNOWLEDGE";
         };
         CreateTerminalSkillRequest: {
             text?: string;
@@ -500,6 +554,8 @@ export interface components {
             filename?: string;
             displayName?: string;
             contentType?: string;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
             /** Format: date-time */
             uploadedAt?: string;
         };
@@ -536,7 +592,9 @@ export interface components {
             label?: string;
         };
         UpdateDocumentRequest: {
-            displayName?: string;
+            displayName?: string | null;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
         };
         CourseSummaryResponse: {
             /** Format: int64 */
@@ -550,6 +608,8 @@ export interface components {
             documentCount?: number;
             /** Format: int64 */
             goalCount?: number;
+            /** Format: int64 */
+            topicCount?: number;
             /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
@@ -600,6 +660,105 @@ export interface components {
             /** Format: int32 */
             failedSessions?: number;
             failedSessionNames?: string[];
+        };
+        AcceptRequest: {
+            subSkillKeys?: string[];
+        };
+        DuplicateOf: {
+            /** Format: int64 */
+            goalId?: number;
+            text?: string;
+            topicText?: string;
+        };
+        PagePlan: {
+            terms?: string[];
+            runs?: components["schemas"]["PageRun"][];
+            /** Format: int32 */
+            totalPages?: number;
+            /** Format: int32 */
+            maxPages?: number;
+        };
+        PageRange: {
+            /** Format: int64 */
+            documentId?: number;
+            /** Format: int32 */
+            startPage?: number;
+            /** Format: int32 */
+            endPage?: number;
+        };
+        PageRun: {
+            /** Format: int64 */
+            documentId?: number;
+            label?: string;
+            /** Format: int32 */
+            startPage?: number;
+            /** Format: int32 */
+            endPage?: number;
+        };
+        ProposalResponse: {
+            /** Format: uuid */
+            proposalId?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: int32 */
+            pagesRead?: number;
+            skills?: components["schemas"]["ProposedSkill"][];
+            direct?: components["schemas"]["ProposedSubSkill"][];
+            duplicates?: components["schemas"]["ProposedSubSkill"][];
+        };
+        ProposedKnowledge: {
+            text?: string;
+            shortLabel?: string;
+        };
+        ProposedSkill: {
+            key?: string;
+            text?: string;
+            shortLabel?: string;
+            /** @enum {string} */
+            bloom?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            /** @enum {string} */
+            solo?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+            subSkills?: components["schemas"]["ProposedSubSkill"][];
+        };
+        ProposedSource: {
+            /** Format: int64 */
+            documentId?: number;
+            displayName?: string;
+            /** Format: int32 */
+            page?: number;
+            snippet?: string;
+            /** @enum {string} */
+            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
+        };
+        ProposedSubSkill: {
+            key?: string;
+            text?: string;
+            shortLabel?: string;
+            /** @enum {string} */
+            bloom?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            /** @enum {string} */
+            solo?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+            source?: components["schemas"]["ProposedSource"];
+            knowledge?: components["schemas"]["ProposedKnowledge"][];
+            duplicateOf?: components["schemas"]["DuplicateOf"];
+        };
+        SearchRequest: {
+            text?: string;
+            ranges?: components["schemas"]["PageRange"][];
+        };
+        TopicRequest: {
+            text?: string;
+        };
+        ExamTaskResponse: {
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int32 */
+            taskNumber?: number;
+            taskType?: string | null;
+            text?: string;
+            context?: string | null;
         };
     };
     responses: never;
@@ -905,6 +1064,8 @@ export interface operations {
         parameters: {
             query: {
                 files: string[];
+                /** @description Optional kind of every file in this upload: LECTURE or EXERCISE. Omit to upload without a kind, which keeps the title-based hierarchy level. */
+                kind?: "LECTURE" | "EXERCISE";
             };
             header?: never;
             path: {
@@ -1270,6 +1431,89 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ProposalResponse"];
+                };
+            };
+        };
+    };
+    pages: {
+        parameters: {
+            query?: {
+                model?: string;
+            };
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["PagePlan"];
+                };
+            };
+        };
+    };
+    accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
             };
         };
     };

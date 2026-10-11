@@ -40,8 +40,7 @@ public class DocumentStructureService {
     }
 
     /** A document's extracted text, per-page offsets, and structural sections (possibly empty). */
-    public record ParsedDocument(String rawText, List<SectionSpan> sections, int[] pageOffsets,
-                                 boolean hadBookmarkOutline) {
+    public record ParsedDocument(String rawText, List<SectionSpan> sections, int[] pageOffsets) {
     }
 
     /** One detected section: its raw-text range and its 1-based inclusive page range. */
@@ -63,8 +62,7 @@ public class DocumentStructureService {
             }
         }
         // Non-PDF or PDF parse failure: flat text via Tika, no structural sections (single session).
-        return new ParsedDocument(sanitize(textParser.parse(new ByteArrayInputStream(bytes))), List.of(), null,
-                false);
+        return new ParsedDocument(sanitize(textParser.parse(new ByteArrayInputStream(bytes))), List.of(), null);
     }
 
     /**
@@ -111,7 +109,7 @@ public class DocumentStructureService {
 
             PDDocumentOutline outline = doc.getDocumentCatalog().getDocumentOutline();
             if (outline == null) {
-                return new ParsedDocument(rawText, List.of(), pageStart, false);
+                return new ParsedDocument(rawText, List.of(), pageStart);
             }
             List<SectionSpan> sections = sectionsFromOutline(doc, outline, pageStart, rawText.length());
             // The bookmarks may be a single lecture's internal outline (PowerPoint sections/slides)
@@ -119,9 +117,9 @@ public class DocumentStructureService {
             // treat the document as one session (the caller then titles it via the vision model).
             if (!sections.isEmpty()
                     && !bookmarkJudge.shouldSplit(filename, pageCount, titles(sections))) {
-                return new ParsedDocument(rawText, List.of(), pageStart, true);
+                return new ParsedDocument(rawText, List.of(), pageStart);
             }
-            return new ParsedDocument(rawText, sections, pageStart, !sections.isEmpty());
+            return new ParsedDocument(rawText, sections, pageStart);
         }
     }
 

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { examProgress, examJourney, progressSortValue } from "./exam-progress";
 import { isParseFailure } from "./exam-helpers";
 
-const exam = (over: Partial<ExamListItem>): ExamListItem => ({
+const exam = (over: Partial<ExaminationListItem>): ExaminationListItem => ({
   id: "e1",
   title: "Exam",
   course: null,

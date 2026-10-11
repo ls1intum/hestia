@@ -28,7 +28,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showMechanics, setShowMechanics] = useState(false);
   const [isKanbanOpen, setIsKanbanOpen] = useState(false);
-  const [isSlideOpen, setIsSlideOpen] = useState(false);
+  const [isSlideOpen, setIsSlideOpen] = useState(true);
 
   // getMechanicDescription imported from constants
 
@@ -216,202 +216,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
         setIsOpen={setIsSlideOpen}
       />
 
-      <div className="space-y-4">
-        {(() => {
-          const todoItems = allPrepItems.filter(item => !completedTasks.has(item.id));
-          const doneItems = allPrepItems.filter(item => completedTasks.has(item.id));
-          const allDone = allPrepItems.length > 0 && todoItems.length === 0;
 
-          return (
-            <div className={`border rounded-xl shadow-sm transition-all duration-300 overflow-hidden ${allDone ? "border-emerald-400 bg-surface" : "border-border/60 bg-card"}`}>
-              {/* Kanban Header */}
-              <button
-                onClick={() => setIsKanbanOpen(!isKanbanOpen)}
-                className="w-full flex items-center gap-3 p-4 text-left border-b border-border/40 bg-transparent hover:bg-muted/10 transition-colors"
-              >
-                <div className={`h-9 w-9 rounded-full flex items-center justify-center text-lg shrink-0 ${allDone ? "bg-emerald-100" : "bg-primary/10"}`}>
-                  <ListChecks className={`h-5 w-5 ${allDone ? "text-emerald-600" : "text-primary"}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-display text-base font-bold leading-tight">Session Preparation Checklist</h3>
-                    {allDone && (
-                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200 uppercase tracking-wide">
-                        ✓ All Done
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{doneItems.length}/{allPrepItems.length} tasks completed</p>
-                </div>
-                <div className="text-muted-foreground">
-                  {isKanbanOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </div>
-              </button>
-
-              {/* Kanban Body */}
-              {isKanbanOpen && (
-                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-2 duration-200">
-                  {/* To Do */}
-                  <div className="bg-muted/10 rounded-xl p-4 border border-border/20 flex flex-col gap-3">
-                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex justify-between items-center mb-1">
-                      <span>To Do</span>
-                      <span className="bg-background border border-border/40 px-2 py-0.5 rounded text-[11px]">{todoItems.length}</span>
-                    </div>
-                    {todoItems.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center">
-                        <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-3">
-                          <Check className="h-6 w-6 text-emerald-600" />
-                        </div>
-                        <p className="text-sm text-emerald-700 font-bold">You're all set! 🎉</p>
-                        <p className="text-xs text-emerald-600/70 mt-1">All preparation tasks are complete.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {todoItems.map(item => (
-                          <div
-                            key={item.id}
-                            className="bg-background border border-border/60 rounded-lg p-3 text-sm hover:border-primary/40 hover:shadow-sm transition-all group flex flex-col gap-2 shadow-sm"
-                          >
-                            <div className="flex items-start gap-3">
-                              <div
-                                onClick={() => toggleTask(item.id)}
-                                className="cursor-pointer mt-0.5 w-4 h-4 rounded border border-muted-foreground/40 group-hover:border-primary/50 flex-shrink-0 flex items-center justify-center"
-                              />
-                              <div className="flex-1 flex flex-col min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span
-                                    onClick={() => toggleTask(item.id)}
-                                    className="cursor-pointer leading-snug font-body select-none text-foreground font-medium mt-0.5"
-                                  >
-                                    {item.label}
-                                  </span>
-                                  {item.subTodos && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); toggleCollapsed(item.id); }}
-                                      className={`shrink-0 transition-colors p-1.5 rounded-md hover:bg-muted ${!collapsed[item.id] ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
-                                      title="Show details"
-                                    >
-                                      <Info className="h-4 w-4" />
-                                    </button>
-                                  )}
-                                </div>
-                                {item.id === 'slide-all' && (
-                                  <p className="text-[11px] text-foreground/80 mt-1 font-body leading-relaxed">
-                                    You can incorporate the generated slides into your own lecture slides or vice versa.
-                                  </p>
-                                )}
-                                {item.category && (
-                                  <div className="mt-2.5">
-                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
-                                      item.category === 'tech' ? 'bg-slate-200/60 text-slate-700' :
-                                      item.category === 'content' ? 'bg-[#f0e8d5] text-[#7a5e3a]' :
-                                      item.category === 'activity' ? 'bg-[#e0eceb] text-[#3f6567]' :
-                                      'bg-[#fdeed9] text-[#c07a30]' // prep
-                                    }`}>
-                                      {item.category}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {item.subTodos && !collapsed[item.id] && (
-                              <div className="mt-2 p-3 bg-muted/30 rounded-md border border-border/50 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Required Updates</h4>
-                                {item.subTodos.map((task: any) => {
-                                  const isSubDone = completedTasks.has(task.id);
-                                  return (
-                                    <div key={task.id} className={`flex items-start gap-2 text-xs font-body leading-relaxed group/sub cursor-pointer ${isSubDone ? 'opacity-60' : ''}`} onClick={(e) => { e.stopPropagation(); toggleSubTask(item.id, task.id); }}>
-                                      <div className={`mt-0.5 w-3.5 h-3.5 rounded-[3px] border ${isSubDone ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600' : 'border-muted-foreground/40 group-hover/sub:border-primary/50'} flex-shrink-0 flex items-center justify-center transition-colors`}>
-                                        {isSubDone && <Check className="h-2.5 w-2.5" />}
-                                      </div>
-                                      <span className={`${isSubDone ? 'line-through decoration-muted-foreground/40 text-muted-foreground' : 'text-foreground/90 select-none'}`}>{task.label}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Done */}
-                  <div className="bg-muted/10 rounded-xl p-4 border border-border/20 flex flex-col gap-3">
-                    <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-wider flex justify-between items-center mb-1">
-                      <span>Done</span>
-                      <span className="bg-muted/50 border border-border/20 px-2 py-0.5 rounded text-[11px]">{doneItems.length}</span>
-                    </div>
-                    {doneItems.length === 0 ? (
-                      <div className="flex-1 flex items-center justify-center py-8">
-                        <p className="text-sm text-muted-foreground/50 italic">Completed tasks will appear here</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {doneItems.map(item => (
-                          <div
-                            key={item.id}
-                            className="bg-background border border-border/60 rounded-lg p-3 text-sm hover:border-primary/40 transition-all flex flex-col gap-2 opacity-80 hover:opacity-100 group shadow-sm"
-                          >
-                            <div className="flex items-start gap-3">
-                              <div
-                                onClick={() => toggleTask(item.id)}
-                                className="cursor-pointer mt-0.5 w-4 h-4 rounded bg-emerald-500/20 text-emerald-600 flex items-center justify-center flex-shrink-0"
-                              >
-                                <Check className="h-3 w-3" />
-                              </div>
-                              <div className="flex-1 flex flex-col min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span
-                                    onClick={() => toggleTask(item.id)}
-                                    className="cursor-pointer leading-snug text-foreground font-medium font-body select-none mt-0.5"
-                                  >
-                                    {item.label}
-                                  </span>
-                                  {item.id === 'meth-all' && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setShowMechanics(!showMechanics); }}
-                                      className={`shrink-0 transition-colors p-1.5 rounded-md hover:bg-muted ${showMechanics ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
-                                      title="Show detailed mechanics"
-                                    >
-                                      <Info className="h-4 w-4" />
-                                    </button>
-                                  )}
-                                </div>
-                                {item.id === 'slide-all' && (
-                                  <p className="text-[11px] text-foreground/80 mt-1 font-body leading-relaxed">
-                                    You can incorporate the generated slides into your own lecture slides or vice versa.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            {item.subTodos && !collapsed[item.id] && (
-                              <div className="mt-2 p-3 bg-muted/20 rounded-md border border-border/30 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200 opacity-80">
-                                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Required Updates</h4>
-                                {item.subTodos.map((task: any) => {
-                                  const isSubDone = completedTasks.has(task.id);
-                                  return (
-                                    <div key={task.id} className="flex items-start gap-2 text-xs font-body leading-relaxed group/sub cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleSubTask(item.id, task.id); }}>
-                                      <div className={`mt-0.5 w-3.5 h-3.5 rounded-[3px] border ${isSubDone ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-600' : 'border-muted-foreground/40 group-hover/sub:border-primary/50'} flex-shrink-0 flex items-center justify-center transition-colors`}>
-                                        {isSubDone && <Check className="h-2.5 w-2.5" />}
-                                      </div>
-                                      <span className={`${isSubDone ? 'line-through decoration-muted-foreground/40 text-muted-foreground' : 'text-foreground/90 select-none'}`}>{task.label}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-      </div>
 
       {/* Slide Grid Dialog */}
       {openSlideDialog !== null && (openSlideDialog === -1 || slidesCache[openSlideDialog]) && (() => {
@@ -430,7 +235,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
             >
               <div className="flex items-center justify-between p-5 border-b border-border/50">
                 <div>
-                  <h2 className="font-display text-xl font-bold">
+                  <h2 className="font-display text-2xl font-bold">
                     {dialogTitle} — Slide Preview
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -465,7 +270,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
                       ))}
                     </ul>
                     {slide.notes && (
-                      <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 italic line-clamp-2">{slide.notes}</div>
+                      <div className="mt-3 pt-2 border-t border-slate-100 text-xs text-slate-400 italic line-clamp-2">{slide.notes}</div>
                     )}
                     {/* Magnify hint — contained within the button via relative/overflow-hidden */}
                     <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 backdrop-blur-[1px]">

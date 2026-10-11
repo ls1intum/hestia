@@ -34,6 +34,27 @@ class ProviderRequestShapeTest {
     }
 
     @Test
+    void openAiSendsNoReasoningParameter() {
+        Map<String, Object> body = OpenAiResponsesClient.buildBody(
+            "gpt-5.5",
+            new AiProvider.ChatRequest("system", new AiProvider.TextContent("solve this"), TOOL));
+
+        // Every solve runs at the provider's default; the recorded thinking level
+        // documents that default rather than requesting one.
+        assertThat(body).doesNotContainKey("reasoning");
+    }
+
+    @Test
+    void anthropicSendsNoThinkingParameter() {
+        Map<String, Object> body = AnthropicClient.buildBody(
+            "claude-opus-4-8",
+            new AiProvider.ChatRequest("system", new AiProvider.TextContent("solve this"), TOOL));
+
+        assertThat(body).doesNotContainKey("thinking");
+        assertThat(body).doesNotContainKey("output_config");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void openAiResponsesBuildsPdfParserRequestWithInputFile() {
         Map<String, Object> body = OpenAiResponsesClient.buildBody(

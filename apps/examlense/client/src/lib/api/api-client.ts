@@ -1,26 +1,31 @@
 /**
  * Typed client for the Spring Boot backend (see `server/`). This is now the
  * single transport for all data, storage, and admin operations — Supabase is
- * gone. Auth is a static bearer token (single-user backend); the matching
- * secret is `app.auth.token` on the server.
+ * gone. Auth is a per-user bearer token held in `token-store.ts`; a user obtains
+ * one by claiming an enrolment invite.
  *
  * Base URL comes from `VITE_API_BASE_URL` (default http://localhost:8081).
  */
-import type { Exam, Section, SectionBlock, SectionFigure, Task } from "@/lib/exam/exam-helpers";
-import type { TaskAnswer, TaskGrade } from "@/lib/grading/grading";
+import type { Examination, Section, SectionBlock, SectionFigure, TaskBlock } from "@/lib/exam/exam-helpers";
+import type { AIAnswer, Grade } from "@/lib/grading/grading";
 import type { BloomLevel, LearningGoalResponse, LghCourse, SoloLevel } from "@/lib/learning-goals/learning-goals";
+import { clearToken, getToken, setToken } from "@/lib/api/token-store";
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "") || "http://localhost:8081";
-
-const AUTH_TOKEN = (import.meta.env.VITE_API_AUTH_TOKEN ?? "dev-local-token") as string;
 
 export function apiBaseUrl(): string {
   return BASE_URL;
 }
 
+/**
+ * The single read point for the credential — `sse.ts` uses it too, for the
+ * `?token=` query param an `EventSource` needs (it cannot set headers). Reading
+ * through the store on every call is what lets sign-in and sign-out take effect
+ * without a page reload.
+ */
 export function apiToken(): string {
-  return AUTH_TOKEN;
+  return getToken();
 }
 
 export class ApiClientNotConfiguredError extends Error {
@@ -46,7 +51,8 @@ export function isApiClientConfigured(): boolean {
 }
 
 function authHeader(): Record<string, string> {
-  return AUTH_TOKEN ? { Authorization: `Bearer ${AUTH_TOKEN}` } : {};
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body"> {
@@ -64,9 +70,10 @@ export async function apiRequest<T = unknown>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { json, body, headers, skipAuth, ...rest } = options;
+  const sentToken = getToken();
   const finalHeaders: Record<string, string> = {
     Accept: "application/json",
-    ...(skipAuth ? {} : authHeader()),
+    ...(skipAuth ? {} : (sentToken ? { Authorization: `Bearer ${sentToken}` } : {})),
     ...(headers ?? {}),
   };
 
@@ -91,6 +98,15 @@ export async function apiRequest<T = unknown>(
     } catch {
       /* not json */
     }
+    // A rejected credential is unrecoverable for this session, so drop it and let
+    // the gate take over rather than leaving every subsequent call to fail too.
+    // `skipAuth` calls are unauthenticated by nature and say nothing about it.
+    // IMPORTANT: Only clear if the token hasn't changed while the request was in flight!
+    if (resp.status === 401 && !skipAuth) {
+      if (getToken() === sentToken) {
+        clearToken();
+      }
+    }
     throw new ApiError(resp.status, text, message);
   }
 
@@ -101,16 +117,91 @@ export async function apiRequest<T = unknown>(
 }
 
 // ---------------------------------------------------------------------------
+// Identity and enrolment
+// ---------------------------------------------------------------------------
+
+export interface Quota {
+  parse_remaining: number;
+  parse_limit: number;
+  solve_remaining: number;
+  solve_limit: number;
+}
+
+export interface Me {
+  id: string;
+  /** The TUM ID, or a generated `anon-…` handle if the user hasn't linked one. */
+  external_id: string;
+  display_name: string | null;
+  is_admin: boolean;
+  quota: Quota;
+  /** False until a TUM ID is linked; unlinked accounts don't survive the SAML cutover. */
+  has_tum_id: boolean;
+}
+
+/** Doubles as the token-validity probe: a 200 means the stored token works. */
+export const getMe = () => apiRequest<Me>("/api/me");
+
+export interface Registration {
+  token: string;
+  user: Me;
+}
+
+/**
+ * Create an account for a visitor who has none, and store its token.
+ *
+ * `skipAuth` because the caller has no credential yet — that is the whole point of
+ * the endpoint. On success the token is persisted, so subsequent calls authenticate
+ * normally.
+ */
+export async function register(): Promise<Registration> {
+  const result = await apiRequest<Registration>("/api/auth/register", {
+    method: "POST",
+    skipAuth: true,
+  });
+  setToken(result.token);
+  return result;
+}
+
+/**
+ * Attach a TUM ID to the signed-in account. Optional, but it is what carries the
+ * account's exams across the eventual switch to TUM sign-in.
+ */
+export const linkTumId = (externalId: string) =>
+  apiRequest<Me>("/api/me", { method: "PATCH", json: { external_id: externalId } });
+
+export function signOut(): void {
+  clearToken();
+}
+
+// --- Admin: users and invites -----------------------------------------------
+
+export interface AdminUser {
+  id: string;
+  external_id: string;
+  display_name: string | null;
+  is_admin: boolean;
+  has_active_token: boolean;
+}
+
+export const listAdminUsers = () => apiRequest<AdminUser[]>("/api/admin/users");
+
+export const setUserAdmin = (id: string, isAdmin: boolean) =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`, { method: "PATCH", json: { is_admin: isAdmin } });
+
+export const revokeUserTokens = (id: string) =>
+  apiRequest<void>(`/api/admin/users/${id}/tokens`, { method: "DELETE" });
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Exams
 // ---------------------------------------------------------------------------
 
 /**
- * Exam row as returned by the list endpoint, augmented with the progress counts
+ * Examination row as returned by the list endpoint, augmented with the progress counts
  * the dashboard table's "Progress" column needs. Counts are relative to
  * `task_count`; see backend `ExamProgressService`.
  */
-export interface ExamListItem extends Exam {
+export interface ExaminationListItem extends Examination {
   task_count: number;
   scored_count: number;
   answered_count: number;
@@ -120,19 +211,19 @@ export interface ExamListItem extends Exam {
   confirmed_section_count: number;
 }
 
-export const listExams = () => apiRequest<ExamListItem[]>("/api/exams");
-export const getExam = (id: string) => apiRequest<Exam>(`/api/exams/${id}`);
+export const listExams = () => apiRequest<ExaminationListItem[]>("/api/exams");
+export const getExam = (id: string) => apiRequest<Examination>(`/api/exams/${id}`);
 export const createExam = (body: Record<string, unknown>) =>
-  apiRequest<Exam>("/api/exams", { method: "POST", json: body });
+  apiRequest<Examination>("/api/exams", { method: "POST", json: body });
 export const patchExam = (id: string, patch: Record<string, unknown>) =>
-  apiRequest<Exam>(`/api/exams/${id}`, { method: "PATCH", json: patch });
+  apiRequest<Examination>(`/api/exams/${id}`, { method: "PATCH", json: patch });
 export const deleteExam = (id: string) =>
   apiRequest<void>(`/api/exams/${id}`, { method: "DELETE" });
 export const duplicateExam = (
   id: string,
   body?: { title?: string; solver_model?: string },
 ) =>
-  apiRequest<Exam>(`/api/exams/${id}/duplicate`, {
+  apiRequest<Examination>(`/api/exams/${id}/duplicate`, {
     method: "POST",
     ...(body ? { json: body } : {}),
   });
@@ -144,7 +235,7 @@ export const duplicateExam = (
  * job from finalizing. See `ExamRepository.cancelEvaluating` for the reasoning.
  */
 export const cancelExam = (id: string) =>
-  apiRequest<Exam>(`/api/exams/${id}/cancel`, { method: "POST" });
+  apiRequest<Examination>(`/api/exams/${id}/cancel`, { method: "POST" });
 
 // ---------------------------------------------------------------------------
 // Sections
@@ -165,11 +256,11 @@ export const unconfirmSection = (id: string) =>
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
-export const listTasks = (examId: string) => apiRequest<Task[]>(`/api/exams/${examId}/tasks`);
+export const listTasks = (examId: string) => apiRequest<TaskBlock[]>(`/api/exams/${examId}/tasks`);
 export const createTask = (body: Record<string, unknown>) =>
-  apiRequest<Task>("/api/tasks", { method: "POST", json: body });
+  apiRequest<TaskBlock>("/api/tasks", { method: "POST", json: body });
 export const patchTask = (id: string, patch: Record<string, unknown>) =>
-  apiRequest<Task>(`/api/tasks/${id}`, { method: "PATCH", json: patch });
+  apiRequest<TaskBlock>(`/api/tasks/${id}`, { method: "PATCH", json: patch });
 export const deleteTask = (id: string) =>
   apiRequest<void>(`/api/tasks/${id}`, { method: "DELETE" });
 export const deleteTasksBySection = (examId: string, sectionId: string) =>
@@ -193,11 +284,11 @@ export const deleteBlocksBySection = (examId: string, sectionId: string) =>
 // Answers / grades
 // ---------------------------------------------------------------------------
 export const listAnswers = (examId: string) =>
-  apiRequest<TaskAnswer[]>(`/api/exams/${examId}/answers`);
+  apiRequest<AIAnswer[]>(`/api/exams/${examId}/answers`);
 export const listGrades = (examId: string) =>
-  apiRequest<TaskGrade[]>(`/api/exams/${examId}/grades`);
+  apiRequest<Grade[]>(`/api/exams/${examId}/grades`);
 export const upsertGrade = (body: Record<string, unknown>) =>
-  apiRequest<TaskGrade>("/api/task-grades", { method: "PUT", json: body });
+  apiRequest<Grade>("/api/task-grades", { method: "PUT", json: body });
 
 // ---------------------------------------------------------------------------
 // LearningGoalHub proxy (backend-mediated; LGH itself is VPN-only)
@@ -233,10 +324,9 @@ export async function getExamLearningGoals(examId: string): Promise<LearningGoal
 // ---------------------------------------------------------------------------
 export const listFigures = (blockId: string) =>
   apiRequest<SectionFigure[]>(`/api/blocks/${blockId}/figures`);
-export function uploadFigure(blockId: string, file: File, position?: number) {
+export function uploadFigure(blockId: string, file: File) {
   const form = new FormData();
   form.append("file", file);
-  if (position !== undefined) form.append("position", String(position));
   return apiRequest<SectionFigure>(`/api/blocks/${blockId}/figures`, { method: "POST", body: form });
 }
 export const patchFigure = (id: string, patch: Record<string, unknown>) =>

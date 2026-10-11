@@ -2,6 +2,8 @@ package de.tum.cit.hestia.learninggoalhub.document;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -60,7 +62,10 @@ public class DocumentController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public List<DocumentResponse> upload(@PathVariable Long courseId,
-                                         @RequestParam("files") MultipartFile[] files) {
+                                         @RequestParam("files") MultipartFile[] files,
+                                         @Parameter(description = "Optional kind of every file in this upload: LECTURE or EXERCISE. "
+                                                 + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
+                                         @RequestParam(required = false) DocumentKind kind) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
 
@@ -75,7 +80,7 @@ public class DocumentController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file: " + file.getOriginalFilename(), e);
             }
             Document saved = uploadService.persist(
-                    course, file.getOriginalFilename(), file.getContentType(), parsed, bytes);
+                    course, file.getOriginalFilename(), file.getContentType(), kind, parsed, bytes);
             responses.add(DocumentResponse.from(saved));
         }
         return responses;
@@ -104,8 +109,10 @@ public class DocumentController {
     }
 
     /**
-     * Renames a document for display. The filename is immutable provenance (goal sources and the
-     * CSV export cite it), so only the display name changes; null clears it back to the filename.
+     * Renames a document for display and/or changes its kind. The filename is immutable provenance
+     * (goal sources and the CSV export cite it), so only the display name changes; an explicit null
+     * clears it back to the filename. A field left out of the body is left unchanged, and a null kind
+     * is ignored.
      */
     @PatchMapping("/{documentId}")
     public DocumentResponse update(@PathVariable Long courseId,
@@ -114,15 +121,51 @@ public class DocumentController {
         Document document = documentRepository.findById(documentId)
                 .filter(d -> d.getCourse().getId().equals(courseId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
-        String displayName = request.displayName() == null ? null : request.displayName().trim();
-        if (displayName != null && displayName.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "displayName must not be blank");
+        if (request.hasDisplayName()) {
+            String displayName = request.getDisplayName() == null ? null : request.getDisplayName().trim();
+            if (displayName != null && displayName.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "displayName must not be blank");
+            }
+            document.setDisplayName(displayName);
         }
-        document.setDisplayName(displayName);
+        if (request.getKind() != null) {
+            document.setKind(request.getKind());
+        }
         return DocumentResponse.from(documentRepository.save(document));
     }
 
-    public record UpdateDocumentRequest(String displayName) {
+    /**
+     * A partial update. {@code displayName} needs to tell "left out" from "null": null clears the
+     * display name, while a body that only changes the kind must not.
+     */
+    public static class UpdateDocumentRequest {
+
+        private String displayName;
+        private boolean displayNameSet;
+        private DocumentKind kind;
+
+        @Schema(nullable = true)
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+            this.displayNameSet = true;
+        }
+
+        @Schema(nullable = true)
+        public DocumentKind getKind() {
+            return kind;
+        }
+
+        public void setKind(DocumentKind kind) {
+            this.kind = kind;
+        }
+
+        boolean hasDisplayName() {
+            return displayNameSet;
+        }
     }
 
     private static boolean isPdf(Document document) {
@@ -172,6 +215,7 @@ public class DocumentController {
                                    String filename,
                                    String displayName,
                                    String contentType,
+                                   @Schema(nullable = true) DocumentKind kind,
                                    OffsetDateTime uploadedAt) {
         static DocumentResponse from(Document document) {
             return new DocumentResponse(
@@ -180,6 +224,7 @@ public class DocumentController {
                     document.getFilename(),
                     document.getDisplayName(),
                     document.getContentType(),
+                    document.getKind(),
                     document.getUploadedAt()
             );
         }

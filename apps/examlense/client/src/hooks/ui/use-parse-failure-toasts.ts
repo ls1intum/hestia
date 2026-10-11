@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ExamListItem } from "@/lib/api/api-client";
+import type { ExaminationListItem } from "@/lib/api/api-client";
 import { notifyExamFailure } from "@/components/shared/parse-failure-toast";
 import { CANCELLED_PARSE_ERROR, isParseFailure } from "@/lib/exam/exam-helpers";
 
@@ -10,7 +10,7 @@ import { CANCELLED_PARSE_ERROR, isParseFailure } from "@/lib/exam/exam-helpers";
  * enter the failed set toast. A retried exam leaves the set and re-toasts if it
  * fails again.
  */
-export function useParseFailureToasts(exams?: ExamListItem[]) {
+export function useParseFailureToasts(exams?: ExaminationListItem[]) {
   const failedRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {

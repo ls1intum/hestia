@@ -3,6 +3,8 @@ package de.tum.cit.hestia.learninggoalhub.document;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -35,6 +37,11 @@ public class Document {
     // immutable because goal sources and the CSV export cite it as provenance.
     @Column(name = "display_name")
     private String displayName;
+
+    // Lecture or exercise, chosen at upload; null for documents uploaded before the choice existed.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", length = 16)
+    private DocumentKind kind;
 
     @Column(name = "raw_text", columnDefinition = "TEXT")
     private String rawText;
@@ -81,6 +88,14 @@ public class Document {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public DocumentKind getKind() {
+        return kind;
+    }
+
+    public void setKind(DocumentKind kind) {
+        this.kind = kind;
     }
 
     public String getRawText() {

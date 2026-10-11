@@ -16,6 +16,9 @@ import { InlineEditableStep } from "./InlineEditableStep";
 import { phaseEmojis, getStepEmoji, DEFAULT_ACTIVITIES, ACTIVITY_GROUPS, MODE_COLORS, getPhaseMode, getSectionMode, getStepMode } from "@/lib/constants";
 import { EditTarget, DndActivityBlock } from "../WorkshopGeneratedTimetable";
 import { WorkshopInput } from "@/lib/workshop-generator";
+import { EvaluateMappingPanel } from "./EvaluateMappingPanel";
+import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
+
 
 export function SortableBlockRow({
   block, isExpanded, editing, meta, isRegenerating, selectedActivities,
@@ -58,12 +61,7 @@ export function SortableBlockRow({
   onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
   onResetEvaluatePriority?: () => void;
 }) {
-  const [boxes, setBoxes] = useState<{ id: string, method: string, lgIds: string[] }[]>(() => {
-    if (meta.evaluateMappings && meta.evaluateMappings.length > 0) {
-      return meta.evaluateMappings.map((m, i) => ({ id: `box-${Date.now()}-${i}`, method: m.method, lgIds: m.lgIds }));
-    }
-    return [{ id: `box-${Date.now()}`, method: 'Quiz', lgIds: [] }];
-  });
+  
   
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.dndId
@@ -111,7 +109,7 @@ export function SortableBlockRow({
             {/* Fixed-Width Time Column */}
             <div className="w-[52px] shrink-0 flex items-center justify-start">
               <div
-                className="px-2 py-0.5 rounded-md text-[11px] font-mono whitespace-nowrap"
+                className="px-2 py-0.5 rounded-md text-xs font-mono whitespace-nowrap"
                 style={{
                   backgroundColor: block.duration >= 10 ? 'rgba(134,92,29,0.10)' : 'rgba(0,0,0,0.05)',
                   color: block.duration >= 10 ? 'var(--hestia-primary)' : 'var(--hestia-text-muted)',
@@ -148,7 +146,7 @@ export function SortableBlockRow({
                   />
                 </div>
                 {needsEvaluatePriority && (
-                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
+                  <span className="ml-2 text-xs font-bold uppercase tracking-wider text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
                     Input Needed
                   </span>
                 )}
@@ -386,7 +384,7 @@ export function SortableBlockRow({
 
                 return (
                   <div className="pl-4 space-y-1.5">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
                     {goals.map((g: string, i: number) => {
                       const origStep = allSteps.find(s => s.includes(g)) || g;
                       return (
@@ -409,7 +407,7 @@ export function SortableBlockRow({
                 const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
                 return (
                   <div className="pl-4 space-y-1.5">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
                     <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
                       style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
                       {renderEditable(promptStep, clean || block.objective, "w-full")}
@@ -438,7 +436,7 @@ export function SortableBlockRow({
                   <div className="pl-4 space-y-3">
                     {contentSteps.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
                         <div className="space-y-1">
                           {contentSteps.map((s, i) => {
                             const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
@@ -455,7 +453,7 @@ export function SortableBlockRow({
                     )}
                     {(cleanActivity || block.objective) && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                         </p>
                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
@@ -485,7 +483,7 @@ export function SortableBlockRow({
                   <div className="pl-4 space-y-3">
                     {takeawaySteps.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
                         <div className="space-y-1">
                           {takeawaySteps.map((s, i) => {
                             const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
@@ -502,7 +500,7 @@ export function SortableBlockRow({
                     )}
                     {(cleanActivity || block.objective) && (
                       <div>
-                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                         </p>
                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
@@ -518,272 +516,31 @@ export function SortableBlockRow({
               // ── EVALUATE: one prompt per LG ─────────────────────
               if (phase === "EVALUATE") {
                 if ((needsEvaluatePriority || isEditMode) && goals) {
-                  const validGoals = goals;
-
-                  // Compute unassigned LGs
-                  const assignedLgIds = new Set(boxes.flatMap(b => b.lgIds));
-                  const unassignedLgs = validGoals.filter(g => g.id && !assignedLgIds.has(g.id));
-
-                  const isOverLimit = block.duration <= 10 && boxes.length > 2;
-
                   return (
-                    <div className="pl-4 space-y-4 pt-2">
-                      <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 mb-4">
-                        <div className="flex-1">
-                          <h4 className="text-sm font-semibold text-destructive uppercase tracking-widest mb-1 font-mono">Action Required</h4>
-                          <p className="text-sm text-foreground/80 leading-relaxed">
-                            You have {validGoals.length} learning goals. To fit them in a {block.duration}-minute check understanding block,
-                            please group them into activities. Drag your learning goals on the left into the activity boxes on the right.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-4 items-start">
-                        {/* LEFT: Draggable LGs */}
-                        <div className="w-1/3 flex flex-col gap-2 shrink-0">
-                          <div className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-widest mb-1">Unassigned Goals</div>
-                          {unassignedLgs.length === 0 ? (
-                            <div className="text-xs text-muted-foreground/60 italic p-3 border border-dashed rounded-lg text-center">All goals assigned!</div>
-                          ) : (
-                            unassignedLgs.map((g, i) => (
-                              <div
-                                key={g.id}
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData("text/plain", g.id!);
-                                  e.dataTransfer.effectAllowed = "move";
-                                }}
-                                className="text-xs font-body leading-snug p-3 bg-card border shadow-sm rounded-lg cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors"
-                              >
-                                <span className="font-mono font-bold opacity-50 mr-1.5">LG{validGoals.findIndex(vg => vg.id === g.id) + 1}</span>
-                                {g.goal}
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        {/* RIGHT: Activity Boxes */}
-                        <div className="flex-1 flex flex-col gap-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-widest">Activity Boxes</div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-6 px-2 text-xs text-primary hover:bg-primary/10"
-                              onClick={() => {
-                                setBoxes(prev => [...prev, { id: `box-${Date.now()}`, method: 'Quiz', lgIds: [] }]);
-                              }}
-                            >
-                              <Plus className="h-3 w-3 mr-1" /> Add Box
-                            </Button>
-                          </div>
-                          
-                          {isOverLimit && (
-                            <div className="text-xs text-amber-600 bg-amber-500/10 p-2 rounded border border-amber-500/20 leading-tight">
-                              Warning: {boxes.length} activities might be too much for a {block.duration}-minute block.
-                            </div>
-                          )}
-
-                          {boxes.map((box, bIdx) => (
-                            <div
-                              key={box.id}
-                              className="bg-card border rounded-xl overflow-hidden shadow-sm transition-colors"
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                e.dataTransfer.dropEffect = "move";
-                                e.currentTarget.style.borderColor = "var(--hestia-primary)";
-                                e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--hestia-primary) 5%, var(--hestia-surface))";
-                              }}
-                              onDragLeave={(e) => {
-                                e.currentTarget.style.borderColor = "";
-                                e.currentTarget.style.backgroundColor = "";
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                e.currentTarget.style.borderColor = "";
-                                e.currentTarget.style.backgroundColor = "";
-                                const lgId = e.dataTransfer.getData("text/plain");
-                                if (lgId) {
-                                  setBoxes(prev => prev.map(b => {
-                                    // Remove from any box
-                                    const filtered = b.lgIds.filter(id => id !== lgId);
-                                    // Add to this box
-                                    if (b.id === box.id) return { ...b, lgIds: [...filtered, lgId] };
-                                    return { ...b, lgIds: filtered };
-                                  }));
-                                }
-                              }}
-                            >
-                              <div className="bg-muted/30 px-3 py-2 flex items-center justify-between border-b">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors">
-                                      {box.method} <ChevronDown className="h-3 w-3 opacity-50" />
-                                    </div>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start" className="w-48">
-                                    {ACTIVITY_GROUPS.map(group => (
-                                      <DropdownMenuSub key={group.label}>
-                                        <DropdownMenuSubTrigger className="flex items-center gap-2 text-xs">
-                                          <span>{group.groupEmoji}</span><span>{group.label}</span>
-                                        </DropdownMenuSubTrigger>
-                                        <DropdownMenuSubContent>
-                                          {group.activities.map(act => (
-                                            <DropdownMenuItem key={act.name} className="text-xs" onClick={() => {
-                                              setBoxes(prev => prev.map(b => b.id === box.id ? { ...b, method: act.name } : b));
-                                            }}>
-                                              {act.name}
-                                            </DropdownMenuItem>
-                                          ))}
-                                        </DropdownMenuSubContent>
-                                      </DropdownMenuSub>
-                                    ))}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                                
-                                {boxes.length > 1 && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    onClick={() => setBoxes(prev => prev.filter(b => b.id !== box.id))}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                              <div className="p-3 min-h-[60px] flex flex-col gap-2">
-                                {box.lgIds.length === 0 ? (
-                                  <div className="text-xs text-muted-foreground/40 italic text-center my-auto pointer-events-none">Drop goals here</div>
-                                ) : (
-                                  box.lgIds.map(lgId => {
-                                    const g = validGoals.find(vg => vg.id === lgId);
-                                    if (!g) return null;
-                                    return (
-                                      <div key={g.id} className="text-xs font-body leading-snug p-2.5 bg-background border rounded flex items-start gap-2 group">
-                                        <span className="font-mono font-bold opacity-50 shrink-0">LG{validGoals.findIndex(vg => vg.id === g.id) + 1}</span>
-                                        <span className="flex-1">{g.goal}</span>
-                                        <Button 
-                                          variant="ghost" 
-                                          size="icon" 
-                                          className="h-5 w-5 shrink-0 text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                          onClick={() => setBoxes(prev => prev.map(b => b.id === box.id ? { ...b, lgIds: b.lgIds.filter(id => id !== lgId) } : b))}
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-end pt-4 border-t mt-4">
-                        <Button
-                          onClick={() => {
-                            if (boxes.every(b => b.lgIds.length === 0)) {
-                              if (!window.confirm("You haven't assigned any goals. They will be ignored. Continue?")) return;
-                            }
-                            onConfirmEvaluateMappings?.(boxes.map(b => ({ method: b.method, lgIds: b.lgIds })));
-                            if (isEditMode) onToggleEditMode?.();
-                          }}
-                          disabled={isRegenerating}
-                          className="bg-primary text-primary-foreground font-semibold px-6"
-                          size="sm"
-                        >
-                          {isRegenerating ? <><Loader2 className="h-3 w-3 mr-2 animate-spin" /> Generating...</> : "Done"}
-                        </Button>
-                      </div>
-                    </div>
+                    <EvaluateMappingPanel 
+                      initialMappings={meta.evaluateMappings}
+                      goals={goals}
+                      blockDuration={block.duration}
+                      isRegenerating={isRegenerating}
+                      isEditMode={isEditMode}
+                      onConfirmEvaluateMappings={(mappings) => {
+                         if (onConfirmEvaluateMappings) onConfirmEvaluateMappings(mappings);
+                      }}
+                      onToggleEditMode={onToggleEditMode}
+                    />
                   );
                 }
 
                 return (
-                  <div className="pl-4 space-y-2">
-                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                      Understanding Check
-                    </p>
-                    {allSteps.map((s: string, i: number) => {
-                      const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
-                      const lgMatch = noTime.match(/^(?:Prompt\s+LG(\d+)|(Combined))\s*[·•\-]\s*\[?([^\]:]+)\]?:\s*(.*)/i);
-                      const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
-                      const lgNum = lgMatch ? lgMatch[1] : lgFallback ? lgFallback[1] : null;
-                      const isCombined = lgMatch ? !!lgMatch[2] : false;
-                      const activity = lgMatch ? lgMatch[3].trim() : null;
-                      const question = lgMatch ? lgMatch[4].trim() : lgFallback ? lgFallback[2].trim() : noTime;
-
-                      return (
-                        <div key={i} className="rounded-lg text-sm overflow-hidden"
-                          style={{ border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeft: '2px solid var(--hestia-phase-evaluate)' }}>
-                          {(lgNum || isCombined) && (
-                            <div className="px-3 py-1.5 flex items-center gap-2" style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-surface) 50%, transparent)' }}>
-                              <span className="font-mono text-xs font-bold shrink-0 uppercase tracking-widest opacity-70" style={{ color: 'var(--hestia-phase-evaluate)' }}>
-                                {isCombined ? "Combined Goals" : `Learning Goal ${lgNum}`}
-                              </span>
-                              {activity && (!isEditMode || !onSwitchEvaluateActivity || isCombined ? (
-                                <span className="inline-flex items-center whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0"
-                                  style={{ backgroundColor: MODE_COLORS['evaluate'].badgeBg, color: MODE_COLORS['evaluate'].badgeText }}>
-                                  {activity}
-                                </span>
-                              ) : (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <div
-                                      role="button"
-                                      onClick={e => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold cursor-pointer hover:opacity-80 transition-opacity shrink-0"
-                                      style={{ backgroundColor: MODE_COLORS['evaluate'].badgeBg, color: MODE_COLORS['evaluate'].badgeText }}
-                                      title="Click to switch activity"
-                                    >
-                                      {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                                      {activity} <ChevronDown className="h-2.5 w-2.5 opacity-50" />
-                                    </div>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start" className="w-48">
-                                    <DropdownMenuLabel className="text-xs font-mono uppercase text-muted-foreground">LG{lgNum} Activity</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {ACTIVITY_GROUPS.map(group => (
-                                      <DropdownMenuSub key={group.label}>
-                                        <DropdownMenuSubTrigger className="flex items-center gap-2">
-                                          <span>{group.groupEmoji}</span><span>{group.label}</span>
-                                        </DropdownMenuSubTrigger>
-                                        <DropdownMenuSubContent>
-                                          {group.activities.map(act => (
-                                            <DropdownMenuItem key={act.name} onClick={e => { e.stopPropagation(); onSwitchEvaluateActivity(parseInt(lgNum || "0"), act.name); }}>
-                                              {act.name}
-                                            </DropdownMenuItem>
-                                          ))}
-                                        </DropdownMenuSubContent>
-                                      </DropdownMenuSub>
-                                    ))}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        const indices = findStepIndices(s);
-                                        if (indices) onDeleteStep(indices.sIdx, indices.stIdx);
-                                      }}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete Activity
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              ))}
-                            </div>
-                          )}
-                          <div className="px-3 py-2 italic flex items-start" style={{ backgroundColor: 'var(--hestia-surface)' }}>
-                            {renderEditable(s, question, "leading-relaxed w-full")}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    
-                  </div>
+                  <UnderstandingCheckSteps
+                    allSteps={allSteps}
+                    isEditMode={isEditMode}
+                    isRegenerating={isRegenerating}
+                    onSwitchEvaluateActivity={onSwitchEvaluateActivity}
+                    onDeleteStep={onDeleteStep}
+                    findStepIndices={findStepIndices}
+                    renderEditable={renderEditable}
+                  />
                 );
               }
 
@@ -809,8 +566,8 @@ export function SortableBlockRow({
                               <div key={stIdx} className={`flex items-start gap-3 group px-3 py-2 ${contentText.toLowerCase().startsWith('activity') ? 'rounded-3xl' : 'rounded-lg'}`}
                                 style={{ backgroundColor: 'var(--hestia-surface)', borderWidth: '1px', borderStyle: contentText.toLowerCase().startsWith('prompt') ? 'dashed' : 'solid', borderColor: 'color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeftWidth: '2px', borderLeftColor: stepColors.border }}>
                                 <div className="w-[42px] shrink-0 flex items-center justify-start opacity-80 group-hover:opacity-100 transition-opacity mt-0.5">
-                                  <span className="w-6 text-right text-[11px] font-mono">{timeVal || "0"}</span>
-                                  <span className="text-[10px] text-muted-foreground font-mono ml-0.5">m</span>
+                                  <span className="w-6 text-right text-xs font-mono">{timeVal || "0"}</span>
+                                  <span className="text-xs text-muted-foreground font-mono ml-0.5">m</span>
                                 </div>
                                 <span className="text-sm mt-0.5 shrink-0" title="Activity Type">{subEmoji}</span>
                                 <div className="flex items-center flex-1 min-w-0">

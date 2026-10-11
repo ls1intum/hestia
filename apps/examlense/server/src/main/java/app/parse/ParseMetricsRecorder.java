@@ -1,6 +1,6 @@
 package app.parse;
 
-import app.exam.ExamRepository;
+import app.examination.ExaminationRepository;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,9 +16,9 @@ public class ParseMetricsRecorder {
     private static final Logger log = LoggerFactory.getLogger(ParseMetricsRecorder.class);
 
     private final ParseMetricRepository repository;
-    private final ExamRepository examRepository;
+    private final ExaminationRepository examRepository;
 
-    public ParseMetricsRecorder(ParseMetricRepository repository, ExamRepository examRepository) {
+    public ParseMetricsRecorder(ParseMetricRepository repository, ExaminationRepository examRepository) {
         this.repository = repository;
         this.examRepository = examRepository;
     }

@@ -19,7 +19,7 @@ frontend/src/
 
 ## State Management
 
-The application state is primarily managed in `App.tsx` using standard React `useState` and passed down to child components. The main state objects represent the data collected at each step of the workshop creation process:
+The application state is encapsulated in the `useWizardState.ts` custom hook and destructured inside `App.tsx` to be passed down to child components. The main state objects represent the data collected at each step of the workshop creation process:
 - `WorkshopInput` (Context, audience, topic)
 - `LearningGoalPlan[]` (Draft learning goals)
 - `WorkshopSession` (Final timetable and blocks)
@@ -39,4 +39,4 @@ The UI guides the user through a linear generation flow:
 
 - **Tailwind CSS**: Utility-first CSS framework for styling.
 - **shadcn/ui**: Accessible and customizable UI components built on Radix UI.
-- **dnd-kit**: Used in the timetable view for drag-and-drop block reordering.
+- **dnd-kit**: Used in the timetable view for drag-and-drop block reordering (e.g., inside `EvaluateMappingPanel` for mapping goals to activities).

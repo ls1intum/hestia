@@ -19,7 +19,7 @@ services:
     image: ghcr.io/ls1intum/hestia/workshopper/backend:${IMAGE_TAG:-latest}
     container_name: workshopper-server
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       POSTGRES_HOST: workshopper-postgres
       POSTGRES_PORT: 5432

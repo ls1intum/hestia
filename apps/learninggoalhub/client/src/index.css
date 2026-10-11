@@ -93,6 +93,16 @@
     color-scheme: light dark;
   }
 
+  /* The theme toggle wins over the OS for native controls too (checkboxes, selects, scrollbars),
+     or an unchecked box draws dark on the light theme under an OS set to dark. */
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
   body {
     background-color: var(--hestia-bg);
     color: var(--hestia-text);

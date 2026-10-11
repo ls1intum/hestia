@@ -12,28 +12,26 @@ public class DocumentUploadService {
     private final DocumentContentRepository documentContentRepository;
     private final DocumentSectionRepository documentSectionRepository;
     private final DocumentTitleService titleService;
-    private final DocumentLectureBoundaryService lectureBoundaryService;
     private final LanguageDetectionService languageDetectionService;
 
     public DocumentUploadService(DocumentRepository documentRepository,
                                  DocumentContentRepository documentContentRepository,
                                  DocumentSectionRepository documentSectionRepository,
                                  DocumentTitleService titleService,
-                                 DocumentLectureBoundaryService lectureBoundaryService,
                                  LanguageDetectionService languageDetectionService) {
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.documentSectionRepository = documentSectionRepository;
         this.titleService = titleService;
-        this.lectureBoundaryService = lectureBoundaryService;
         this.languageDetectionService = languageDetectionService;
     }
 
     @Transactional
     public Document persist(Course course, String filename, String contentType,
-                            DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
+                            DocumentKind kind, DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
         String storedContentType = contentType != null ? contentType : "application/octet-stream";
         Document document = new Document(course, filename, storedContentType, parsed.rawText());
+        document.setKind(kind);
         document.setLanguage(languageDetectionService.detect(parsed.rawText()));
         document = documentRepository.save(document);
         document.setPageOffsets(parsed.pageOffsets());
@@ -44,17 +42,13 @@ public class DocumentUploadService {
 
     /**
      * Persists the document's structural sections. With deterministic bookmark sections we store
-     * them as-is. A large PDF with no bookmark outline first gets a conservative, structured
-     * lecture-boundary pass. When that finds no separate units, the document is one session; we ask
-     * the vision model to name it from its first pages and store that single section, falling back to
-     * leaving it section-less (the extraction step then titles the session by filename).
+     * them as-is. Otherwise the document is one session; we ask the vision model to name it from its
+     * first pages and store that single section, falling back to leaving it section-less (the
+     * extraction step then titles the session by filename).
      */
     private void persistSections(Document document, DocumentStructureService.ParsedDocument parsed,
                                  byte[] bytes, String contentType, String filename) {
         List<DocumentStructureService.SectionSpan> sections = parsed.sections();
-        if (sections.isEmpty() && !parsed.hadBookmarkOutline()) {
-            sections = lectureBoundaryService.detect(filename, parsed.rawText(), parsed.pageOffsets());
-        }
         if (!sections.isEmpty()) {
             for (int i = 0; i < sections.size(); i++) {
                 DocumentStructureService.SectionSpan s = sections.get(i);

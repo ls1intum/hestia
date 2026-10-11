@@ -2,8 +2,8 @@
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Plus, X } from "lucide-react";
-import { isSectionReady, totalPoints, type Section, type Task } from "@/lib/exam/exam-helpers";
-import { effectiveScore, type TaskAnswer, type TaskGrade } from "@/lib/grading/grading";
+import { isSectionReady, totalPoints, type Section, type TaskBlock } from "@/lib/exam/exam-helpers";
+import { effectiveScore, type AIAnswer, type Grade } from "@/lib/grading/grading";
 import { cn } from "@/lib/utils/utils";
 
 export type EntryStatus =
@@ -34,14 +34,14 @@ const STATUS_DOT: Record<EntryStatus, string> = {
 };
 
 /** Edit hover label: how many tasks in the section have a score set. */
-const scoredTasksLabel = (tasks: Task[]): string => {
+const scoredTasksLabel = (tasks: TaskBlock[]): string => {
   const scored = tasks.filter((t) => t.points != null && t.points > 0).length;
   return `${scored} / ${tasks.length} tasks scored`;
 };
 
 /** Group tasks by section id (null = unassigned). */
-const groupTasksBySection = (tasks: Task[]): Map<string | null, Task[]> => {
-  const m = new Map<string | null, Task[]>();
+const groupTasksBySection = (tasks: TaskBlock[]): Map<string | null, TaskBlock[]> => {
+  const m = new Map<string | null, TaskBlock[]>();
   for (const task of tasks) {
     const k = task.section_id ?? null;
     const arr = m.get(k) ?? [];
@@ -54,7 +54,7 @@ const groupTasksBySection = (tasks: Task[]): Map<string | null, Task[]> => {
 /** Build edit-mode entries (status: draft | ready | confirmed; score = max points). */
 export const useEditSectionEntries = (
   sections: Section[],
-  tasks: Task[],
+  tasks: TaskBlock[],
   confirmedSectionIds: Set<string>,
 ): SectionEntry[] => {
   return useMemo<SectionEntry[]>(() => {
@@ -97,14 +97,14 @@ export const useEditSectionEntries = (
 /** Build grading-mode entries (status: pending | complete; score = achieved / max). */
 export const useGradingSectionEntries = (
   sections: Section[],
-  tasks: Task[],
+  tasks: TaskBlock[],
   pendingByTaskId: Map<string, boolean>,
-  gradesById: Map<string, TaskGrade>,
-  answersById: Map<string, TaskAnswer>,
+  gradesById: Map<string, Grade>,
+  answersById: Map<string, AIAnswer>,
 ): SectionEntry[] => {
   return useMemo<SectionEntry[]>(() => {
     const tasksBySection = groupTasksBySection(tasks);
-    const scoreLabelFor = (sectionTasks: Task[]): string => {
+    const scoreLabelFor = (sectionTasks: TaskBlock[]): string => {
       const max = totalPoints(sectionTasks);
       const achieved = sectionTasks.reduce((sum, tk) => {
         const eff = effectiveScore(tk, gradesById.get(tk.id), answersById.get(tk.id));
@@ -112,7 +112,7 @@ export const useGradingSectionEntries = (
       }, 0);
       return `${Number(achieved.toFixed(2))} / ${max} pt`;
     };
-    const gradedLabelFor = (sectionTasks: Task[]): string => {
+    const gradedLabelFor = (sectionTasks: TaskBlock[]): string => {
       const graded = sectionTasks.filter((tk) => !pendingByTaskId.get(tk.id)).length;
       return `${graded} / ${sectionTasks.length} graded`;
     };
@@ -161,7 +161,7 @@ interface Props {
   onDeleteSection?: (entry: SectionEntry) => void;
   /** Pinned bottom summary, e.g. "Total: 45 pt" or "12 / 45 pt". Omit to hide the footer. */
   footerScore?: ReactNode;
-  /** Exam title node — editable InlineTitle (edit) or StaticTitle (grading). Omit to hide the header (back-link + title). */
+  /** Examination title node — editable InlineTitle (edit) or StaticTitle (grading). Omit to hide the header (back-link + title). */
   title?: ReactNode;
   /** Optional trailing content beside the title (e.g. SaveIndicator). */
   titleTrailing?: ReactNode;

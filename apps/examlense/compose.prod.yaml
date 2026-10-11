@@ -55,8 +55,36 @@ services:
       # On the shared VM, call LGH's nginx container over Docker DNS instead of
       # hairpinning through the public Traefik URL.
       LGH_BASE_URL: ${LGH_BASE_URL:-http://learninggoalhub-web}
-      # Static bearer token — must match the value baked into the client build.
-      API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN:-dev-local-token}
+      # SHARED bootstrap token — must match the value baked into the client build.
+      # Anyone presenting it authenticates as the seeded legacy user, which bypasses
+      # per-user isolation, and it ships inside the client bundle. Use it once to mint
+      # set up, then set EXAMLENSE_API_AUTH_TOKEN to an empty value and redeploy.
+      # See DEPLOY.md → "Enrolling users". The server warns on boot while it is set.
+      # `-` not `:-` on purpose: with `:-` an empty value would fall back to the
+      # default, so the shared token could never actually be switched off.
+      API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN-dev-local-token}
+      # SEPARATE secret that grants ADMIN (as the legacy user), so that the shared
+      # token above — which is committed to this public repository — cannot administer
+      # anything. Set it as a GitHub secret, use it once to enrol and promote your real
+      # account via /admin, then unset it. No default: unset means the only route to
+      # admin is the users.is_admin flag.
+      ADMIN_BOOTSTRAP_TOKEN: ${EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN:-}
+      # Open registration: a first visit creates an account with nothing asked of the
+      # user. Anyone who can reach the host can get one — that is the intended trade
+      # behind the VPN. Set false to freeze the instance to existing token holders.
+      OPEN_REGISTRATION: ${EXAMLENSE_OPEN_REGISTRATION:-true}
+      # New accounts per IP per day. Load-bearing: without it, clearing browser storage
+      # mints an account with a fresh LLM quota, so per-user metering would bound nothing.
+      REGISTRATIONS_PER_IP_PER_DAY: ${EXAMLENSE_REGISTRATIONS_PER_IP_PER_DAY:-5}
+      # Per-user LLM job caps over a rolling 24h window.
+      QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-20}
+      QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-20}
+      # Instance-wide ceilings. The per-user quotas above are a fairness control and
+      # bound nothing on their own — registration is open, so a used-up account can be
+      # traded for a fresh allowance. These count actual usage, so neither account churn
+      # nor a forged proxy header moves them. This is the real cap on the provider bill.
+      QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-200}
+      QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-200}
       # Dedicated HMAC key for signed file URLs. Required in production: when unset the
       # server falls back to API_AUTH_TOKEN, which ships inside the client bundle — so
       # anyone could mint valid file URLs. Fail the deploy rather than start up forgeable.
@@ -64,6 +92,13 @@ services:
       # Behind Traefik: client IPs arrive via X-Forwarded-For, so let the rate
       # limiter trust it here (never enable without a proxy in front).
       API_RATELIMIT_BEHIND_PROXY: ${API_RATELIMIT_BEHIND_PROXY:-true}
+      # How many entries our own proxies APPEND to X-Forwarded-For: Traefik appends the
+      # client's address, then this app's nginx appends Traefik's (it uses
+      # $$proxy_add_x_forwarded_for). Must match the real chain — too low reads a value
+      # the client supplied and every per-IP limit becomes evadable with one header; too
+      # high reads our own proxy's address, identical for everyone, which collapses
+      # per-IP limits into global ones. Revisit if the edge topology changes.
+      API_RATELIMIT_TRUSTED_PROXY_HOPS: ${API_RATELIMIT_TRUSTED_PROXY_HOPS:-2}
       # Same-origin behind Traefik; allow the public host for any non-proxied call.
       CORS_ALLOWED_ORIGINS: https://${APP_HOST}
       # Uploaded files live on a named volume (survives redeploys).

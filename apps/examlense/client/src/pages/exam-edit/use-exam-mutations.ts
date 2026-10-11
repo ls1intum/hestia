@@ -19,17 +19,17 @@ import { sectionsKey, blocksKey } from "@/hooks/data/use-sections";
 import { useSaveStatus } from "@/pages/exam-edit/components/SaveStatus";
 import { useSectionConfirmations } from "@/hooks/data/use-section-confirmations";
 import type {
-  BlockItem,
-  Exam,
+  Block,
+  Examination,
   Section,
   SectionBlock,
-  Task,
-  TaskType,
+  TaskBlock,
+  TaskBlockType,
 } from "@/lib/exam/exam-helpers";
 
 interface ExamMutationDeps {
-  exam: Exam | undefined;
-  tasks: Task[] | undefined;
+  exam: Examination | undefined;
+  tasks: TaskBlock[] | undefined;
   blocks: SectionBlock[] | undefined;
   sections: Section[] | undefined;
   /** Latest section-confirmation API (read via a ref so edit closures stay stable). */
@@ -91,7 +91,7 @@ export function useExamMutations(
     qc.setQueryData<T[]>(key, (prev) => updater(prev ?? []));
   };
 
-  const patchExam = async (patch: Partial<Exam>) => {
+  const patchExam = async (patch: Partial<Examination>) => {
     if (!id || !exam) return;
     await withSaveStatus(async () => {
       qc.setQueryData(examKey(id), { ...exam, ...patch });
@@ -99,11 +99,11 @@ export function useExamMutations(
     });
   };
 
-  const patchTask = async (taskId: string, patch: Partial<Task>) => {
+  const patchTask = async (taskId: string, patch: Partial<TaskBlock>) => {
     if (!id) return;
     await unconfirmIfNeeded(sectionIdForTask(taskId));
     await withSaveStatus(async () => {
-      optimisticListUpdate<Task>(tasksKey(id), (prev) =>
+      optimisticListUpdate<TaskBlock>(tasksKey(id), (prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
       );
       await apiPatchTask(taskId, patch as Record<string, unknown>);
@@ -111,7 +111,7 @@ export function useExamMutations(
   };
 
   const addTask = async (
-    type: TaskType,
+    type: TaskBlockType,
     afterPosition: number,
     sectionId: string | null,
   ) => {
@@ -144,14 +144,14 @@ export function useExamMutations(
     if (!id) return;
     await unconfirmIfNeeded(sectionIdForTask(taskId));
     await withSaveStatus(async () => {
-      optimisticListUpdate<Task>(tasksKey(id), (prev) =>
+      optimisticListUpdate<TaskBlock>(tasksKey(id), (prev) =>
         prev.filter((t) => t.id !== taskId),
       );
       await apiDeleteTask(taskId);
     });
   };
 
-  const duplicateTask = async (task: Task) => {
+  const duplicateTask = async (task: TaskBlock) => {
     if (!id) return;
     await unconfirmIfNeeded(task.section_id);
     setSaving();
@@ -293,7 +293,7 @@ export function useExamMutations(
    * positions (0, 1, 2, ...) and writes only the rows whose position changed.
    * Cache is updated optimistically so the UI does not flicker.
    */
-  const persistReorder = async (newOrder: BlockItem[]) => {
+  const persistReorder = async (newOrder: Block[]) => {
     if (!id) return;
     // Items in a single reorder all belong to the same section (the call
     // originates from one section's DndContext). Take the section id from
@@ -331,7 +331,7 @@ export function useExamMutations(
     // Optimistic cache update
     if (taskUpdates.length > 0) {
       const map = new Map(taskUpdates.map((u) => [u.id, u.position]));
-      qc.setQueryData<Task[]>(tasksKey(id), (prev) =>
+      qc.setQueryData<TaskBlock[]>(tasksKey(id), (prev) =>
         (prev ?? []).map((t) =>
           map.has(t.id) ? { ...t, position: map.get(t.id)! } : t,
         ),

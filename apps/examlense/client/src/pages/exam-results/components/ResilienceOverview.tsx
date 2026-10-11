@@ -7,8 +7,8 @@ import {
   Target,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Exam, Task } from "@/lib/exam/exam-helpers";
-import type { TaskAnswer, TaskGrade } from "@/lib/grading/grading";
+import type { Examination, TaskBlock } from "@/lib/exam/exam-helpers";
+import type { AIAnswer, Grade } from "@/lib/grading/grading";
 import { goalRollup } from "@/lib/grading/grading";
 import { solverModelLabel } from "@/lib/exam/llm-models";
 import { useExamLearningGoals } from "@/hooks/data/use-learning-goals";
@@ -21,10 +21,10 @@ export type ResultsNavTarget = "learningGoals" | "details" | "allTasks";
 interface Props {
   earned: number;
   max: number;
-  tasks: Task[];
-  grades: Map<string, TaskGrade>;
-  answers: Map<string, TaskAnswer>;
-  exam: Exam;
+  tasks: TaskBlock[];
+  grades: Map<string, Grade>;
+  answers: Map<string, AIAnswer>;
+  exam: Examination;
   onNavigate: (view: ResultsNavTarget) => void;
 }
 
@@ -78,7 +78,7 @@ export const ResilienceOverview = ({
 
   const modelId =
     exam.solver_model ??
-    (answers.values().next().value as TaskAnswer | undefined)?.model ??
+    (answers.values().next().value as AIAnswer | undefined)?.model ??
     null;
   const modelLabel = modelId ? solverModelLabel(modelId) : null;
 

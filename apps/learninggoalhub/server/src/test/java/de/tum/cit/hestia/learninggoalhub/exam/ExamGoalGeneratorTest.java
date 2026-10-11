@@ -64,7 +64,10 @@ class ExamGoalGeneratorTest {
                 .contains("TASK-MARKER-42")
                 .contains("CONTEXT-MARKER-7")
                 .contains("freeText")
-                .contains("in German");
+                .contains("in German")
+                // The shared wording invariant is filled in, not left as a placeholder.
+                .contains("Outcome wording invariant")
+                .doesNotContain("%s");
     }
 
     @Test
@@ -96,6 +99,8 @@ class ExamGoalGeneratorTest {
     @Test
     void promptDemandsAtomicConservativeGoals() {
         assertThat(ExamGoalGenerator.PROMPT_TEMPLATE)
+                .contains("shortLabel")
+                .contains("not ending with a period")
                 .contains("ATOMIC")
                 .contains("never more than")
                 .contains("do not escalate");

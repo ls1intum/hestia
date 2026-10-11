@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -75,19 +77,25 @@ public class PageDescriptionService {
      * work commits per document — the extraction run wrapping this is one long transaction, and a
      * failure in a later pipeline phase must not roll the descriptions back (they are what makes
      * re-runs free).
+     *
+     * @param executor runs the batch calls concurrently. Batches, not documents, are the unit of
+     *                 concurrency: a course of two large PDFs would otherwise never exceed two
+     *                 calls in flight however wide the pool, which is what made this phase 62% of a
+     *                 measured run at an effective concurrency of 1.8.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void describeEligiblePages(Document document, byte[] pdfBytes,
-                                      String languageCode, String languageName) {
+                                      String languageCode, String languageName, Executor executor) {
         try {
-            describeEligiblePagesInternal(document, pdfBytes, languageCode, languageName);
+            describeEligiblePagesInternal(document, pdfBytes, languageCode, languageName, executor);
         } catch (RuntimeException e) {
             log.warn("Figure description preparation failed: {}", e.getMessage());
         }
     }
 
     private void describeEligiblePagesInternal(Document document, byte[] pdfBytes,
-                                               String languageCode, String languageName) {
+                                               String languageCode, String languageName,
+                                               Executor executor) {
         if (document == null || pdfBytes == null || !isPdf(document)
                 || document.getRawText() == null || document.getRawText().isBlank()) {
             return;
@@ -121,26 +129,54 @@ public class PageDescriptionService {
 
         try (PDDocument pdf = Loader.loadPDF(pdfBytes)) {
             PDFRenderer renderer = new PDFRenderer(pdf);
+            List<CompletableFuture<List<PageReply>>> pending = new ArrayList<>();
+            List<List<Integer>> batches = new ArrayList<>();
             for (int start = 0; start < eligiblePages.size(); start += BATCH_SIZE) {
-                List<Integer> batch = eligiblePages.subList(start, Math.min(start + BATCH_SIZE, eligiblePages.size()));
-                try {
-                    List<Media> media = renderPages(renderer, batch);
-                    List<PageReply> replies = chatClient.prompt()
-                            .options(ChatOptions.builder().model(visionModel).build())
-                            .user(u -> u.text(PROMPT.formatted(languageName, batch.stream()
-                                    .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
-                                    .media(media.toArray(Media[]::new)))
-                            .call()
-                            .entity(LenientJson.converter(new ParameterizedTypeReference<List<PageReply>>() {}));
-                    persistReplies(document, batch, replies, existingByPage, languageCode);
-                } catch (IOException | RuntimeException e) {
-                    log.warn("VLM figure description failed for document {} pages {}-{}: {}",
-                            document.getId(), batch.getFirst(), batch.getLast(), e.getMessage());
+                List<Integer> batch = List.copyOf(
+                        eligiblePages.subList(start, Math.min(start + BATCH_SIZE, eligiblePages.size())));
+                batches.add(batch);
+                pending.add(CompletableFuture.supplyAsync(
+                        () -> describeBatch(document, renderer, batch, languageName), executor));
+            }
+            // Joined and persisted on this thread: the writes belong to this method's transaction,
+            // and the batch order keeps the stored descriptions in page order.
+            for (int i = 0; i < batches.size(); i++) {
+                List<PageReply> replies = pending.get(i).join();
+                if (replies != null) {
+                    persistReplies(document, batches.get(i), replies, existingByPage, languageCode);
                 }
             }
         } catch (IOException | RuntimeException e) {
             log.warn("Could not render pages for figure descriptions in document {}: {}",
                     document.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Renders one batch and describes it, returning {@code null} when that batch alone failed.
+     *
+     * <p>Rendering holds the renderer's monitor because PDFBox is not thread-safe, so only the call
+     * itself overlaps — which is the part worth overlapping: a described batch spent a measured 30 s
+     * median in the provider against well under a second of local rendering.
+     */
+    private List<PageReply> describeBatch(Document document, PDFRenderer renderer,
+                                          List<Integer> batch, String languageName) {
+        try {
+            List<Media> media;
+            synchronized (renderer) {
+                media = renderPages(renderer, batch);
+            }
+            return chatClient.prompt()
+                    .options(ChatOptions.builder().model(visionModel).build())
+                    .user(u -> u.text(PROMPT.formatted(languageName, batch.stream()
+                            .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
+                            .media(media.toArray(Media[]::new)))
+                    .call()
+                    .entity(LenientJson.converter(new ParameterizedTypeReference<List<PageReply>>() {}));
+        } catch (IOException | RuntimeException e) {
+            log.warn("VLM figure description failed for document {} pages {}-{}: {}",
+                    document.getId(), batch.getFirst(), batch.getLast(), e.getMessage());
+            return null;
         }
     }
 

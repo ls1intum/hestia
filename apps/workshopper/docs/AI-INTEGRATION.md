@@ -20,9 +20,9 @@ To ensure high-quality output, the generation is split into multiple distinct LL
 
 ### 3. Session Timetable Generation (`/session`)
 **Goal**: Organize the goals and activities into a coherent chronological timetable.
-- **Input**: The goals with attached activities.
+- **Input**: The goals with attached activities, plus contextual constraints like `availableMaterials` (e.g., whiteboards, laptops).
 - **Output**: A `WorkshopSessionDto` containing a list of `TimetableBlockDto` objects.
-- **System Prompt Focus**: Managing time logic, ensuring smooth transitions between blocks, and generating introductory and concluding blocks to frame the session.
+- **System Prompt Focus**: Managing time logic, ensuring smooth transitions between blocks, and generating introductory and concluding blocks to frame the session while strictly adhering to the permitted physical materials and selected activities.
 
 ### 4. Slide Generation (`/export/block-slides`)
 **Goal**: Generate presentation slide content for each block in the timetable.

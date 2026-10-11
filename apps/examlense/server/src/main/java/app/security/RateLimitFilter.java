@@ -14,9 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * protection, not a precise quota system. Counts requests per client IP within
  * a rolling fixed window; over the limit returns 429.
  *
- * {@code X-Forwarded-For} is honored only when {@code behindProxy} is set —
- * trusting it unconditionally would let a direct caller spoof arbitrary IPs
- * (evading its own limit and polluting the table).
+ * Client IPs come from {@link ClientIp}, shared with the registration cap.
  */
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -25,12 +23,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final int maxRequests;
     private final long windowMs;
     private final boolean behindProxy;
+    private final int trustedProxyHops;
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
 
-    public RateLimitFilter(int maxRequests, long windowSeconds, boolean behindProxy) {
+    public RateLimitFilter(int maxRequests, long windowSeconds, boolean behindProxy, int trustedProxyHops) {
         this.maxRequests = maxRequests;
         this.windowMs = windowSeconds * 1000L;
         this.behindProxy = behindProxy;
+        this.trustedProxyHops = trustedProxyHops;
     }
 
     private static final class Window {
@@ -49,7 +49,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         long now = System.currentTimeMillis();
         if (windows.size() > MAX_TRACKED_IPS) evictExpired(now);
 
-        Window w = windows.computeIfAbsent(clientIp(req), k -> new Window(now));
+        Window w = windows.computeIfAbsent(ClientIp.of(req, behindProxy, trustedProxyHops), k -> new Window(now));
         boolean limited;
         synchronized (w) {
             if (now - w.start >= windowMs) {
@@ -79,11 +79,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         });
     }
 
-    private String clientIp(HttpServletRequest req) {
-        if (behindProxy) {
-            String fwd = req.getHeader("X-Forwarded-For");
-            if (fwd != null && !fwd.isBlank()) return fwd.split(",")[0].trim();
-        }
-        return req.getRemoteAddr();
-    }
 }

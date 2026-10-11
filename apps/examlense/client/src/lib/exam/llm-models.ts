@@ -16,6 +16,13 @@ export interface LlmModel {
   id: string;
   label: string;
   description?: string;
+  /**
+   * The reasoning depth this solver runs at, in the provider's own vocabulary.
+   * Mirrors `SolverStrategy.defaultThinking`. ExamLense sends no reasoning
+   * parameter, so every solve uses the provider's default; this records what
+   * that default is. Undefined means the model does not reason by default.
+   */
+  defaultThinking?: string;
 }
 
 export const PARSER_MODELS: LlmModel[] = [
@@ -96,17 +103,21 @@ export const SOLVER_MODELS: LlmModel[] = [
     id: "gemini-3.5-flash",
     label: "Gemini 3.5 Flash (Google)",
     description: "Google Gemini model for fast exam solving.",
+    defaultThinking: "medium",
   },
   {
     id: "gpt-5.5",
     label: "GPT-5.5 (OpenAI)",
     description: "OpenAI frontier model for complex reasoning and tool-heavy work.",
+    defaultThinking: "medium",
   },
   {
     id: "claude-opus-4-8",
     label: "Claude Opus 4.8 (Anthropic)",
     description:
       "Anthropic flagship model for complex reasoning and long-context work.",
+    // Omitting `thinking` on Opus 4.8 runs the model without it.
+    defaultThinking: "off",
   },
 ];
 
@@ -170,3 +181,13 @@ export const resolveSelectableDefault = (
   preferred && models.some((m) => m.id === preferred)
     ? preferred
     : models[0]?.id ?? "";
+
+/**
+ * How the solver's reasoning depth is described to the author. The level is not
+ * selectable — every solve runs at the model's own default and the evaluation
+ * run records it.
+ */
+export const thinkingLabel = (id: string): string => {
+  const known = SOLVER_MODELS.find((m) => m.id === id)?.defaultThinking;
+  return known ? `${known} (model default)` : "none";
+};

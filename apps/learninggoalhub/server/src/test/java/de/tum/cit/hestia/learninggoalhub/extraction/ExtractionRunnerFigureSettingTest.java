@@ -2,6 +2,8 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -46,7 +48,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString());
+        verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString(), any());
         verify(fixture.pageDescriptionRepository(), never()).findByDocumentId(any());
         verifyPromptDoesNotContainFigures(fixture.chatClient());
         verifyRunParams(fixture.auditService(), false);
@@ -58,7 +60,7 @@ class ExtractionRunnerFigureSettingTest {
 
         fixture.runner().runForCourse(1L);
 
-        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"));
+        verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"), any());
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(fixture.chatClient().prompt()).user(promptCaptor.capture());
         assertThat(promptCaptor.getValue())
@@ -91,12 +93,8 @@ class ExtractionRunnerFigureSettingTest {
         LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
         GoalSourceRepository goalSourceRepository = mock(GoalSourceRepository.class);
         GoalRelationshipRepository goalRelationshipRepository = mock(GoalRelationshipRepository.class);
-        ExtractionService extractionService = mock(ExtractionService.class);
-        SessionGoalConsolidator sessionGoalConsolidator = mock(SessionGoalConsolidator.class);
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
-        GoalCandidateRepository goalCandidateRepository = mock(GoalCandidateRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
-        DocumentChunker documentChunker = mock(DocumentChunker.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
@@ -123,7 +121,6 @@ class ExtractionRunnerFigureSettingTest {
         when(hierarchyNodeRepository.save(any(HierarchyNode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(documentSectionRepository.findByDocumentIdOrderByOrdinal(42L)).thenReturn(List.of());
-        when(documentChunker.getChunkSize()).thenReturn(8000);
         when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
         ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
@@ -161,24 +158,18 @@ class ExtractionRunnerFigureSettingTest {
                 goalRepository,
                 goalSourceRepository,
                 goalRelationshipRepository,
-                extractionService,
-                sessionExtractionService,
-                sessionGoalConsolidator,
+                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
                 auditService,
-                goalCandidateRepository,
                 documentSectionRepository,
-                mock(CompactTaxonomySynthesizer.class),
-                documentChunker,
+                mock(TopicTreeSynthesizer.class),
                 hierarchyNodeRepository,
                 taxonomyService,
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,
                 1,
-                80_000,
-                null,
-                20,
-                highlightGeometryService);
+                false,
+                null);
         return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
     }
 

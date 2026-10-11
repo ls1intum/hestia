@@ -14,7 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * "Is the service actually up and answering?" The liveness probe must respond
  * without a token (deploy health checks are unauthenticated), and the
  * token-gated {@code /api/me} must resolve the principal so we know auth works
- * end-to-end through the real filter chain.
+ * end-to-end through the real filter chain. Identity itself is owned by
+ * {@code app.user.MeController}; this only pins the boot-and-auth path.
  */
 @AutoConfigureMockMvc
 class HealthSmokeTest extends AbstractIntegrationTest {
@@ -33,7 +34,7 @@ class HealthSmokeTest extends AbstractIntegrationTest {
     void meReturnsThePrincipalWithAValidToken() throws Exception {
         mvc.perform(get("/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.userId").value("00000000-0000-0000-0000-000000000001"));
+            .andExpect(jsonPath("$.id").value("00000000-0000-0000-0000-000000000001"));
     }
 
     @Test

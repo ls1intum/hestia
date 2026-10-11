@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Target } from "lucide-react";
-import type { Task } from "@/lib/exam/exam-helpers";
-import type { TaskGrade, TaskAnswer } from "@/lib/grading/grading";
+import type { TaskBlock } from "@/lib/exam/exam-helpers";
+import type { Grade, AIAnswer } from "@/lib/grading/grading";
 import { formatScoreSummary, goalRollup, scoreRollup } from "@/lib/grading/grading";
 import { Badge } from "@/components/ui/badge";
 import { useExamLearningGoals } from "@/hooks/data/use-learning-goals";
@@ -15,9 +15,9 @@ import { ScoreBar } from "./ScoreBar";
 import { LevelScoreChart, type LevelRow } from "./LevelScoreChart";
 
 interface Props {
-  tasks: Task[];
-  grades: Map<string, TaskGrade>;
-  answers: Map<string, TaskAnswer>;
+  tasks: TaskBlock[];
+  grades: Map<string, Grade>;
+  answers: Map<string, AIAnswer>;
   examId: string;
 }
 
@@ -30,11 +30,11 @@ const levelRows = <L extends string>(
   orderedLevels: L[],
   labels: Record<L, string>,
   levelOf: (goalId: number) => L | null | undefined,
-  tasks: Task[],
-  grades: Map<string, TaskGrade>,
-  answers: Map<string, TaskAnswer>,
+  tasks: TaskBlock[],
+  grades: Map<string, Grade>,
+  answers: Map<string, AIAnswer>,
 ): LevelRow[] => {
-  const byLevel = new Map<L, Task[]>();
+  const byLevel = new Map<L, TaskBlock[]>();
   for (const tk of tasks) {
     const seen = new Set<L>();
     for (const gid of tk.learning_goal_ids ?? []) {

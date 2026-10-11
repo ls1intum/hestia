@@ -1,7 +1,7 @@
 package app.parse.figures;
 
-import app.exam.Exam;
-import app.exam.ExamRepository;
+import app.examination.Examination;
+import app.examination.ExaminationRepository;
 import app.section.SectionFigure;
 import app.section.SectionFigureRepository;
 import app.sse.SseHub;
@@ -48,7 +48,7 @@ public class FigureExtractionService {
     /** Bounds the work one pathological document can create. */
     private static final int MAX_FIGURES = 60;
 
-    private final ExamRepository examRepository;
+    private final ExaminationRepository examRepository;
     private final SectionFigureRepository figureRepository;
     private final StorageService storage;
     private final FigureRegionDetector detector;
@@ -58,7 +58,7 @@ public class FigureExtractionService {
     private final boolean enabled;
 
     public FigureExtractionService(
-        ExamRepository examRepository,
+        ExaminationRepository examRepository,
         SectionFigureRepository figureRepository,
         StorageService storage,
         FigureRegionDetector detector,
@@ -104,7 +104,7 @@ public class FigureExtractionService {
             return;
         }
 
-        OffsetDateTime parsedAt = examRepository.findById(examId).map(Exam::getParsedAt).orElse(null);
+        OffsetDateTime parsedAt = examRepository.findById(examId).map(Examination::getParsedAt).orElse(null);
 
         byte[] pdf = storage.download(PDF_BUCKET, storagePath);
         if (pdf == null) {
@@ -259,7 +259,7 @@ public class FigureExtractionService {
     /** A re-parse landed while we were working: its blocks are not ours to fill. */
     private boolean isStale(UUID examId, OffsetDateTime parsedAt) {
         if (parsedAt == null) return false;
-        OffsetDateTime now = examRepository.findById(examId).map(Exam::getParsedAt).orElse(null);
+        OffsetDateTime now = examRepository.findById(examId).map(Examination::getParsedAt).orElse(null);
         return now == null || !now.equals(parsedAt);
     }
 }

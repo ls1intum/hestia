@@ -1,7 +1,7 @@
 package app.shared;
 
 import app.error.ApiException;
-import app.task.TaskOption;
+import app.taskblock.AnswerOption;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,13 +72,13 @@ public final class Patch {
         }
     }
 
-    public static List<TaskOption> options(Object v) {
+    public static List<AnswerOption> options(Object v) {
         if (!(v instanceof List<?> list)) return null;
-        List<TaskOption> out = new ArrayList<>();
+        List<AnswerOption> out = new ArrayList<>();
         for (Object o : list) {
             if (o instanceof Map<?, ?> m) {
                 Object id = m.get("id");
-                out.add(new TaskOption(
+                out.add(new AnswerOption(
                     id == null ? UUID.randomUUID().toString() : id.toString(),
                     m.get("text") == null ? "" : m.get("text").toString(),
                     Boolean.TRUE.equals(m.get("is_correct"))

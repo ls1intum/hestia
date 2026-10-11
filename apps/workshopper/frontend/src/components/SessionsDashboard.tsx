@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions } from "@/lib/api";
+import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadLectureZip, reorderSessions, handleAuthError } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
 
@@ -67,6 +67,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [collapsedLectures, setCollapsedLectures] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState<string>("");
@@ -88,8 +89,28 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
   const loadSessions = () => {
     setLoading(true);
     listSessions()
-      .then(setSessions)
-      .catch((e) => setError(e.message))
+      .then(data => {
+        setIsAuthenticated(true);
+        const valid = data.filter(s => {
+          if (s.status === "draft") {
+            // "Empty shells" are drafts where the user hasn't provided any learning goals yet.
+            // (title is always populated with a default like 'Workshop Session' by the backend)
+            const hasGoal = s.learningGoal && s.learningGoal.trim().length > 0;
+            return hasGoal;
+          }
+          return true;
+        });
+        setSessions(valid);
+      })
+      .catch((e: any) => {
+        if (handleAuthError(e, false)) {
+          if (e.status === 401) {
+            setIsAuthenticated(false);
+          }
+        } else {
+          setError(e.message);
+        }
+      })
       .finally(() => setLoading(false));
   };
 
@@ -183,7 +204,24 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
 
       {/* Sessions list */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        {loading ? (
+        {isAuthenticated === false ? (
+          <div className="text-center py-24">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+              <GraduationCap className="h-8 w-8 text-primary" />
+            </div>
+            <h2 className="font-display font-semibold text-3xl text-foreground mb-4">Welcome to Workshopper</h2>
+            <p className="text-muted-foreground font-body max-w-lg mx-auto mb-8">
+              Log in with your TUM account to create, manage, and export your workshop sessions and lectures.
+            </p>
+            <Button 
+              onClick={() => window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum"} 
+              size="lg" 
+              className="rounded-xl shadow-sm text-base px-8 h-12"
+            >
+              Log in with TUM
+            </Button>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground gap-3">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="font-body">Loading sessions…</span>
@@ -198,7 +236,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
               <BookOpen className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h2 className="font-display font-semibold text-xl text-foreground mb-2">No items yet</h2>
+            <h2 className="font-display font-semibold text-2xl text-foreground mb-2">No items yet</h2>
             <p className="text-muted-foreground font-body mb-6">
               Create your first lecture or standalone session to get started.
             </p>
@@ -216,7 +254,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
         ) : (
           <div>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display font-semibold text-xl text-foreground">
+              <h2 className="font-display font-semibold text-2xl text-foreground">
                 Your Library
                 <span className="ml-2 text-sm font-normal text-muted-foreground font-body">
                   ({sessions.length} items)
@@ -302,7 +340,7 @@ export default function SessionsDashboard({ onNewSession, onNewLecture, onNewSes
                     return (
                       <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex flex-col items-center justify-center transition-colors gap-0 ${status.iconClass}`}>
                         {status.isFinished ? <CheckCircle2 className="h-4 w-4" /> : status.isReadyForPrep ? <Sparkles className="h-4 w-4" /> : <FileEdit className="h-4 w-4" />}
-                        <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5">{status.statusShort}</span>
+                        <span className="text-xs font-bold uppercase tracking-wide leading-none mt-0.5">{status.statusShort}</span>
                       </div>
                     );
                   })()}

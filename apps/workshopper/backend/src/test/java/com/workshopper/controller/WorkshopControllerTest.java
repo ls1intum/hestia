@@ -3,8 +3,12 @@ package com.workshopper.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workshopper.dto.*;
 import com.workshopper.service.PdfExportService;
-import com.workshopper.service.PptxExportService;
+import com.workshopper.usecase.AssemblePptxUseCase;
 import com.workshopper.service.WorkshopService;
+
+import com.workshopper.facade.WorkshopSessionFacade;
+import com.workshopper.usecase.GenerateSlideBlockUseCase;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -47,9 +51,22 @@ class WorkshopControllerTest {
 
     @MockitoBean
     private PdfExportService pdfExportService;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.workshopper.facade.WorkshopSessionFacade facade;
 
-    @MockitoBean
-    private PptxExportService pptxExportService;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.workshopper.usecase.GenerateSlideBlockUseCase generateSlideBlockUseCase;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.workshopper.usecase.AssemblePptxUseCase assemblePptxUseCase;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.workshopper.usecase.GenerateLearningGoalsUseCase generateLearningGoalsUseCase;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.workshopper.usecase.RefineLearningGoalUseCase refineLearningGoalUseCase;
+
+
 
     // ── Health ─────────────────────────────────────────────────────────────────
 
@@ -112,7 +129,8 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with empty list when no sessions exist")
         void returnsEmptyList() throws Exception {
-            when(workshopService.listSessions()).thenReturn(List.of());
+            
+            when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
 
             mvc.perform(get("/api/workshop/sessions"))
                     .andExpect(status().isOk())
@@ -125,7 +143,8 @@ class WorkshopControllerTest {
             var summary = new SessionSummaryDto(
                     "abc123", "My Session", "Participants will learn X",
                     "complete", "result", "SESSION", null, null, null);
-            when(workshopService.listSessions()).thenReturn(List.of(summary));
+            
+            when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(summary));
 
             mvc.perform(get("/api/workshop/sessions"))
                     .andExpect(status().isOk())
@@ -218,4 +237,23 @@ class WorkshopControllerTest {
 
         verify(workshopService).renameSession("abc123", "New Title");
     }
+
+    @Nested
+    @DisplayName("POST /api/workshop/session")
+    class GenerateSession {
+
+        @Test
+        @DisplayName("returns 403 when AccessDeniedException is thrown")
+        void returns403WhenAccessDenied() throws Exception {
+            when(facade.generateAndSaveSession(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("not your session"));
+
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .post("/api/workshop/session")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .content("{}"))
+               .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        }
+    }
+
 }

@@ -309,7 +309,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                   .filter((s: string) => s.length > 0);
                                 return (
                                   <div className="pl-6 space-y-1.5 mt-2">
-                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
+                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
                                     {goals.map((g: string, i: number) => (
                                       <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
                                         style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
@@ -329,7 +329,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                 const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
                                 return (
                                   <div className="pl-6 space-y-1.5 mt-2">
-                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
+                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
                                     <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
                                       style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
                                       {clean || block.objective}
@@ -363,7 +363,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                   <div className="pl-6 space-y-3 mt-2">
                                     {contentSteps.length > 0 && (
                                       <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
                                         <div className="space-y-1.5">
                                           {contentSteps.map((s: string, i: number) => (
                                             <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
@@ -377,7 +377,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                     )}
                                     {(cleanActivity || block.objective) && (
                                       <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                                         </p>
                                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
@@ -407,7 +407,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                   <div className="pl-6 space-y-3 mt-2">
                                     {takeawaySteps.length > 0 && (
                                       <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
                                         <div className="space-y-1.5">
                                           {takeawaySteps.map((s: string, i: number) => (
                                             <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
@@ -421,7 +421,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                     )}
                                     {(cleanActivity || block.objective) && (
                                       <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                                           Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
                                         </p>
                                         <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
@@ -438,7 +438,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                               if (phase === "EVALUATE") {
                                 return (
                                   <div className="pl-6 space-y-2 mt-2">
-                                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
                                       Understanding Check
                                     </p>
                                     {allSteps.map((s: string, i: number) => {
@@ -454,11 +454,11 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                           {lgNum && (
                                             <div className="flex items-center gap-2 px-3 py-1 border-b"
                                               style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--hestia-text) 8%, transparent)' }}>
-                                              <span className="font-mono text-[10px] font-bold" style={{ color: 'var(--hestia-phase-evaluate)' }}>
+                                              <span className="font-mono text-xs font-bold" style={{ color: 'var(--hestia-phase-evaluate)' }}>
                                                 Learning Goal {lgNum}
                                               </span>
                                               {activity && (
-                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                                <span className="text-xs font-mono px-1.5 py-0.5 rounded"
                                                   style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 15%, transparent)', color: 'var(--hestia-phase-evaluate)' }}>
                                                   {activity}
                                                 </span>

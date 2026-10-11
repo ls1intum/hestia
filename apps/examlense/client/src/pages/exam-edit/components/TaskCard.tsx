@@ -35,21 +35,21 @@ import {
   mcWarning,
   newOption,
   taskMissingScore,
-  type Task,
-  type TaskOption,
-  type TaskType,
+  type TaskBlock,
+  type AnswerOption,
+  type TaskBlockType,
 } from "@/lib/exam/exam-helpers";
 
 interface Props {
-  task: Task;
+  task: TaskBlock;
   /** Letter label within the section (e.g. "a", "b"). */
   label: string;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  onPatch: (patch: Partial<Task>) => void;
+  onPatch: (patch: Partial<TaskBlock>) => void;
   onDelete: () => void;
   onDuplicate: () => void;
-  onConvert: (toType: TaskType) => void;
+  onConvert: (toType: TaskBlockType) => void;
   /**
    * Show the "Score needs to be set" wayfinding pill. Only the first unscored
    * task in the section sets this, so the nudge points to one task at a time.
@@ -78,7 +78,7 @@ export const TaskCard = ({
   isDragging,
 }: Props) => {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [pendingConvert, setPendingConvert] = useState<TaskType | null>(null);
+  const [pendingConvert, setPendingConvert] = useState<TaskBlockType | null>(null);
 
   // Local mirror + click-to-edit machine for the prompt. Debounced patches
   // keep each keystroke from cascading into a full editor re-render (which
@@ -91,7 +91,7 @@ export const TaskCard = ({
   const hasEmptyPrompt = isTextEmpty(task.prompt);
   const noScore = taskMissingScore(task);
 
-  const updateOption = (id: string, patch: Partial<TaskOption>) => {
+  const updateOption = (id: string, patch: Partial<AnswerOption>) => {
     const next = (task.options ?? []).map((o) => (o.id === id ? { ...o, ...patch } : o));
     onPatch({ options: next });
   };

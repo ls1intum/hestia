@@ -3,10 +3,10 @@ import {
   ProgressCtaButton,
   type ProgressCtaTone,
 } from "@/components/shared/chrome/ProgressCtaButton";
-import { type Task } from "@/lib/exam/exam-helpers";
+import { type TaskBlock } from "@/lib/exam/exam-helpers";
 
 interface Props {
-  currentSectionTasks: Task[];
+  currentSectionTasks: TaskBlock[];
   /** True for tasks still missing a score (from `effectiveScore`). */
   pendingByTaskId: Map<string, boolean>;
   /** Lowercase letter labels (a, b, c…) keyed by task id, for "missing" hints. */
@@ -21,7 +21,7 @@ interface Props {
 }
 
 const firstPendingTaskId = (
-  tasks: Task[],
+  tasks: TaskBlock[],
   pendingByTaskId: Map<string, boolean>,
 ): string | null => {
   const sorted = tasks.slice().sort((a, b) => a.position - b.position);

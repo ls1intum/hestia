@@ -1,13 +1,13 @@
-import type { Task, SectionBlock } from "@/lib/exam/exam-helpers";
-import type { TaskGrade, TaskAnswer } from "@/lib/grading/grading";
+import type { TaskBlock, SectionBlock } from "@/lib/exam/exam-helpers";
+import type { Grade, AIAnswer } from "@/lib/grading/grading";
 import { formatScoreSummary, scoreRollup } from "@/lib/grading/grading";
 import { RollupRow } from "./RollupRow";
 
 interface Props {
-  tasks: Task[];
+  tasks: TaskBlock[];
   blocks: SectionBlock[];
-  grades: Map<string, TaskGrade>;
-  answers: Map<string, TaskAnswer>;
+  grades: Map<string, Grade>;
+  answers: Map<string, AIAnswer>;
 }
 
 export const FiguresComparisonCard = ({ tasks, blocks, grades, answers }: Props) => {

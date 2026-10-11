@@ -29,8 +29,14 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.2.5")
     implementation("org.apache.poi:poi-scratchpad:5.2.5")
     runtimeOnly("org.postgresql:postgresql")
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.springframework.security:spring-security-test")
 }
 
 tasks.withType<Test> {

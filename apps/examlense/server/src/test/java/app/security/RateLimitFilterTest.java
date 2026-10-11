@@ -9,6 +9,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RateLimitFilterTest {
 
+    /** Traefik appends the client, nginx appends Traefik — see {@link ClientIp}. */
+    private static final int HOPS = 2;
+
     private static MockHttpServletResponse hit(RateLimitFilter filter, String remoteAddr, String forwardedFor)
             throws Exception {
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/exams");
@@ -21,7 +24,7 @@ class RateLimitFilterTest {
 
     @Test
     void overLimitRequestsGet429() throws Exception {
-        RateLimitFilter filter = new RateLimitFilter(2, 10, false);
+        RateLimitFilter filter = new RateLimitFilter(2, 10, false, HOPS);
         assertThat(hit(filter, "1.2.3.4", null).getStatus()).isEqualTo(200);
         assertThat(hit(filter, "1.2.3.4", null).getStatus()).isEqualTo(200);
 
@@ -35,7 +38,7 @@ class RateLimitFilterTest {
 
     @Test
     void forwardedForIsIgnoredWhenNotBehindProxy() throws Exception {
-        RateLimitFilter filter = new RateLimitFilter(2, 10, false);
+        RateLimitFilter filter = new RateLimitFilter(2, 10, false, HOPS);
         // Rotating spoofed X-Forwarded-For must not evade the limit.
         assertThat(hit(filter, "1.2.3.4", "9.9.9.1").getStatus()).isEqualTo(200);
         assertThat(hit(filter, "1.2.3.4", "9.9.9.2").getStatus()).isEqualTo(200);
@@ -44,17 +47,33 @@ class RateLimitFilterTest {
 
     @Test
     void forwardedForIsHonoredBehindProxy() throws Exception {
-        RateLimitFilter filter = new RateLimitFilter(1, 10, true);
-        assertThat(hit(filter, "10.0.0.1", "9.9.9.1").getStatus()).isEqualTo(200);
-        // Same proxy address, different client → separate window.
-        assertThat(hit(filter, "10.0.0.1", "9.9.9.2").getStatus()).isEqualTo(200);
+        RateLimitFilter filter = new RateLimitFilter(1, 10, true, HOPS);
+        assertThat(hit(filter, "10.0.0.1", "203.0.113.7, 10.0.1.2").getStatus()).isEqualTo(200);
+        // Same proxy chain, different client → separate window.
+        assertThat(hit(filter, "10.0.0.1", "203.0.113.8, 10.0.1.2").getStatus()).isEqualTo(200);
         // Same client again → limited.
-        assertThat(hit(filter, "10.0.0.1", "9.9.9.1").getStatus()).isEqualTo(429);
+        assertThat(hit(filter, "10.0.0.1", "203.0.113.7, 10.0.1.2").getStatus()).isEqualTo(429);
+    }
+
+    /**
+     * Behind a proxy the header has to be read, but the client controls everything
+     * to the left of what our own proxies appended. Prepending junk must not buy a
+     * fresh window.
+     */
+    @Test
+    void prependedForwardedForEntriesCannotEvadeTheLimitBehindProxy() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(1, 10, true, HOPS);
+        assertThat(hit(filter, "10.0.0.1", "203.0.113.7, 10.0.1.2").getStatus()).isEqualTo(200);
+
+        assertThat(hit(filter, "10.0.0.1", "9.9.9.9, 203.0.113.7, 10.0.1.2").getStatus())
+            .isEqualTo(429);
+        assertThat(hit(filter, "10.0.0.1", "1.1.1.1, 2.2.2.2, 203.0.113.7, 10.0.1.2").getStatus())
+            .isEqualTo(429);
     }
 
     @Test
     void optionsPreflightIsNeverLimited() throws Exception {
-        RateLimitFilter filter = new RateLimitFilter(1, 10, false);
+        RateLimitFilter filter = new RateLimitFilter(1, 10, false, HOPS);
         for (int i = 0; i < 5; i++) {
             MockHttpServletRequest req = new MockHttpServletRequest("OPTIONS", "/api/exams");
             req.setRemoteAddr("1.2.3.4");

@@ -1,4 +1,4 @@
-import type { Exam } from "@/lib/exam/exam-helpers";
+import type { Examination } from "@/lib/exam/exam-helpers";
 import { examStatusMeta } from "@/lib/exam/exam-status";
 
 /**
@@ -6,7 +6,7 @@ import { examStatusMeta } from "@/lib/exam/exam-status";
  * labels come from the shared `EXAM_STATUS_META` table (`lib/exam/exam-status`),
  * where `ready` and `failed` collapse into the neutral "Draft" chip.
  */
-export const ExamStatusBadge = ({ status }: { status: Exam["status"] }) => {
+export const ExamStatusBadge = ({ status }: { status: Examination["status"] }) => {
   const { Icon, label, className, spin } = examStatusMeta(status);
   const isEvaluating = status === "evaluating";
   return (

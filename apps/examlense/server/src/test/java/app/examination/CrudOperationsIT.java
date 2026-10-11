@@ -1,0 +1,265 @@
+package app.examination;
+
+import app.AbstractIntegrationTest;
+import app.shared.DefaultUser;
+import app.section.Section;
+import app.section.SectionBlock;
+import app.section.SectionFigure;
+import app.taskblock.TaskBlock;
+import app.taskblock.AIAnswer;
+import app.section.SectionBlockRepository;
+import app.section.SectionFigureRepository;
+import app.section.SectionRepository;
+import app.section.FigureCleanupService;
+import app.taskblock.AIAnswerRepository;
+import app.taskblock.TaskBlockRepository;
+import app.storage.StorageService;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * ExaminationService and SectionService own the multi-step operations that must stay
+ * atomic and correct: deep exam duplication and section unconfirm (which also
+ * clears AI answers and detaches learning goals). Run against a real DB since
+ * they touch several tables.
+ */
+class CrudOperationsIT extends AbstractIntegrationTest {
+
+    private static final String FIGURE_BUCKET = "exam-figures";
+
+    @Autowired ExaminationService examService;
+    @Autowired app.section.SectionService sectionService;
+    @Autowired ExaminationRepository exams;
+    @Autowired SectionRepository sections;
+    @Autowired TaskBlockRepository tasks;
+    @Autowired SectionBlockRepository blocks;
+    @Autowired SectionFigureRepository figures;
+    @Autowired AIAnswerRepository answers;
+    @Autowired StorageService storage;
+    @Autowired FigureCleanupService figureCleanup;
+    @Autowired PlatformTransactionManager txManager;
+
+    private Examination seedExaminationWithContent() {
+        Examination exam = new Examination();
+        exam.setOwnerId(DefaultUser.ID);
+        exam.setSource("manual");
+        exam.setTitle("Original");
+        exam.setStatus("ready");
+        exam.setSolverModel("openai:gpt-5.5");
+        exams.save(exam);
+
+        Section section = new Section();
+        section.setExamId(exam.getId());
+        section.setName("Part A");
+        section.setPosition(0);
+        sections.save(section);
+
+        SectionBlock block = new SectionBlock();
+        block.setExamId(exam.getId());
+        block.setSectionId(section.getId());
+        block.setContent("intro context");
+        block.setPosition(0);
+        blocks.save(block);
+
+        TaskBlock task = new TaskBlock();
+        task.setExamId(exam.getId());
+        task.setSectionId(section.getId());
+        task.setType("text");
+        task.setPrompt("Explain X");
+        task.setPosition(1);
+        task.setLearningGoalIds(List.of(11L, 22L));
+        tasks.save(task);
+
+        return exam;
+    }
+
+    /** Add a figure block with one figure to a section; stores image bytes when provided. */
+    private SectionFigure addFigure(Examination exam, Section section, byte[] bytes) {
+        SectionBlock figBlock = new SectionBlock();
+        figBlock.setExamId(exam.getId());
+        figBlock.setSectionId(section.getId());
+        figBlock.setKind("figure");
+        figBlock.setContent("");
+        figBlock.setPosition(2);
+        blocks.save(figBlock);
+
+        SectionFigure fig = new SectionFigure();
+        fig.setBlockId(figBlock.getId());
+        fig.setPosition(0);
+        fig.setSource("upload");
+        fig.setCaption("Diagram 1");
+        String path = DefaultUser.ID + "/" + exam.getId() + "/" + fig.getId() + ".png";
+        fig.setStoragePath(path);
+        figures.save(fig);
+        if (bytes != null) storage.store(FIGURE_BUCKET, path, bytes);
+        return fig;
+    }
+
+    @Test
+    void duplicateExaminationDeepCopiesContentAsAFreshDraft() {
+        Examination src = seedExaminationWithContent();
+        Section srcSection = sections.findByExamIdOrderByPositionAsc(src.getId()).get(0);
+        byte[] imageBytes = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
+        SectionFigure srcFig = addFigure(src, srcSection, imageBytes);
+
+        Examination copy = examService.duplicateExamination(src, DefaultUser.ID.toString(), null, null);
+
+        assertThat(copy.getId()).isNotEqualTo(src.getId());
+        assertThat(copy.getTitle()).isEqualTo("Original (Copy)");
+        assertThat(copy.getStatus()).isEqualTo("draft");
+        assertThat(copy.getOwnerId()).isEqualTo(DefaultUser.ID);
+        // Solver model carries over so the copy solves with the same model.
+        assertThat(copy.getSolverModel()).isEqualTo("openai:gpt-5.5");
+
+        assertThat(sections.findByExamIdOrderByPositionAsc(copy.getId())).hasSize(1);
+        List<SectionBlock> copiedBlocks = blocks.findByExamIdOrderByPositionAsc(copy.getId());
+        assertThat(copiedBlocks).hasSize(2); // context + figure block
+        List<TaskBlock> copiedTaskBlocks = tasks.findByExamIdOrderByPositionAsc(copy.getId());
+        assertThat(copiedTaskBlocks).hasSize(1);
+        // Goal ids belong to the source's LGH goals — must NOT be copied.
+        assertThat(copiedTaskBlocks.get(0).getLearningGoalIds()).isNull();
+
+        // The figure and its image are deep-copied onto the copy's figure block.
+        SectionBlock copiedFigBlock = copiedBlocks.stream()
+            .filter(b -> "figure".equals(b.getKind())).findFirst().orElseThrow();
+        List<SectionFigure> copiedFigures =
+            figures.findByBlockIdOrderByPositionAsc(copiedFigBlock.getId());
+        assertThat(copiedFigures).hasSize(1);
+        SectionFigure copiedFig = copiedFigures.get(0);
+        assertThat(copiedFig.getId()).isNotEqualTo(srcFig.getId());
+        assertThat(copiedFig.getCaption()).isEqualTo("Diagram 1");
+        assertThat(copiedFig.getStoragePath())
+            .contains(copy.getId().toString())
+            .isNotEqualTo(srcFig.getStoragePath());
+        // The bytes were copied to the new path, and the source object is untouched.
+        assertThat(storage.download(FIGURE_BUCKET, copiedFig.getStoragePath())).isEqualTo(imageBytes);
+        assertThat(storage.download(FIGURE_BUCKET, srcFig.getStoragePath())).isEqualTo(imageBytes);
+    }
+
+    @Test
+    void duplicateExaminationAppliesTitleAndSolverOverrides() {
+        Examination src = seedExaminationWithContent();
+
+        Examination copy = examService.duplicateExamination(
+            src, DefaultUser.ID.toString(), "  Retry on Claude  ", "anthropic:claude-sonnet-5");
+
+        assertThat(copy.getTitle()).isEqualTo("Retry on Claude"); // trimmed, no " (Copy)" suffix
+        assertThat(copy.getSolverModel()).isEqualTo("anthropic:claude-sonnet-5");
+    }
+
+    @Test
+    void duplicateExaminationSkipsFiguresWhoseSourceBytesAreMissing() {
+        Examination src = seedExaminationWithContent();
+        Section srcSection = sections.findByExamIdOrderByPositionAsc(src.getId()).get(0);
+        // Figure row exists but its image object was never stored.
+        addFigure(src, srcSection, null);
+
+        Examination copy = examService.duplicateExamination(src, DefaultUser.ID.toString(), null, null);
+
+        // The figure block is still copied...
+        SectionBlock copiedFigBlock = blocks.findByExamIdOrderByPositionAsc(copy.getId()).stream()
+            .filter(b -> "figure".equals(b.getKind())).findFirst().orElseThrow();
+        // ...but no dangling figure row is persisted for the missing image.
+        assertThat(figures.findByBlockIdOrderByPositionAsc(copiedFigBlock.getId())).isEmpty();
+    }
+
+    @Test
+    void unconfirmSectionClearsConfirmationDropsAnswersAndDetachesGoals() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        section.setConfirmedAt(OffsetDateTime.now());
+        sections.save(section);
+
+        TaskBlock task = tasks.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        AIAnswer answer = new AIAnswer();
+        answer.setTaskId(task.getId());
+        answer.setExamId(exam.getId());
+        answer.setProvider("openai");
+        answer.setModel("gpt-5.5");
+        answers.save(answer);
+
+        sectionService.unconfirmSection(section);
+
+        Section reloaded = sections.findById(section.getId()).orElseThrow();
+        assertThat(reloaded.getConfirmedAt()).isNull();
+        assertThat(answers.findByTaskId(task.getId())).isEmpty();
+        assertThat(tasks.findById(task.getId()).orElseThrow().getLearningGoalIds()).isNull();
+    }
+
+    @Test
+    void deletingABlockRemovesItsFigureObjectAfterCommit() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "block-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteBlock(blocks.findById(figure.getBlockId()).orElseThrow());
+
+        assertThat(figures.findById(figure.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingAllBlocksInASectionRemovesTheirFigureObjects() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "bulk-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteBlocks(exam.getId(), section.getId());
+
+        assertThat(blocks.findBySectionIdOrderByPositionAsc(section.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingASectionRemovesItsFigureObjects() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "section-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        sectionService.deleteSection(section);
+
+        assertThat(sections.findById(section.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void deletingAFigureRemovesItsObjectAfterCommit() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "figure-image".getBytes(StandardCharsets.UTF_8));
+        String path = figure.getStoragePath();
+
+        figureCleanup.deleteFigure(figure);
+
+        assertThat(figures.findById(figure.getId())).isEmpty();
+        assertThat(storage.download(FIGURE_BUCKET, path)).isNull();
+    }
+
+    @Test
+    void rollbackPreservesFigureRowAndObject() {
+        Examination exam = seedExaminationWithContent();
+        Section section = sections.findByExamIdOrderByPositionAsc(exam.getId()).get(0);
+        SectionFigure figure = addFigure(exam, section, "rollback-image".getBytes(StandardCharsets.UTF_8));
+        SectionBlock block = blocks.findById(figure.getBlockId()).orElseThrow();
+
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            sectionService.deleteBlock(block);
+            status.setRollbackOnly();
+        });
+
+        assertThat(blocks.findById(block.getId())).isPresent();
+        assertThat(figures.findById(figure.getId())).isPresent();
+        assertThat(storage.download(FIGURE_BUCKET, figure.getStoragePath())).isNotNull();
+    }
+}

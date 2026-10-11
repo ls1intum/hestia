@@ -27,15 +27,6 @@ Before editing:
 
 For unclear tasks, do an exploration-only pass first. Do not edit files until the plan is clear.
 
-## Orchestration and Delegation
-
-You are the orchestrator. Plan, decompose, synthesize.
-
-- Reasoning-heavy phases → `deep-reasoner`
-- Mechanical work → `mechanical-task-executor`
-- Codex (`/codex:rescue --background`) is a cracked engineer on par with `deep-reasoner`, from a different perspective. Treat as a peer, not a reviewer.
-- High-stakes decisions: task Opus + Codex on the same problem in parallel, synthesize the best of both, without showing either the other's answer. Keep your own context lean.
-
 ## 1. Think Before Coding
 
 Don't assume. Don't hide confusion. Surface tradeoffs.

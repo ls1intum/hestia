@@ -166,7 +166,7 @@ const BlockOrderDiagram = () => (
         Context
       </span>
     </div>
-    {/* Task block */}
+    {/* TaskBlock block */}
     <div className="rounded-hestia-sm border border-hestia-primary/40 bg-hestia-primary-muted/20 px-2 py-1.5">
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-semibold tabular-nums text-hestia-text">
@@ -178,7 +178,7 @@ const BlockOrderDiagram = () => (
       </div>
       <span className="mt-1 block h-1.5 w-2/3 rounded-full bg-hestia-text/15" />
       <span className="hestia-eyebrow mt-1 block text-right text-[9px] text-hestia-text-muted">
-        Task
+        TaskBlock
       </span>
     </div>
   </div>

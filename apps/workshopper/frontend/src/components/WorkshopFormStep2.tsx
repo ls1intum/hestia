@@ -89,7 +89,7 @@ export default function WorkshopFormStep2({ initialInput, onNext, isLoading = fa
                             {group.label}
                           </span>
                           {selectedCount > 0 && (
-                            <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-[10px] font-bold bg-primary/15 text-primary">
+                            <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-xs font-bold bg-primary/15 text-primary">
                               {selectedCount}
                             </span>
                           )}

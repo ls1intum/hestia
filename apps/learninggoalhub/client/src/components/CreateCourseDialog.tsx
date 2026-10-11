@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
+import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
+import { RowAction } from "./GoalInlineEditing.tsx";
 
 // The upload endpoint runs everything through Apache Tika, which parses these
 // out of the box. Kept in sync with the hint shown in the drop zone.
@@ -28,26 +30,30 @@ const STEP_LABEL: Record<Step, string> = {
  */
 export default function CreateCourseDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  // Lectures and exercises are staged apart: the kind is the instructor's choice, never guessed.
+  const [staged, setStaged] = useState<Record<DocumentKind, File[]>>({
+    LECTURE: [],
+    EXERCISE: [],
+  });
   // "" = detect from the uploaded materials.
   const [outputLanguage, setOutputLanguage] = useState<"" | "de" | "en">("");
   const [figuresEnabled, setFiguresEnabled] = useState(false);
   const [step, setStep] = useState<Step | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
 
-  // Accumulate across drops/picks, skipping files already staged (name + size).
-  const addFiles = (incoming: FileList | null) => {
+  // Accumulate across drops/picks, skipping files already staged in either box (name + size).
+  const addFiles = (kind: DocumentKind, incoming: FileList | null) => {
     if (!incoming || incoming.length === 0) return;
     // Snapshot before updating state: the file input is reset right after this call, which empties
     // the live FileList before React gets around to running the updater below.
     const picked = Array.from(incoming);
-    setFiles((prev) => {
-      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
-      const next = [...prev];
+    setStaged((prev) => {
+      const seen = new Set(
+        [...prev.LECTURE, ...prev.EXERCISE].map((f) => `${f.name}:${f.size}`),
+      );
+      const next = [...prev[kind]];
       for (const file of picked) {
         const key = `${file.name}:${file.size}`;
         if (!seen.has(key)) {
@@ -55,12 +61,14 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           next.push(file);
         }
       }
-      return next;
+      return { ...prev, [kind]: next };
     });
   };
 
-  const removeFile = (index: number) =>
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (kind: DocumentKind, index: number) =>
+    setStaged((prev) => ({ ...prev, [kind]: prev[kind].filter((_, i) => i !== index) }));
+
+  const files = [...staged.LECTURE, ...staged.EXERCISE];
 
   const extract = useMutation({
     mutationFn: async (id: number) => {
@@ -92,7 +100,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
       if (files.length > 0) {
         setUploadPercent(0);
         setStep("uploading");
-        await uploadDocuments(data.id, files, setUploadPercent, () => setStep("processing"));
+        await uploadDocuments(data.id, staged, setUploadPercent, () => setStep("processing"));
       }
       return data.id as number;
     },
@@ -116,8 +124,10 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
   });
 
   const trimmed = name.trim();
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const busy = create.isPending || extract.isPending;
+  // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
+  // exercises alone would extract fine and still leave the course without a competency tree.
+  const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
   const formError = extract.isError
     ? extract.error.message
     : create.isError
@@ -164,17 +174,15 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed && !busy) create.mutate();
+            if (trimmed && !busy && !exercisesOnly) create.mutate();
           }}
-          className="comp-unfold flex w-full max-w-5xl flex-col gap-3.5 sm:mt-[6vh]"
+          className="comp-unfold flex w-full max-w-5xl flex-col gap-4 sm:mt-[6vh]"
         >
           {/* The header spans both columns, so the close button never rides on one of them. */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text">
-                Create course
-              </span>
-              <p className="text-xs text-hestia-text-muted">
+              <h2 className="text-2xl">Create course</h2>
+              <p className="text-sm text-hestia-text-muted">
                 Upload your materials and we'll extract learning goals automatically.
               </p>
             </div>
@@ -201,18 +209,19 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           {/* What the course IS on the left, what it is MADE OF on the right. The staged files are
               the part that grows, so keeping them in their own column stops them from pushing the
               settings out of view. Below `lg` everything stacks. */}
-          <div className="flex w-full flex-col gap-3.5 lg:flex-row lg:items-stretch">
-            <div className="flex w-full min-w-0 flex-col gap-3.5 lg:max-w-md lg:shrink-0">
-              <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+          <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-stretch">
+            {/* One card for the settings, its sections split by rules, the actions in its footer. */}
+            <div className="flex w-full min-w-0 flex-col divide-y divide-hestia-border overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm lg:max-w-md lg:shrink-0">
+              <div className="flex flex-col gap-2 p-4">
                 <label
                   htmlFor="course-name"
-                  className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted"
+                  className="text-xs font-semibold text-hestia-text-muted"
                 >
                   Course title
                 </label>
                 <input
                   id="course-name"
-                  className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-2 text-sm text-hestia-text transition placeholder:text-hestia-text-muted focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
+                  className="h-9 w-full rounded-md border border-hestia-border bg-hestia-surface px-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none placeholder:text-hestia-text-muted"
                   placeholder="e.g. Introduction to Data Science"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -220,10 +229,10 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                 />
               </div>
 
-              <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+              <div className="flex flex-col gap-2 p-4">
                 <label
                   htmlFor="output-language"
-                  className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted"
+                  className="text-xs font-semibold text-hestia-text-muted"
                 >
                   Output language
                 </label>
@@ -231,7 +240,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   id="output-language"
                   value={outputLanguage}
                   onChange={(e) => setOutputLanguage(e.target.value as "" | "de" | "en")}
-                  className="w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-2 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
+                  className="h-9 w-full rounded-md border border-hestia-border bg-hestia-surface px-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none cursor-pointer px-2.5"
                 >
                   <option value="">Same as the materials</option>
                   <option value="de">Deutsch</option>
@@ -243,8 +252,8 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                 </span>
               </div>
 
-              <div className="flex flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
-                <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
+              <div className="flex flex-col gap-2 p-4">
+                <span className="text-xs font-semibold text-hestia-text-muted">
                   Slide images
                 </span>
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -252,9 +261,9 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     type="checkbox"
                     checked={figuresEnabled}
                     onChange={(e) => setFiguresEnabled(e.target.checked)}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-hestia-primary"
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-hestia-primary"
                   />
-                  <span className="flex flex-col gap-1.5">
+                  <span className="flex flex-col gap-0.5">
                     <span className="font-medium text-hestia-text">
                       Analyse slide images and diagrams
                     </span>
@@ -265,7 +274,8 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                 </label>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg">
+              {/* Pushed to the card's bottom, so it lines up with the upload boxes' bottom edge. */}
+              <div className="mt-auto flex flex-col gap-3 bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] p-4">
                 {step && (
                   <div>
                     <div className="flex items-center justify-between gap-3 text-sm text-hestia-text-muted">
@@ -287,12 +297,22 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     </div>
                   </div>
                 )}
+                {exercisesOnly && (
+                  <p className="text-sm text-hestia-text-muted">
+                    Exercises are placed onto the topics named from the lectures. Add at least one
+                    lecture.
+                  </p>
+                )}
                 {formError && <p className="text-sm text-hestia-danger">{formError}</p>}
                 <div className="flex items-center justify-between gap-3">
-                  <Button variant="ghost" size="lg" onClick={onClose} disabled={busy}>
+                  <Button variant="neutral" className="h-9" onClick={onClose} disabled={busy}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="lg" disabled={!trimmed || busy}>
+                  <Button
+                    type="submit"
+                    className="h-9"
+                    disabled={!trimmed || busy || exercisesOnly}
+                  >
                     {busy ? "Creating…" : "Create course →"}
                   </Button>
                 </div>
@@ -301,116 +321,26 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
 
             {/* Taken out of flow at `lg`: the staged files then cannot stretch the panel, so it is
                 the same size with thirteen files as with none. The wrapper carries the width and
-                takes its height from the settings column; the card fills it and the list scrolls. */}
+                takes its height from the settings column; the two boxes share it and their lists
+                scroll. */}
             <div className="w-full min-w-0 lg:relative lg:flex-1">
-              <div className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-hestia-border bg-hestia-surface p-4 shadow-lg lg:absolute lg:inset-0 lg:min-h-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-hestia-text-muted">
-                  Course materials
-                </span>
-                {files.length > 0 && (
-                  <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
-                    {files.length} file{files.length === 1 ? "" : "s"} · {formatSize(totalBytes)}
-                  </span>
-                )}
-              </div>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => fileInputRef.current?.click()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    fileInputRef.current?.click();
-                  }
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  addFiles(e.dataTransfer.files);
-                }}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center transition ${
-                  // Nothing staged yet: the zone fills the column instead of leaving it empty.
-                  files.length > 0 ? "shrink-0" : "lg:flex-1"
-                } ${
-                  isDragging
-                    ? "border-hestia-primary bg-hestia-primary-muted"
-                    : "border-hestia-border hover:border-hestia-primary"
-                }`}
-              >
-                <svg
-                  className="h-8 w-8 text-hestia-text-muted"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M12 16V4m0 0L8 8m4-4 4 4" />
-                  <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
-                </svg>
-                <p className="mt-3 text-sm font-medium text-hestia-text">
-                  Drag &amp; drop your course materials here
-                </p>
-                <p className="text-sm text-hestia-text-muted">
-                  or <span className="font-medium text-hestia-primary">browse files</span>
-                </p>
-                <p className="mt-2 text-xs text-hestia-text-muted">
-                  Supported: {ACCEPT_LABEL} · Max 100 MB per file
-                </p>
-              </div>
-              {/* Deliberately a sibling of the drop zone, not a child: the zone's onClick calls
-                  click() on this input, and a click dispatched on a descendant bubbles straight
-                  back into that same handler — which re-opens the picker forever and blows the
-                  stack. Keeping it outside breaks the cycle. */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={ACCEPT}
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
-              />
-
-              {/* The list is the only part that grows, so it absorbs the column's spare height and
-                  scrolls inside it — the count above stays visible while it does. Stacked below `lg`
-                  there is no shared height to fill, so a viewport cap stands in. */}
-              {files.length > 0 && (
-                <ul className="mt-1 flex max-h-[50vh] min-h-0 flex-1 flex-col gap-2 overflow-y-auto lg:max-h-none">
-                  {files.map((file, index) => (
-                    <li
-                      key={`${file.name}:${file.size}`}
-                      className="flex items-center gap-3 rounded-md border border-hestia-border bg-hestia-bg px-3 py-2"
-                    >
-                      <span aria-hidden className="text-base">📄</span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-hestia-text">
-                        {file.name}
-                      </span>
-                      <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
-                        {formatSize(file.size)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        aria-label={`Remove ${file.name}`}
-                        className="shrink-0 rounded-md px-1.5 text-lg leading-none text-hestia-text-muted transition hover:text-hestia-danger"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className="flex w-full min-w-0 flex-col gap-4 lg:absolute lg:inset-0 lg:min-h-0">
+                <MaterialsBox
+                  title="Lectures"
+                  hint="Slides, scripts and notes. Topics are named from these."
+                  files={staged.LECTURE}
+                  expand={staged.LECTURE.length > 0 || staged.EXERCISE.length === 0}
+                  onAdd={(incoming) => addFiles("LECTURE", incoming)}
+                  onRemove={(index) => removeFile("LECTURE", index)}
+                />
+                <MaterialsBox
+                  title="Exercises"
+                  hint="Exercise sheets, tutorials and assignments."
+                  files={staged.EXERCISE}
+                  expand={staged.EXERCISE.length > 0 || staged.LECTURE.length === 0}
+                  onAdd={(incoming) => addFiles("EXERCISE", incoming)}
+                  onRemove={(index) => removeFile("EXERCISE", index)}
+                />
               </div>
             </div>
           </div>
@@ -421,14 +351,208 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
 }
 
 /**
- * Uploads the staged materials in one request. XHR rather than fetch: only XHR reports how many
- * bytes have gone out, which is the one part of this wait we can measure. `onTransferred` fires when
- * the last byte is sent — everything after that is the server parsing, with no progress to report.
+ * One upload box: a drop zone for files of one kind and the list of what is staged in it.
  */
-function uploadDocuments(
+function MaterialsBox({
+  title,
+  hint,
+  files,
+  expand,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  hint: string;
+  files: File[];
+  /**
+   * Whether the box takes a share of the column's height. An empty box next to one holding files
+   * keeps only its natural height, so the staged list gets the room.
+   */
+  expand: boolean;
+  onAdd: (incoming: FileList | null) => void;
+  onRemove: (index: number) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const [isDragging, setIsDragging] = useState(false);
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+
+  return (
+    <div
+      className={`flex w-full min-w-0 flex-col gap-2 rounded-xl border border-hestia-border bg-hestia-surface p-4 shadow-sm lg:min-h-0 ${
+        expand ? "lg:flex-1" : "lg:flex-none"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-hestia-text-muted">
+          {title}
+        </span>
+        {files.length > 0 && (
+          <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
+            {files.length} file{files.length === 1 ? "" : "s"} · {formatSize(totalBytes)}
+          </span>
+        )}
+      </div>
+      {/* A label for the input rather than a scripted input.click(): the browser opens the picker
+          natively, which also works where a script-opened picker on a hidden input does not. The
+          input stays outside the label, so the click cannot bubble back into it. */}
+      <label
+        htmlFor={inputId}
+        role="button"
+        tabIndex={0}
+        aria-label={`Add ${title.toLowerCase()}`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          onAdd(e.dataTransfer.files);
+        }}
+        className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed text-center transition ${
+          // Nothing staged yet: the zone fills the box instead of leaving it empty. Once files are
+          // staged it collapses to one line and the list below takes the height.
+          files.length > 0 ? "shrink-0 flex-row gap-2 px-4 py-2" : "flex-col px-6 py-5 lg:flex-1"
+        } ${
+          isDragging
+            ? "border-hestia-primary bg-hestia-primary-muted"
+            : "border-hestia-border hover:border-hestia-primary"
+        }`}
+      >
+        <svg
+          className={`${files.length > 0 ? "h-4 w-4" : "h-7 w-7"} shrink-0 text-hestia-text-muted`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M12 16V4m0 0L8 8m4-4 4 4" />
+          <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
+        </svg>
+        <span className={`text-sm font-medium text-hestia-text ${files.length > 0 ? "" : "mt-2"}`}>
+          Drag &amp; drop or <span className="text-hestia-primary">browse files</span>
+        </span>
+        {files.length === 0 && (
+          <>
+            <span className="text-xs text-hestia-text-muted">{hint}</span>
+            <span className="mt-1 text-xs text-hestia-text-muted">
+              Supported: {ACCEPT_LABEL} · Max 100 MB per file
+            </span>
+          </>
+        )}
+      </label>
+      {/* Visually hidden rather than display:none, which some browsers refuse to open a picker for. */}
+      <input
+        ref={fileInputRef}
+        id={inputId}
+        tabIndex={-1}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        className="sr-only"
+        onChange={(e) => {
+          onAdd(e.target.files);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }}
+      />
+
+      {/* The list is the only part that grows, so it absorbs the box's spare height and scrolls
+          inside it — the count above stays visible while it does. Stacked below `lg` there is no
+          shared height to fill, so a viewport cap stands in. */}
+      {files.length > 0 && (
+        // Rows like a course's document list on the overview, divided rather than boxed.
+        <ul className="flex max-h-[30vh] min-h-0 flex-1 flex-col divide-y divide-hestia-border/60 overflow-y-auto lg:max-h-none">
+          {files.map((file, index) => (
+            <li
+              key={`${file.name}:${file.size}`}
+              className="flex h-9 shrink-0 items-center gap-2 pl-1"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 text-hestia-text-muted"
+              >
+                <path d="M11.5 2.5H5.5v15h9V5.5z" />
+                <path d="M11.5 2.5v3h3" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate text-sm text-hestia-text">
+                {file.name}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-hestia-text-muted">
+                {formatSize(file.size)}
+              </span>
+              <RowAction
+                label={`Remove ${file.name}`}
+                onClick={() => onRemove(index)}
+                className="shrink-0 hover:bg-hestia-danger hover:text-hestia-on-danger"
+              >
+                <path d="M6 6l8 8M14 6l-8 8" />
+              </RowAction>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Uploads the staged materials, one request per kind so each carries its own `kind`. XHR rather
+ * than fetch: only XHR reports how many bytes have gone out, which is the one part of this wait we
+ * can measure. Progress runs over the bytes of both requests together; `onTransferred` fires when
+ * the last byte of the last request is sent — everything after that is the server parsing, with no
+ * progress to report.
+ */
+async function uploadDocuments(
   courseId: number,
-  files: File[],
+  staged: Record<DocumentKind, File[]>,
   onPercent: (percent: number) => void,
+  onTransferred: () => void,
+): Promise<void> {
+  const batches = (Object.keys(staged) as DocumentKind[])
+    .map((kind) => ({ kind, files: staged[kind] }))
+    .filter((batch) => batch.files.length > 0);
+  const totalBytes = batches.reduce(
+    (sum, batch) => sum + batch.files.reduce((s, file) => s + file.size, 0),
+    0,
+  );
+  let sentBytes = 0;
+  for (const [index, batch] of batches.entries()) {
+    const batchBytes = batch.files.reduce((sum, file) => sum + file.size, 0);
+    const last = index === batches.length - 1;
+    await uploadBatch(
+      courseId,
+      batch.kind,
+      batch.files,
+      (fraction) =>
+        onPercent(Math.round(((sentBytes + fraction * batchBytes) / Math.max(1, totalBytes)) * 100)),
+      last ? onTransferred : () => {},
+    );
+    sentBytes += batchBytes;
+  }
+}
+
+function uploadBatch(
+  courseId: number,
+  kind: DocumentKind,
+  files: File[],
+  onFraction: (fraction: number) => void,
   onTransferred: () => void,
 ): Promise<void> {
   const formData = new FormData();
@@ -436,11 +560,9 @@ function uploadDocuments(
 
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents`);
+    request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents?kind=${kind}`);
     request.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        onPercent(Math.round((event.loaded / event.total) * 100));
-      }
+      if (event.lengthComputable) onFraction(event.loaded / event.total);
     };
     request.upload.onload = () => onTransferred();
     request.onload = () => {

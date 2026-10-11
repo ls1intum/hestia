@@ -11,9 +11,9 @@ import {
   convertTaskType,
   itemId,
   taskMissingScore,
-  type BlockItem as BlockItemType,
+  type Block,
   type SectionBlock,
-  type Task,
+  type TaskBlock,
 } from "@/lib/exam/exam-helpers";
 
 interface RowDescriptor {
@@ -28,7 +28,7 @@ interface RowDescriptor {
  * keyed off the block kind.
  */
 function blockRowDescriptor(
-  item: BlockItemType,
+  item: Block,
   {
     figureLabels,
     taskLetterById,
@@ -69,7 +69,7 @@ function blockRowDescriptor(
 }
 
 interface Props {
-  item: BlockItemType;
+  item: Block;
   collapseApi: {
     isCollapsed: (id: string) => boolean;
     toggle: (id: string) => void;
@@ -79,9 +79,9 @@ interface Props {
   examId: string;
   onPatchBlock: (blockId: string, patch: Partial<SectionBlock>) => void;
   onDeleteBlock: (blockId: string) => void;
-  onPatchTask: (taskId: string, patch: Partial<Task>) => void;
+  onPatchTask: (taskId: string, patch: Partial<TaskBlock>) => void;
   onDeleteTask: (taskId: string) => void;
-  onDuplicateTask: (task: Task) => void;
+  onDuplicateTask: (task: TaskBlock) => void;
   isNextUnscoredTask?: boolean;
 }
 
