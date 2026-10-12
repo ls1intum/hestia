@@ -15,7 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
@@ -72,9 +71,6 @@ class ExamGoalControllerTest {
     private TaxonomyService taxonomyService;
 
     @MockitoBean
-    private EmbeddingService embeddingService;
-
-    @MockitoBean
     private TopicTreeSynthesizer topicTreeSynthesizer;
 
     @Autowired
@@ -107,10 +103,6 @@ class ExamGoalControllerTest {
             return texts.stream()
                     .map(t -> new TaxonomyClassification(BloomLevel.UNDERSTAND, null))
                     .toList();
-        });
-        when(embeddingService.embedAll(anyList())).thenAnswer(inv -> {
-            List<String> texts = inv.getArgument(0);
-            return texts.stream().map(t -> new float[4096]).toList();
         });
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
@@ -149,7 +141,6 @@ class ExamGoalControllerTest {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenReturn(List.of());
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
-        when(embeddingService.embedAll(anyList())).thenReturn(List.of());
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -183,7 +174,6 @@ class ExamGoalControllerTest {
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of(
                 new TaxonomyClassification(BloomLevel.APPLY, null),
                 new TaxonomyClassification(BloomLevel.REMEMBER, null)));
-        when(embeddingService.embedAll(anyList())).thenReturn(List.of());
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -236,7 +226,6 @@ class ExamGoalControllerTest {
                 new TaxonomyClassification(BloomLevel.APPLY, null),
                 new TaxonomyClassification(BloomLevel.REMEMBER, null),
                 new TaxonomyClassification(BloomLevel.CREATE, null)));
-        when(embeddingService.embedAll(anyList())).thenReturn(List.of());
         List<TopicTreeSynthesizer.MenuTopic> withSkills =
                 List.of(new TopicTreeSynthesizer.MenuTopic("Sorting", List.of("Implement comparison sorts")));
         List<TopicTreeSynthesizer.MenuTopic> topicsOnly =
@@ -276,8 +265,7 @@ class ExamGoalControllerTest {
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Apply merge sort.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
-        when(embeddingService.embedAll(anyList())).thenReturn(List.of());
-        when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("SAIA 429"));
+        when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("HTTP 429"));
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -296,8 +284,6 @@ class ExamGoalControllerTest {
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull()))
-                .thenReturn(java.util.Collections.singletonList(null));
-        when(embeddingService.embedAll(anyList()))
                 .thenReturn(java.util.Collections.singletonList(null));
 
         String payload = """
@@ -319,8 +305,7 @@ class ExamGoalControllerTest {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
-        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("SAIA 429"));
-        when(embeddingService.embedAll(anyList())).thenThrow(new RuntimeException("SAIA 429"));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("HTTP 429"));
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -334,7 +319,6 @@ class ExamGoalControllerTest {
         List<LearningGoal> persisted = goalRepository.findByCourseId(course.getId());
         assertThat(persisted).hasSize(1);
         assertThat(persisted.getFirst().getBloomLevel()).isNull();
-        assertThat(persisted.getFirst().getEmbedding()).isNull();
     }
 
     @Test

@@ -31,9 +31,9 @@ import org.springframework.util.MimeTypeUtils;
  * reply type, so a model that cannot hold the JSON contract fails here the way it would in a run.
  * It asserts nothing; it prints latency and the descriptions for qualitative comparison.
  *
- * <p>Gated on {@code RUN_LIVE_SAIA=1} so it never runs in the normal build. Run with:
+ * <p>Gated on {@code RUN_LIVE_LOGOS=1} so it never runs in the normal build. Run with:
  * <pre>
- * RUN_LIVE_SAIA=1 SAIA_API_KEY=... FIGURE_PDF=/path/to.pdf \
+ * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... FIGURE_PDF=/path/to.pdf \
  *   ./gradlew test --tests '*PageDescriptionModelLiveIT' -i
  * </pre>
  *
@@ -41,14 +41,14 @@ import org.springframework.util.MimeTypeUtils;
  * batch sizes), {@code FIGURE_PAGES} (comma-separated 1-based pages; default all),
  * {@code FIGURE_OUT} (JSON result file).
  */
-@EnabledIfEnvironmentVariable(named = "RUN_LIVE_SAIA", matches = "1")
+@EnabledIfEnvironmentVariable(named = "RUN_LIVE_LOGOS", matches = "1")
 class PageDescriptionModelLiveIT {
 
     @Test
     void comparesVisionModelsOverEveryPage() throws Exception {
         byte[] pdfBytes = Files.readAllBytes(new File(System.getenv("FIGURE_PDF")).toPath());
         List<String> models = csv(System.getenv().getOrDefault("FIGURE_MODELS",
-                "qwen3.6-35b-a3b,qwen3.5-122b-a10b,qwen3.5-397b-a17b,gemma-4-31b-it"));
+                "Qwen/Qwen3.8-27B"));
         List<Integer> batches = csv(System.getenv().getOrDefault("FIGURE_BATCHES", "8")).stream()
                 .map(Integer::parseInt).toList();
 
@@ -82,8 +82,8 @@ class PageDescriptionModelLiveIT {
     private Result run(String model, int batchSize, List<Integer> pages, Map<Integer, Media> rendered) {
         ChatClient chatClient = ChatClient.builder(OpenAiChatModel.builder()
                 .openAiApi(OpenAiApi.builder()
-                        .baseUrl(System.getenv().getOrDefault("SAIA_BASE_URL", "https://chat-ai.academiccloud.de"))
-                        .apiKey(System.getenv("SAIA_API_KEY"))
+                        .baseUrl(System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"))
+                        .apiKey(System.getenv("LOGOS_API_KEY"))
                         .build())
                 .defaultOptions(OpenAiChatOptions.builder().model(model).build())
                 .build()).build();

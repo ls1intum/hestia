@@ -16,8 +16,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "learning_goal")
@@ -81,10 +79,6 @@ public class LearningGoal {
     /** Stable course-wide order derived from the goal's first appearance in the lecture material. */
     @Column(name = "lecture_order")
     private Integer lectureOrder;
-
-    @JdbcTypeCode(SqlTypes.VECTOR)
-    @Column(name = "embedding", columnDefinition = "vector(4096)")
-    private float[] embedding;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -205,14 +199,6 @@ public class LearningGoal {
 
     public void setLectureOrder(Integer lectureOrder) {
         this.lectureOrder = lectureOrder;
-    }
-
-    public float[] getEmbedding() {
-        return embedding;
-    }
-
-    public void setEmbedding(float[] embedding) {
-        this.embedding = embedding;
     }
 
     public OffsetDateTime getCreatedAt() {

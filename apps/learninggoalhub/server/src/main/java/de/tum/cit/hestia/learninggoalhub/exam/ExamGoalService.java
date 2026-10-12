@@ -3,7 +3,6 @@ package de.tum.cit.hestia.learninggoalhub.exam;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.extraction.ExamGoalPlacer;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
@@ -31,8 +30,8 @@ import org.springframework.stereotype.Service;
  * root. Context blocks accumulate: each task is generated with every CONTEXT block that precedes it
  * in the exam. The submitted blocks are stored as an {@link ExamSubmission}, and every goal points at
  * the task block it came from. When the course already has a competency tree, the new goals are then
- * placed under its topics. Bloom/SOLO levels and embeddings are best-effort (one batch call each); their failure
- * does not fail the request, matching the extraction pipeline's behaviour.
+ * placed under its topics. Bloom/SOLO levels are best-effort (one batch call); their failure does not
+ * fail the request, matching the extraction pipeline's behaviour.
  *
  * <p>Deliberately NOT transactional across the LLM calls — generation can take seconds per task.
  * Persistence happens at the end: the submission with its blocks, then the goals in one {@code saveAll}.
@@ -51,7 +50,6 @@ public class ExamGoalService {
 
     private final ExamGoalGenerator generator;
     private final TaxonomyService taxonomyService;
-    private final EmbeddingService embeddingService;
     private final LearningGoalRepository goalRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final LanguageDetectionService languageDetectionService;
@@ -60,7 +58,6 @@ public class ExamGoalService {
 
     public ExamGoalService(ExamGoalGenerator generator,
                            TaxonomyService taxonomyService,
-                           EmbeddingService embeddingService,
                            LearningGoalRepository goalRepository,
                            HierarchyNodeRepository hierarchyNodeRepository,
                            LanguageDetectionService languageDetectionService,
@@ -68,7 +65,6 @@ public class ExamGoalService {
                            ExamGoalPlacer placer) {
         this.generator = generator;
         this.taxonomyService = taxonomyService;
-        this.embeddingService = embeddingService;
         this.goalRepository = goalRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.languageDetectionService = languageDetectionService;
@@ -120,7 +116,6 @@ public class ExamGoalService {
                 .map(GeneratedExamGoal::text)
                 .toList();
         List<TaxonomyClassification> classifications = safeClassifyBatch(allTexts, modelOverride);
-        List<float[]> embeddings = safeEmbedBatch(allTexts);
 
         submissionRepository.save(submission);
         HierarchyNode examRoot = examRoot(course);
@@ -139,7 +134,6 @@ public class ExamGoalService {
                     goal.setSoloLevel(classification.solo());
                     goal.setRole(tierOf(classification.bloom()));
                 }
-                goal.setEmbedding(embeddings.get(i));
                 goals.add(goal);
                 i++;
             }
@@ -206,23 +200,6 @@ public class ExamGoalService {
                     result.size(), texts.size());
         } catch (RuntimeException ex) {
             log.warn("Taxonomy classification failed for exam goals, persisting without levels: {}", ex.getMessage());
-        }
-        return Collections.nCopies(texts.size(), null);
-    }
-
-    private List<float[]> safeEmbedBatch(List<String> texts) {
-        if (texts.isEmpty()) {
-            return List.of();
-        }
-        try {
-            List<float[]> result = embeddingService.embedAll(texts);
-            if (result.size() == texts.size()) {
-                return result;
-            }
-            log.warn("Embedding batch returned {} vectors for {} exam goals, persisting without vectors",
-                    result.size(), texts.size());
-        } catch (RuntimeException ex) {
-            log.warn("Embedding failed for exam goals, persisting without vectors: {}", ex.getMessage());
         }
         return Collections.nCopies(texts.size(), null);
     }

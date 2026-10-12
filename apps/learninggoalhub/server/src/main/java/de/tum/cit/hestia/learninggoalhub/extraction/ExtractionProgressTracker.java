@@ -27,7 +27,6 @@ public class ExtractionProgressTracker {
         PARSING,
         EXTRACTING,
         CLASSIFYING,
-        EMBEDDING,
         PERSISTING,
         SYNTHESIZING
     }
@@ -179,8 +178,6 @@ public class ExtractionProgressTracker {
             case PARSING -> new int[] {35, 40};
             case EXTRACTING -> new int[] {40, 70};
             case CLASSIFYING -> new int[] {70, 80};
-            // Retained for backward-compatible API deserialization; new runs skip this phase.
-            case EMBEDDING -> new int[] {80, 90};
             case PERSISTING -> new int[] {80, 90};
             case SYNTHESIZING -> new int[] {90, 100};
         };

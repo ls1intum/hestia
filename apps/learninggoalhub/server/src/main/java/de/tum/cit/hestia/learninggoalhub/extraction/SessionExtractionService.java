@@ -337,7 +337,7 @@ public class SessionExtractionService {
     /**
      * @param sessionTitle  the structural title of the session; may be blank.
      * @param sessionText   the complete text of the session.
-     * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
+     * @param modelOverride optional model id; falls back to the configured default when blank.
      * @return the broad skills and their knowledge items found in the session.
      */
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String modelOverride) {

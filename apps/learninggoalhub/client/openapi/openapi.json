@@ -423,7 +423,7 @@
           {
             "name": "model",
             "in": "query",
-            "description": "Optional SAIA chat-model override; omit for the configured default.",
+            "description": "Optional chat-model override; omit for the configured default.",
             "required": false,
             "schema": {
               "type": "string"
@@ -1703,7 +1703,6 @@
               "PARSING",
               "EXTRACTING",
               "CLASSIFYING",
-              "EMBEDDING",
               "PERSISTING",
               "SYNTHESIZING"
             ]
@@ -2068,7 +2067,6 @@
               "PARSING",
               "EXTRACTING",
               "CLASSIFYING",
-              "EMBEDDING",
               "PERSISTING",
               "SYNTHESIZING"
             ]

@@ -131,7 +131,7 @@ public class TaxonomyService {
      * pressure) and lets the model grade goals relative to each other.
      *
      * @param goalTexts     the goals to classify, in order; an empty list yields an empty result.
-     * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
+     * @param modelOverride optional model id; falls back to the configured default when blank.
      */
     public List<TaxonomyClassification> classifyBatch(List<String> goalTexts, String modelOverride) {
         if (goalTexts == null || goalTexts.isEmpty()) {
