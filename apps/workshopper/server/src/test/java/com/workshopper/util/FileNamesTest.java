@@ -11,6 +11,7 @@ class FileNamesTest {
         assertEquals("Intro to ML - Slides.pptx", FileNames.slides("Intro to ML"));
         assertEquals("Grundlagen der Klassifikation - Timetable.pdf", FileNames.timetable("Grundlagen der Klassifikation"));
         assertEquals("Machine Learning WS26.zip", FileNames.course("Machine Learning WS26"));
+        assertEquals("Données & Co. - Slides.pptx", FileNames.slides("Données & Co."));
     }
 
     @Test
@@ -24,6 +25,7 @@ class FileNamesTest {
     void usesTheFallbackForEmptyTitles() {
         assertEquals("Workshop - Slides.pptx", FileNames.slides(null));
         assertEquals("Course.zip", FileNames.course("  ...  "));
+        assertEquals("hidden - Slides.pptx", FileNames.slides(".hidden"));
     }
 
     @Test
