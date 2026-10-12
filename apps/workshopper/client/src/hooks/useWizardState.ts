@@ -438,8 +438,11 @@ export function useWizardState() {
       const targetIdx = localStepOrder.indexOf(targetStep);
 
       setStep(targetStep);
-      // R-2: use localStepOrder — guaranteed to reflect resolved entity/course state
-      setHighestStepIdx(resolvedEntityType === "COURSE"
+      // R-2: use localStepOrder — guaranteed to reflect resolved entity/course state.
+      // Steps unlock by what the session contains, not by the step it was last saved at: once a
+      // timetable exists, Timetable, Preparation and Final Review all work on it, so every step opens.
+      // Courses likewise open with all of their steps reachable.
+      setHighestStepIdx(resolvedEntityType === "COURSE" || hasSession
         ? localStepOrder.length - 1
         : targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
@@ -601,6 +604,11 @@ export function useWizardState() {
   useEffect(() => {
     setHighestStepIdx(prev => Math.max(prev, currentIdx));
   }, [currentIdx]);
+
+  // A session with a timetable can open every step (Timetable, Preparation and Final Review work on it)
+  useEffect(() => {
+    if (entityType === "SESSION" && session) setHighestStepIdx(STEP_ORDER.length - 1);
+  }, [entityType, session, STEP_ORDER.length]);
 
   useEffect(() => {
     if (hasRestored) return;
