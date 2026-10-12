@@ -27,7 +27,7 @@ Core Workshopper concepts:
 
 ### 1. Evidence-Backed Verification (The "Grep Rule")
 **Never claim a task is "verified", "complete", or "fully migrated" based on assumption.**
-If you say a migration is complete, prove it by showing the `grep` results that confirm zero remaining old references. If you say a bug is fixed, prove it with passing test output (`./gradlew :apps:workshopper:server:test` from the repository root, or `npx tsc --noEmit` in `client/` for type errors).
+If you say a migration is complete, prove it by showing the `grep` results that confirm zero remaining old references. If you say a bug is fixed, prove it with passing test output (`./gradlew :apps:workshopper:server:test` from the repository root, or `npm test` and `npx tsc --noEmit` in `client/`).
 *Do not let an unverified claim into your output.*
 
 ### 2. Contract Mismatch Awareness

@@ -56,10 +56,10 @@ The app opens at **http://localhost:5173/workshopper/**. The dev server proxies 
 Run from the repository root (this is what CI runs). The repository test starts a PostgreSQL container with Testcontainers, so Docker must be running.
 
 ```bash
-cd apps/workshopper/client && npm run build
+cd apps/workshopper/client && npm test && npm run build
 ```
 
-Type-checks and builds the client. For a manual check, run the app as above, click through the flow you changed, and reload the page halfway through to see that it resumes correctly. [docs/EXTENDING.md](docs/EXTENDING.md) lists what to check for each kind of change.
+Runs the client unit tests (Vitest, `src/**/*.test.ts`), then type-checks and builds the client. CI runs both test suites before building the images. For a manual check, run the app as above, click through the flow you changed, and reload the page halfway through to see that it resumes correctly. [docs/EXTENDING.md](docs/EXTENDING.md) lists what to check for each kind of change.
 
 ---
 

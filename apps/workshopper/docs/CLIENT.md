@@ -97,3 +97,9 @@ npm run build
 ```
 
 `npx tsc --noEmit` type-checks the client; `npm run build` type-checks and builds it.
+
+```bash
+npm test
+```
+
+Runs the unit tests (Vitest), which sit next to the code as `*.test.ts`: `block-content`, `block-edits`, `phases`, `api` (download names, error messages) and `useSlideDeck` (the deck and slide re-matching).
