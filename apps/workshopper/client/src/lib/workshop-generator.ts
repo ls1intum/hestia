@@ -193,9 +193,24 @@ export function templateInfoFromDetail(detail: SessionDetail): TemplateInfo | nu
  * All in-progress form state, serialized to draftStateJson and stored in the DB.
  * Each field is optional since the user may not have reached that step yet.
  */
+/**
+ * A goal edited on the Goals step and kept without applying it. Applying goals (Continue)
+ * regenerates the timetable, so kept goals wait here until the user continues or discards them.
+ */
+export interface KeptGoal {
+  id: string;
+  text: string;
+  bloomLevel?: string;
+  soloLevel?: string;
+  session?: string;
+  subSkills?: SubSkill[];
+}
+
 export interface DraftState {
   workshopInput?: Partial<WorkshopInput>;
   refinedGoals?: LearningGoalPlan[];
+  /** Goal edits kept as a draft; refinedGoals stay what the timetable was generated from */
+  keptGoals?: KeptGoal[];
   skeleton?: SessionSkeleton;
   session?: WorkshopSession;
   completedTasks?: string[];

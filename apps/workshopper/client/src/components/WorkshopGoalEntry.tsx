@@ -1,8 +1,13 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { LearningGoalPlan } from "@/lib/workshop-generator";
+import { LearningGoalPlan, KeptGoal } from "@/lib/workshop-generator";
+import type { LeaveGuard } from "@/hooks/useWizardState";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Trash2, Check, X, Loader2,
@@ -41,15 +46,29 @@ interface Props {
   onContinue: (goals: LearningGoalPlan[]) => void;
   isLoading?: boolean;
   initialGoals?: LearningGoalPlan[];
+  /** Goal edits kept as a draft earlier; shown instead of initialGoals until applied or discarded. */
+  keptGoals?: KeptGoal[] | null;
+  /** Keeps the current goals as a draft (or clears the draft with null) without regenerating. */
+  onKeepDraft?: (goals: KeptGoal[] | null) => void;
+  /** Lets the wizard ask before navigating away while goal changes are not applied. */
+  registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
+
+const toDraft = (g: KeptGoal): GoalDraft => ({ ...g, suggestions: [], checking: false, dirty: false });
+const toKept = (g: GoalDraft): KeptGoal => ({
+  id: g.id, text: g.text, bloomLevel: g.bloomLevel, soloLevel: g.soloLevel, session: g.session, subSkills: g.subSkills,
+});
+/** What counts as a change: the non-empty goals, in order. */
+const goalsKey = (goals: { id: string; text: string }[]) =>
+  JSON.stringify(goals.filter(g => g.text.trim()).map(g => [g.id, g.text.trim()]));
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? import.meta.env.BASE_URL + "api";
 
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // ── Main component ────────────────────────────────────────────────────
-export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, isLoading, initialGoals }: Props) {
-  const [goals, setGoals] = useState<GoalDraft[]>(() => {
+export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, isLoading, initialGoals, keptGoals, onKeepDraft, registerLeaveGuard }: Props) {
+  const goalsFromSession = (): GoalDraft[] => {
     if (initialGoals && initialGoals.length > 0) {
       return initialGoals.map((g) => ({
         id: g.id ?? `g${Math.random()}`,
@@ -64,8 +83,40 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       }));
     }
     return [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
-  });
+  };
+  const [goals, setGoals] = useState<GoalDraft[]>(() =>
+    keptGoals && keptGoals.length > 0 ? keptGoals.map(toDraft) : goalsFromSession());
   const submittingRef = useRef(false);
+
+  // ── Changes not applied yet ───────────────────────────────────────────
+  // Goals are applied by Continue (which regenerates the timetable). Leaving the step with other
+  // goals than the last applied or kept ones asks first: keep them as a draft, discard, or stay.
+  const [showingKeptDraft, setShowingKeptDraft] = useState(!!(keptGoals && keptGoals.length > 0));
+  const goalsRef = useRef(goals);
+  goalsRef.current = goals;
+  const baselineRef = useRef(goalsKey(goals));
+  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+
+  const hasUnappliedChanges = () => goalsKey(goalsRef.current) !== baselineRef.current;
+
+  const confirmLeave = (proceed: () => void) => {
+    if (hasUnappliedChanges()) setLeaveDialog({ proceed });
+    else proceed();
+  };
+
+  useEffect(() => {
+    registerLeaveGuard?.({ isDirty: hasUnappliedChanges, confirmLeave });
+    return () => registerLeaveGuard?.(null);
+  });
+
+  /** Throws the kept draft away and shows the goals the timetable was generated from again. */
+  const discardKeptDraft = () => {
+    const fromSession = goalsFromSession();
+    setGoals(fromSession);
+    baselineRef.current = goalsKey(fromSession);
+    setShowingKeptDraft(false);
+    onKeepDraft?.(null);
+  };
 
   const updateGoal = useCallback(
     (id: string, patch: Partial<GoalDraft>) =>
@@ -366,6 +417,18 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          {showingKeptDraft && (
+            <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 text-sm font-body flex gap-3 items-start">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+              <div className="flex-1">
+                These goals include changes you kept as a draft. They are not applied yet:
+                Continue applies them and generates a new timetable.
+              </div>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={discardKeptDraft}>
+                Discard draft
+              </Button>
+            </div>
+          )}
 
           <div>
             <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Import from LearningGoalHub</h3>
@@ -414,7 +477,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           <Button
             variant="outline"
             size="sm"
-            onClick={onBack}
+            onClick={() => confirmLeave(onBack)}
             className="gap-2 font-body shrink-0 bg-transparent border-[1.5px] border-primary text-primary hover:bg-primary/5 transition-all duration-150"
           >
             <ArrowLeft className="h-4 w-4" /> Previous
@@ -428,6 +491,43 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           </Button>
         </div>
       </Card>
+      <AlertDialog open={leaveDialog !== null} onOpenChange={(open) => { if (!open) setLeaveDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Your goal changes are not applied</AlertDialogTitle>
+            <AlertDialogDescription>
+              Continue applies them and generates a new timetable. You can keep them as a draft for later
+              (the current timetable stays as it is), or discard them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setLeaveDialog(null)}>Stay</AlertDialogCancel>
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                const proceed = leaveDialog?.proceed;
+                setLeaveDialog(null);
+                proceed?.();
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              onClick={() => {
+                const proceed = leaveDialog?.proceed;
+                const kept = goalsRef.current.filter(g => g.text.trim()).map(toKept);
+                onKeepDraft?.(kept.length > 0 ? kept : null);
+                baselineRef.current = goalsKey(goalsRef.current);
+                setLeaveDialog(null);
+                proceed?.();
+              }}
+            >
+              Keep as draft
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

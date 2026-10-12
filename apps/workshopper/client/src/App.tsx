@@ -74,7 +74,7 @@ export default function App() {
     handleReset, startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
     setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentCourseId, buildDraft, loadingMessages, flushDraft, leaveGuardRef, confirmLeave,
+    originalSession, currentCourseId, buildDraft, loadingMessages, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
     templateInfo, setTemplateInfo
   } = wizard;
 
@@ -249,10 +249,13 @@ export default function App() {
         {step === "goals" && (
           <WorkshopGoalEntry
             initialInput={workshopInput}
-            onBack={() => currentCourseId ? setStep("course-summary") : setStep("input-2b")}
+            onBack={() => { flushDraft(); setStep(currentCourseId ? "course-summary" : "input-2b"); }}
             onContinue={handleGoalsEntered}
             isLoading={isLoading}
             initialGoals={refinedGoals}
+            keptGoals={keptGoals}
+            onKeepDraft={keepGoalDraft}
+            registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
           />
         )}
 

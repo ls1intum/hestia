@@ -7,7 +7,8 @@ import type {
   WorkshopSession,
   SessionSkeleton,
   DraftState,
-  TemplateInfo
+  TemplateInfo,
+  KeptGoal
 } from "@/lib/workshop-generator";
 
 /** Lets a step with unsaved input intercept navigation away from it. */
@@ -94,6 +95,7 @@ export function useWizardState() {
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [slidesCache, setSlidesCache] = useState<Record<number, SlideData[]>>({});
   const [templateInfo, setTemplateInfo] = useState<TemplateInfo | null>(null);
+  const [keptGoals, setKeptGoals] = useState<KeptGoal[] | null>(null);
 
   // Debounce ref for draft saves
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,6 +106,8 @@ export function useWizardState() {
   const pendingResolvers = useRef<Array<(id: string) => void>>([]);
   /** The save waiting for its debounce, so navigation can send it right away instead of dropping it. */
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
+  /** The step the draft was last saved with, so saves that aren't a step change can keep it. */
+  const lastSavedStepRef = useRef<string | null>(null);
 
   /**
    * Set by a step with unsaved input (the timetable while a block is in edit mode). Anything that
@@ -126,6 +130,7 @@ export function useWizardState() {
       courseId: string | null
     ): Promise<string> => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
+      lastSavedStepRef.current = currentStep;
       return new Promise((resolve) => {
         pendingResolvers.current.push(resolve);
         const run = async () => {
@@ -159,6 +164,13 @@ export function useWizardState() {
     [entityType]
   );
 
+  /** Keeps goal edits as a draft (or clears it with null) without regenerating the timetable. */
+  const keepGoalDraft = (goals: KeptGoal[] | null) => {
+    setKeptGoals(goals);
+    // Keeping a draft isn't progress: the session keeps the step it was saved at, so its later steps stay open
+    persistDraft({ ...buildDraft(), keptGoals: goals ?? undefined }, lastSavedStepRef.current ?? (isFinished ? "finished" : "goals"), sessionIdRef.current, currentCourseId);
+  };
+
   /** Sends a save that is still waiting for its debounce right away (instead of cancelling it). */
   const flushDraft = useCallback(async () => {
     if (draftSaveTimeout.current) {
@@ -182,8 +194,9 @@ export function useWizardState() {
       skeleton: skel ?? currentSkeleton ?? undefined,
       session: sess ?? session ?? undefined,
       completedTasks: tasks ?? completedTasks,
+      keptGoals: keptGoals ?? undefined,
     }),
-    [workshopInput, refinedGoals, currentSkeleton, session, completedTasks]
+    [workshopInput, refinedGoals, currentSkeleton, session, completedTasks, keptGoals]
   );
 
   // ── Navigation helpers ──────────────────────────────────────────────
@@ -191,6 +204,7 @@ export function useWizardState() {
   const startNewSession = () => {
     setSessionIdSynced(null);
     setTemplateInfo(null);
+    setKeptGoals(null);
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -208,6 +222,7 @@ export function useWizardState() {
   const startNewCourse = () => {
     setSessionIdSynced(null);
     setTemplateInfo(null);
+    setKeptGoals(null);
     setCurrentCourseId(null);
     setEntityType("COURSE");
     setWorkshopInput({});
@@ -238,6 +253,7 @@ export function useWizardState() {
       setCurrentCourseId(courseId);
       setCourseTitle(detail.title || "Untitled Course");
       setTemplateInfo(templateInfoFromDetail(detail));
+      setKeptGoals(null);
       setEntityType("SESSION");
       setRefinedGoals([]);
       setSession(null);
@@ -272,9 +288,11 @@ export function useWizardState() {
       setEntityType(resolvedEntityType);
       setCurrentCourseId(resolvedCourseId);
 
+      lastSavedStepRef.current = detail.currentStep ?? null;
       const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
       setIsFinished(sessionIsFinished);
       setTemplateInfo(templateInfoFromDetail(detail));
+      setKeptGoals(null);
 
       // R-2: use locally computed step order, not the stale component-state STEP_ORDER
       const localStepOrder = computeStepOrder(resolvedEntityType, resolvedCourseId);
@@ -292,6 +310,7 @@ export function useWizardState() {
               setWorkshopInput(draft.workshopInput);
             }
             if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
+            setKeptGoals(draft.keptGoals ?? null);
             if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
             if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
           } catch (_) { /* best effort */ }
@@ -316,6 +335,7 @@ export function useWizardState() {
             setWorkshopInput(draft.workshopInput);
           }
           if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
+          setKeptGoals(draft.keptGoals ?? null);
           if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
           if (draft.session) {
             hasSession = true;
@@ -455,7 +475,8 @@ export function useWizardState() {
       setCurrentSkeleton(skeleton);
       
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
-      const initialDraft = buildDraft(updatedInput, goalsWithPriority, skeleton);
+      setKeptGoals(null);
+      const initialDraft = { ...buildDraft(updatedInput, goalsWithPriority, skeleton), keptGoals: undefined };
       const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentCourseId);
       if (!sessionId) setSessionIdSynced(currentId);
       
@@ -474,7 +495,7 @@ export function useWizardState() {
       setSession(result);
       setOriginalSession(JSON.parse(JSON.stringify(result)));
       
-      const draft = buildDraft(updatedInput, goalsWithPriority, skeleton, result);
+      const draft = { ...buildDraft(updatedInput, goalsWithPriority, skeleton, result), keptGoals: undefined };
       await persistDraft(draft, "timeline", currentId, currentCourseId);
       setStep("timeline");
     } catch (err) {
@@ -494,6 +515,7 @@ export function useWizardState() {
     setView("dashboard");
     setSessionIdSynced(null);
     setTemplateInfo(null);
+    setKeptGoals(null);
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -639,6 +661,8 @@ export function useWizardState() {
     handleStep2,
     handleCourseFinish,
     flushDraft,
+    keptGoals,
+    keepGoalDraft,
     leaveGuardRef,
     confirmLeave,
     handleGoalsEntered,
