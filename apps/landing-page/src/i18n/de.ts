@@ -192,10 +192,8 @@ export const de = {
           "krusche(at)tum.de\n" +
           "+49 89 289 18233\n\n" +
           "Technische Universität München\n" +
-          "Professur für Applied Education Technologies (CIT – I1)\n" +
-          "Postanschrift: Arcisstraße 21, 80333 München\n" +
-          "Telefon: +49-(0)89-289-01\n" +
-          "E-Mail: poststelle(at)tum.de",
+          "TUS1322 Professur für Applied Education Technologies (Prof. Krusche)\n" +
+          "Boltzmannstr. 3/I, 85748 Garching b. München",
       },
       {
         heading: "Datenschutzbeauftragte:r",
@@ -212,9 +210,12 @@ export const de = {
           "Forschung und Lehre sowie die Bereitstellung der Hestia-Werkzeuge. Die Rechtsgrundlage " +
           "ergibt sich, soweit nichts anderes angegeben ist, aus Art. 6 Abs. 1 lit. e DSGVO i. V. m. " +
           "Art. 4 Abs. 1 BayDSG und Art. 84 BayHIG (Wahrnehmung einer Aufgabe im öffentlichen " +
-          "Interesse). Für optionale Funktionen (Newsletter, Materialspende, KI-gestützte " +
-          "Verarbeitung) verarbeiten wir Daten auf Grundlage Ihrer Einwilligung " +
-          "(Art. 6 Abs. 1 lit. a DSGVO).",
+          "Interesse). Dies gilt auch für die Verarbeitung Ihrer Inhalte in den Werkzeugen " +
+          "einschließlich der KI-gestützten Verarbeitung über den TUM-eigenen Dienst Logos, da sie " +
+          "Teil unserer hoheitlichen Aufgabe in der Lehre ist. Nur für freiwillige Zusatzfunktionen " +
+          "(Newsletter, Materialspende, Nutzung externer kommerzieller Sprachmodelle) verarbeiten " +
+          "wir Daten auf Grundlage Ihrer Einwilligung (Art. 6 Abs. 1 lit. a DSGVO). Erteilte " +
+          "Einwilligungen werden zum Nachweis protokolliert (Art. 7 Abs. 1 DSGVO).",
       },
       {
         heading: "Empfänger von personenbezogenen Daten",
@@ -222,8 +223,10 @@ export const de = {
           "Der technische Betrieb der Server erfolgt im Rahmen der TUM (Professur für Applied " +
           "Education Technologies; Server unter *.aet.cit.tum.de). Datensicherungen erfolgen " +
           "ausschließlich innerhalb der Europäischen Union.\n\n" +
-          "Für die KI-gestützten Funktionen werden Inhalte – nur wenn Sie deren Nutzung aktiv " +
-          "einwilligen – an Sprachmodelle übermittelt (siehe „KI-gestützte Verarbeitung“). Weitere " +
+          "Für die KI-gestützten Funktionen werden Inhalte über den Dienst Logos verarbeitet, der " +
+          "ebenfalls von der Professur für Applied Education Technologies auf TUM-Infrastruktur " +
+          "betrieben wird. An externe, kommerzielle Anbieter von Sprachmodellen werden Inhalte nur " +
+          "übermittelt, wenn Sie dem gesondert einwilligen (siehe „KI-gestützte Verarbeitung“). Weitere " +
           "Empfänger sind der Newsletter-Dienst (Listmonk) und die Materialablage (Nextcloud), " +
           "jeweils auf TUM-Infrastruktur. Eine Übermittlung an sonstige Dritte findet nicht statt, " +
           "soweit nicht gesetzlich vorgeschrieben.",
@@ -231,8 +234,8 @@ export const de = {
       {
         heading: "Übermittlung in Drittländer",
         body:
-          "Soweit für die KI-gestützten Funktionen Anbieter mit Verarbeitung in den USA genutzt " +
-          "werden (siehe „KI-gestützte Verarbeitung“), werden personenbezogene Daten in ein " +
+          "Soweit Sie der Nutzung externer Anbieter mit Verarbeitung in den USA eingewilligt haben " +
+          "(siehe „KI-gestützte Verarbeitung“), werden personenbezogene Daten in ein " +
           "Drittland übermittelt. Die Übermittlung wird durch geeignete Garantien im Sinne der " +
           "Art. 44 ff. DSGVO abgesichert – insbesondere über einen Angemessenheitsbeschluss der " +
           "Europäischen Kommission (EU-U.S. Data Privacy Framework), soweit der Anbieter " +
@@ -244,7 +247,11 @@ export const de = {
         body:
           "Personenbezogene Daten werden nur so lange gespeichert, wie dies unter Beachtung " +
           "gesetzlicher Aufbewahrungsfristen zur Aufgabenerfüllung erforderlich ist. Kontodaten " +
-          "werden für die Dauer der Nutzung gespeichert und auf Antrag gelöscht. Server-Logdateien " +
+          "werden für die Dauer der Nutzung gespeichert und auf Antrag gelöscht. Nutzerkonten " +
+          "werden nach einem Jahr Inaktivität automatisch gelöscht, einschließlich der zugehörigen " +
+          "Inhalte: Nach 300 Tagen ohne Anmeldung erhalten Sie eine Warnung, nach 350 Tagen eine " +
+          "letzte Erinnerung, nach 365 Tagen wird das Konto gelöscht. Eine erneute Anmeldung setzt " +
+          "die Frist zurück. Server-Logdateien " +
           "werden nach 90 Tagen automatisch gelöscht (siehe „Protokollierung“).",
       },
       {
@@ -325,41 +332,45 @@ export const de = {
           "Nutzerkennung, Name, E-Mail-Adresse sowie Ihre Einrichtung und Rolle. Daraus legen wir " +
           "ein Nutzerkonto an, um Ihnen Ihre Inhalte zuzuordnen.\n\n" +
           "Speicherdauer: Kontodaten werden für die Dauer der Nutzung gespeichert und auf Antrag " +
-          "gelöscht, soweit keine gesetzlichen Aufbewahrungsfristen entgegenstehen.",
+          "gelöscht, soweit keine gesetzlichen Aufbewahrungsfristen entgegenstehen. Nach einem " +
+          "Jahr Inaktivität wird das Konto automatisch gelöscht (siehe „Dauer der Speicherung“).",
       },
       {
         heading: "Verarbeitung Ihrer Inhalte in den Werkzeugen",
         body:
           "In den Werkzeugen laden Sie Inhalte hoch bzw. geben diese ein:\n\n" +
-          "• ExamLense: hochgeladene Klausuren/Prüfungen (z. B. PDF) sowie daraus erzeugte " +
-          "Aufgaben, Musterlösungen und Bewertungen.\n" +
+          "• ExamLense: hochgeladene Klausuren/Prüfungen (z. B. PDF), daraus erzeugte Aufgaben " +
+          "und Musterlösungen sowie die Leistungsbeurteilung der Sprachmodelle, d. h. wie gut die " +
+          "KI die Aufgaben löst. Es handelt sich nicht um Bewertungen von Studierenden; Noten von " +
+          "Studierenden werden im System nicht verarbeitet.\n" +
           "• LearningGoalHub: hochgeladene Lehrmaterialien (z. B. Folien, Modulbeschreibungen) und " +
           "daraus extrahierte Lernziele.\n" +
           "• Workshopper: eingegebene Lernziele und Rahmendaten, hochgeladene Materialien sowie " +
           "generierte Handouts und Folien.\n\n" +
-          "Diese Inhalte werden auf TUM-Servern gespeichert und – nach Ihrer Einwilligung – zur " +
-          "KI-gestützten Verarbeitung übermittelt (siehe „KI-gestützte Verarbeitung“). Bitte laden " +
-          "Sie keine personenbezogenen Daten Dritter (z. B. Namen oder Matrikelnummern von " +
-          "Studierenden) und keine vertraulichen Inhalte hoch, soweit nicht erforderlich; " +
-          "anonymisieren bzw. schwärzen Sie solche Angaben vorher.",
+          "Diese Inhalte werden auf TUM-Servern gespeichert und KI-gestützt verarbeitet (siehe " +
+          "„KI-gestützte Verarbeitung“). Bitte laden Sie keine personenbezogenen Daten Dritter " +
+          "(z. B. Namen oder Matrikelnummern von Studierenden) und keine vertraulichen Inhalte " +
+          "hoch; anonymisieren bzw. schwärzen Sie solche Angaben vorher.",
       },
       {
         heading: "KI-gestützte Verarbeitung",
         body:
-          "Die Werkzeuge bieten KI-gestützte Funktionen. Diese werden nur genutzt, wenn Sie deren " +
-          "Verwendung aktiv einwilligen (Opt-in, Art. 6 Abs. 1 lit. a DSGVO). Ohne Ihre Einwilligung " +
-          "findet keine KI-gestützte Verarbeitung statt; die betreffenden Funktionen stehen dann " +
-          "nicht zur Verfügung. Dabei werden die für die jeweilige Anfrage erforderlichen Inhalte " +
-          "an Sprachmodelle übermittelt:\n\n" +
-          "a) Innerhalb der EU: offen gewichtete Modelle über den Dienst SAIA / „Chat AI“ der GWDG " +
-          "(Gesellschaft für wissenschaftliche Datenverarbeitung mbH Göttingen), " +
-          "chat-ai.academiccloud.de, auf Servern in Deutschland im Rahmen einer " +
-          "Auftragsverarbeitung (Art. 28 DSGVO).\n\n" +
-          "b) Externe, kommerzielle Anbieter mit Übermittlung in die USA:\n" +
+          "Die Werkzeuge bieten KI-gestützte Funktionen. Dabei werden die für die jeweilige Anfrage " +
+          "erforderlichen Inhalte von Sprachmodellen verarbeitet:\n\n" +
+          "a) Standard – Logos (TUM): offen gewichtete Modelle über den Dienst Logos, den die " +
+          "Professur für Applied Education Technologies selbst auf Servern der TUM betreibt. Die " +
+          "Inhalte verlassen dabei nicht die TUM-Infrastruktur. Rechtsgrundlage: " +
+          "Art. 6 Abs. 1 lit. e DSGVO i. V. m. Art. 4 Abs. 1 BayDSG und Art. 84 BayHIG.\n\n" +
+          "b) Optional – externe, kommerzielle Anbieter mit Übermittlung in die USA:\n" +
           "• Google (Gemini) – Google Ireland Ltd. / Google LLC, USA\n" +
           "• OpenAI (ChatGPT) – OpenAI, USA\n" +
           "• Anthropic (Claude) – Anthropic PBC, USA\n\n" +
-          "Zur Absicherung des Drittlandtransfers siehe „Übermittlung in Drittländer“. Je nach " +
+          "Diese externen Dienste werden nur genutzt, wenn Sie vorher gesondert einwilligen " +
+          "(Opt-in, Art. 6 Abs. 1 lit. a DSGVO). Ohne diese Einwilligung werden keine Inhalte an " +
+          "externe Anbieter übermittelt; die Werkzeuge nutzen dann ausschließlich Logos. Ihre " +
+          "Einwilligung wird protokolliert und kann jederzeit mit Wirkung für die Zukunft " +
+          "widerrufen werden. Zur Absicherung des Drittlandtransfers siehe „Übermittlung in " +
+          "Drittländer“. Je nach " +
           "Anbieter und Tarif kann nicht ausgeschlossen werden, dass übermittelte Inhalte " +
           "weiterverarbeitet werden. Übermitteln Sie daher keine vertraulichen oder " +
           "personenbezogenen Daten, die für die Anfrage nicht erforderlich sind.",
@@ -391,14 +402,6 @@ export const de = {
           "verarbeiten wir die mitgeteilten Daten zur Bearbeitung Ihrer Anfrage. Rechtsgrundlage: " +
           "Art. 6 Abs. 1 lit. e DSGVO bzw. Ihre Einwilligung (Art. 6 Abs. 1 lit. a DSGVO). Die " +
           "Daten werden gelöscht, sobald sie nicht mehr erforderlich sind.",
-      },
-      {
-        heading: "Änderungen dieser Datenschutzerklärung",
-        body:
-          "Da sich Hestia in aktiver Entwicklung befindet, kann diese Datenschutzerklärung " +
-          "angepasst werden, um sie an geänderte Funktionen oder Rechtslagen anzupassen. Es gilt " +
-          "die jeweils hier veröffentlichte Fassung.\n\n" +
-          "Stand: Juli 2026",
       },
     ],
   },
