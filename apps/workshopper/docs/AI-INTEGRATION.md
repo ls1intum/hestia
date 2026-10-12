@@ -51,3 +51,5 @@ Each slide is a map with a `layout` (which slide of the default template it uses
 * **Provider:** requests go to the TUM AET Logos gateway (the `shared-llm` default). The API key comes from `WORKSHOPPER_LOGOS_API_KEY`.
 * **Secondary model:** `LLM_SECONDARY_MODEL` (property `llm.secondary-model`) optionally sets a second model, used for slide generation; it must be a Logos model id.
 * **Temperature:** the JSON-returning calls use the shared default (temperature 0.0) so the output parses reliably.
+* **Timeouts:** one model call may take up to 90 seconds (`LLM_READ_TIMEOUT`, property `spring.http.client.read-timeout`) and is retried once after a short wait (`spring.ai.retry.*` in `application.yml`; Spring AI's own default is 10 attempts with waits of up to 3 minutes). A hanging call therefore fails within about 3 minutes and the user sees an error, instead of the request, and the session's generation lock, being blocked indefinitely. `LlmTimeoutTest` checks this against a model server that never answers.
+* **Limits per user:** see `UsageGuard` in [API.md](API.md).

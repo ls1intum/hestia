@@ -62,6 +62,20 @@ server:
 # with openai/gpt-oss-120b. A secondary model must be a Logos model id as well.
 spring.ai.openai.api-key: ${WORKSHOPPER_LOGOS_API_KEY}
 
+# A model call that hangs must fail instead of blocking the request (and the session's generation
+# lock) indefinitely. The read timeout applies to every HTTP call the server makes through Spring's
+# RestClient, which is how Spring AI reaches the model. Spring AI's default retry (10 attempts,
+# waits growing 5x up to 3 minutes) is cut to one retry, so a failing call ends within ~3 minutes.
+spring.http.client:
+  connect-timeout: 10s
+  read-timeout: ${LLM_READ_TIMEOUT:90s}
+spring.ai.retry:
+  max-attempts: 2
+  backoff:
+    initial-interval: 2s
+    multiplier: 2
+    max-interval: 10s
+
 llm:
   secondary-model: ${LLM_SECONDARY_MODEL:}
 
