@@ -6,7 +6,8 @@ The Workshopper server is a Spring Boot 3.5 application (Java 21, Gradle module 
 
 ```
 server/src/main/java/com/workshopper/
-├── controller/   WorkshopController (sessions, generation, export), CourseController (courses)
+├── controller/   WorkshopController (sessions, generation, export), CourseController (courses),
+│                 ApiExceptionHandler (turns exceptions into 403/404/409/500 answers)
 ├── facade/       WorkshopSessionFacade: ownership checks, generation orchestration, course ZIP
 ├── usecase/      GenerateTimetableUseCase, GenerateSlideBlockUseCase, AssemblePptxUseCase,
 │                 RefineLearningGoalUseCase, FixGoalsGrammarUseCase,

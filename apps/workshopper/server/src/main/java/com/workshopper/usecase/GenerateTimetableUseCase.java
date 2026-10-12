@@ -9,6 +9,15 @@ import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class GenerateTimetableUseCase {
@@ -27,7 +36,7 @@ public class GenerateTimetableUseCase {
                                       ) throws Exception {
 
         
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        ObjectMapper mapper = new ObjectMapper();
 
         String sessionTypeLabel = "workshop".equals(input.sessionType()) ? "interactive workshop" : "university lecture";
 
@@ -84,12 +93,12 @@ public class GenerateTimetableUseCase {
                             return block;
                         var filteredSections = block.sections().stream()
                                 .filter(s -> s.duration() > 0)
-                                .collect(java.util.stream.Collectors.toList());
+                                .collect(Collectors.toList());
                         return new SkeletonBlockDto(
                                 block.phase(), block.lgIndex(), block.duration(),
                                 block.title(), block.description(), filteredSections);
                     })
-                    .collect(java.util.stream.Collectors.toList());
+                    .collect(Collectors.toList());
                     
             SessionSkeletonDto filteredSkeleton = new SessionSkeletonDto(
                     filteredBlocks, skeleton.sessionId());
@@ -132,7 +141,7 @@ public class GenerateTimetableUseCase {
 
 
         return new WorkshopSessionDto(
-                java.util.UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
                 title,
                 input.studentBackground(),
                 generatedBlocks,
@@ -145,7 +154,7 @@ public class GenerateTimetableUseCase {
     record EvaluateSlot(String method, List<Integer> goalNumbers, int minutes) {
         /** The step prefix the client parses, e.g. "Goal 1, 2 & 3 - Worked Problem". */
         String label() {
-            List<String> nums = goalNumbers.stream().map(String::valueOf).collect(java.util.stream.Collectors.toList());
+            List<String> nums = goalNumbers.stream().map(String::valueOf).collect(Collectors.toList());
             String goalsPart = nums.size() == 1 ? nums.get(0)
                     : String.join(", ", nums.subList(0, nums.size() - 1)) + " & " + nums.get(nums.size() - 1);
             return "Goal " + goalsPart + " - " + method;
@@ -157,7 +166,7 @@ public class GenerateTimetableUseCase {
         var evaluateMappings = meta.evaluateMappings();
         if ((evaluateMappings == null || evaluateMappings.isEmpty()) && goals != null && !goals.isEmpty()) {
             // Goals that end up with the same activity share one assessment, like a user-made mapping
-            Map<String, List<String>> goalsByMethod = new java.util.LinkedHashMap<>();
+            Map<String, List<String>> goalsByMethod = new LinkedHashMap<>();
             for (int i = 0; i < goals.size(); i++) {
                 var g = goals.get(i);
                 List<String> selected = meta.selectedActivities() != null ? meta.selectedActivities() : List.of();
@@ -187,7 +196,7 @@ public class GenerateTimetableUseCase {
         List<EvaluateSlot> slots = new ArrayList<>();
         List<EvaluateMappingDto> mappings = resolveEvaluateMappings(goals, meta).stream()
                 .filter(m -> m.method() != null && m.lgIds() != null && !m.lgIds().isEmpty())
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
         if (mappings.isEmpty()) return slots;
 
         int total = targetBlock.duration() > 0 ? targetBlock.duration() : 10;
@@ -201,7 +210,7 @@ public class GenerateTimetableUseCase {
                 }
             }
             if (nums.isEmpty()) continue;
-            java.util.Collections.sort(nums);
+            Collections.sort(nums);
             slots.add(new EvaluateSlot(mappings.get(m).method(), nums, base + (m < remainder ? 1 : 0)));
         }
         return slots;
@@ -224,9 +233,9 @@ public class GenerateTimetableUseCase {
         return sb.toString();
     }
 
-    private static final java.util.regex.Pattern EVALUATE_STEP = java.util.regex.Pattern.compile(
+    private static final Pattern EVALUATE_STEP = Pattern.compile(
             "^(?:\\d+\\s*(?:min|m)[\\s—:-]*)?(?:(?:Prompt\\s+)?(?:LG|Goal)s?\\s*([\\d\\s&,and]+))?\\s*(?:[·•\\-]\\s*\\[?[^\\]:]*\\]?)?:?\\s*(.*)$",
-            java.util.regex.Pattern.CASE_INSENSITIVE);
+            Pattern.CASE_INSENSITIVE);
 
     /**
      * Rebuilds the Check Understanding steps so there is exactly one per mapped activity,
@@ -235,8 +244,8 @@ public class GenerateTimetableUseCase {
     static ActivityBlockDto normalizeEvaluateSteps(ActivityBlockDto block, List<EvaluateSlot> slots) {
         if (block == null || slots.isEmpty()) return block;
         List<String> allSteps = block.sections() == null ? List.of() : block.sections().stream()
-                .flatMap(s -> s.steps() == null ? java.util.stream.Stream.<String>empty() : s.steps().stream())
-                .collect(java.util.stream.Collectors.toList());
+                .flatMap(s -> s.steps() == null ? Stream.<String>empty() : s.steps().stream())
+                .collect(Collectors.toList());
 
         List<List<String>> questions = new ArrayList<>();
         slots.forEach(s -> questions.add(new ArrayList<>()));
@@ -247,7 +256,7 @@ public class GenerateTimetableUseCase {
             String question = step.trim();
             if (m.matches()) {
                 if (m.group(1) != null) {
-                    var digits = java.util.regex.Pattern.compile("\\d+").matcher(m.group(1));
+                    var digits = Pattern.compile("\\d+").matcher(m.group(1));
                     while (digits.find()) nums.add(Integer.parseInt(digits.group()));
                 }
                 question = m.group(2).trim();
@@ -277,7 +286,7 @@ public class GenerateTimetableUseCase {
         int total = slots.stream().mapToInt(EvaluateSlot::minutes).sum();
         String title = block.sections() != null && !block.sections().isEmpty() && block.sections().get(0).title() != null
                 ? block.sections().get(0).title() : "Check Understanding";
-        List<String> methods = slots.stream().map(EvaluateSlot::method).distinct().collect(java.util.stream.Collectors.toList());
+        List<String> methods = slots.stream().map(EvaluateSlot::method).distinct().collect(Collectors.toList());
         return new ActivityBlockDto(block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
                 block.objective(), block.description(), methods, block.materials(),
                 List.of(new ActivitySectionDto(title, total, steps, List.of(), List.of())), total);
@@ -286,11 +295,11 @@ public class GenerateTimetableUseCase {
     /** Splits the newline-separated materials string sent by the client into clean entries. */
     static List<String> parseMaterials(String availableMaterials) {
         if (availableMaterials == null || availableMaterials.isBlank()) return List.of();
-        return java.util.Arrays.stream(availableMaterials.split("\\R"))
+        return Arrays.stream(availableMaterials.split("\\R"))
                 .map(String::trim)
                 .filter(m -> !m.isEmpty())
                 .distinct()
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 
     /**
@@ -304,7 +313,7 @@ public class GenerateTimetableUseCase {
                 .map(s -> new ActivitySectionDto(s.title(), s.duration(), s.steps(),
                         selectedActivities == null ? s.methods() : keepSelected(s.methods(), selectedActivities),
                         keepSelected(s.materials(), materials)))
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
         return new ActivityBlockDto(block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
                 block.objective(), block.description(),
                 selectedActivities == null ? block.methods() : keepSelected(block.methods(), selectedActivities),
@@ -316,9 +325,9 @@ public class GenerateTimetableUseCase {
         if (values == null) return null;
         return values.stream()
                 .map(v -> matchSelection(v, allowed))
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .distinct()
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 
     /** Returns the user's own spelling of {@code value} if it is one of {@code allowed} (case-insensitive), else null. */
@@ -350,7 +359,7 @@ public class GenerateTimetableUseCase {
                 .map(s -> new ActivitySectionDto(s.title(), s.duration(), s.steps(),
                         s.methods() == null || s.methods().isEmpty() ? s.methods() : List.of(activity),
                         s.materials()))
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
         return new ActivityBlockDto(block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
                 block.objective(), block.description(), List.of(activity), block.materials(),
                 sections, block.duration());

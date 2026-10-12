@@ -11,6 +11,23 @@ import com.workshopper.dto.WorkshopInputDto;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.geom.Rectangle2D;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.apache.poi.sl.usermodel.PaintStyle;
+import org.apache.poi.sl.usermodel.Placeholder;
+import org.apache.poi.sl.usermodel.TextParagraph;
+import org.apache.poi.sl.usermodel.TextShape;
+import org.springframework.core.io.ClassPathResource;
 
 @Component
 public class AssemblePptxUseCase {
@@ -42,7 +59,7 @@ public class AssemblePptxUseCase {
                 str = str.replace("\0", "");
                 slide.put(entry.getKey(), str);
             } else if (entry.getValue() instanceof List<?> list) {
-                List<Object> safeList = new java.util.ArrayList<>();
+                List<Object> safeList = new ArrayList<>();
                 for (Object item : list) {
                     if (item instanceof String str) {
                         if (str.length() > 5000) {
@@ -60,8 +77,8 @@ public class AssemblePptxUseCase {
     }
 
 
-    public byte[] execute(com.workshopper.dto.WorkshopSessionDto session, com.workshopper.dto.WorkshopInputDto meta,
-                                         List<Map<String, Object>> prebuiltSlides, java.io.InputStream templateStream, boolean isCustomTemplate) throws Exception {
+    public byte[] execute(WorkshopSessionDto session, WorkshopInputDto meta,
+                                         List<Map<String, Object>> prebuiltSlides, InputStream templateStream, boolean isCustomTemplate) throws Exception {
         List<Map<String, Object>> slidesData;
 
         if (prebuiltSlides != null && !prebuiltSlides.isEmpty()) {
@@ -71,7 +88,7 @@ public class AssemblePptxUseCase {
             log.info("Assembling PPTX using cached slides from session object");
             List<Map<String, Object>> tempSlides = new ArrayList<>();
             session.slides().entrySet().stream()
-                    .sorted(java.util.Map.Entry.comparingByKey())
+                    .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> {
                         if (entry.getValue() != null) {
                             tempSlides.addAll(entry.getValue());
@@ -85,7 +102,7 @@ public class AssemblePptxUseCase {
 
         // Validate and sanitize the slide data
         // Pre-build a map with index to use the existing sanitizeSlides logic
-        Map<Integer, List<Map<String, Object>>> wrapperMap = new java.util.HashMap<>();
+        Map<Integer, List<Map<String, Object>>> wrapperMap = new HashMap<>();
         wrapperMap.put(0, slidesData);
         wrapperMap = sanitizeSlides(wrapperMap);
         slidesData = wrapperMap.get(0);
@@ -103,8 +120,8 @@ public class AssemblePptxUseCase {
             shape.setText(text);
         } catch (IndexOutOfBoundsException e) {
             shape.clearText();
-            org.apache.poi.xslf.usermodel.XSLFTextParagraph p = shape.addNewTextParagraph();
-            org.apache.poi.xslf.usermodel.XSLFTextRun r = p.addNewTextRun();
+            XSLFTextParagraph p = shape.addNewTextParagraph();
+            XSLFTextRun r = p.addNewTextRun();
             r.setText(text);
         }
     }
@@ -132,30 +149,30 @@ public class AssemblePptxUseCase {
         };
     }
 
-    private void replaceTextInSlide(org.apache.poi.xslf.usermodel.XSLFSlide slide, String search, String replacement) {
+    private void replaceTextInSlide(XSLFSlide slide, String search, String replacement) {
         if (search == null) return;
         if (replacement == null) replacement = "";
-        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
-            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+        for (XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof XSLFTextShape ts) {
                 if (ts.getText().contains(search)) {
-                    for (org.apache.poi.xslf.usermodel.XSLFTextParagraph p : ts.getTextParagraphs()) {
+                    for (XSLFTextParagraph p : ts.getTextParagraphs()) {
                         if (p.getText().contains(search)) {
                             String fullText = p.getText();
                             String regex = search.endsWith("]") 
-                                ? java.util.regex.Pattern.quote(search) 
-                                : java.util.regex.Pattern.quote(search) + "[^\\]]*\\]";
-                            String newText = fullText.replaceAll(regex, java.util.regex.Matcher.quoteReplacement(replacement));
+                                ? Pattern.quote(search) 
+                                : Pattern.quote(search) + "[^\\]]*\\]";
+                            String newText = fullText.replaceAll(regex, Matcher.quoteReplacement(replacement));
                             if (newText.equals(fullText)) {
                                 // Fallback: no closing bracket found – do a simple substring replace
                                 newText = fullText.replace(search, replacement);
                             }
                             if (!p.getTextRuns().isEmpty()) {
-                                org.apache.poi.sl.usermodel.PaintStyle targetColor = null;
+                                PaintStyle targetColor = null;
                                 String targetFontFamily = null;
                                 Double targetFontSize = null;
                                 boolean isBold = false;
 
-                                for (org.apache.poi.xslf.usermodel.XSLFTextRun r : p.getTextRuns()) {
+                                for (XSLFTextRun r : p.getTextRuns()) {
                                     if (r.getRawText().contains(search)) {
                                         targetColor = r.getFontColor();
                                         targetFontFamily = r.getFontFamily();
@@ -165,14 +182,14 @@ public class AssemblePptxUseCase {
                                     }
                                 }
                                 if (targetColor == null && p.getTextRuns().size() > 1) {
-                                    org.apache.poi.xslf.usermodel.XSLFTextRun lastRun = p.getTextRuns().get(p.getTextRuns().size() - 1);
+                                    XSLFTextRun lastRun = p.getTextRuns().get(p.getTextRuns().size() - 1);
                                     targetColor = lastRun.getFontColor();
                                     targetFontFamily = lastRun.getFontFamily();
                                     targetFontSize = lastRun.getFontSize();
                                     isBold = lastRun.isBold();
                                 }
 
-                                org.apache.poi.xslf.usermodel.XSLFTextRun firstRun = p.getTextRuns().get(0);
+                                XSLFTextRun firstRun = p.getTextRuns().get(0);
                                 firstRun.setText(newText);
                                 if (targetColor != null) firstRun.setFontColor(targetColor);
                                 if (targetFontFamily != null) firstRun.setFontFamily(targetFontFamily);
@@ -197,9 +214,9 @@ public class AssemblePptxUseCase {
      * Enable "shrink text on overflow" (normAutoFit) on a text shape so that
      * long replacement strings never overflow the slide boundary.
      */
-    private void enableAutoFit(org.apache.poi.xslf.usermodel.XSLFTextShape shape) {
+    private void enableAutoFit(XSLFTextShape shape) {
         try {
-            shape.setTextAutofit(org.apache.poi.sl.usermodel.TextShape.TextAutofit.NORMAL);
+            shape.setTextAutofit(TextShape.TextAutofit.NORMAL);
         } catch (Exception e) {
             log.debug("Could not enable auto-fit on shape: {}", e.getMessage());
         }
@@ -212,7 +229,7 @@ public class AssemblePptxUseCase {
      */
     private void shrinkTextToFit(XSLFTextShape ts) {
         try {
-            java.awt.geom.Rectangle2D anchor = ts.getAnchor();
+            Rectangle2D anchor = ts.getAnchor();
             if (anchor == null) return;
             double width = anchor.getWidth() - ts.getLeftInset() - ts.getRightInset();
             double height = anchor.getHeight() - ts.getTopInset() - ts.getBottomInset();
@@ -238,16 +255,16 @@ public class AssemblePptxUseCase {
         }
     }
 
-    private boolean shapeContainsText(org.apache.poi.xslf.usermodel.XSLFShape shape, String searchString, boolean exact) {
-        if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+    private boolean shapeContainsText(XSLFShape shape, String searchString, boolean exact) {
+        if (shape instanceof XSLFTextShape ts) {
             String text = ts.getText();
             if (exact) {
                 return text.trim().equals(searchString);
             } else {
                 return text.contains(searchString);
             }
-        } else if (shape instanceof org.apache.poi.xslf.usermodel.XSLFGroupShape group) {
-            for (org.apache.poi.xslf.usermodel.XSLFShape child : group.getShapes()) {
+        } else if (shape instanceof XSLFGroupShape group) {
+            for (XSLFShape child : group.getShapes()) {
                 if (shapeContainsText(child, searchString, exact)) {
                     return true;
                 }
@@ -256,10 +273,10 @@ public class AssemblePptxUseCase {
         return false;
     }
 
-    private void removeRowShapes(org.apache.poi.xslf.usermodel.XSLFSlide slide, String searchString) {
+    private void removeRowShapes(XSLFSlide slide, String searchString) {
         if (searchString == null) return;
-        org.apache.poi.xslf.usermodel.XSLFShape targetShape = null;
-        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
+        XSLFShape targetShape = null;
+        for (XSLFShape shape : slide.getShapes()) {
             if (shapeContainsText(shape, searchString, false)) {
                 targetShape = shape;
                 break;
@@ -267,13 +284,13 @@ public class AssemblePptxUseCase {
         }
         if (targetShape == null) return;
 
-        java.awt.geom.Rectangle2D targetAnchor = targetShape.getAnchor();
+        Rectangle2D targetAnchor = targetShape.getAnchor();
         double targetMinY = targetAnchor.getY();
         double targetMaxY = targetMinY + targetAnchor.getHeight();
 
-        List<org.apache.poi.xslf.usermodel.XSLFShape> toRemove = new ArrayList<>();
-        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
-            java.awt.geom.Rectangle2D anchor = shape.getAnchor();
+        List<XSLFShape> toRemove = new ArrayList<>();
+        for (XSLFShape shape : slide.getShapes()) {
+            Rectangle2D anchor = shape.getAnchor();
             if (anchor == null) continue;
             double minY = anchor.getY();
             double maxY = minY + anchor.getHeight();
@@ -287,16 +304,16 @@ public class AssemblePptxUseCase {
                 }
             }
         }
-        for (org.apache.poi.xslf.usermodel.XSLFShape s : toRemove) {
+        for (XSLFShape s : toRemove) {
             slide.removeShape(s);
         }
     }
 
-    private void replaceBodyText(org.apache.poi.xslf.usermodel.XSLFSlide slide, List<String> bullets, String... searchStrings) {
+    private void replaceBodyText(XSLFSlide slide, List<String> bullets, String... searchStrings) {
         if (bullets == null || bullets.isEmpty()) return;
-        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
-            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape) {
-                org.apache.poi.xslf.usermodel.XSLFTextShape ts = (org.apache.poi.xslf.usermodel.XSLFTextShape) shape;
+        for (XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof XSLFTextShape) {
+                XSLFTextShape ts = (XSLFTextShape) shape;
                 boolean match = false;
                 for (String search : searchStrings) {
                     if (ts.getText().contains(search)) {
@@ -310,10 +327,10 @@ public class AssemblePptxUseCase {
                     String defaultBulletFont = null;
                     Double defaultFontSize = 20d;
                     String defaultFontFamily = null;
-                    java.awt.Color defaultFontColor = null;
+                    Color defaultFontColor = null;
                     boolean defaultBold = false;
                     boolean defaultItalic = false;
-                    org.apache.poi.sl.usermodel.TextParagraph.TextAlign defaultAlign = null;
+                    TextParagraph.TextAlign defaultAlign = null;
                     Double defaultLineSpacing = null;
                     Double defaultSpaceBefore = null;
                     Double defaultSpaceAfter = null;
@@ -321,7 +338,7 @@ public class AssemblePptxUseCase {
                     Double defaultIndent = null;
                     
                     if (!ts.getTextParagraphs().isEmpty()) {
-                        org.apache.poi.xslf.usermodel.XSLFTextParagraph firstPara = ts.getTextParagraphs().get(0);
+                        XSLFTextParagraph firstPara = ts.getTextParagraphs().get(0);
                         if (firstPara.isBullet() && firstPara.getBulletCharacter() != null) {
                             defaultBulletChar = firstPara.getBulletCharacter();
                         }
@@ -335,14 +352,14 @@ public class AssemblePptxUseCase {
                         defaultIndent = firstPara.getIndent();
                         
                         if (!firstPara.getTextRuns().isEmpty()) {
-                            org.apache.poi.xslf.usermodel.XSLFTextRun firstRun = firstPara.getTextRuns().get(0);
+                            XSLFTextRun firstRun = firstPara.getTextRuns().get(0);
                             if (firstRun.getFontSize() != null) defaultFontSize = firstRun.getFontSize();
                             if (firstRun.getFontFamily() != null) defaultFontFamily = firstRun.getFontFamily();
-                            // Eagerly resolve PaintStyle → java.awt.Color BEFORE clearText() disconnects the XML nodes.
+                            // Eagerly resolve PaintStyle → Color BEFORE clearText() disconnects the XML nodes.
                             // Holding a live PaintStyle/XSLFColor reference after clearText() causes XmlValueDisconnectedException.
-                            org.apache.poi.sl.usermodel.PaintStyle rawColor = firstRun.getFontColor();
-                            if (rawColor instanceof org.apache.poi.sl.usermodel.PaintStyle.SolidPaint) {
-                                java.awt.Color c = ((org.apache.poi.sl.usermodel.PaintStyle.SolidPaint) rawColor)
+                            PaintStyle rawColor = firstRun.getFontColor();
+                            if (rawColor instanceof PaintStyle.SolidPaint) {
+                                Color c = ((PaintStyle.SolidPaint) rawColor)
                                         .getSolidColor().getColor();
                                 if (c != null) defaultFontColor = c;
                             }
@@ -354,7 +371,7 @@ public class AssemblePptxUseCase {
                     ts.clearText();
                     
                     for (String bullet : bullets) {
-                        org.apache.poi.xslf.usermodel.XSLFTextParagraph bp = ts.addNewTextParagraph();
+                        XSLFTextParagraph bp = ts.addNewTextParagraph();
                         bp.setBullet(true);
                         bp.setBulletCharacter(defaultBulletChar);
                         if (defaultBulletFont != null) bp.setBulletFont(defaultBulletFont);
@@ -365,7 +382,7 @@ public class AssemblePptxUseCase {
                         if (defaultLeftMargin != null) bp.setLeftMargin(defaultLeftMargin);
                         if (defaultIndent != null) bp.setIndent(defaultIndent);
                         
-                        org.apache.poi.xslf.usermodel.XSLFTextRun br = bp.addNewTextRun();
+                        XSLFTextRun br = bp.addNewTextRun();
                         br.setText(bullet);
                         if (defaultFontFamily != null) br.setFontFamily(defaultFontFamily);
                         br.setFontSize(defaultFontSize);
@@ -381,45 +398,45 @@ public class AssemblePptxUseCase {
     }
 
     private byte[] buildPptx(WorkshopSessionDto session, WorkshopInputDto meta,
-                              List<Map<String, Object>> slidesData, java.io.InputStream templateStream, boolean isCustomTemplate) throws Exception {
+                              List<Map<String, Object>> slidesData, InputStream templateStream, boolean isCustomTemplate) throws Exception {
         // An uploaded template only supplies branding: build the deck in the default design,
         // then add the template's title slide, logo and footer on top
         if (isCustomTemplate && templateStream != null) {
             byte[] templateBytes = templateStream.readAllBytes();
-            try (java.io.InputStream defaultTemplate =
-                         new org.springframework.core.io.ClassPathResource("templates/workshopper-default.pptx").getInputStream()) {
+            try (InputStream defaultTemplate =
+                         new ClassPathResource("templates/workshopper-default.pptx").getInputStream()) {
                 byte[] deck = buildPptx(session, meta, slidesData, defaultTemplate, false);
                 return TemplateBranding.apply(deck, templateBytes, session != null ? session.title() : null);
             } catch (Exception e) {
                 log.warn("Could not apply the uploaded template's branding, using its layouts instead: {}", e.getMessage());
-                templateStream = new java.io.ByteArrayInputStream(templateBytes);
+                templateStream = new ByteArrayInputStream(templateBytes);
             }
         }
 
-        try (org.apache.poi.xslf.usermodel.XMLSlideShow ppt = templateStream != null
-                ? new org.apache.poi.xslf.usermodel.XMLSlideShow(templateStream)
-                : new org.apache.poi.xslf.usermodel.XMLSlideShow()) {
+        try (XMLSlideShow ppt = templateStream != null
+                ? new XMLSlideShow(templateStream)
+                : new XMLSlideShow()) {
 
             boolean useTemplate = (templateStream != null);
             int originalSlideCount = ppt.getSlides().size();
             boolean isCloningMode = useTemplate && !isCustomTemplate;
 
             if (!useTemplate) {
-                ppt.setPageSize(new java.awt.Dimension(960, 540));
+                ppt.setPageSize(new Dimension(960, 540));
             }
 
             
             // ── Title slide ─────────────────────────────────────────────────────
             if (useTemplate) {
-                org.apache.poi.xslf.usermodel.XSLFSlide titleSlide = ppt.createSlide();
+                XSLFSlide titleSlide = ppt.createSlide();
                 titleSlide.importContent(ppt.getSlides().get(0)); // template slide 0 = title
                 if (isCloningMode) {
                     replaceTextInSlide(titleSlide, "[Session Title]", session.title() != null ? session.title() : "Workshop Session");
                     replaceTextInSlide(titleSlide, "[PHASE]", ""); // fallback
                 } else {
-                    for (org.apache.poi.xslf.usermodel.XSLFShape shape : titleSlide.getShapes()) {
-                        if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
-                            if (ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.TITLE || ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.CENTERED_TITLE) {
+                    for (XSLFShape shape : titleSlide.getShapes()) {
+                        if (shape instanceof XSLFTextShape ts) {
+                            if (ts.getTextType() == Placeholder.TITLE || ts.getTextType() == Placeholder.CENTERED_TITLE) {
                                 safeSetText(ts, session.title() != null ? session.title() : "Workshop Session");
                             }
                         }
@@ -438,7 +455,7 @@ public class AssemblePptxUseCase {
                     int tplIdx = getTemplateSlideIndex(layout);
                     if (tplIdx >= originalSlideCount) tplIdx = 2; // fallback to generic content slide
 
-                    org.apache.poi.xslf.usermodel.XSLFSlide slide = ppt.createSlide();
+                    XSLFSlide slide = ppt.createSlide();
                     slide.importContent(ppt.getSlides().get(tplIdx));
 
                     clearTemplateTag(slide);
@@ -485,13 +502,13 @@ public class AssemblePptxUseCase {
                 } else {
                     // Custom Template Injection (Generic layout)
                     int tplIdx = originalSlideCount > 2 ? 2 : (originalSlideCount > 1 ? 1 : 0);
-                    org.apache.poi.xslf.usermodel.XSLFSlide slide = ppt.createSlide();
+                    XSLFSlide slide = ppt.createSlide();
                     slide.importContent(ppt.getSlides().get(tplIdx));
 
                     boolean bodyInjected = false;
-                    for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
-                        if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
-                            if (ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.TITLE || ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.CENTERED_TITLE) {
+                    for (XSLFShape shape : slide.getShapes()) {
+                        if (shape instanceof XSLFTextShape ts) {
+                            if (ts.getTextType() == Placeholder.TITLE || ts.getTextType() == Placeholder.CENTERED_TITLE) {
                                 boolean isActivity = layout != null && (layout.startsWith("activity_") || layout.equals("live_poll"));
                                 String titleText = slideTitle != null ? slideTitle : "";
                                 if (isActivity) {
@@ -501,20 +518,20 @@ public class AssemblePptxUseCase {
                                     else if (pollQ != null && !pollQ.isBlank()) titleText = pollQ;
                                 }
                                 safeSetText(ts, titleText);
-                            } else if (ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.SUBTITLE) {
+                            } else if (ts.getTextType() == Placeholder.SUBTITLE) {
                                 boolean isActivity = layout != null && (layout.startsWith("activity_") || layout.equals("live_poll"));
                                 String subText = slideSubtitle != null ? slideSubtitle : "";
                                 if (isActivity && slideTitle != null) {
                                     subText = slideTitle;
                                 }
                                 safeSetText(ts, subText);
-                            } else if (ts.getTextType() == org.apache.poi.sl.usermodel.Placeholder.BODY && !bodyInjected) {
-                                java.util.List<String> bodyLines = synthesizeGenericBody(slideData, layout);
+                            } else if (ts.getTextType() == Placeholder.BODY && !bodyInjected) {
+                                List<String> bodyLines = synthesizeGenericBody(slideData, layout);
                                 if (bodyLines != null && !bodyLines.isEmpty()) {
                                     ts.clearText();
                                     for (String line : bodyLines) {
-                                        org.apache.poi.xslf.usermodel.XSLFTextParagraph p = ts.addNewTextParagraph();
-                                        org.apache.poi.xslf.usermodel.XSLFTextRun r = p.addNewTextRun();
+                                        XSLFTextParagraph p = ts.addNewTextParagraph();
+                                        XSLFTextRun r = p.addNewTextRun();
                                         r.setText(line);
                                     }
                                     bodyInjected = true;
@@ -533,7 +550,7 @@ public class AssemblePptxUseCase {
             }
 
 
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
             ppt.write(out);
             return out.toByteArray();
         }
@@ -564,7 +581,7 @@ public class AssemblePptxUseCase {
      */
     @SuppressWarnings("unchecked")
     private List<String> synthesizeGenericBody(Map<String, Object> slideData, String layout) {
-        List<String> lines = new java.util.ArrayList<>();
+        List<String> lines = new ArrayList<>();
         boolean isActivity = layout != null && (layout.startsWith("activity_") || layout.equals("live_poll"));
         
         List<String> bullets = (List<String>) slideData.get("bullets");
@@ -604,11 +621,11 @@ public class AssemblePptxUseCase {
 
     @SuppressWarnings("unchecked")
     /** One numbered row of the agenda slide: background box, number circle, number and goal text. */
-    private record AgendaRow(org.apache.poi.xslf.usermodel.XSLFShape box,
-                             org.apache.poi.xslf.usermodel.XSLFShape circle,
+    private record AgendaRow(XSLFShape box,
+                             XSLFShape circle,
                              XSLFTextShape number,
                              XSLFTextShape goal,
-                             List<org.apache.poi.xslf.usermodel.XSLFShape> members) {}
+                             List<XSLFShape> members) {}
 
     /**
      * Gives the agenda slide one row per learning goal: rows beyond the number of goals are
@@ -623,7 +640,7 @@ public class AssemblePptxUseCase {
         if (rows.isEmpty()) return false;
         try {
             // Template leftovers inside a row (e.g. a hidden second number) are dropped
-            java.util.Set<org.apache.poi.xslf.usermodel.XSLFShape> removed = new java.util.HashSet<>();
+            Set<XSLFShape> removed = new HashSet<>();
             for (AgendaRow row : rows) {
                 for (var m : row.members()) {
                     if (m != row.box() && m != row.circle() && m != row.number() && m != row.goal() && removed.add(m)) {
@@ -634,8 +651,8 @@ public class AssemblePptxUseCase {
 
             int count = goals.size();
             int templateRows = rows.size();
-            java.awt.geom.Rectangle2D firstBox = rows.get(0).box().getAnchor();
-            java.awt.geom.Rectangle2D lastBox = rows.get(templateRows - 1).box().getAnchor();
+            Rectangle2D firstBox = rows.get(0).box().getAnchor();
+            Rectangle2D lastBox = rows.get(templateRows - 1).box().getAnchor();
             double top = firstBox.getY();
             double bottom = lastBox.getY() + lastBox.getHeight();
             double rowHeight = firstBox.getHeight();
@@ -659,7 +676,7 @@ public class AssemblePptxUseCase {
             }
             if (count > templateRows) {
                 var spTree = slide.getXmlObject().getCSld().getSpTree();
-                long nextId = slide.getShapes().stream().mapToLong(org.apache.poi.xslf.usermodel.XSLFShape::getShapeId).max().orElse(100) + 1;
+                long nextId = slide.getShapes().stream().mapToLong(XSLFShape::getShapeId).max().orElse(100) + 1;
                 var source = rowXml.get(rowXml.size() - 1);
                 for (int i = templateRows; i < count; i++) {
                     var copy = new org.openxmlformats.schemas.presentationml.x2006.main.CTShape[source.length];
@@ -677,8 +694,8 @@ public class AssemblePptxUseCase {
             }
 
             AgendaRow template = rows.get(0);
-            java.awt.geom.Rectangle2D circle = template.circle().getAnchor();
-            java.awt.geom.Rectangle2D goalBox = template.goal().getAnchor();
+            Rectangle2D circle = template.circle().getAnchor();
+            Rectangle2D goalBox = template.goal().getAnchor();
             double circleSize = Math.min(circle.getHeight(), rowHeight - 8);
             double numberSize = fontSizeOf(template.number(), 14) * circleSize / circle.getHeight();
             double goalPad = 4;
@@ -717,13 +734,13 @@ public class AssemblePptxUseCase {
         for (var s : slide.getShapes()) {
             if (s instanceof XSLFTextShape ts && ts.getText().contains("[Learning Goal") && ts.getAnchor() != null) goalShapes.add(ts);
         }
-        goalShapes.sort(java.util.Comparator.comparingDouble(s -> s.getAnchor().getY()));
+        goalShapes.sort(Comparator.comparingDouble(s -> s.getAnchor().getY()));
 
         for (int i = 0; i < goalShapes.size(); i++) {
             XSLFTextShape goal = goalShapes.get(i);
-            java.awt.geom.Rectangle2D g = goal.getAnchor();
+            Rectangle2D g = goal.getAnchor();
             // The row's background box: an empty shape that contains the goal text's top-left corner
-            org.apache.poi.xslf.usermodel.XSLFShape box = null;
+            XSLFShape box = null;
             for (var s : slide.getShapes()) {
                 var a = s.getAnchor();
                 if (a == null || s == goal || hasText(s) || a.getHeight() > 200) continue;
@@ -733,8 +750,8 @@ public class AssemblePptxUseCase {
                 }
             }
             if (box == null) return List.of();
-            java.awt.geom.Rectangle2D b = box.getAnchor();
-            List<org.apache.poi.xslf.usermodel.XSLFShape> members = new ArrayList<>();
+            Rectangle2D b = box.getAnchor();
+            List<XSLFShape> members = new ArrayList<>();
             for (var s : slide.getShapes()) {
                 var a = s.getAnchor();
                 if (a != null && a.getX() >= b.getX() - 2 && a.getY() >= b.getY() - 2
@@ -744,7 +761,7 @@ public class AssemblePptxUseCase {
             }
             String expected = String.valueOf(i + 1);
             XSLFTextShape number = null;
-            org.apache.poi.xslf.usermodel.XSLFShape circle = null;
+            XSLFShape circle = null;
             for (var m : members) {
                 if (m instanceof XSLFTextShape ts && ts.getText().trim().equals(expected) && number == null) number = ts;
             }
@@ -759,11 +776,11 @@ public class AssemblePptxUseCase {
         return rows;
     }
 
-    private static boolean hasText(org.apache.poi.xslf.usermodel.XSLFShape s) {
+    private static boolean hasText(XSLFShape s) {
         return s instanceof XSLFTextShape ts && !ts.getText().isBlank();
     }
 
-    private static org.openxmlformats.schemas.presentationml.x2006.main.CTShape ctShape(org.apache.poi.xslf.usermodel.XSLFShape s) {
+    private static org.openxmlformats.schemas.presentationml.x2006.main.CTShape ctShape(XSLFShape s) {
         return (org.openxmlformats.schemas.presentationml.x2006.main.CTShape) s.getXmlObject();
     }
 
@@ -809,7 +826,7 @@ public class AssemblePptxUseCase {
         }
     }
 
-    private void populateSlideBody(org.apache.poi.xslf.usermodel.XSLFSlide slide,
+    private void populateSlideBody(XSLFSlide slide,
                                    Map<String, Object> slideData, String layout) {
         if (layout == null) layout = "default";
 
@@ -991,9 +1008,9 @@ public class AssemblePptxUseCase {
      * corner of every template slide for design reference. On exported slides this
      * label should not be visible.
      */
-    private void clearTemplateTag(org.apache.poi.xslf.usermodel.XSLFSlide slide) {
-        for (org.apache.poi.xslf.usermodel.XSLFShape shape : slide.getShapes()) {
-            if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape ts) {
+    private void clearTemplateTag(XSLFSlide slide) {
+        for (XSLFShape shape : slide.getShapes()) {
+            if (shape instanceof XSLFTextShape ts) {
                 String text = ts.getText();
                 if (text != null && text.contains("TEMPLATE")) {
                     try {

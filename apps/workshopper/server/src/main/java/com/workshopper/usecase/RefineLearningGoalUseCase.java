@@ -6,6 +6,8 @@ import com.workshopper.service.LlmService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Collections;
+import java.util.Map;
 
 @Component
 public class RefineLearningGoalUseCase {
@@ -17,12 +19,12 @@ public class RefineLearningGoalUseCase {
     }
 
     public List<GoalSuggestionDto> execute(RefineGoalRequestDto request) throws Exception {
-        var ctx = request.context() != null ? request.context() : java.util.Map.of();
+        var ctx = request.context() != null ? request.context() : Map.of();
         String sessionType = ctx.getOrDefault("sessionType", "workshop").toString();
         String background = ctx.getOrDefault("studentBackground", "").toString();
 
         @SuppressWarnings("unchecked")
-        java.util.List<String> subSkills = (java.util.List<String>) ctx.getOrDefault("subSkills", java.util.Collections.emptyList());
+        List<String> subSkills = (List<String>) ctx.getOrDefault("subSkills", Collections.emptyList());
         String subSkillsContext = "";
         if (!subSkills.isEmpty()) {
             subSkillsContext = "\nAdditionally, this goal is supported by the following granular sub-skills:\n- " 

@@ -42,4 +42,4 @@ If the client sends `availableMaterials`, ensure it isn't silently dropped by th
 ### 4. Auth Bypass Awareness
 Local development and the VPN-only `hestia-test` VM use the `local` Spring profile, which activates `DevAuthFilter` and signs every request in as `dev-local-user` (SAML access exists only for production). There is no default profile; `local` must be chosen explicitly and never be active in production.
 - NEVER attempt to disable CSRF globally or write manual `catch (AccessDeniedException e)` blocks to fix auth issues.
-- Rely on the global `@ExceptionHandler` and the existing SAML 401 redirect logic in `api.ts`.
+- Rely on `ApiExceptionHandler` (403/404/409/500 for every controller) and the existing SAML 401 redirect logic in `api.ts`. Controllers need no `try`/`catch`; let exceptions propagate.

@@ -16,14 +16,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.HashMap;
 
 @Component
 public class GenerateSlideBlockUseCase {
     private static final Logger log = LoggerFactory.getLogger(GenerateSlideBlockUseCase.class);
     private final LlmService llm;
 
-    private static final Map<String, List<String>> FIXED_INSTRUCTIONS = new java.util.HashMap<>();
-    private static final Map<String, String> FIXED_INSTRUCTION_TITLES = new java.util.HashMap<>();
+    private static final Map<String, List<String>> FIXED_INSTRUCTIONS = new HashMap<>();
+    private static final Map<String, String> FIXED_INSTRUCTION_TITLES = new HashMap<>();
     static {
         addFixedInstruction("groupdiscussion", "Group Discussion", List.of(
             "Form groups and briefly introduce your perspectives",
@@ -101,13 +102,13 @@ public class GenerateSlideBlockUseCase {
     }
 
     private List<Map<String, Object>> generateBreakSlides(ActivityBlockDto block) {
-        Map<String, Object> breakSlide = new java.util.LinkedHashMap<>();
+        Map<String, Object> breakSlide = new LinkedHashMap<>();
         breakSlide.put("layout", "break");
         breakSlide.put("title", block.phaseLabel() != null ? block.phaseLabel() : "Break");
         breakSlide.put("subtitle", "Rest and Recharge");
-        breakSlide.put("bullets", java.util.List.of("We will resume in " + block.duration() + " minutes."));
+        breakSlide.put("bullets", List.of("We will resume in " + block.duration() + " minutes."));
         breakSlide.put("group", "break");
-        return java.util.List.of(breakSlide);
+        return List.of(breakSlide);
     }
 
     // ── Group 2 + 3: Welcome (LLM) + Agenda (pure Java) ─────────────────────
@@ -671,12 +672,12 @@ public class GenerateSlideBlockUseCase {
     private String coerceToString(Object value) {
         if (value == null) return null;
         if (value instanceof String s) return s;
-        if (value instanceof java.util.List<?> list) {
+        if (value instanceof List<?> list) {
             // Join list items into a newline-separated string
             return list.stream()
                     .map(item -> item == null ? "" : coerceToString(item))
                     .filter(s -> !s.isBlank())
-                    .collect(java.util.stream.Collectors.joining("\n"));
+                    .collect(Collectors.joining("\n"));
         }
         if (value instanceof Map<?, ?> map) {
             // Priority 1: single-string shortcut keys the LLM commonly uses
@@ -730,13 +731,13 @@ public class GenerateSlideBlockUseCase {
         // activityInstructions and pollOptions must be List<String>
         for (String field : new String[]{"activityInstructions", "pollOptions", "bullets", "commonMisconceptions"}) {
             Object v = slide.get(field);
-            if (v instanceof java.util.List<?> list) {
+            if (v instanceof List<?> list) {
                 slide.put(field, list.stream()
                         .map(item -> item == null ? "" : (item instanceof String s ? s : coerceToString(item)))
-                        .collect(java.util.stream.Collectors.toList()));
-            } else if (v != null && !(v instanceof java.util.List<?>)) {
+                        .collect(Collectors.toList()));
+            } else if (v != null && !(v instanceof List<?>)) {
                 // Scalar where a list was expected — wrap it
-                slide.put(field, java.util.List.of(coerceToString(v)));
+                slide.put(field, List.of(coerceToString(v)));
             }
         }
         return slide;

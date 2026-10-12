@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import org.apache.poi.sl.usermodel.PaintStyle;
 
 /**
  * Applies the branding of an uploaded (e.g. university) template to a deck built from the
@@ -231,7 +232,7 @@ final class TemplateBranding {
             run.setBold(sourceRun.isBold());
             run.setItalic(sourceRun.isItalic());
             var color = sourceRun.getFontColor();
-            if (color instanceof org.apache.poi.sl.usermodel.PaintStyle.SolidPaint solid && solid.getSolidColor().getColor() != null) {
+            if (color instanceof PaintStyle.SolidPaint solid && solid.getSolidColor().getColor() != null) {
                 run.setFontColor(solid.getSolidColor().getColor());
             }
         }

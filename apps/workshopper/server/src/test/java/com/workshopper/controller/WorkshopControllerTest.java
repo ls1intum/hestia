@@ -204,6 +204,30 @@ class WorkshopControllerTest {
                     .content("{}"))
                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
         }
+
+        @Test
+        @DisplayName("returns 409 when a generation for the session is already running")
+        void returns409WhenLocked() throws Exception {
+            when(facade.generateAndSaveSession(any()))
+                .thenThrow(new com.workshopper.exception.SessionLockedException("already running"));
+
+            mvc.perform(post("/api/workshop/session")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.error").value("already running"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/workshop/export/course/{id}/zip returns 404 for an unknown course")
+    void courseZipUnknownCourseReturns404() throws Exception {
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND, "Course not found"))
+            .when(facade).verifyCourseOwnership("nope");
+
+        mvc.perform(get("/api/workshop/export/course/nope/zip"))
+            .andExpect(status().isNotFound());
     }
 
 }

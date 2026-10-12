@@ -17,6 +17,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.awt.Color;
 
 @Service
 public class PdfExportService {
@@ -125,7 +126,7 @@ public class PdfExportService {
                 renderer.addSpace(10);
             }
 
-            renderer.drawLine(java.awt.Color.LIGHT_GRAY, 1f);
+            renderer.drawLine(Color.LIGHT_GRAY, 1f);
             renderer.close();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             document.save(out);
@@ -133,15 +134,15 @@ public class PdfExportService {
         }
     }
 
-    private java.awt.Color getPhaseColor(String phase) {
-        if (phase == null) return java.awt.Color.GRAY;
+    private Color getPhaseColor(String phase) {
+        if (phase == null) return Color.GRAY;
         return switch (phase.toUpperCase()) {
-            case "ARRIVE", "INFORM" -> new java.awt.Color(59, 130, 246); // blue-500
-            case "ACTIVATE", "PROCESS" -> new java.awt.Color(245, 158, 11); // amber-500
-            case "EVALUATE", "LEARNING_CYCLE" -> new java.awt.Color(168, 85, 247); // purple-500
-            case "SUMMARY" -> new java.awt.Color(16, 185, 129); // emerald-500
-            case "BREAK" -> new java.awt.Color(100, 116, 139); // slate-500
-            default -> java.awt.Color.GRAY;
+            case "ARRIVE", "INFORM" -> new Color(59, 130, 246); // blue-500
+            case "ACTIVATE", "PROCESS" -> new Color(245, 158, 11); // amber-500
+            case "EVALUATE", "LEARNING_CYCLE" -> new Color(168, 85, 247); // purple-500
+            case "SUMMARY" -> new Color(16, 185, 129); // emerald-500
+            case "BREAK" -> new Color(100, 116, 139); // slate-500
+            default -> Color.GRAY;
         };
     }
 
@@ -171,18 +172,18 @@ public class PdfExportService {
         }
 
         public void addText(String text, float fontSize, boolean isBold) throws IOException {
-            addText(text, fontSize, isBold, 0, java.awt.Color.BLACK);
+            addText(text, fontSize, isBold, 0, Color.BLACK);
         }
 
         public void addText(String text, float fontSize, boolean isBold, float indent) throws IOException {
-            addText(text, fontSize, isBold, indent, java.awt.Color.BLACK);
+            addText(text, fontSize, isBold, indent, Color.BLACK);
         }
 
-        public void addText(String text, float fontSize, boolean isBold, java.awt.Color color) throws IOException {
+        public void addText(String text, float fontSize, boolean isBold, Color color) throws IOException {
             addText(text, fontSize, isBold, 0, color);
         }
 
-        public void addText(String text, float fontSize, boolean isBold, float indent, java.awt.Color color) throws IOException {
+        public void addText(String text, float fontSize, boolean isBold, float indent, Color color) throws IOException {
             if (text == null || text.isBlank()) return;
             PDType1Font font = isBold ? fontBold : fontNormal;
             
@@ -200,7 +201,7 @@ public class PdfExportService {
                 contentStream.newLineAtOffset(margin + indent, currentY);
                 contentStream.showText(line);
                 contentStream.endText();
-                contentStream.setNonStrokingColor(java.awt.Color.BLACK);
+                contentStream.setNonStrokingColor(Color.BLACK);
                 currentY -= (fontSize + 4);
             }
         }
@@ -238,7 +239,7 @@ public class PdfExportService {
             contentStream.setStrokingColor(0f, 0f, 0f); // reset
         }
 
-        public void drawLine(java.awt.Color color, float widthModifier) throws IOException {
+        public void drawLine(Color color, float widthModifier) throws IOException {
             checkPageBreak(10);
             contentStream.setLineWidth(widthModifier);
             contentStream.setStrokingColor(color);

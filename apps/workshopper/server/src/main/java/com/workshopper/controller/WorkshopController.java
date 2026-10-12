@@ -1,5 +1,8 @@
 package com.workshopper.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workshopper.config.AuthContext;
 import com.workshopper.dto.*;
 import com.workshopper.facade.WorkshopSessionFacade;
 import com.workshopper.service.PdfExportService;
@@ -7,481 +10,279 @@ import com.workshopper.service.WorkshopService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Sessions, generation and exports. Errors are turned into HTTP answers by {@link ApiExceptionHandler};
+ * every endpoint that takes a session or course id checks ownership first.
+ */
 @RestController
 @RequestMapping("/api/workshop")
 public class WorkshopController {
 
-    @PostMapping("/courses/{id}/template")
-    public ResponseEntity<?> uploadCourseTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
-        try {
-            facade.verifyCourseOwnership(id);
-            service.saveCourseTemplate(id, template.getBytes(), template.getOriginalFilename());
-            return ResponseEntity.ok().build();
-        } catch (org.springframework.security.access.AccessDeniedException
-                 | org.springframework.web.server.ResponseStatusException e) { throw e; } catch (Exception e) {
-            log.error("Course template upload failed", e);
-            return ResponseEntity.internalServerError().body(java.util.Map.of("error", "Upload failed: " + e.getMessage()));
-        }
-    }
-
-
-    /** DELETE /api/workshop/courses/{id}/template — remove the course's slide template. */
-    @DeleteMapping("/courses/{id}/template")
-    public ResponseEntity<?> deleteCourseTemplate(@PathVariable String id) {
-        facade.verifyCourseOwnership(id);
-        service.deleteCourseTemplate(id);
-        return ResponseEntity.noContent().build();
-    }
-
     private static final Logger log = LoggerFactory.getLogger(WorkshopController.class);
+    private static final MediaType PPTX =
+            MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    private static final String DEFAULT_TEMPLATE = "templates/workshopper-default.pptx";
 
     private final WorkshopService service;
     private final PdfExportService pdfService;
     private final WorkshopSessionFacade facade;
+    private final ObjectMapper mapper = new ObjectMapper();
+
     public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade) {
         this.service = service;
         this.pdfService = pdfService;
         this.facade = facade;
     }
 
-    
-    private boolean hasCustomTemplate(String sessionId) {
-        return sessionId != null && service.getTemplate(sessionId) != null;
+    // ── Generation ──────────────────────────────────────────────────────────
+
+    /** Generates the timetable (or a single block of it) from the goals and the client-built skeleton. */
+    @PostMapping("/session")
+    public WorkshopSessionDto generateSession(@RequestBody GenerateSessionRequestDto request) throws Exception {
+        return facade.generateAndSaveSession(request);
     }
 
-    private java.io.InputStream getTemplateStream(String sessionId) {
+    /** Generates the slides of one block (preview in the slide workstation). */
+    @PostMapping("/export/block-slides")
+    public List<Map<String, Object>> exportBlockSlides(@RequestBody BlockSlidesRequestDto request) throws Exception {
+        return facade.generateBlockSlides(request.block(), request.meta(), request.goals());
+    }
 
-        byte[] templateData = (sessionId != null) ? service.getTemplate(sessionId) : null;
-        if (templateData != null) {
-            return new java.io.ByteArrayInputStream(templateData);
-        }
+    /** Checks one learning goal; returns suggestions to split or refine it (empty if it looks fine). */
+    @PostMapping("/refine-goal")
+    public List<GoalSuggestionDto> refineGoal(@RequestBody RefineGoalRequestDto request) throws Exception {
+        return facade.refineGoal(request);
+    }
+
+    /** Fixes grammar and typos in the goals without changing their meaning. */
+    @PostMapping("/fix-goals-grammar")
+    public List<String> fixGoalsGrammar(@RequestBody List<String> goals) {
         try {
-            return new org.springframework.core.io.ClassPathResource("templates/workshopper-default.pptx").getInputStream();
-        } catch (java.io.IOException e) {
+            return facade.fixGoalsGrammar(goals);
+        } catch (Exception e) {
+            // Optional polish: if the LLM call fails, the wizard continues with the goals as entered
+            log.warn("Grammar fix failed, returning the original goals: {}", e.getMessage());
+            return goals;
+        }
+    }
+
+    // ── Exports ─────────────────────────────────────────────────────────────
+
+    /** Renders the session timetable as a PDF (no LLM call). */
+    @PostMapping(value = "/export/pdf", produces = "application/pdf")
+    public ResponseEntity<Resource> exportPdf(@RequestBody PdfExportRequestDto request) throws Exception {
+        return file(pdfService.exportToPdf(request), "session.pdf", MediaType.APPLICATION_PDF);
+    }
+
+    /** Generates the slide deck with the LLM, in the session's effective template. */
+    @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) throws Exception {
+        return file(buildDeck(request.session(), request.meta(), null, null), "slides.pptx", PPTX);
+    }
+
+    /** Builds the slide deck from slides that were already generated (no LLM call). */
+    @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) throws Exception {
+        return file(buildDeck(request.session(), request.meta(), request.prebuiltSlides(), null), "slides.pptx", PPTX);
+    }
+
+    /**
+     * Builds the slide deck from the given slides, in an uploaded template if one is sent,
+     * otherwise in the template stored for the session (or its course).
+     */
+    @PostMapping(value = "/export/pptx-with-template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Resource> exportPptxWithTemplate(
+            @RequestParam("session") String sessionJson,
+            @RequestParam("meta") String metaJson,
+            @RequestParam(value = "slides", required = false) String slidesJson,
+            @RequestPart(value = "template", required = false) MultipartFile template) throws Exception {
+        WorkshopSessionDto session = mapper.readValue(sessionJson, WorkshopSessionDto.class);
+        WorkshopInputDto meta = mapper.readValue(metaJson, WorkshopInputDto.class);
+        List<Map<String, Object>> slides = slidesJson == null || slidesJson.isBlank() ? null
+                : mapper.readValue(slidesJson, new TypeReference<List<Map<String, Object>>>() {});
+        byte[] pptx = buildDeck(session, meta, slides, template != null && !template.isEmpty() ? template : null);
+        String safeTitle = (session.title() != null ? session.title() : "Workshop").replaceAll("[^a-zA-Z0-9.-]", "_");
+        return file(pptx, safeTitle + "_slides.pptx", PPTX);
+    }
+
+    /** All finished sessions of a course as one ZIP of PDFs and PPTXs. */
+    @GetMapping(value = "/export/course/{id}/zip", produces = "application/zip")
+    public ResponseEntity<Resource> exportCourseZip(@PathVariable String id) throws Exception {
+        facade.verifyCourseOwnership(id);
+        return file(facade.exportCourseZip(id), "course-materials.zip", MediaType.parseMediaType("application/zip"));
+    }
+
+    // ── Sessions ────────────────────────────────────────────────────────────
+
+    /** Lists the user's sessions (summaries, no blocks). */
+    @GetMapping("/sessions")
+    public List<SessionSummaryDto> listSessions() {
+        return service.listSessions(AuthContext.getCurrentUserId());
+    }
+
+    /** The full session including its draft state, for resuming it. */
+    @GetMapping("/sessions/{id}")
+    public ResponseEntity<SessionDetailDto> getSession(@PathVariable String id) {
+        facade.verifyOwnership(id);
+        return ResponseEntity.of(service.getSession(id));
+    }
+
+    /** Creates or updates a draft (called while the user moves through the wizard); returns {"id": ...}. */
+    @PostMapping("/sessions/draft")
+    public Map<String, String> saveDraft(@RequestBody SaveDraftRequestDto request) {
+        if (request.sessionId() != null && !request.sessionId().isBlank()) {
+            facade.verifyOwnership(request.sessionId());
+        }
+        if (request.courseId() != null && !request.courseId().isBlank()) {
+            facade.verifyCourseOwnership(request.courseId());
+        }
+        return Map.of("id", service.saveDraft(request, AuthContext.getCurrentUserId()));
+    }
+
+    /** Saves the generated slides of a session, keyed by block index. */
+    @PostMapping("/sessions/{id}/slides")
+    public Map<String, Boolean> saveSlides(@PathVariable String id,
+                                           @RequestBody Map<Integer, List<Map<String, Object>>> slidesCache) throws Exception {
+        facade.verifyOwnership(id);
+        service.saveSlides(id, slidesCache);
+        return Map.of("success", true);
+    }
+
+    /** Marks a session as finished. */
+    @PutMapping("/sessions/{id}/finish")
+    public Map<String, Boolean> finishSession(@PathVariable String id) {
+        facade.verifyOwnership(id);
+        service.finishSession(id);
+        return Map.of("success", true);
+    }
+
+    @PutMapping("/sessions/{id}/rename")
+    public ResponseEntity<Map<String, Object>> renameSession(@PathVariable String id, @RequestBody Map<String, String> body) {
+        facade.verifyOwnership(id);
+        String newTitle = body.get("title");
+        if (newTitle == null || newTitle.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Title is required"));
+        }
+        service.renameSession(id, newTitle);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    /** Saves the dashboard order of the given sessions. */
+    @PutMapping("/sessions/reorder")
+    public Map<String, Boolean> reorderSessions(@RequestBody List<String> sessionIds) {
+        sessionIds.forEach(facade::verifyOwnership);
+        service.reorderSessions(sessionIds);
+        return Map.of("success", true);
+    }
+
+    /** Moves a session into a course ({"courseId": "..."}), or back to the top level with an empty courseId. */
+    @PutMapping("/sessions/{id}/move")
+    public Map<String, Boolean> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
+        facade.verifyOwnership(id);
+        String courseId = body.get("courseId");
+        if (courseId != null && courseId.isBlank()) {
+            courseId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
+        }
+        if (courseId != null) {
+            facade.verifyCourseOwnership(courseId);
+        }
+        service.moveSession(id, courseId);
+        return Map.of("success", true);
+    }
+
+    @DeleteMapping("/sessions/{id}")
+    public ResponseEntity<Void> deleteSession(@PathVariable String id) {
+        facade.verifyOwnership(id);
+        service.deleteSession(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── Slide templates ─────────────────────────────────────────────────────
+
+    @PostMapping(value = "/sessions/{id}/template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Boolean> uploadTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
+        facade.verifyOwnership(id);
+        service.saveTemplate(id, template.getBytes(), template.getOriginalFilename());
+        return Map.of("success", true);
+    }
+
+    /** Removes the template from this session only (its own upload, and inheriting the course template). */
+    @DeleteMapping("/sessions/{id}/template")
+    public Map<String, Boolean> deleteTemplate(@PathVariable String id) {
+        facade.verifyOwnership(id);
+        service.deleteTemplate(id);
+        return Map.of("success", true);
+    }
+
+    @PostMapping("/courses/{id}/template")
+    public ResponseEntity<Void> uploadCourseTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
+        facade.verifyCourseOwnership(id);
+        service.saveCourseTemplate(id, template.getBytes(), template.getOriginalFilename());
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/courses/{id}/template")
+    public ResponseEntity<Void> deleteCourseTemplate(@PathVariable String id) {
+        facade.verifyCourseOwnership(id);
+        service.deleteCourseTemplate(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Simple health check; the only endpoint that needs no login. */
+    @GetMapping("/health")
+    public String health() {
+        return "OK";
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds the PPTX for a session. Uses the uploaded template if given, otherwise the session's
+     * effective template (own upload, then course template), otherwise the default design.
+     * Slides are generated with the LLM when {@code prebuiltSlides} is null.
+     */
+    private byte[] buildDeck(WorkshopSessionDto session, WorkshopInputDto meta,
+                             List<Map<String, Object>> prebuiltSlides, MultipartFile uploadedTemplate) throws Exception {
+        String sessionId = session != null ? session.id() : null;
+        if (sessionId != null) {
+            facade.verifyOwnership(sessionId);
+        }
+        if (uploadedTemplate != null) {
+            return facade.assemblePptx(session, meta, prebuiltSlides, uploadedTemplate.getInputStream(), true);
+        }
+        byte[] stored = sessionId != null ? service.getTemplate(sessionId) : null;
+        InputStream template = stored != null ? new ByteArrayInputStream(stored) : defaultTemplate();
+        return facade.assemblePptx(session, meta, prebuiltSlides, template, stored != null);
+    }
+
+    private static InputStream defaultTemplate() {
+        try {
+            return new ClassPathResource(DEFAULT_TEMPLATE).getInputStream();
+        } catch (IOException e) {
             log.warn("Failed to load default template", e);
             return null;
         }
     }
 
-    /**
-     * POST /api/workshop/session
-     * Generates the timetable (or a single block of it) from the goals and the client-built skeleton.
-     */
-    @PostMapping("/session")
-    public ResponseEntity<?> generateSession(@RequestBody GenerateSessionRequestDto request) {
-        try {
-            WorkshopSessionDto session = facade.generateAndSaveSession(request);
-            return ResponseEntity.ok(session);
-        } catch (org.springframework.security.access.AccessDeniedException
-                 | com.workshopper.exception.SessionLockedException e) { throw e; } catch (Exception e) {
-            log.error("Session generation failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("error", "Session generation failed: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * POST /api/workshop/export/pdf
-     * Renders the session timetable as a PDF (PDFBox, no LLM call).
-     */
-    @PostMapping(value = "/export/pdf", produces = "application/pdf")
-    public ResponseEntity<Resource> exportPdf(@RequestBody PdfExportRequestDto request) {
-        try {
-            byte[] pdfBytes = pdfService.exportToPdf(request);
-            ByteArrayResource resource = new ByteArrayResource(pdfBytes);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"session.pdf\"")
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .contentLength(pdfBytes.length)
-                    .body(resource);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("PDF export failed", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
-     * POST /api/workshop/export/pptx
-     * Generates the slide deck (PPTX) for the session, using its effective template.
-     */
-    @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
-    public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
-        try {
-            if (request.session() != null && request.session().id() != null) {
-                facade.verifyOwnership(request.session().id());
-            }
-            java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            boolean isCustom = hasCustomTemplate(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = facade.assemblePptx(request.session(), request.meta(), null, templateStream, isCustom);
-            ByteArrayResource resource = new ByteArrayResource(pptxBytes);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
-                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
-                    .contentLength(pptxBytes.length)
-                    .body(resource);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("PPTX export failed", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
-     * POST /api/workshop/export/pptx-assemble
-     * Assembles a PPTX from pre-built slides (client cache) — no LLM call needed.
-     */
-    @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
-    public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) {
-        try {
-            if (request.session() != null && request.session().id() != null) {
-                facade.verifyOwnership(request.session().id());
-            }
-            java.io.InputStream templateStream = getTemplateStream(request.session() != null ? request.session().id() : null);
-            boolean isCustom = hasCustomTemplate(request.session() != null ? request.session().id() : null);
-            byte[] pptxBytes = facade.assemblePptx(request.session(), request.meta(), request.prebuiltSlides(), templateStream, isCustom);
-            ByteArrayResource resource = new ByteArrayResource(pptxBytes);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"slides.pptx\"")
-                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
-                    .contentLength(pptxBytes.length)
-                    .body(resource);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("PPTX assemble failed", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
-     * POST /api/workshop/export/block-slides
-     * Generates slide JSON for a single block (used for in-page preview + caching).
-     */
-    @PostMapping("/export/block-slides")
-    public ResponseEntity<?> exportBlockSlides(@RequestBody BlockSlidesRequestDto request) {
-        try {
-            List<Map<String, Object>> slides = facade.generateBlockSlides(request.block(), request.meta(), request.goals());
-            return ResponseEntity.ok(slides);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Block slides generation failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Block slides generation failed: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * POST /api/workshop/export/pptx-with-template
-     * Exports full session to PPTX, optionally using an uploaded PPTX template and cached slides.
-     */
-    @PostMapping(value = "/export/pptx-with-template", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Resource> exportPptxWithTemplate(
-            @org.springframework.web.bind.annotation.RequestParam("session") String sessionJson,
-            @org.springframework.web.bind.annotation.RequestParam("meta") String metaJson,
-            @org.springframework.web.bind.annotation.RequestParam(value = "slides", required = false) String slidesJson,
-            @org.springframework.web.bind.annotation.RequestPart(value = "template", required = false) org.springframework.web.multipart.MultipartFile template) {
-        try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.workshopper.dto.WorkshopSessionDto session = mapper.readValue(sessionJson, com.workshopper.dto.WorkshopSessionDto.class);
-            com.workshopper.dto.WorkshopInputDto meta = mapper.readValue(metaJson, com.workshopper.dto.WorkshopInputDto.class);
-            
-            if (session.id() != null) {
-                facade.verifyOwnership(session.id());
-            }
-
-            List<Map<String, Object>> prebuiltSlides = null;
-            if (slidesJson != null && !slidesJson.isBlank()) {
-                prebuiltSlides = mapper.readValue(slidesJson, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
-            }
-
-            java.io.InputStream templateStream = null;
-            boolean isCustom = false;
-            if (template != null && !template.isEmpty()) {
-                templateStream = template.getInputStream();
-                isCustom = true;
-            } else {
-                templateStream = getTemplateStream(session.id());
-                isCustom = hasCustomTemplate(session.id());
-            }
-
-            byte[] pptxBytes = facade.assemblePptx(session, meta, prebuiltSlides, templateStream, isCustom);
-            
-            org.springframework.core.io.ByteArrayResource resource = new org.springframework.core.io.ByteArrayResource(pptxBytes);
-            String safeTitle = (session.title() != null ? session.title() : "Workshop").replaceAll("[^a-zA-Z0-9.-]", "_");
-            
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeTitle + "_slides.pptx\"")
-                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))
-                    .contentLength(pptxBytes.length)
-                    .body(resource);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("PPTX template export failed", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
-     * GET /api/workshop/export/course/{id}/zip
-     * Export all child sessions of a course into a ZIP file containing their PDFs and PPTXs.
-     */
-    @GetMapping(value = "/export/course/{id}/zip", produces = "application/zip")
-    public ResponseEntity<Resource> exportCourseZip(@PathVariable String id) {
-        try {
-            facade.verifyOwnership(id);
-            byte[] zipBytes = facade.exportCourseZip(id);
-            ByteArrayResource resource = new ByteArrayResource(zipBytes);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"course-materials.zip\"")
-                    .contentType(MediaType.parseMediaType("application/zip"))
-                    .contentLength(zipBytes.length)
-                    .body(resource);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Course ZIP export failed", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
-     * POST /api/workshop/refine-goal
-     * Real-time feedback: given a single LG text, suggest refinements or splits.
-     * Returns a JSON array of GoalSuggestionDto objects (may be empty if the goal looks fine).
-     */
-    @PostMapping("/refine-goal")
-    public ResponseEntity<?> refineGoal(@RequestBody RefineGoalRequestDto request) {
-        try {
-            var suggestions = facade.refineGoal(request);
-            return ResponseEntity.ok(suggestions);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Goal refinement failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("error", "Refinement failed: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * POST /api/workshop/fix-goals-grammar
-     * Automatically fix grammar and obvious typos in learning goals without changing meaning.
-     */
-    @PostMapping("/fix-goals-grammar")
-    public ResponseEntity<?> fixGoalsGrammar(@RequestBody List<String> goals) {
-        try {
-            var fixed = facade.fixGoalsGrammar(goals);
-            return ResponseEntity.ok(fixed);
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.warn("Grammar fix failed, falling back to original goals. Error: {}", e.getMessage());
-            return ResponseEntity.ok(goals); // Fallback to original, return 200 to avoid scary console errors
-        }
-    }
-
-    /**
-     * POST /api/workshop/sessions/draft
-     * Create or update a draft session (called at each step transition).
-     * Returns {"id": "<session-id>"} so the client can store the id.
-     */
-    @PostMapping("/sessions/draft")
-    public ResponseEntity<?> saveDraft(@RequestBody SaveDraftRequestDto request) {
-        try {
-            // Also explicitly verify ownership if it's an existing session
-            if (request.sessionId() != null && !request.sessionId().isBlank()) {
-                facade.verifyOwnership(request.sessionId());
-            }
-            if (request.courseId() != null && !request.courseId().isBlank()) {
-                facade.verifyCourseOwnership(request.courseId());
-            }
-            String id = service.saveDraft(request, com.workshopper.config.AuthContext.getCurrentUserId());
-            return ResponseEntity.ok(Map.of("id", id));
-        } catch (org.springframework.security.access.AccessDeniedException
-                 | org.springframework.web.server.ResponseStatusException e) { throw e; } catch (Exception e) {
-            log.error("Draft save failed", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Draft save failed: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * GET /api/workshop/sessions/{id}
-     * Fetch full session detail including draft state for resumption.
-     */
-    @GetMapping("/sessions/{id}")
-    public ResponseEntity<?> getSession(@PathVariable String id) {
-        facade.verifyOwnership(id);
-        return service.getSession(id)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * GET /api/workshop/sessions
-     * List all sessions (lightweight summary, no full blocks payload).
-     */
-    @GetMapping("/sessions")
-    public ResponseEntity<List<SessionSummaryDto>> listSessions() {
-        return ResponseEntity.ok(service.listSessions(com.workshopper.config.AuthContext.getCurrentUserId()));
-    }
-
-    /**
-     * POST /api/workshop/sessions/{id}/slides
-     * Explicitly save the generated slide cache for a session.
-     */
-    @PostMapping("/sessions/{id}/slides")
-    public ResponseEntity<?> saveSlides(@PathVariable String id, @RequestBody Map<Integer, List<Map<String, Object>>> slidesCache) {
-        try {
-            facade.verifyOwnership(id);
-            service.saveSlides(id, slidesCache);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to save slides for session {}", id, e);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * POST /api/workshop/sessions/{id}/template
-     * Upload and save a PPTX template for the session.
-     */
-    @PostMapping(value = "/sessions/{id}/template", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> uploadTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
-        try {
-            facade.verifyOwnership(id);
-            service.saveTemplate(id, template.getBytes(), template.getOriginalFilename());
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to upload template for session {}", id, e);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * DELETE /api/workshop/sessions/{id}/template
-     * Remove the template from this session only (own upload, and inheriting the course template).
-     */
-    @DeleteMapping("/sessions/{id}/template")
-    public ResponseEntity<?> deleteTemplate(@PathVariable String id) {
-        try {
-            facade.verifyOwnership(id);
-            service.deleteTemplate(id);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to delete template for session {}", id, e);
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * Delete a session completely.
-     */
-    @DeleteMapping("/sessions/{id}")
-    public ResponseEntity<?> deleteSession(@PathVariable String id) {
-        try {
-            facade.verifyOwnership(id);
-            service.deleteSession(id);
-            return ResponseEntity.noContent().build();
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to delete session {}", id, e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to delete session: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * PUT /api/workshop/sessions/{id}/finish
-     * Mark a session as fully finished (user clicked Finish & Save on the Preparation step).
-     */
-    @PutMapping("/sessions/{id}/finish")
-    public ResponseEntity<?> finishSession(@PathVariable String id) {
-        try {
-            facade.verifyOwnership(id);
-            service.finishSession(id);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to finish session {}", id, e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to finish session: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * PUT /api/workshop/sessions/{id}/rename
-     * Rename a session.
-     */
-    @PutMapping("/sessions/{id}/rename")
-    public ResponseEntity<?> renameSession(@PathVariable String id, @RequestBody Map<String, String> body) {
-        try {
-            facade.verifyOwnership(id);
-            String newTitle = body.get("title");
-            if (newTitle == null || newTitle.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Title is required"));
-            }
-            service.renameSession(id, newTitle);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to rename session {}", id, e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to rename session: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * PUT /api/workshop/sessions/reorder
-     * Reorder sessions.
-     */
-    @PutMapping("/sessions/reorder")
-    public ResponseEntity<?> reorderSessions(@RequestBody java.util.List<String> sessionIds) {
-        try {
-            for (String sid : sessionIds) {
-                facade.verifyOwnership(sid);
-            }
-            service.reorderSessions(sessionIds);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to reorder sessions", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to reorder sessions: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * PUT /api/workshop/sessions/{id}/move
-     * Move a session into a course ({"courseId": "..."}), or back to the top level with an empty courseId.
-     */
-    @PutMapping("/sessions/{id}/move")
-    public ResponseEntity<?> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
-        try {
-            facade.verifyOwnership(id);
-            String courseId = body.get("courseId");
-            if (courseId != null && courseId.isBlank()) {
-                courseId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
-            }
-            if (courseId != null) {
-                facade.verifyCourseOwnership(courseId);
-            }
-            service.moveSession(id, courseId);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (org.springframework.security.access.AccessDeniedException
-                 | org.springframework.web.server.ResponseStatusException e) { throw e; } catch (Exception e) {
-            log.error("Failed to move session {}", id, e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to move session: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * GET /api/workshop/health
-     * Simple health check; the only endpoint that needs no login.
-     */
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("OK");
-    }
-
-    @org.springframework.web.bind.annotation.ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ResponseEntity<String> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
-        log.warn("Access denied: {}", ex.getMessage());
-        return ResponseEntity.status(403).body("Access Denied");
+    private static ResponseEntity<Resource> file(byte[] bytes, String fileName, MediaType type) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(type)
+                .contentLength(bytes.length)
+                .body(new ByteArrayResource(bytes));
     }
 }

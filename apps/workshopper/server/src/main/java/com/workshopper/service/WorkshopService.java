@@ -16,11 +16,19 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workshopper.repository.CourseRepository;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.Objects;
+import org.springframework.security.access.AccessDeniedException;
 
 @Service
 public class WorkshopService {
 
-    private final com.workshopper.repository.CourseRepository courseRepository;
+    private final CourseRepository courseRepository;
 
     private static final Logger log = LoggerFactory.getLogger(WorkshopService.class);
 
@@ -28,7 +36,7 @@ public class WorkshopService {
     private final SlideTemplateRepository templateRepo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopService(WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
+    public WorkshopService(WorkshopSessionRepository repo, CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
         this.repo = repo;
         this.courseRepository = courseRepository;
         this.templateRepo = templateRepo;
@@ -58,12 +66,12 @@ public class WorkshopService {
         if (req.draftStateJson() != null) {
             entity.setDraftStateJson(req.draftStateJson());
             try {
-                com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(req.draftStateJson());
+                JsonNode rootNode = mapper.readTree(req.draftStateJson());
                 if (rootNode.has("session") && !rootNode.get("session").isNull()) {
                     entity.setSessionJson(mapper.writeValueAsString(rootNode.get("session")));
                 }
                 // Also promote WorkshopInput scalars into real columns if present
-                com.fasterxml.jackson.databind.JsonNode inputNode = rootNode.get("workshopInput");
+                JsonNode inputNode = rootNode.get("workshopInput");
                 if (inputNode != null && !inputNode.isNull()) {
                     if (inputNode.has("duration")) entity.setDuration(inputNode.get("duration").asInt());
                     if (inputNode.has("participants")) entity.setParticipants(inputNode.get("participants").asInt());
@@ -84,7 +92,7 @@ public class WorkshopService {
         return repo.save(entity).getId();
     }
 
-    public void saveSlides(String id, java.util.Map<Integer, List<java.util.Map<String, Object>>> slidesCache)
+    public void saveSlides(String id, Map<Integer, List<Map<String, Object>>> slidesCache)
             throws Exception {
         WorkshopSessionEntity entity = repo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
@@ -110,7 +118,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
      * Removes the template from this session only: its own upload is deleted and it stops
      * inheriting the course template, so it uses the default design. The course template is untouched.
      */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteTemplate(String sessionId) {
         WorkshopSessionEntity entity = repo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
@@ -158,7 +166,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     }
 
     /** Removes a course's template; its sessions fall back to the default design (or their own template). */
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteCourseTemplate(String courseId) {
         CourseEntity course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
@@ -179,9 +187,9 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                     session = mapper.readValue(e.getSessionJson(), WorkshopSessionDto.class);
                     // Also parse slides cache if present
                     if (e.getSlidesJson() != null && !e.getSlidesJson().isBlank()) {
-                        java.util.Map<Integer, List<java.util.Map<String, Object>>> slides = mapper.readValue(
+                        Map<Integer, List<Map<String, Object>>> slides = mapper.readValue(
                                 e.getSlidesJson(),
-                                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<Integer, List<java.util.Map<String, Object>>>>() {
+                                new TypeReference<Map<Integer, List<Map<String, Object>>>>() {
                                 });
                         session = new WorkshopSessionDto(
                                 session.id(), session.title(), session.studentBackground(),
@@ -253,7 +261,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     /** Move a session to a course. */
     public void moveSession(String id, String courseId) {
         repo.findById(id).ifPresent(entity -> {
-            if (!java.util.Objects.equals(entity.getCourseId(), courseId)) {
+            if (!Objects.equals(entity.getCourseId(), courseId)) {
                 entity.setUseDefaultTemplate(false); // a session moved to another course inherits its template
             }
             entity.setCourseId(courseId);
@@ -263,8 +271,8 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     }
 
     /** Reorder sessions. */
-    @org.springframework.transaction.annotation.Transactional
-    public void reorderSessions(java.util.List<String> sessionIds) {
+    @Transactional
+    public void reorderSessions(List<String> sessionIds) {
         for (int i = 0; i < sessionIds.size(); i++) {
             int order = i;
             repo.findById(sessionIds.get(i)).ifPresent(entity -> {
@@ -282,9 +290,9 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
             // Update title inside sessionJson if it exists
             if (entity.getSessionJson() != null && !entity.getSessionJson().isBlank()) {
                 try {
-                    com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(entity.getSessionJson());
+                    JsonNode rootNode = mapper.readTree(entity.getSessionJson());
                     if (rootNode.isObject()) {
-                        ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode).put("title", newTitle);
+                        ((ObjectNode) rootNode).put("title", newTitle);
                         entity.setSessionJson(mapper.writeValueAsString(rootNode));
                     }
                 } catch (Exception e) {
@@ -295,9 +303,9 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
             // Update title inside draftStateJson if it exists
             if (entity.getDraftStateJson() != null && !entity.getDraftStateJson().isBlank()) {
                 try {
-                    com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(entity.getDraftStateJson());
+                    JsonNode rootNode = mapper.readTree(entity.getDraftStateJson());
                     if (rootNode.isObject() && rootNode.has("session") && rootNode.get("session").isObject()) {
-                        ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode.get("session")).put("title", newTitle);
+                        ((ObjectNode) rootNode.get("session")).put("title", newTitle);
                         entity.setDraftStateJson(mapper.writeValueAsString(rootNode));
                     }
                 } catch (Exception e) {
@@ -315,7 +323,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         if (request.sessionId() != null && !request.sessionId().isBlank()) {
             course = courseRepository.findById(request.sessionId()).orElse(null);
             if (course != null && !course.getOwnerId().equals(ownerId)) {
-                throw new org.springframework.security.access.AccessDeniedException("Not authorized");
+                throw new AccessDeniedException("Not authorized");
             }
         }
         if (course == null) {
@@ -344,17 +352,46 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         return course.getId();
     }
 
+    /** The user's courses for the dashboard. */
+    public List<CourseSummaryDto> listCourses(String ownerId) {
+        return courseRepository.findByOwnerIdOrdered(ownerId).stream()
+                .map(c -> new CourseSummaryDto(
+                        c.getId(),
+                        c.getTitle(),
+                        c.getStatus(),
+                        c.getCurrentStep(),
+                        c.getCreatedAt(),
+                        c.getUpdatedAt()
+                )).toList();
+    }
+
+    /** A course with its draft state (settings) and template, in the same shape as a session detail. */
+    public Optional<SessionDetailDto> getCourse(String id) {
+        return courseRepository.findById(id).map(course -> new SessionDetailDto(
+                course.getId(),
+                course.getTitle(),
+                course.getStatus(),
+                course.getCurrentStep(),
+                null, // courseId
+                course.getDraftStateJson(),
+                course.getTemplateId() != null, // hasTemplate
+                course.getTemplateId() != null ? "COURSE" : null,
+                templateFileName(course.getTemplateId()),
+                null // session
+        ));
+    }
+
     /** @return false if the course does not exist */
     @Transactional
     public boolean deleteCourse(String id, String ownerId) {
         CourseEntity course = courseRepository.findById(id).orElse(null);
         if (course == null) return false;
         if (!course.getOwnerId().equals(ownerId)) {
-            throw new org.springframework.security.access.AccessDeniedException("Not authorized");
+            throw new AccessDeniedException("Not authorized");
         }
         // Collect templates owned by the course and its child sessions (child sessions are removed by
         // ON DELETE CASCADE, but their slide_templates rows would otherwise be orphaned).
-        java.util.List<String> templateIds = new java.util.ArrayList<>();
+        List<String> templateIds = new ArrayList<>();
         if (id.equals(course.getTemplateId())) templateIds.add(id);
         for (WorkshopSessionEntity child : repo.findAllByCourseIdOrdered(id)) {
             if (child.getId().equals(child.getTemplateId())) templateIds.add(child.getId());
@@ -371,16 +408,16 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         CourseEntity course = courseRepository.findById(id).orElse(null);
         if (course == null) return false;
         if (!course.getOwnerId().equals(ownerId)) {
-            throw new org.springframework.security.access.AccessDeniedException("Not authorized");
+            throw new AccessDeniedException("Not authorized");
         }
         course.setTitle(newTitle);
         if (course.getDraftStateJson() != null && !course.getDraftStateJson().isBlank()) {
             try {
-                com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(course.getDraftStateJson());
+                JsonNode root = mapper.readTree(course.getDraftStateJson());
                 if (root.isObject()) {
                     for (String key : List.of("workshopInput", "session")) {
                         if (root.has(key) && root.get(key).isObject()) {
-                            ((com.fasterxml.jackson.databind.node.ObjectNode) root.get(key)).put("title", newTitle);
+                            ((ObjectNode) root.get(key)).put("title", newTitle);
                         }
                     }
                     course.setDraftStateJson(mapper.writeValueAsString(root));

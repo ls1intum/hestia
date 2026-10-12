@@ -2,6 +2,7 @@ package com.workshopper.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkshopSessionDto(
@@ -10,5 +11,5 @@ public record WorkshopSessionDto(
         String studentBackground,
         List<ActivityBlockDto> blocks,
         /** Cached slides mapped by block index */
-        java.util.Map<Integer, List<java.util.Map<String, Object>>> slides
+        Map<Integer, List<Map<String, Object>>> slides
 ) {}

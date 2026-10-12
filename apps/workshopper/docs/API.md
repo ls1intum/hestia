@@ -7,6 +7,9 @@ Common responses:
 * `403` the session or course belongs to someone else
 * `404` unknown session or course
 * `409` a timetable generation for the same session is already running
+* `500` an unexpected server error, with `{"error": "..."}`; the details are only in the server log
+
+All of these come from `ApiExceptionHandler`, so the controllers themselves have no error handling.
 
 Request and response bodies are the DTOs in `server/src/main/java/com/workshopper/dto`; their TypeScript counterparts are in `client/src/lib/workshop-generator.ts`.
 

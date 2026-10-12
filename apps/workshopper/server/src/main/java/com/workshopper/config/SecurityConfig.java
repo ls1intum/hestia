@@ -14,6 +14,9 @@ import jakarta.annotation.PostConstruct;
 import java.util.Arrays;
 
 import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration
 @EnableWebSecurity
@@ -58,8 +61,8 @@ public class SecurityConfig {
             )
 
             .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
-                new org.springframework.security.web.authentication.HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED),
-                org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.withDefaults().matcher("/api/**")
+                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                PathPatternRequestMatcher.withDefaults().matcher("/api/**")
             ))
             .saml2Login(saml2 -> saml2
                 .defaultSuccessUrl("/", true)

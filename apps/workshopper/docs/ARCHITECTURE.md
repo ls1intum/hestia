@@ -12,7 +12,7 @@ Originally, all generation logic (LLM calls, PPTX building, DB saving) lived in 
   * `RefineLearningGoalUseCase`, `FixGoalsGrammarUseCase`: goal checks
   * Helpers: `ActivityRecommender` (Bloom's/SOLO activity choice), `TemplateBranding` (applies an uploaded template's title slide, logo and footer), `PptxTextFit` (shrinks text to fit its box)
 * **`WorkshopSessionFacade`**: orchestrates generation. It verifies ownership, calls the use cases outside any transaction, and then persists the result in a short transaction. It also guards against double submission: a second generation request for the same session while one is running gets `409 Conflict`.
-* **Controllers** (`WorkshopController`, `CourseController`): the HTTP boundary. Generation goes through the facade; a controller never calls a use case directly.
+* **Controllers** (`WorkshopController`, `CourseController`): the HTTP boundary. Generation goes through the facade; a controller never calls a use case directly. Controllers have no `try`/`catch`: `ApiExceptionHandler` turns exceptions into answers (`AccessDeniedException` → 403, `SessionLockedException` → 409, `ResponseStatusException` → its status, anything else → 500 with `{"error": ...}`, logged with the request).
 * **`WorkshopService`**: persistence of sessions, courses, drafts and slide templates, including which template applies to a session. No generation logic.
 
 ## 2. Security & Environments (The Profile Gate)
@@ -29,7 +29,7 @@ Workshopper integrates with TUM Central IT via SAML 2.0. Developing locally agai
 ## 3. API Authorization & Error Handling
 All `/api/**` endpoints except `GET /api/workshop/health` (and the SAML metadata endpoint) require an authenticated user. An unauthenticated request gets `401 Unauthorized`; the client (`handleAuthError` in `api.ts`) then redirects the browser to `<base>/saml2/authenticate/tum`, which starts the SAML login.
 
-**Per-resource authorization (IDOR protection):** Spring Security checks that a user is logged in, not that they own a resource. Every endpoint that reads, changes or deletes a session by ID calls `facade.verifyOwnership(id)`; every endpoint that refers to a course (including moving a session into one, or saving a draft with a `courseId`) calls `facade.verifyCourseOwnership(id)`, which also returns `404` for unknown courses. Ownership failures throw `AccessDeniedException`, which the `@ExceptionHandler` turns into `403 Forbidden`.
+**Per-resource authorization (IDOR protection):** Spring Security checks that a user is logged in, not that they own a resource. Every endpoint that reads, changes or deletes a session by ID calls `facade.verifyOwnership(id)`; every endpoint that refers to a course (including moving a session into one, or saving a draft with a `courseId`) calls `facade.verifyCourseOwnership(id)`, which also returns `404` for unknown courses. Ownership failures throw `AccessDeniedException`, which `ApiExceptionHandler` turns into `403 Forbidden`.
 
 ## 4. Data Model
 * `workshop_sessions`: one row per session, with its settings, the draft state of the wizard (`draft_state_json`), the generated timetable (`session_json`) and slides (`slides_json`), all JSONB. A session may belong to a course (`course_id`).
