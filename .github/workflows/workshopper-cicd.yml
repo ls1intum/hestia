@@ -60,8 +60,8 @@ permissions:
 
 jobs:
   # ── Test ────────────────────────────────────────────────────────────────────
-  # Runs the server unit + slice tests. build-server and build-client only
-  # start after this job succeeds, so a test failure blocks the whole pipeline.
+  # Runs the server unit + slice tests and the client unit tests. build-server and
+  # build-client only start after both succeed, so a test failure blocks the whole pipeline.
   test-server:
     runs-on: ubuntu-latest
     steps:
@@ -86,9 +86,30 @@ jobs:
           name: workshopper-test-report
           path: apps/workshopper/server/build/reports/tests/test/
 
+  test-client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/workshopper/client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22" # same as the client Dockerfile
+          cache: npm
+          cache-dependency-path: apps/workshopper/client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Workshopper client tests
+        run: npm test
+
   # ── Build ────────────────────────────────────────────────────────────────────
   build-server:
-    needs: test-server
+    needs: [test-server, test-client]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/workshopper/server
@@ -98,7 +119,7 @@ jobs:
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
   build-client:
-    needs: test-server
+    needs: [test-server, test-client]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/workshopper/client

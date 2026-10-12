@@ -51,6 +51,9 @@ public class WorkshopService {
      * Upsert a draft session record. If sessionId is provided and found, updates
      * it; otherwise creates a new entity and returns the assigned ID.
      */
+    private static final java.util.Set<String> STEPS_WITH_TIMETABLE =
+            java.util.Set.of("result", "timeline", "prepare", "final-review", "finished");
+
     public String saveDraft(SaveDraftRequestDto req, String ownerId) {
         UsageGuard.checkTitle(req.title());
         UsageGuard.checkStoredSize("The session", req.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
@@ -91,13 +94,12 @@ public class WorkshopService {
             }
         }
 
-        // Preparation and Final Review work on a generated session, so it stays complete there
-        if ("result".equals(req.currentStep()) || "prepare".equals(req.currentStep())
-                || "final-review".equals(req.currentStep())
-                || "finished".equals(req.currentStep())) {
-            entity.setStatus("complete");
-        } else {
-            entity.setStatus("draft");
+        // A session is complete once it has a generated timetable, on whichever step from the
+        // timetable on it is saved (editing the timetable later must not hide it from the exports);
+        // before that, or without a timetable, it is a draft.
+        if (req.currentStep() != null) {
+            boolean fromTimetableOn = STEPS_WITH_TIMETABLE.contains(req.currentStep());
+            entity.setStatus(fromTimetableOn && entity.getSessionJson() != null ? "complete" : "draft");
         }
         return repo.save(entity).getId();
     }

@@ -84,10 +84,10 @@ Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, 
   ./gradlew :apps:workshopper:server:test
   ```
 
-* **Client type-check and build**, from `apps/workshopper/client`:
+* **Client tests, type-check and build**, from `apps/workshopper/client` (tests sit next to the code as `*.test.ts`; add one when you change logic in `src/lib` or `src/hooks`):
 
   ```bash
-  npm run build
+  npm test && npm run build
   ```
 
 * **Manual check:** run the app locally (see `README.md`), click through the changed flow, and reload the page halfway through to check it resumes correctly.
