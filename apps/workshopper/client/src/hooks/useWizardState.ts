@@ -6,6 +6,7 @@ import {
   saveDraft,
   saveCourseDraft,
   handleAuthError,
+  errorMessage,
 } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
@@ -124,7 +125,7 @@ export function useWizardState() {
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Callers waiting for the debounced draft save to finish (they get the saved id). */
-  const pendingResolvers = useRef<Array<(id: string) => void>>([]);
+  const pendingResolvers = useRef<Array<(id: string | null) => void>>([]);
   /** The save waiting for its debounce, so navigation can send it right away instead of dropping it. */
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
   /** The step the draft was last saved with, so saves that aren't a step change can keep it. */
@@ -145,14 +146,27 @@ export function useWizardState() {
     else proceed();
   }, []);
 
-  /** Persist current draft state to the server, debounced. Returns the session id. */
+  /** Shows that a save failed, at most once every few seconds (autosaves can fail in a row). */
+  const lastSaveFailureToast = useRef(0);
+  const reportSaveFailure = (e: unknown) => {
+    console.warn("Draft save failed", e);
+    if (Date.now() - lastSaveFailureToast.current < 5000) return;
+    lastSaveFailureToast.current = Date.now();
+    toast({
+      title: "Your changes could not be saved",
+      description: errorMessage(e, "Check your connection and try again."),
+      variant: "destructive",
+    });
+  };
+
+  /** Persist current draft state to the server, debounced. Resolves with the session id, or null if saving failed. */
   const persistDraft = useCallback(
     async (
       draft: DraftState,
       currentStep: string,
       currentSessionId: string | null,
       courseId: string | null
-    ): Promise<string> => {
+    ): Promise<string | null> => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
       lastSavedStepRef.current = currentStep;
       if (draft.workshopInput) savedInputRef.current = draft.workshopInput;
@@ -175,11 +189,11 @@ export function useWizardState() {
             pendingResolvers.current = [];
             resolvers.forEach(r => r(id));
           } catch (e) {
-            handleAuthError(e);
-            console.warn("Draft save failed", e);
+            // A failed save must not look like a saved one: say so, and give waiting steps null
+            if (!handleAuthError(e)) reportSaveFailure(e);
             const resolvers = pendingResolvers.current;
             pendingResolvers.current = [];
-            resolvers.forEach(r => r(currentSessionId ?? ""));
+            resolvers.forEach(r => r(null));
           }
         };
         pendingSave.current = run;
@@ -212,13 +226,20 @@ export function useWizardState() {
   };
 
   /** Saves the form settings without moving on; the session keeps the step it was saved at. */
-  const saveSettings = async () => {
+  /** Resolves false if the settings could not be saved (the error has been shown). */
+  const saveSettings = async (): Promise<boolean> => {
     const input = normalizeSettings(workshopInputRef.current);
+    if ((input.duration ?? 0) < 10) {
+      toast({ title: "Duration too short", description: "A session needs at least 10 minutes.", variant: "destructive" });
+      return false;
+    }
     setWorkshopInput(input);
     const pending = persistDraft(buildDraft(input), lastSavedStepRef.current ?? step, sessionIdRef.current, currentCourseId);
     await flushDraft();
     const id = await pending;
-    if (!sessionIdRef.current && id) setSessionIdSynced(id);
+    if (!id) return false;
+    if (!sessionIdRef.current) setSessionIdSynced(id);
+    return true;
   };
 
   /** Puts the form settings back to their saved values. */
@@ -505,6 +526,7 @@ export function useWizardState() {
     try {
       const draft = buildDraft(input);
       const id = await persistDraft(draft, "input-2", sessionIdRef.current, currentCourseId);
+      if (!id) return; // not saved: stay on this step
       if (!sessionId) setSessionIdSynced(id);
       setStep("input-2");
     } finally {
@@ -527,6 +549,7 @@ export function useWizardState() {
     try {
       const draft = buildDraft(input);
       const id = await persistDraft(draft, entityType === "COURSE" ? "course-template" : "goals", sessionIdRef.current, currentCourseId);
+      if (!id) return; // not saved: stay on this step
       if (!sessionId) setSessionIdSynced(id);
       setStep(entityType === "COURSE" ? "course-template" : "goals");
     } finally {
@@ -539,7 +562,8 @@ export function useWizardState() {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      await persistDraft(buildDraft(workshopInput), "result", sessionIdRef.current, currentCourseId);
+      const id = await persistDraft(buildDraft(workshopInput), "result", sessionIdRef.current, currentCourseId);
+      if (!id) { setIsLoading(false); return; } // not saved: stay on this step
       toast({ title: "Course saved", description: "Your course has been saved to the dashboard." });
       // C-3: short delay so the toast is visible before navigating away; keep the spinner until then
       setTimeout(() => handleReset(), 1500);
@@ -572,6 +596,7 @@ export function useWizardState() {
       setKeptGoals(null);
       const initialDraft = { ...buildDraft(updatedInput, goalsWithPriority, skeleton), keptGoals: undefined };
       const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentCourseId);
+      if (!currentId) throw new Error("The session could not be saved, so no timetable was generated.");
       if (!sessionId) setSessionIdSynced(currentId);
       
       const skeletonWithId: SessionSkeleton = {
@@ -644,6 +669,32 @@ export function useWizardState() {
 
   // Read before the effect below overwrites it with the dashboard the app starts on
   const restoreLocationRef = useRef(readLocation());
+
+  // The same session open in two tabs: each tab saves its whole state, so the last save wins.
+  // Tabs announce the session they have open; if another tab has the same one, both warn.
+  const tabIdRef = useRef(Math.random().toString(36).slice(2));
+  const warnedTwinRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined" || view !== "wizard" || !sessionId) return;
+    const channel = new BroadcastChannel("workshopper-open-sessions");
+    const me = { id: sessionId, tab: tabIdRef.current };
+    const warn = () => {
+      if (warnedTwinRef.current === sessionId) return;
+      warnedTwinRef.current = sessionId;
+      toast({
+        title: "Open in another tab",
+        description: "This session is also open in another tab. Changes in one tab can overwrite the other's, so please keep working in one of them.",
+        variant: "destructive",
+      });
+    };
+    channel.onmessage = (e: MessageEvent<{ type: "open" | "here"; id: string; tab: string }>) => {
+      if (e.data.tab === me.tab || e.data.id !== me.id) return;
+      if (e.data.type === "open") channel.postMessage({ type: "here", ...me });
+      warn();
+    };
+    channel.postMessage({ type: "open", ...me });
+    return () => channel.close();
+  }, [view, sessionId]);
 
   // Remember the current page; the dashboard (or an entity that is not saved yet) is stored as nothing
   useEffect(() => {

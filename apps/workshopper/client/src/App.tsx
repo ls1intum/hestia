@@ -14,7 +14,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
-import { finishSession } from "@/lib/api";
+import { finishSession, saveSlides, errorMessage, handleAuthError } from "@/lib/api";
+import { remapSlidesToBlocks } from "@/hooks/useSlideDeck";
 import { toast } from "@/hooks/use-toast";
 import type { WorkshopInput } from "@/lib/workshop-generator";
 import { useWizardState, type Step } from "@/hooks/useWizardState";
@@ -258,7 +259,16 @@ export default function App() {
               setStep("prepare");
               persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, latestSession), isFinished ? "finished" : "prepare", sessionId, currentCourseId);
             }}
-            onSaveSession={(updatedSession) => {
+            onSaveSession={(updated) => {
+              // Slides are stored by block position: keep them with their blocks
+              const slides = session ? remapSlidesToBlocks(session.blocks, updated.blocks, slidesCache) : null;
+              const updatedSession = slides ? { ...updated, slides } : updated;
+              if (slides) {
+                setSlidesCache(slides);
+                if (sessionId) saveSlides(sessionId, slides).catch(e => {
+                  if (!handleAuthError(e)) toast({ title: "Slides could not be re-ordered", description: errorMessage(e, "Please regenerate them in Preparation."), variant: "destructive" });
+                });
+              }
               setSession(updatedSession);
               persistDraft(buildDraft(workshopInput, refinedGoals, undefined, updatedSession), isFinished ? "finished" : "timeline", sessionId, currentCourseId);
             }}
@@ -287,7 +297,7 @@ export default function App() {
                   const newSession = { ...session, slides: nextCache };
                   setSession(newSession);
                   // Background save of the draft so slides are persisted
-                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, currentCourseId);
+                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), isFinished ? "finished" : "prepare", sessionId, currentCourseId);
                   return nextCache;
                 });
               }}
@@ -303,7 +313,7 @@ export default function App() {
               </Button>
               <Button
                 onClick={() => confirmLeave(() => {
-                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "final-review", sessionId, currentCourseId);
+                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), isFinished ? "finished" : "final-review", sessionId, currentCourseId);
                   setStep("final-review");
                   setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
                   window.scrollTo(0, 0);
@@ -331,13 +341,14 @@ export default function App() {
               }
               setIsLoading(true);
               try {
-                await persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "finished", sessionId, currentCourseId);
+                const saved = await persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "finished", sessionId, currentCourseId);
+                if (!saved) return; // the reason was shown
                 await finishSession(sessionId);
                 toast({ title: "Session completed!" });
                 setIsFinished(true);
                 setView("dashboard");
               } catch (e) {
-                toast({ title: "Save failed", description: String(e), variant: "destructive" });
+                if (!handleAuthError(e)) toast({ title: "Save failed", description: errorMessage(e, "Please try again."), variant: "destructive" });
               } finally {
                 setIsLoading(false);
               }
@@ -383,11 +394,13 @@ export default function App() {
                 onClick={async () => {
                   const proceed = settingsLeaveDialog.proceed;
                   setIsSavingSettings(true);
+                  let saved = false;
                   try {
-                    await saveSettings();
+                    saved = await saveSettings();
                   } finally {
                     setIsSavingSettings(false);
                   }
+                  if (!saved) return; // keep the dialog; the reason was shown
                   setSettingsLeaveDialog(null);
                   proceed();
                 }}

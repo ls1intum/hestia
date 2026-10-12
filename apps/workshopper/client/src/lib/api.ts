@@ -57,10 +57,18 @@ async function parseJson<T>(res: Response): Promise<T> {
 async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(res.status, text || `HTTP ${res.status}`);
+    throw new ApiError(res.status, readableError(await res.text()) || `HTTP ${res.status}`);
   }
   return res;
+}
+
+/** The message in an error answer: {"error": …} from ApiExceptionHandler, {"detail": …} from Spring, or the text. */
+function readableError(body: string): string {
+  try {
+    const json = JSON.parse(body);
+    if (json && typeof json === "object") return json.error || json.detail || json.message || json.title || body;
+  } catch { /* not JSON */ }
+  return body;
 }
 
 function jsonBody(method: string, body: unknown): RequestInit {
@@ -81,10 +89,27 @@ export function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-/** A file name made from a session title, e.g. "Intro to ML" → "intro_to_ml". */
-export function safeFileName(title: string | undefined, fallback = "workshop"): string {
-  return (title || fallback).slice(0, 40).replace(/[^a-z0-9]+/gi, "_").toLowerCase();
+/**
+ * Download file names, made from the session or course title as it is shown
+ * (e.g. "Intro to ML - Slides.pptx"), with only the characters file systems forbid removed.
+ */
+export function safeFileName(title: string | undefined, fallback = "Workshop"): string {
+  const clean = (title || "")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 100)
+    .trim();
+  return clean || fallback;
 }
+
+/** The file names of the downloads, the same wherever they are downloaded from. */
+export const downloadName = {
+  slides: (title?: string) => `${safeFileName(title)} - Slides.pptx`,
+  timetable: (title?: string) => `${safeFileName(title)} - Timetable.pdf`,
+  course: (title?: string) => `${safeFileName(title, "Course")}.zip`,
+};
 
 /** Generates the session timetable from the goals, settings and client-built skeleton */
 export function generateSession(
@@ -222,19 +247,19 @@ async function loadForExport(id: string): Promise<{ session: WorkshopSession; me
 /** Downloads the PDF of a saved session (dashboard) */
 export async function downloadPdf(id: string): Promise<void> {
   const { session, meta } = await loadForExport(id);
-  saveAs(await exportPdf(session, meta), `session-${id}.pdf`);
+  saveAs(await exportPdf(session, meta), downloadName.timetable(session.title));
 }
 
 /** Downloads the PPTX of a saved session (dashboard) */
 export async function downloadPptx(id: string): Promise<void> {
   const { session, meta } = await loadForExport(id);
-  saveAs(await exportPptx(session, meta), `slides-${id}.pptx`);
+  saveAs(await exportPptx(session, meta), downloadName.slides(session.title));
 }
 
 /** Download ZIP of all Course Sessions */
-export async function downloadCourseZip(id: string): Promise<void> {
+export async function downloadCourseZip(id: string, title?: string): Promise<void> {
   const blob = await send(`/workshop/export/course/${id}/zip`).then(res => res.blob());
-  saveAs(blob, `course-${id}.zip`);
+  saveAs(blob, downloadName.course(title));
 }
 
 /** Fetch all courses */

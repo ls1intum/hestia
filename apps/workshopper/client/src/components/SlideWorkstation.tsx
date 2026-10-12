@@ -123,8 +123,20 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     }
   };
 
+  // While slides are generated, leaving would drop them (or put them into another session): wait
+  const isGeneratingRef = useRef(deck.isGenerating);
+  isGeneratingRef.current = deck.isGenerating;
   useEffect(() => {
-    registerLeaveGuard?.({ isDirty: hasUnsavedEdits, confirmLeave });
+    registerLeaveGuard?.({
+      isDirty: () => isGeneratingRef.current || hasUnsavedEdits(),
+      confirmLeave: proceed => {
+        if (isGeneratingRef.current) {
+          toast({ title: "Slides are still being generated", description: "Please wait until they are ready before leaving this step." });
+          return;
+        }
+        confirmLeave(proceed);
+      },
+    });
     return () => registerLeaveGuard?.(null);
   });
 

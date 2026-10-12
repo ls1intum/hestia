@@ -52,13 +52,16 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   // Saving an evaluate block's draft regenerates it (useBlockRegeneration), which itself needs the
   // editing state; the ref connects the two hooks.
   const confirmMappingsRef = useRef<(dndId: string, mappings: EvaluateMappings) => Promise<boolean>>(async () => false);
+  const busyRef = useRef(false);
   const timetable = useTimetableEditing({
     initialSession, goals, meta, onSaveSession, registerLeaveGuard,
     confirmMappings: (dndId, mappings) => confirmMappingsRef.current(dndId, mappings),
+    isBusy: () => busyRef.current,
   });
   const { regeneratingBlockId, hasConfirmedEvaluatePriorities, switchActivity, addActivity, confirmEvaluateMappings } =
     useBlockRegeneration({ editing: timetable, initialSession, goals, meta, onMetaChanged });
   confirmMappingsRef.current = confirmEvaluateMappings;
+  busyRef.current = regeneratingBlockId !== null;
 
   const {
     blocks, sessionTitle, latestSession, expandedBlocks, toggleExpand, editing, setEditing,

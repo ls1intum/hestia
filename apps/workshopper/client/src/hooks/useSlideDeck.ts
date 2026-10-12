@@ -4,7 +4,7 @@ import { toast } from "@/hooks/use-toast";
 import { phaseInfo } from "@/lib/phases";
 import {
   deleteSessionTemplate, uploadSessionTemplate, generateBlockSlides, saveSlides, exportPptxWithTemplate,
-  errorMessage, handleAuthError, safeFileName,
+  errorMessage, handleAuthError, downloadName,
 } from "@/lib/api";
 import type { LearningGoalPlan, SlideData, TemplateInfo, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
 
@@ -33,6 +33,32 @@ export function deckSlides(cache: Record<number, SlideData[]>, blockCount: numbe
     });
   }
   return deck;
+}
+
+/** A block's id; blocks saved before every block had one are named by position, like the timetable does. */
+const blockKey = (block: { blockId?: string }, index: number) => block.blockId || `block-${index}`;
+
+/**
+ * Slides are stored per block position. After the timetable's blocks were moved, deleted or added,
+ * returns the slides re-sorted to the new positions (blocks without slides get none), or null if
+ * nothing moved.
+ */
+export function remapSlidesToBlocks(
+  before: { blockId?: string }[],
+  after: { blockId?: string }[],
+  cache: Record<number, SlideData[]>,
+): Record<number, SlideData[]> | null {
+  if (Object.keys(cache).length === 0) return null;
+  const oldIndex = new Map<string, number>();
+  before.forEach((b, i) => { if (!oldIndex.has(blockKey(b, i))) oldIndex.set(blockKey(b, i), i); });
+  const next: Record<number, SlideData[]> = {};
+  let moved = before.length !== after.length;
+  after.forEach((b, j) => {
+    const i = oldIndex.get(blockKey(b, j));
+    if (i !== j) moved = true;
+    if (i !== undefined && cache[i]) next[j] = cache[i];
+  });
+  return moved ? next : null;
 }
 
 const GENERATION_CONCURRENCY = 3;
@@ -91,7 +117,7 @@ export function useSlideDeck({ session, meta, goals, setSlidesCache, setTemplate
     toast({ title: "Preparing Download…" });
     try {
       const blob = await exportPptxWithTemplate(session, meta, slides);
-      saveAs(blob, `${safeFileName(session.title)}_slides.pptx`);
+      saveAs(blob, downloadName.slides(session.title));
       toast({ title: "Downloaded!", description: "Your slide deck is ready." });
     } catch (e) {
       if (!handleAuthError(e)) toast({ title: "Download Failed", description: errorMessage(e, "Assembly failed"), variant: "destructive" });

@@ -205,10 +205,10 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
     }
   };
 
-  const handleExportCourseZip = async (e: React.MouseEvent, id: string) => {
+  const handleExportCourseZip = async (e: React.MouseEvent, id: string, title: string) => {
     e.stopPropagation();
     try {
-      await downloadCourseZip(id);
+      await downloadCourseZip(id, title);
     } catch (err: any) {
       // A-3: use toast instead of alert()
       toast({ title: "Failed to export Course ZIP", description: err.message, variant: "destructive" });
@@ -493,7 +493,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                       <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
                                         <FileEdit className="mr-2 h-4 w-4" /><span>Edit course settings</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id)}>
+                                      <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id, course.title)}>
                                         <Presentation className="mr-2 h-4 w-4" /><span>Export all materials (.zip)</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, course.id, "COURSE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">

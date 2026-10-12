@@ -30,6 +30,10 @@ interface GoalDraft {
   subSkills?: { id: string; text: string; bloomLevel?: string; soloLevel?: string }[];
 }
 
+/** The server's limits (UsageGuard): goals per session and characters per goal */
+const MAX_GOALS = 20;
+const MAX_GOAL_LENGTH = 1000;
+
 interface Props {
   initialInput: {
     duration?: number;
@@ -184,6 +188,10 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     );
 
   const addGoal = () => {
+    if (goals.length >= MAX_GOALS) {
+      toast({ title: "Too many learning goals", description: `A session can have at most ${MAX_GOALS} learning goals.` });
+      return;
+    }
     const newId = `g${Date.now()}`;
     setGoals((prev) => [
       ...prev,
@@ -223,6 +231,11 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     if (submittingRef.current) return;
     const validGoals = goals.filter((g) => g.text.trim().length > 0);
     if (validGoals.length === 0) return;
+    // Splitting goals or importing from the Learning Goal Hub can go past the limit
+    if (validGoals.length > MAX_GOALS) {
+      toast({ title: "Too many learning goals", description: `A session can have at most ${MAX_GOALS} learning goals; please remove ${validGoals.length - MAX_GOALS}.`, variant: "destructive" });
+      return;
+    }
 
     submittingRef.current = true;
     setIsFixingGrammar(true);
@@ -272,6 +285,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             placeholder="e.g. apply logistic regression to classification problems…"
             value={g.text}
             onChange={(e) => handleTextChange(g.id, e.target.value)}
+            maxLength={MAX_GOAL_LENGTH}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -430,7 +444,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             variant="outline"
             onClick={addGoal}
             className="gap-2 w-full border-dashed"
-            disabled={isLoading}
+            disabled={isLoading || goals.length >= MAX_GOALS}
           >
             <Plus className="h-4 w-4" /> Add another learning goal
           </Button>

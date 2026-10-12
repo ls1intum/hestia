@@ -35,7 +35,7 @@ export function useBlockRegeneration({ editing, initialSession, goals, meta, onM
   meta: WorkshopInput;
   onMetaChanged?: (meta: WorkshopInput) => void;
 }) {
-  const { blocks, setBlocks, commitBlock } = editing;
+  const { blocks, setBlocks, commitBlock, expandBlock } = editing;
   const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
   const [hasConfirmedEvaluatePriorities, setHasConfirmedEvaluatePriorities] = useState(
     goals.length <= 2 || !!(meta.evaluateMappings && meta.evaluateMappings.length > 0)
@@ -54,6 +54,8 @@ export function useBlockRegeneration({ editing, initialSession, goals, meta, onM
     const block = blocks.find(b => b.dndId === dndId);
     if (!block) return false;
     setRegeneratingBlockId(dndId);
+    // Open the block, so its new content appears where the user is looking
+    expandBlock(dndId);
     try {
       const req = request(block);
       const generated = await generateSession(goals, req.meta, { sessionId: initialSession.id, blocks: [req.skeleton] });

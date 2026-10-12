@@ -94,8 +94,19 @@ export function SortableBlockRow({
 
   return (
     <div ref={setNodeRef} style={style} className="mb-3" data-block-id={block.dndId}>
-      <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
-        <div style={parentCardStyle} className={`flex flex-col p-3 transition-colors relative ${isDragging ? "ring-2 ring-primary/30" : ""}`}>
+      {/* While the AI regenerates the block it stays open, so the new content appears where the user is looking */}
+      <Collapsible open={isExpanded || (isRegenerating && phase.expandable)} onOpenChange={onToggleExpand}>
+        <div style={parentCardStyle} className={`flex flex-col p-3 transition-colors relative ${isDragging ? "ring-2 ring-primary/30" : ""}`}
+          aria-busy={isRegenerating}>
+          {isRegenerating && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[12px] bg-background/70 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-2 text-center px-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="font-body font-medium text-sm text-foreground">The AI is updating this block…</p>
+                <p className="font-body text-xs text-muted-foreground">This can take up to a minute.</p>
+              </div>
+            </div>
+          )}
           {/* Main row */}
           <div className="flex items-center gap-3">
             {/* Drag handle */}
@@ -175,7 +186,6 @@ export function SortableBlockRow({
                           className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold cursor-pointer hover:opacity-80 transition-opacity shrink-0"
                           title="Click to switch activity"
                         >
-                          {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                           {m} <ChevronDown className="h-2.5 w-2.5 opacity-50" />
                         </div>
                       </DropdownMenuTrigger>
