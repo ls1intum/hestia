@@ -86,8 +86,9 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
     loadSessions();
   }, []);
 
-  const loadSessions = () => {
-    setLoading(true);
+  /** Loads the library; refreshes after an action pass silent=true so the list doesn't flash to a spinner. */
+  const loadSessions = (silent = false) => {
+    if (!silent) setLoading(true);
     Promise.all([listSessions(), listCourses()])
       .then(([sessionsData, coursesData]) => {
         setIsAuthenticated(true);
@@ -122,7 +123,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
       } else {
         await deleteSession(deletingItem.id);
       }
-      loadSessions();
+      loadSessions(true);
     } catch (err: any) {
       toast({ title: "Failed to delete", description: err.message, variant: "destructive" });
     }
@@ -145,7 +146,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
           } else {
             await renameSession(renamingId, renamingTitle.trim());
           }
-          loadSessions();
+          loadSessions(true);
         } catch (err: any) {
           // A-3: use toast instead of alert()
           toast({ title: "Failed to rename", description: err.message, variant: "destructive" });
@@ -276,8 +277,11 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
 
             {/* Split items */}
             {(() => {
-              const courses = sessions.filter(s => s.courseId === undefined && !s.courseId);
-              const standaloneSessions = sessions.filter(s => !s.courseId);
+              // Courses are merged into the same list (type "COURSE") and have no courseId either,
+              // so the sections have to be split by type, not by courseId alone
+              const isCourse = (s: SessionSummary) => (s as any).type === "COURSE";
+              const courses = sessions.filter(isCourse);
+              const standaloneSessions = sessions.filter(s => !isCourse(s) && !s.courseId);
 
               const renderSessionCard = (session: SessionSummary, isChild = false) => (
                 <div
@@ -297,40 +301,41 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                   }}
                   onDragOver={(e) => {
                     e.preventDefault();
-                    e.currentTarget.classList.add("border-primary", "border-t-4");
+                    // A ring doesn't change the card's size, so nothing below it shifts while dragging
+                    e.currentTarget.classList.add("ring-2", "ring-primary");
                   }}
                   onDragLeave={(e) => {
-                    e.currentTarget.classList.remove("border-primary", "border-t-4");
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    e.currentTarget.classList.remove("ring-2", "ring-primary");
                   }}
                   onDrop={async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.currentTarget.classList.remove("border-primary", "border-t-4");
+                    e.currentTarget.classList.remove("ring-2", "ring-primary");
                     const draggedId = e.dataTransfer.getData("text/plain");
                     if (draggedId && draggedId !== session.id) {
                       const draggedSession = sessions.find(s => s.id === draggedId);
-                      if (!draggedSession) return;
+                      if (!draggedSession || (draggedSession as any).type === "COURSE") return;
+                      const changesCourse = (draggedSession.courseId || null) !== (session.courseId || null);
+
+                      // Place the card right away; the server catches up in the background
+                      const reordered = sessions.filter(s => s.id !== draggedId);
+                      reordered.splice(reordered.findIndex(s => s.id === session.id), 0, { ...draggedSession, courseId: session.courseId });
+                      setSessions(reordered);
 
                       try {
-                        // If moving between different parents, move it first
-                        if (draggedSession.courseId !== session.courseId) {
+                        if (changesCourse) {
                           await moveSession(draggedId, session.courseId || "");
                         }
-
-                        // Calculate new order
-                        const siblings = session.courseId
-                          ? sessions.filter(s => s.courseId === session.courseId)
-                          : sessions.filter(s => !s.courseId);
-
-                        const newOrderIds = siblings.map(s => s.id).filter(id => id !== draggedId);
-                        const targetIndex = newOrderIds.indexOf(session.id);
-                        newOrderIds.splice(targetIndex, 0, draggedId);
-
-                        await reorderSessions(newOrderIds);
-                        loadSessions();
+                        const siblingIds = reordered
+                          .filter(s => (s as any).type !== "COURSE" && (s.courseId || null) === (session.courseId || null))
+                          .map(s => s.id);
+                        await reorderSessions(siblingIds);
                       } catch (err: any) {
                         // A-3: use toast instead of alert()
                         toast({ title: "Failed to reorder", description: err.message, variant: "destructive" });
+                      } finally {
+                        loadSessions(true);
                       }
                     }
                   }}
@@ -413,20 +418,24 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                 e.currentTarget.classList.add("ring-2", "ring-primary", "ring-offset-2");
                               }}
                               onDragLeave={(e) => {
+                                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
                                 e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
                               }}
                               onDrop={async (e) => {
                                 e.preventDefault();
                                 e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
                                 const sessionId = e.dataTransfer.getData("text/plain");
-                                if (sessionId && sessionId !== course.id) {
-                                  try {
-                                    await moveSession(sessionId, course.id);
-                                    loadSessions(); // refresh the list
-                                  } catch (err: any) {
-                                    // A-3: use toast instead of alert()
-                                    toast({ title: "Failed to move session", description: err.message, variant: "destructive" });
-                                  }
+                                const dragged = sessions.find(s => s.id === sessionId);
+                                // Already in this course: nothing to move
+                                if (!dragged || (dragged as any).type === "COURSE" || dragged.courseId === course.id) return;
+                                setSessions(prev => [...prev.filter(s => s.id !== sessionId), { ...dragged, courseId: course.id }]);
+                                try {
+                                  await moveSession(sessionId, course.id);
+                                } catch (err: any) {
+                                  // A-3: use toast instead of alert()
+                                  toast({ title: "Failed to move session", description: err.message, variant: "destructive" });
+                                } finally {
+                                  loadSessions(true);
                                 }
                               }}
                             >
@@ -455,7 +464,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                         <Pencil className="mr-2 h-4 w-4" /><span>Rename</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
-                                        <FileEdit className="mr-2 h-4 w-4" /><span>Edit session settings</span>
+                                        <FileEdit className="mr-2 h-4 w-4" /><span>Edit course settings</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id)}>
                                         <Presentation className="mr-2 h-4 w-4" /><span>Export all materials (.zip)</span>
@@ -479,15 +488,47 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                     </div>
                   )}
 
-                  {standaloneSessions.length > 0 && (
-                    <div className="space-y-3">
+                  {(standaloneSessions.length > 0 || courses.length > 0) && (
+                    <div
+                      className="space-y-3 rounded-3xl transition-shadow"
+                      // Dropping here (outside any card) takes a session out of its course
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.add("ring-2", "ring-primary", "ring-offset-2");
+                      }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                        e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
+                        const sessionId = e.dataTransfer.getData("text/plain");
+                        const dragged = sessions.find(s => s.id === sessionId);
+                        if (!dragged || (dragged as any).type === "COURSE" || !dragged.courseId) return;
+                        setSessions(prev => [...prev.filter(s => s.id !== sessionId), { ...dragged, courseId: undefined }]);
+                        try {
+                          await moveSession(sessionId, "");
+                        } catch (err: any) {
+                          toast({ title: "Failed to move session", description: err.message, variant: "destructive" });
+                        } finally {
+                          loadSessions(true);
+                        }
+                      }}
+                    >
                       {courses.length > 0 && (
                         <h3 className="font-display font-semibold text-lg text-foreground flex items-center gap-2 pt-4">
                           <FileText className="h-5 w-5 text-muted-foreground" /> Standalone Sessions
                         </h3>
                       )}
                       <div className="grid gap-3">
-                        {standaloneSessions.map(session => renderSessionCard(session))}
+                        {standaloneSessions.length > 0
+                          ? standaloneSessions.map(session => renderSessionCard(session))
+                          : (
+                            <div className="rounded-2xl border-2 border-dashed border-border/60 p-5 text-center text-sm text-muted-foreground font-body">
+                              Drag a session here to take it out of its course.
+                            </div>
+                          )}
                       </div>
                     </div>
                   )}

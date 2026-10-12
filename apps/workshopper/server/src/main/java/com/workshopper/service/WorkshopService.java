@@ -255,9 +255,11 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     /** Move a session to a course. */
     public void moveSession(String id, String courseId) {
         repo.findById(id).ifPresent(entity -> {
+            if (!java.util.Objects.equals(entity.getCourseId(), courseId)) {
+                entity.setUseDefaultTemplate(false); // a session moved to another course inherits its template
+            }
             entity.setCourseId(courseId);
             entity.setDisplayOrder(null);
-            entity.setUseDefaultTemplate(false); // a moved session inherits its new course's template
             repo.save(entity);
         });
     }

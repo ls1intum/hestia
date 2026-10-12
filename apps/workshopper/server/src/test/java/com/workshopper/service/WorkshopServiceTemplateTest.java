@@ -90,11 +90,20 @@ class WorkshopServiceTemplateTest {
     }
 
     @Test
-    void movingSessionInheritsNewCourseTemplateAgain() {
+    void movingSessionToAnotherCourseInheritsThatCourseTemplate() {
+        session.setCourseId("course-0");
         service.deleteTemplate("session-1");
         service.moveSession("session-1", "course-1");
 
         assertThat(service.getTemplate("session-1")).isEqualTo(COURSE_FILE);
+    }
+
+    @Test
+    void reorderingWithinTheSameCourseKeepsTheOptOut() {
+        service.deleteTemplate("session-1");
+        service.moveSession("session-1", "course-1");
+
+        assertThat(service.getTemplate("session-1")).isNull();
     }
 
     private static SlideTemplateEntity template(String id, byte[] data) {
