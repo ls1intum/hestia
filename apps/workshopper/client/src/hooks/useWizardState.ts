@@ -53,6 +53,22 @@ const COURSE_STEPS: Step[] = ["input-1", "input-2", "input-2b", "course-template
 
 let hasRestored = false;
 
+/**
+ * Where the user is in this tab (dashboard, or a session/course and its step), so a reload
+ * returns to that page. Kept in sessionStorage: per tab, gone when the tab is closed.
+ */
+const LOCATION_KEY = "workshopper_location";
+type SavedLocation = { id: string; type: "SESSION" | "COURSE"; step: string };
+
+function readLocation(): SavedLocation | null {
+  try {
+    const raw = sessionStorage.getItem(LOCATION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
@@ -81,11 +97,6 @@ export function useWizardState() {
   const setSessionIdSynced = (id: string | null) => {
     sessionIdRef.current = id;
     setSessionId(id);
-    if (id) {
-      sessionStorage.setItem("workshopper_session_id", id);
-    } else {
-      sessionStorage.removeItem("workshopper_session_id");
-    }
   };
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
   const [entityType, setEntityType] = useState<"SESSION" | "COURSE">("SESSION");
@@ -334,7 +345,8 @@ export function useWizardState() {
     }
   };
 
-  const resumeSession = async (id: string, opts?: { silent?: boolean; type?: "SESSION" | "COURSE" }) => {
+  /** Opens a session or course where it was left off; `step` (after a reload) opens that step instead if it is reachable. */
+  const resumeSession = async (id: string, opts?: { silent?: boolean; type?: "SESSION" | "COURSE"; step?: string }) => {
     setIsLoading(true);
     try {
       
@@ -405,6 +417,8 @@ export function useWizardState() {
           if (draft.workshopInput) {
             if (detail.title) draft.workshopInput.title = detail.title;
             setWorkshopInput(draft.workshopInput);
+            // What was loaded is what is saved; only later edits count as unsaved settings
+            savedInputRef.current = draft.workshopInput;
           }
           if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
           setKeptGoals(draft.keptGoals ?? null);
@@ -447,22 +461,27 @@ export function useWizardState() {
         targetStepStr = "final-review";
       }
 
-      const targetStep = targetStepStr as Step;
-      const targetIdx = localStepOrder.indexOf(targetStep);
-
-      setStep(targetStep);
+      const targetIdx = localStepOrder.indexOf(targetStepStr as Step);
       // R-2: use localStepOrder — guaranteed to reflect resolved entity/course state.
       // Steps unlock by what the session contains, not by the step it was last saved at: once a
       // timetable exists, Timetable, Preparation and Final Review all work on it, so every step opens.
       // Courses likewise open with all of their steps reachable.
-      setHighestStepIdx(resolvedEntityType === "COURSE" || hasSession
+      const highestIdx = resolvedEntityType === "COURSE" || hasSession
         ? localStepOrder.length - 1
-        : targetIdx >= 0 ? targetIdx : 0);
+        : targetIdx >= 0 ? targetIdx : 0;
+
+      // After a reload, return to the step the user was on, as long as it can be opened
+      const requestedIdx = opts?.step ? localStepOrder.indexOf(opts.step as Step) : -1;
+      const targetStep = (requestedIdx >= 0 && requestedIdx <= highestIdx ? opts!.step : targetStepStr) as Step;
+
+      setStep(targetStep);
+      setHighestStepIdx(highestIdx);
       setView("wizard");
     } catch (e) {
       if (handleAuthError(e)) return;
       if (opts?.silent) {
-        sessionStorage.removeItem("workshopper_session_id");
+        // The page stored for a reload no longer opens (e.g. deleted): start on the dashboard
+        try { sessionStorage.removeItem(LOCATION_KEY); } catch { /* ignore */ }
       } else {
         toast({
           title: "Could not load session",
@@ -623,12 +642,28 @@ export function useWizardState() {
     if (entityType === "SESSION" && session) setHighestStepIdx(STEP_ORDER.length - 1);
   }, [entityType, session, STEP_ORDER.length]);
 
+  // Read before the effect below overwrites it with the dashboard the app starts on
+  const restoreLocationRef = useRef(readLocation());
+
+  // Remember the current page; the dashboard (or an entity that is not saved yet) is stored as nothing
+  useEffect(() => {
+    try {
+      if (view === "wizard" && sessionId) {
+        const location: SavedLocation = { id: sessionId, type: entityType, step };
+        sessionStorage.setItem(LOCATION_KEY, JSON.stringify(location));
+      } else if (hasRestored && !isLoading) {
+        sessionStorage.removeItem(LOCATION_KEY);
+      }
+    } catch { /* storage unavailable: a reload then starts on the dashboard */ }
+  }, [view, sessionId, entityType, step, isLoading]);
+
+  // After a reload, reopen the page the user was on (nothing to do if it was the dashboard)
   useEffect(() => {
     if (hasRestored) return;
     hasRestored = true;
-    const savedId = sessionStorage.getItem("workshopper_session_id");
-    if (savedId) {
-      resumeSession(savedId, { silent: true });
+    const location = restoreLocationRef.current;
+    if (location) {
+      resumeSession(location.id, { silent: true, type: location.type, step: location.step });
     }
   }, []);
 

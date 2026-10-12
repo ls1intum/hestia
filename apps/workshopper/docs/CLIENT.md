@@ -55,6 +55,7 @@ There is no external store. `useWizardState.ts` holds the wizard's state in Reac
 * **Saving:**
   * **`persistDraft`** saves the whole `DraftState` to the server, debounced. A save that is still waiting is sent immediately on navigation (`flushDraft`).
   * **`resumeSession`** reloads a session or course and decides which step it opens at.
+  * **Reload:** the current page (dashboard, or the session/course and its step) is kept in the tab's `sessionStorage` (`workshopper_location`), so reloading returns to it.
 
 **Leave guard:** a step with unsaved input registers a `LeaveGuard` (`isDirty`, `confirmLeave`) in `leaveGuardRef`. The step bar, Back/Next, the dashboard arrow, the browser's back button and page reload all go through `confirmLeave`, so the step can offer to save, keep, discard or stay. The timetable, the slide workstation, the Goals step and the settings forms each register one.
 
