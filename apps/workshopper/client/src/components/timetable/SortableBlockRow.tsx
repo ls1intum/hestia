@@ -1,33 +1,42 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { GripVertical, ChevronDown, ChevronUp, Trash2, Plus, Loader2, Pencil, X, Check } from "lucide-react";
 import {
-  GripVertical, ChevronDown, ChevronUp,
-  Trash2, Plus, Loader2, Pencil, X, Check,
-} from "lucide-react";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
-  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuLabel,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { InlineEditText } from "./InlineEditText";
 import { InlineEditableStep } from "./InlineEditableStep";
-import { phaseEmojis, getStepEmoji, DEFAULT_ACTIVITIES, ACTIVITY_GROUPS, MODE_COLORS, getPhaseMode, getSectionMode, getStepMode } from "@/lib/constants";
+import {
+  phaseEmojis,
+  getStepEmoji,
+  ACTIVITY_GROUPS,
+  MODE_COLORS,
+  getPhaseMode,
+  getSectionMode,
+  getStepMode,
+} from "@/lib/constants";
 import { EditTarget, DndActivityBlock } from "../WorkshopGeneratedTimetable";
 import { WorkshopInput } from "@/lib/workshop-generator";
 import { EvaluateMappingPanel } from "./EvaluateMappingPanel";
 import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
 
-
 export function SortableBlockRow({
   block, isExpanded, editing, meta, isRegenerating, selectedActivities,
-  onToggleExpand, onEditTitle, onSaveTitle, onEditStep, onSaveStep,
-  onEditStepTime, onSaveStepTime,
-  onEditBlockDuration, onSaveBlockDuration, onSaveObjective, onEditSectionDuration, onSaveSectionDuration,
+  onToggleExpand, onEditTitle, onSaveTitle, onSaveStep, onSaveStepTime,
+  onSaveBlockDuration, onSaveObjective,
   onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
   isEditMode = false, onToggleEditMode, onCancelEditMode, onSwitchEvaluateActivity,
-  goals, needsEvaluatePriority, onConfirmEvaluateMappings, onResetEvaluatePriority, onPendingMappingsChange
+  goals, needsEvaluatePriority, onConfirmEvaluateMappings, onPendingMappingsChange
 }: {
   block: DndActivityBlock;
   isExpanded: boolean;
@@ -38,15 +47,10 @@ export function SortableBlockRow({
   onToggleExpand: () => void;
   onEditTitle: () => void;
   onSaveTitle: (v: string) => void;
-  onEditStep: (sectionIdx: number, stepIdx: number) => void;
   onSaveStep: (sectionIdx: number, stepIdx: number, v: string) => void;
-  onEditStepTime: (sectionIdx: number, stepIdx: number) => void;
   onSaveStepTime: (sectionIdx: number, stepIdx: number, v: string) => void;
-  onEditBlockDuration: () => void;
   onSaveBlockDuration: (v: string) => void;
   onSaveObjective: (v: string) => void;
-  onEditSectionDuration: (sectionIdx: number) => void;
-  onSaveSectionDuration: (sectionIdx: number, v: string) => void;
   onDeleteBlock: () => void;
   onSwitchActivity: (oldMethod: string, newMethod: string) => void;
   onDeleteActivity: (method: string) => void;
@@ -60,7 +64,6 @@ export function SortableBlockRow({
   goals?: import('@/lib/workshop-generator').LearningGoalPlan[];
   needsEvaluatePriority?: boolean;
   onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
-  onResetEvaluatePriority?: () => void;
   /** Reports the mapping panel's unconfirmed boxes while the block is in edit mode. */
   onPendingMappingsChange?: (mappings: { method: string; lgIds: string[] }[]) => void;
 }) {
@@ -146,7 +149,6 @@ export function SortableBlockRow({
                   onStartEdit={onEditTitle}
                   onSave={onSaveTitle}
                   className="font-body font-semibold text-sm"
-                  disabled={false}
                 />
                 {/* Time Indication Bar */}
                 <div className="flex items-center ml-1">
@@ -170,7 +172,6 @@ export function SortableBlockRow({
 
             {/* Duration + action icons + expand (rightmost) */}
             <div className="flex items-center gap-1.5 shrink-0">
-
 
               {/* Activity tags (Methods) */}
               {(allMethods.length > 0 || isEditMode) && (
@@ -217,7 +218,7 @@ export function SortableBlockRow({
                         {/* Custom (user-added) activities not in any group */}
                         {(() => {
                           const allGrouped = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
-                          const custom = Array.from(new Set([...selectedActivities, ...DEFAULT_ACTIVITIES])).filter(a => !allGrouped.includes(a));
+                          const custom = Array.from(new Set(selectedActivities)).filter(a => !allGrouped.includes(a));
                           return custom.length > 0 ? (
                             <DropdownMenuSub>
                               <DropdownMenuSubTrigger className="flex items-center gap-2">
@@ -282,7 +283,7 @@ export function SortableBlockRow({
                         })}
                         {(() => {
                           const allGrouped = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
-                          const custom = Array.from(new Set([...selectedActivities, ...DEFAULT_ACTIVITIES])).filter(a => !allGrouped.includes(a));
+                          const custom = Array.from(new Set(selectedActivities)).filter(a => !allGrouped.includes(a));
                           return custom.length > 0 ? (
                             <DropdownMenuSub>
                               <DropdownMenuSubTrigger className="flex items-center gap-2">
@@ -403,19 +404,19 @@ export function SortableBlockRow({
 
               // ── ARRIVE / Welcome ───────────────
               if (phase === "ARRIVE") {
-                const rawGoals = meta?.learningGoals && meta.learningGoals.length > 0
-                  ? meta.learningGoals
-                  : allSteps
-                    .filter((s: string) => /learning goal|objective/i.test(s))
-                    .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
-                const goals = rawGoals.length > 0 ? rawGoals : allSteps
+                // The session's goals; older blocks without them fall back to the goals written in the steps
+                const sessionGoals = (goals ?? []).map(g => g.goal).filter(Boolean);
+                const stepGoals = allSteps
+                  .filter((s: string) => /learning goal|objective/i.test(s))
+                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
+                const shownGoals = sessionGoals.length > 0 ? sessionGoals : stepGoals.length > 0 ? stepGoals : allSteps
                   .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
                   .filter((s: string) => s.length > 0);
 
                 return (
                   <div className="pl-4 space-y-1.5">
                     <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
-                    {goals.map((g: string, i: number) => {
+                    {shownGoals.map((g: string, i: number) => {
                       const origStep = allSteps.find(s => s.includes(g)) || g;
                       return (
                         <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"

@@ -1,11 +1,29 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Presentation, Upload, Sparkles, Download, RefreshCw, X, File as FileIcon, ChevronLeft, ChevronRight, Check, ChevronUp, ChevronDown, Code, Save, AlertCircle, Trash2 } from "lucide-react";
+import {
+  Presentation,
+  Sparkles,
+  Download,
+  RefreshCw,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  ChevronUp,
+  ChevronDown,
+  Code,
+  Save,
+} from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { deleteSessionTemplate, uploadSessionTemplate } from "@/lib/api";
 import { TemplateUploadBox } from "./TemplateUploadBox";
@@ -17,7 +35,9 @@ interface Props {
   goals: LearningGoalPlan[];
   slidesCache: Record<number, SlideData[]>;
   setSlidesCache: React.Dispatch<React.SetStateAction<Record<number, SlideData[]>>>;
-  onPreview: () => void;
+  /** Ids of the ticked slide prep tasks */
+  completedTasks: string[];
+  onCompletedTasksChange: (tasks: string[]) => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   templateInfo?: TemplateInfo | null;
@@ -26,7 +46,7 @@ interface Props {
   registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
 
-export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, onPreview, isOpen, setIsOpen, templateInfo, setTemplateInfo, registerLeaveGuard }: Props) {
+export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, completedTasks, onCompletedTasksChange, isOpen, setIsOpen, templateInfo, setTemplateInfo, registerLeaveGuard }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -136,12 +156,18 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     setIsSaving(true);
     toast({ title: "Preparing Download…" });
     try {
-      const res = await fetch(import.meta.env.BASE_URL + `api/workshop/sessions/${session.id}/export/pptx`);
-      if (!res.ok) throw new Error("Export failed");
-
+      const formData = new FormData();
+      formData.append("session", JSON.stringify(session));
+      formData.append("meta", JSON.stringify(meta));
+      formData.append("slides", JSON.stringify(allCachedSlides));
+      // Without a template file the server uses the template stored for this session (or its course)
+      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/pptx-with-template", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Assembly failed");
       const blob = await res.blob();
       const safeName = (session.title || "workshop").slice(0, 40).replace(/[^a-zA-Z0-9.-]+/gi, "_").toLowerCase();
-
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -150,36 +176,9 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-
       toast({ title: "Downloaded!", description: "Your slide deck is ready." });
-    } catch (e) {
-      // Fallback
-      try {
-        const formData = new FormData();
-        formData.append("session", JSON.stringify(session));
-        formData.append("meta", JSON.stringify(meta));
-        formData.append("slides", JSON.stringify(allCachedSlides));
-        // Without a file the server uses the template stored for this session
-
-        const res2 = await fetch(import.meta.env.BASE_URL + "api/workshop/export/pptx-with-template", {
-          method: "POST",
-          body: formData,
-        });
-        if (!res2.ok) throw new Error("Assembly failed");
-        const blob = await res2.blob();
-        const safeName = (session.title || "workshop").slice(0, 40).replace(/[^a-zA-Z0-9.-]+/gi, "_").toLowerCase();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${safeName}_slides.pptx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        toast({ title: "Downloaded!" });
-      } catch (err) {
-        toast({ title: "Download Failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-      }
+    } catch (err) {
+      toast({ title: "Download Failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -250,14 +249,12 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   const nextSlide = () => setCurrentSlideIndex(i => Math.min(totalSlides - 1, i + 1));
   const prevSlide = () => setCurrentSlideIndex(i => Math.max(0, i - 1));
 
-  const [completedSlideTasks, setCompletedSlideTasks] = useState<Set<string>>(new Set());
+  // Ticked prep tasks are saved with the session (DraftState.completedTasks)
+  const completedSlideTasks = new Set(completedTasks);
   const toggleSlideTask = (taskId: string) => {
-    setCompletedSlideTasks(prev => {
-      const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId);
-      else next.add(taskId);
-      return next;
-    });
+    onCompletedTasksChange(completedSlideTasks.has(taskId)
+      ? completedTasks.filter(t => t !== taskId)
+      : [...completedTasks, taskId]);
   };
 
   let currentBlockIndex = -1;
@@ -819,8 +816,6 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                 note={templateInfo?.source === "COURSE" ? "Removing it here only affects this session." : undefined}
               />
             </div>
-
-
 
             {hasSlides && (
               <>

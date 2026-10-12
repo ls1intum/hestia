@@ -12,7 +12,6 @@ export type SessionType =
 /** Form payload sent to the server */
 export interface WorkshopInput {
   title?: string;
-  learningGoals?: string[];
   duration: number;
   participants: number;
   sessionType: SessionType;
@@ -30,7 +29,7 @@ export interface SubSkill {
   soloLevel?: string;
 }
 
-/** One learning goal with suggested activities (Plan Review step) */
+/** One learning goal, as entered on the Goals step */
 export interface LearningGoalPlan {
   id: string;
   originalGoal?: string;
@@ -38,8 +37,6 @@ export interface LearningGoalPlan {
   prerequisites: string[];
   achieveActivities: string[];
   assessActivities: string[];
-  /** Priority rating 0–5 (0 = no priority set, 5 = highest priority) */
-  priority?: number;
   bloomLevel?: string;
   soloLevel?: string;
   session?: string;
@@ -54,7 +51,7 @@ export interface ActivitySection {
   materials: string[];
 }
 
-/** One timetable block (Result step) */
+/** One timetable block (Timetable step) */
 export interface ActivityBlock {
   blockId?: string;
   phase: string;
@@ -98,7 +95,6 @@ export interface SlideData {
   activityOutputExpectation?: string;
   pollQuestion?: string;
   pollOptions?: string[];
-  /** Single centred reflective question for debrief slides */
   /** Student-facing correct answer for debrief slides */
   suggestedAnswer?: string;
   /** Common misconceptions for debrief slides */
@@ -111,14 +107,12 @@ export interface SlideData {
   lgIndex?: number;
 }
 
-/** The full generated session returned after step 2 */
+/** The generated session (timetable), returned by POST /api/workshop/session */
 export interface WorkshopSession {
   id?: string;
   title?: string;
   studentBackground?: string;
   blocks: ActivityBlock[];
-  /** Goals omitted by the LLM because there was not enough time to cover them. */
-  omittedGoals?: string[];
   slides?: Record<number, SlideData[]>;
 }
 
@@ -138,17 +132,10 @@ export interface SkeletonBlock {
 
 export interface SessionSkeleton {
   blocks: SkeletonBlock[];
-  omittedGoalIndices: number[];
   /** Optional: existing draft session ID to update on finalisation */
   sessionId?: string;
 }
 
-/** Request body for POST /api/workshop/session */
-export interface GenerateSessionRequest {
-  goals: LearningGoalPlan[];
-  meta: WorkshopInput;
-  skeleton: SessionSkeleton;
-}
 
 /** Lightweight summary returned by GET /api/workshop/sessions (dashboard list) */
 export interface SessionSummary {
@@ -170,8 +157,6 @@ export interface SessionDetail {
   currentStep?: string;
   courseId?: string;
   draftStateJson?: string;
-  /** True if a custom slide template applies (the session's own or its course's) */
-  hasTemplate?: boolean;
   /** Where the applied template comes from; null means the default design */
   templateSource?: "SESSION" | "COURSE" | null;
   /** File name of the applied template, if known */
@@ -190,10 +175,6 @@ export function templateInfoFromDetail(detail: SessionDetail): TemplateInfo | nu
 }
 
 /**
- * All in-progress form state, serialized to draftStateJson and stored in the DB.
- * Each field is optional since the user may not have reached that step yet.
- */
-/**
  * A goal edited on the Goals step and kept without applying it. Applying goals (Continue)
  * regenerates the timetable, so kept goals wait here until the user continues or discards them.
  */
@@ -206,6 +187,10 @@ export interface KeptGoal {
   subSkills?: SubSkill[];
 }
 
+/**
+ * All in-progress form state, serialized to draftStateJson and stored in the DB.
+ * Each field is optional since the user may not have reached that step yet.
+ */
 export interface DraftState {
   workshopInput?: Partial<WorkshopInput>;
   refinedGoals?: LearningGoalPlan[];
@@ -275,6 +260,5 @@ export function generateDefaultSkeleton(goals: LearningGoalPlan[], totalDuration
 
   return {
     blocks,
-    omittedGoalIndices: [],
   };
 }

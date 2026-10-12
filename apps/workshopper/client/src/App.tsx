@@ -1,68 +1,26 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { Loader2, Moon, Sun, GraduationCap, ArrowLeft } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Loader2, Moon, Sun, ArrowLeft, ArrowRight } from "lucide-react";
 import WorkshopFormStep1 from "@/components/WorkshopFormStep1";
 import WorkshopFormStep2 from "@/components/WorkshopFormStep2";
 import WorkshopFormStep2b from "@/components/WorkshopFormStep2b";
 import WorkshopGoalEntry from "@/components/WorkshopGoalEntry";
-
 import WorkshopGeneratedTimetable from "@/components/WorkshopGeneratedTimetable";
-
-import WorkshopPreparation from "@/components/WorkshopPreparation";
+import { SlideWorkstation } from "@/components/SlideWorkstation";
 import SessionsDashboard from "@/components/SessionsDashboard";
+import CourseSummary from "@/components/CourseSummary";
+import CourseTemplateStep from "@/components/CourseTemplateStep";
+import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
-import { generateSession, getSessionDetail, finishSession, handleAuthError } from "@/lib/api";
+import { finishSession } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
-import type {
-  WorkshopInput,
-  LearningGoalPlan,
-  WorkshopSession,
-  SessionSkeleton,
-  DraftState
-} from "@/lib/workshop-generator";
-import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
-
-import CourseSummary from "@/components/CourseSummary";
-import CourseTemplateStep from "@/components/CourseTemplateStep";
-import WorkshopFinalReview from "@/components/WorkshopFinalReview";
-
-type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
-
-// Helper: compute the ordered step IDs for a given entity configuration
-function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
-  return ALL_STEPS
-    .filter(s => {
-      if (entityType === "COURSE") return COURSE_STEPS.includes(s.id);
-      if (s.id === "course-template") return false;
-      if (!courseId && s.id === "course-summary") return false;
-      return true;
-    })
-    .map(s => s.id);
-}
-
-const ALL_STEPS: { id: Step; label: string }[] = [
-  { id: "input-1",  label: "Setup" },
-  { id: "input-2",  label: "Activities" },
-  { id: "input-2b", label: "Materials" },
-  { id: "course-template", label: "Template" },
-  { id: "course-summary", label: "Review" },
-  { id: "goals",    label: "Goals" },
-  { id: "timeline", label: "Timetable" },
-  { id: "prepare",  label: "Preparation" },
-  { id: "final-review", label: "Final Review" },
-];
-
-/** Steps of creating or editing a course; sessions use the rest. */
-const COURSE_STEPS: Step[] = ["input-1", "input-2", "input-2b", "course-template"];
-
-let hasRestored = false;
+import type { WorkshopInput } from "@/lib/workshop-generator";
+import { useWizardState, type Step } from "@/hooks/useWizardState";
 
 /** The settings forms; their values are kept while moving between them. */
 const FORM_STEPS: Step[] = ["input-1", "input-2", "input-2b"];
-
-import { useWizardState } from "@/hooks/useWizardState";
 
 export default function App() {
   const wizard = useWizardState();
@@ -71,16 +29,17 @@ export default function App() {
   /** Open while asking about unsaved settings on the form steps. */
   const [settingsLeaveDialog, setSettingsLeaveDialog] = useState<{ proceed: () => void } | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSlideWorkstationOpen, setIsSlideWorkstationOpen] = useState(true);
   const {
     view, setView, step, setStep, highestStepIdx, setHighestStepIdx,
     darkMode, toggleDark, isLoading, setIsLoading,
     sessionId, session, workshopInput, refinedGoals, currentSkeleton, slidesCache, completedTasks,
-    STEP_ORDER, currentIdx, entityType, isFinished,
+    STEP_ORDER, entityType, isFinished,
     handleStep1, handleStep2Activities, handleStep2, handleCourseFinish, handleGoalsEntered,
-    handleReset, startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
-    setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
+    startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
+    setSlidesCache, setWorkshopInput, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentCourseId, buildDraft, loadingMessages, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
+    originalSession, currentCourseId, buildDraft, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
     hasUnsavedSettings, saveSettings, discardSettings,
     templateInfo, setTemplateInfo
   } = wizard;
@@ -285,7 +244,6 @@ export default function App() {
             registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
-            onGoalsChanged={(newGoals: LearningGoalPlan[]) => setRefinedGoals(newGoals)}
             onMetaChanged={(newMeta: WorkshopInput) => setWorkshopInput(newMeta)}
             onBack={() => {
               if (timetableEdited) {
@@ -308,43 +266,54 @@ export default function App() {
         )}
 
         {step === "prepare" && session && (
-          <WorkshopPreparation
-            session={session}
-            templateInfo={templateInfo}
-            setTemplateInfo={setTemplateInfo}
-            registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
-            goals={refinedGoals}
-            meta={workshopInput as WorkshopInput}
-            completedTasks={completedTasks}
-            slidesCache={slidesCache}
-            setSlidesCache={(val) => {
-              setSlidesCache((prev) => {
-                const nextCache = typeof val === 'function' ? val(prev) : val;
-                const newSession = { ...session, slides: nextCache };
-                setSession(newSession);
-                // Background save of the draft so slides are persisted
-                persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, currentCourseId);
-                return nextCache;
-              });
-            }}
-            onUpdateTasks={(tasks, isAllDone) => {
-              setCompletedTasks(tasks);
-              let nextStep = isFinished ? "finished" : "prepare";
-              if (isAllDone && !isFinished) {
-                setIsFinished(true);
-                nextStep = "finished";
-              }
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), nextStep, sessionId, currentCourseId);
-            }}
-            onBack={() => confirmLeave(() => setStep("timeline"))}
-            onDone={(latestTasks) => confirmLeave(() => {
-              if (latestTasks) setCompletedTasks(latestTasks);
-              persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, latestTasks ?? completedTasks), "final-review", sessionId, currentCourseId);
-              setStep("final-review");
-              setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
-              window.scrollTo(0, 0);
-            })}
-          />
+          <div className="space-y-6">
+            <div>
+              <h2 className="font-display font-semibold text-2xl">Class Preparation</h2>
+              <p className="text-muted-foreground font-body text-sm mt-1">Generate and edit the slides for each block, and tick off the prep tasks per slide.</p>
+            </div>
+            <SlideWorkstation
+              session={session}
+              meta={workshopInput as WorkshopInput}
+              goals={refinedGoals}
+              templateInfo={templateInfo}
+              setTemplateInfo={setTemplateInfo}
+              registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
+              isOpen={isSlideWorkstationOpen}
+              setIsOpen={setIsSlideWorkstationOpen}
+              slidesCache={slidesCache}
+              setSlidesCache={(val) => {
+                setSlidesCache((prev) => {
+                  const nextCache = typeof val === 'function' ? val(prev) : val;
+                  const newSession = { ...session, slides: nextCache };
+                  setSession(newSession);
+                  // Background save of the draft so slides are persisted
+                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, newSession), "prepare", sessionId, currentCourseId);
+                  return nextCache;
+                });
+              }}
+              completedTasks={completedTasks}
+              onCompletedTasksChange={(tasks) => {
+                setCompletedTasks(tasks);
+                persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), isFinished ? "finished" : "prepare", sessionId, currentCourseId);
+              }}
+            />
+            <div className="mt-8 flex justify-between items-center bg-surface p-4 rounded-xl border shadow-sm">
+              <Button variant="outline" onClick={() => confirmLeave(() => setStep("timeline"))} className="gap-2 font-body shrink-0 bg-transparent border-[1.5px] border-primary text-primary hover:bg-primary/5 transition-all duration-150">
+                <ArrowLeft className="h-4 w-4" /> Timetable
+              </Button>
+              <Button
+                onClick={() => confirmLeave(() => {
+                  persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, completedTasks), "final-review", sessionId, currentCourseId);
+                  setStep("final-review");
+                  setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
+                  window.scrollTo(0, 0);
+                })}
+                className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150"
+              >
+                Review & Export <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         )}
 
         {step === "final-review" && session && (
@@ -381,8 +350,7 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="font-body font-medium text-foreground">{loadingMessages[step].title}</p>
-            <p className="text-sm text-muted-foreground font-body">{loadingMessages[step].sub}</p>
+            <p className="font-body font-medium text-foreground">Loading…</p>
           </div>
         </div>
       )}

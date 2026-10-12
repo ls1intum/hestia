@@ -64,8 +64,6 @@ const goalsKey = (goals: { id: string; text: string }[]) =>
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? import.meta.env.BASE_URL + "api";
 
-const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-
 // ── Main component ────────────────────────────────────────────────────
 export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, isLoading, initialGoals, keptGoals, onKeepDraft, registerLeaveGuard }: Props) {
   const goalsFromSession = (): GoalDraft[] => {
@@ -214,7 +212,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
   const removeGoal = (id: string) => setGoals((prev) => prev.filter((g) => g.id !== id));
 
   const handleAddSkillsFromLGH = useCallback((selectedSkills: SelectedSkillData[]) => {
-    const newDrafts: GoalDraft[] = selectedSkills.map((skill, i) => ({
+    const newDrafts: GoalDraft[] = selectedSkills.map((skill) => ({
       id: skill.id,
       text: skill.goal,
       bloomLevel: skill.bloomLevel,
@@ -265,7 +263,6 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
     const plans: LearningGoalPlan[] = finalGoalsText.map((text, i) => {
       const existingDraft = validGoals[i];
-      const existingPlan = initialGoals?.find(g => g.id === existingDraft?.id);
       return {
         id: existingDraft?.id || `g${i}`,
         goal: text,
@@ -273,7 +270,6 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         prerequisites: [],
         achieveActivities: [],
         assessActivities: [],
-        priority: existingPlan?.priority ?? 0,
         bloomLevel: existingDraft.bloomLevel,
         soloLevel: existingDraft.soloLevel,
         session: existingDraft.session,

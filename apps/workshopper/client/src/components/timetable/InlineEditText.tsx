@@ -1,21 +1,19 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 
+/** A block title that turns into an input on click (or always, while the block is in edit mode). */
 export function InlineEditText({
-  value, editing, alwaysEdit = false, onStartEdit, onSave, multiline = false, className = "", inputClassName = "text-sm px-2 py-0.5", boxStyle = false, disabled = false
+  value, editing, alwaysEdit = false, onStartEdit, onSave, className = "",
 }: {
   value: string;
   editing: boolean;
   alwaysEdit?: boolean;
   onStartEdit: () => void;
   onSave: (v: string) => void;
-  multiline?: boolean;
   className?: string;
-  inputClassName?: string;
-  boxStyle?: boolean;
-  disabled?: boolean;
 }) {
+  const inputClassName = "text-sm px-2 py-0.5";
   const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const mirrorRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -39,19 +37,6 @@ export function InlineEditText({
   const commit = () => onSave(draft);
 
   if (editing || alwaysEdit) {
-    if (multiline) {
-      return (
-        <textarea
-          ref={inputRef as React.Ref<HTMLTextAreaElement>}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => { if (e.key === "Escape") { setDraft(value); onSave(value); } }}
-          rows={3}
-          className={`w-full text-sm bg-background border border-primary/60 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary shadow-sm ${className}`}
-        />
-      );
-    }
     return (
       <span className="relative inline-flex items-center">
         {/* Hidden mirror span to measure text width */}
@@ -64,7 +49,7 @@ export function InlineEditText({
           {draft || " "}
         </span>
         <input
-          ref={inputRef as React.Ref<HTMLInputElement>}
+          ref={inputRef}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
@@ -78,15 +63,14 @@ export function InlineEditText({
 
   return (
     <span
-      className={`${disabled ? "" : "cursor-text"} select-text ${boxStyle ? "inline-block border border-border/60 rounded px-1 py-0.5 bg-background/50 hover:bg-background transition-colors" : ""} ${className}`}
+      className={`cursor-text select-text ${className}`}
       onClick={e => {
-        if (disabled) return;
         e.stopPropagation();
         onStartEdit();
       }}
-      title={disabled ? "" : "Click to edit"}
+      title="Click to edit"
     >
-      {value || (boxStyle ? "0" : "Click to edit...")}
+      {value || "Click to edit..."}
     </span>
   );
 }

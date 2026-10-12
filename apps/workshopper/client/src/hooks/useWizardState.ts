@@ -1,5 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { generateSession, getSessionDetail, getCourseDetail, saveDraft, saveCourseDraft, finishSession, handleAuthError } from "@/lib/api";
+import {
+  generateSession,
+  getSessionDetail,
+  getCourseDetail,
+  saveDraft,
+  saveCourseDraft,
+  handleAuthError,
+} from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import type {
   WorkshopInput,
@@ -8,7 +15,7 @@ import type {
   SessionSkeleton,
   DraftState,
   TemplateInfo,
-  KeptGoal
+  KeptGoal,
 } from "@/lib/workshop-generator";
 
 /** The settings edited on the three form steps (Setup, Activities, Materials). */
@@ -27,7 +34,7 @@ export interface LeaveGuard {
 import { defaultEvaluateMappings } from "@/lib/activity-taxonomy";
 import { generateDefaultSkeleton, SlideData, templateInfoFromDetail } from "@/lib/workshop-generator";
 
-type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
+export type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
@@ -81,7 +88,6 @@ export function useWizardState() {
     }
   };
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
-  const [courseTitle, setCourseTitle] = useState<string | null>(null);
   const [entityType, setEntityType] = useState<"SESSION" | "COURSE">("SESSION");
 
   const STEPS = ALL_STEPS.filter(s => {
@@ -106,9 +112,7 @@ export function useWizardState() {
   // Debounce ref for draft saves
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-
-
-  /** Persist current draft state to the server, debounced. Returns the session id. */
+  /** Callers waiting for the debounced draft save to finish (they get the saved id). */
   const pendingResolvers = useRef<Array<(id: string) => void>>([]);
   /** The save waiting for its debounce, so navigation can send it right away instead of dropping it. */
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
@@ -130,6 +134,7 @@ export function useWizardState() {
     else proceed();
   }, []);
 
+  /** Persist current draft state to the server, debounced. Returns the session id. */
   const persistDraft = useCallback(
     async (
       draft: DraftState,
@@ -308,7 +313,6 @@ export function useWizardState() {
       }
       setSessionIdSynced(null);
       setCurrentCourseId(courseId);
-      setCourseTitle(detail.title || "Untitled Course");
       setTemplateInfo(templateInfoFromDetail(detail));
       setKeptGoals(null);
       setEntityType("SESSION");
@@ -319,8 +323,8 @@ export function useWizardState() {
       setSlidesCache({});
       setIsFinished(false);
       
-      const idx = ALL_STEPS.filter(s => s.id !== "course-summary" || true).map(s => s.id).indexOf("course-summary");
-      setHighestStepIdx(idx !== -1 ? idx : 2);
+      // A new session in a course starts at its Review step; the steps up to it are open
+      setHighestStepIdx(computeStepOrder("SESSION", courseId).indexOf("course-summary"));
       setStep("course-summary");
       setView("wizard");
     } catch (e) {
@@ -338,8 +342,18 @@ export function useWizardState() {
       const detail = resolvedEntityType === "COURSE" ? await getCourseDetail(id) : await getSessionDetail(id);
       // R-2: resolve courseId locally so we can compute the correct step order immediately
       const resolvedCourseId = detail.courseId ?? null;
-      // Determine entity type from presence of courseId: sessions with a courseId are SESSION type
-      
+
+      // Start from a clean slate: nothing from a previously opened session or course may leak
+      // into this one (e.g. a course save picking up the last session's title and timetable)
+      setWorkshopInput({});
+      savedInputRef.current = {};
+      setRefinedGoals([]);
+      setKeptGoals(null);
+      setCurrentSkeleton(null);
+      setSession(null);
+      setOriginalSession(null);
+      setSlidesCache({});
+      setCompletedTasks([]);
 
       setSessionIdSynced(detail.id);
       setEntityType(resolvedEntityType);
@@ -365,7 +379,6 @@ export function useWizardState() {
             if (draft.workshopInput) {
               if (detail.title) draft.workshopInput.title = detail.title;
               setWorkshopInput(draft.workshopInput);
-            savedInputRef.current = draft.workshopInput;
               savedInputRef.current = draft.workshopInput;
             }
             if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
@@ -619,22 +632,9 @@ export function useWizardState() {
     }
   }, []);
 
-  const loadingMessages: Record<Step, { title: string; sub: string }> = {
-    "input-1":  { title: "Loading…",                    sub: "" },
-    "input-2":  { title: "Loading…",                    sub: "" },
-    "input-2b": { title: "Loading…",                    sub: "" },
-    "course-template": { title: "Loading…",            sub: "" },
-    "course-summary": { title: "Loading…",             sub: "" },
-    "goals":    { title: "Loading…",                    sub: "" },
-    "timeline": { title: "Loading…", sub: "" },
-    "prepare":  { title: "Loading…",                    sub: "" },
-    "final-review": { title: "Loading…",                sub: "" },
-  };
-
-
   // Handle browser back button
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = () => {
       if (view === "wizard") {
         const guard = leaveGuardRef.current;
         if (guard && guard.isDirty()) {
@@ -672,7 +672,6 @@ export function useWizardState() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [flushDraft]);
 
-  // ── Dashboard view ────────────────────────────────────────────────────
 
   return {
     view,
@@ -682,22 +681,15 @@ export function useWizardState() {
     highestStepIdx,
     setHighestStepIdx,
     darkMode,
-    setDarkMode,
     isLoading,
     setIsLoading,
     isFinished,
     setIsFinished,
     showTimelineBackConfirm,
     setShowTimelineBackConfirm,
-    isGeneratingRef,
     sessionId,
-    setSessionId,
-    sessionIdRef,
-    setSessionIdSynced,
     currentCourseId,
-    setCurrentCourseId,
     entityType,
-    setEntityType,
     STEPS,
     STEP_ORDER,
     workshopInput,
@@ -709,15 +701,12 @@ export function useWizardState() {
     session,
     setSession,
     originalSession,
-    setOriginalSession,
     currentSkeleton,
     setCurrentSkeleton,
     completedTasks,
     setCompletedTasks,
     slidesCache,
     setSlidesCache,
-    draftSaveTimeout,
-    pendingResolvers,
     persistDraft,
     buildDraft,
     startNewSession,
@@ -739,8 +728,5 @@ export function useWizardState() {
     handleGoalsEntered,
     handleReset,
     toggleDark,
-    currentIdx,
-    loadingMessages,
-    courseTitle
   };
 }

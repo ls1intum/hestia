@@ -1,6 +1,22 @@
 import { useEffect, useState } from "react";
 import { getSessionStatus } from "@/lib/utils";
-import { GraduationCap, BookOpen, Clock, Loader2, Target, Plus, Trash2, Settings, ArrowRight, Play, Archive, FileText, ChevronRight, X, Edit2, CheckCircle2, FileEdit, MoreVertical, Pencil, Presentation, ChevronDown, Sparkles } from "lucide-react";
+import {
+  GraduationCap,
+  BookOpen,
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  FileText,
+  ChevronRight,
+  CheckCircle2,
+  FileEdit,
+  MoreVertical,
+  Pencil,
+  Presentation,
+  ChevronDown,
+  Sparkles,
+} from "lucide-react";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
 import { Button } from "@/components/ui/button";
@@ -17,7 +33,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { listSessions, deleteSession, renameSession, downloadPdf, downloadPptx, moveSession, downloadCourseZip, reorderSessions, handleAuthError, listCourses, deleteCourse, renameCourse } from "@/lib/api";
+import {
+  listSessions,
+  deleteSession,
+  renameSession,
+  downloadPdf,
+  downloadPptx,
+  moveSession,
+  downloadCourseZip,
+  reorderSessions,
+  handleAuthError,
+  listCourses,
+  deleteCourse,
+  renameCourse,
+} from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
 
@@ -341,8 +370,6 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                   }}
                 >
                   {(() => {
-                    const isFinished = session.status === "complete" && session.currentStep === "finished";
-                    const isReadyForPrep = session.status === "complete" && session.currentStep !== "finished";
                     const status = getSessionStatus(session);
                     return (
                       <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex flex-col items-center justify-center transition-colors gap-0 ${status.iconClass}`}>

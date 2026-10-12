@@ -21,9 +21,9 @@ export class ApiError extends Error {
   }
 }
 
-/** 
- * Handles common auth errors globally. 
- * Throws the error onward if it's not auth-related so the caller can handle it.
+/**
+ * Handles common auth errors globally: 401 redirects to the SAML login (unless autoRedirect is
+ * false), 403 shows an "Access denied" toast. Returns true if the error was auth-related.
  */
 export function handleAuthError(err: unknown, autoRedirect = true): boolean {
   if (err && typeof err === 'object' && 'status' in err) {
@@ -95,9 +95,7 @@ async function get<T>(path: string): Promise<T> {
   }
   return parseJson<T>(res);
 }
-/** Step 1: Generate initial learning goal drafts from user input */
-
-/** Step 3: Generate the full session timetable from goals + activities */
+/** Generates the session timetable from the goals, settings and client-built skeleton */
 export function generateSession(
   goals: LearningGoalPlan[],
   meta: WorkshopInput,
@@ -229,11 +227,6 @@ export async function downloadCourseZip(id: string): Promise<void> {
   saveAs(blob, `course-${id}.zip`);
 }
 
-/** Fetch currently authenticated user */
-export function getCurrentUser(): Promise<{ id: string }> {
-  return get<{ id: string }>("/workshop/me");
-}
-
 /** Fetch all courses */
 export function listCourses(): Promise<SessionSummary[]> {
   return get<SessionSummary[]>("/workshop/courses");
@@ -245,12 +238,13 @@ export async function saveCourseDraft(
   sessionId: string | null,
   currentStep: string
 ): Promise<string> {
-  const title = draft.session?.title ?? draft.workshopInput?.title ?? "Workshop Course";
+  const title = draft.workshopInput?.title ?? "Workshop Course";
   const body = {
     sessionId: sessionId ?? undefined,
     currentStep,
     title,
-    draftStateJson: JSON.stringify(draft)
+    // A course only has settings; anything else in the wizard belongs to a session
+    draftStateJson: JSON.stringify({ workshopInput: draft.workshopInput })
   };
   const res = await post<{ id: string }>("/workshop/courses/draft", body);
   return res.id;

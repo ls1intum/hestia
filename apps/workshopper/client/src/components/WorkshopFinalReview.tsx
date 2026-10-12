@@ -1,20 +1,13 @@
 import React, { useState } from "react";
 import { saveAs } from "file-saver";
-import { ActivityBlock, LearningGoalPlan, WorkshopSession, WorkshopInput, SlideData } from "@/lib/workshop-generator";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Clock, Target, ArrowLeft, Download, CheckCircle2, ChevronDown, Check, X, AlertTriangle, Users } from "lucide-react";
+import { LearningGoalPlan, WorkshopSession, WorkshopInput, SlideData } from "@/lib/workshop-generator";
+import { Card } from "@/components/ui/card";
+import { Clock, Target, ArrowLeft, Download, CheckCircle2, ChevronDown, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
-import { phaseEmojis, getStepEmoji, getMechanicDescription, DEFAULT_ACTIVITIES, MODE_COLORS, getPhaseMode, getSectionMode, getStepMode } from "@/lib/constants";
+import { phaseEmojis, getMechanicDescription, MODE_COLORS, getPhaseMode } from "@/lib/constants";
 
 // Removed duplicate local declarations
 
@@ -136,20 +129,14 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
         <div className="flex-1 px-2 sm:px-6 py-6 pb-8">
           <div className="mx-auto max-w-4xl">
 
-
             <div className="relative mt-2">
               <Accordion type="multiple" className="flex flex-col">
-                {rows.map(({ block, start, end }, i) => {
+                {rows.map(({ block }, i) => {
                   const mode = getPhaseMode(block.phase);
                   const modeColors = MODE_COLORS[mode];
                   const isBreak = mode === "break";
                   
                   const nextBlock = i < rows.length - 1 ? rows[i+1].block : null;
-                  const nextMode = nextBlock ? getPhaseMode(nextBlock.phase) : mode;
-                  const nextModeColors = MODE_COLORS[nextMode];
-                  
-                  const gradientStr = `linear-gradient(to bottom, ${modeColors.dot}, ${nextModeColors.dot})`;
-                  const dashedStr = `repeating-linear-gradient(to bottom, ${modeColors.dot}, ${modeColors.dot} 6px, transparent 6px, transparent 12px)`;
                   // Gap below this block encodes its duration on the timeline
                   const gapBelow = i < rows.length - 1 ? Math.max(12, block.duration * 5) : 0;
                   
@@ -281,18 +268,18 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
 
                               // ── ARRIVE / Welcome: just list the learning goals ───────────────
                               if (phase === "ARRIVE") {
-                                const rawGoals = meta?.learningGoals && meta.learningGoals.length > 0
-                                  ? meta.learningGoals
-                                  : allSteps
-                                      .filter((s: string) => /learning goal|objective/i.test(s))
-                                      .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
-                                const goals = rawGoals.length > 0 ? rawGoals : allSteps
+                                // The session's goals; older blocks without them fall back to the goals written in the steps
+                                const sessionGoals = goals.map(g => g.goal).filter(Boolean);
+                                const stepGoals = allSteps
+                                  .filter((s: string) => /learning goal|objective/i.test(s))
+                                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
+                                const shownGoals = sessionGoals.length > 0 ? sessionGoals : stepGoals.length > 0 ? stepGoals : allSteps
                                   .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
                                   .filter((s: string) => s.length > 0);
                                 return (
                                   <div className="pl-6 space-y-1.5 mt-2">
                                     <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
-                                    {goals.map((g: string, i: number) => (
+                                    {shownGoals.map((g: string, i: number) => (
                                       <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
                                         style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
                                         <span className="font-mono text-xs font-bold shrink-0 mt-0.5 whitespace-nowrap" style={{ color: 'var(--hestia-primary)' }}>Learning Goal {i + 1}</span>
@@ -474,30 +461,6 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
           </div>
         </div>
 
-        {/* Omitted goals warning */}
-        {session.omittedGoals && session.omittedGoals.length > 0 && (
-          <div className="m-4 rounded-lg border border-amber-400/60 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-500/40 px-4 py-3 space-y-2">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-body font-semibold text-amber-800 dark:text-amber-300">
-                  Not all learning goals could be covered
-                </p>
-                <p className="text-xs font-body text-amber-700 dark:text-amber-400 mt-0.5">
-                  The following goal{session.omittedGoals.length > 1 ? "s were" : " was"} left out because there was not enough time to cover {session.omittedGoals.length > 1 ? "them" : "it"} meaningfully within the session duration. Consider reducing other goals or increasing the session time.
-                </p>
-              </div>
-            </div>
-            <ul className="ml-6 space-y-1">
-              {session.omittedGoals.map((g, i) => (
-                <li key={i} className="text-xs font-body text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-                  <span className="text-amber-500 mt-0.5">•</span>
-                  {g}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
         {/* Sticky Footer Bar */}
         <div className="sticky bottom-4 z-30 mx-4 mb-4 rounded-xl border border-border/80 bg-surface backdrop-blur-md shadow-2xl p-3 flex items-center justify-between gap-4 mt-6 transition-all">
           <Button

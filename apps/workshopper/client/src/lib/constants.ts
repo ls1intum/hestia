@@ -89,19 +89,6 @@ export const getSectionMode = (label: string, defaultMode: ActivityMode): Activi
   return defaultMode;
 };
 
-export const phaseRowColors: Record<string, string> = {
-  ARRIVE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary",
-  ACTIVATE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent",
-  INFORM: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary/80",
-  PROCESS: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent/80",
-  BREAK: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-muted-foreground",
-  EVALUATE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary/60",
-  SUMMARY: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent/60",
-  LEARNING_CYCLE: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary",
-  CUSTOM: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-border",
-  BUFFER: "bg-muted/30 relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-muted",
-};
-
 export const getStepEmoji = (text: string) => {
   const t = text.toLowerCase();
   if (t.includes("lecture") || t.includes("presentation") || t.includes("explain") || t.includes("concept")) return "🧑‍🏫";
@@ -123,18 +110,6 @@ export const getStepEmoji = (text: string) => {
   if (t.includes("icebreaker") || t.includes("game")) return "🎲";
   return "✨";
 };
-
-export const getStepColorClass = (text: string) => {
-  return "bg-card border-border/60";
-};
-
-export const DEFAULT_ACTIVITIES = [
-  "Group Discussion", "Case Study", "Role Play",
-  "Hands-on Practice", "Quiz / Polls", "Q&A Session",
-  "Peer Review", "Brainstorming", "Think-Pair-Share",
-  "Concept Mapping", "Worked Problem", "Debate", 
-  "Design Sprint / Prototype Challenge"
-];
 
 export interface ActivityInfo {
   emoji: string;

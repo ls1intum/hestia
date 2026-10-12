@@ -1,53 +1,44 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import {
-  ActivityBlock,
-  ActivitySection,
-  LearningGoalPlan,
-  WorkshopInput,
-  WorkshopSession,
-} from "@/lib/workshop-generator";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useRef, useEffect } from "react";
+import { ActivityBlock, LearningGoalPlan, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ArrowLeft, ArrowRight, ChevronDown, Clock, Plus, Loader2, X } from "lucide-react";
 import {
-  ArrowLeft, ArrowRight, GripVertical, ChevronDown, ChevronUp,
-  Clock, Trash2, Plus, Loader2, Pencil, Save, X
-} from "lucide-react";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor,
-  useSensor, useSensors, DragEndEvent,
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext, sortableKeyboardCoordinates, useSortable,
-  verticalListSortingStrategy, arrayMove,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { toast } from "@/hooks/use-toast";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import { SortableBlockRow } from "./timetable/SortableBlockRow";
-import { InlineEditText } from "./timetable/InlineEditText";
-
-import { phaseEmojis, phaseRowColors, getStepEmoji, getStepColorClass, DEFAULT_ACTIVITIES } from "@/lib/constants";
+import { phaseEmojis } from "@/lib/constants";
 import { parseStepDuration } from "@/lib/utils";
 import { ADDABLE_BLOCK_TYPES, createBlockFromTemplate } from "@/lib/block-templates";
 
 // ── Editing state ──────────────────────────────────────────────────
-export type EditTarget =
-  | { type: "sessionTitle" }
-  | { type: "title"; blockId: string }
-  | { type: "step"; blockId: string; sectionIdx: number; stepIdx: number }
-  | { type: "stepTime"; blockId: string; sectionIdx: number; stepIdx: number }
-  | { type: "blockDuration"; blockId: string }
-  | { type: "sectionDuration"; blockId: string; sectionIdx: number }
-  | null;
+/** The block title being edited inline (click-to-edit, also outside edit mode). */
+export type EditTarget = { type: "title"; blockId: string } | null;
 
 // ── Internal block with stable dnd ID ─────────────────────────────
 export interface DndActivityBlock extends ActivityBlock {
@@ -63,7 +54,6 @@ interface Props {
   onBack: () => void;
   onNext: (latestSession: WorkshopSession) => void;
   onSaveSession?: (session: WorkshopSession) => void;
-  onGoalsChanged?: (goals: LearningGoalPlan[]) => void;
   onMetaChanged?: (meta: import('@/lib/workshop-generator').WorkshopInput) => void;
   /** Lets the wizard ask this step before navigating away while a block has unsaved edits. */
   registerLeaveGuard?: (guard: LeaveGuard | null) => void;
@@ -74,7 +64,7 @@ interface Props {
 // ── Sortable block row component removed and imported ─────────────────────────────────────────────
 
 // ── Main component ─────────────────────────────────────────────────
-export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged, registerLeaveGuard }: Props) {
+export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onMetaChanged, registerLeaveGuard }: Props) {
   const onSaveSessionRef = useRef(onSaveSession);
   useEffect(() => {
     onSaveSessionRef.current = onSaveSession;
@@ -92,15 +82,12 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       lgIndex: (b as any).lgIndex ?? 0,
     }))
   );
-  const [sessionTitle, setSessionTitle] = useState(initialSession.title || "");
+  const sessionTitle = initialSession.title || "";
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<EditTarget>(null);
   const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
 
   // Edit Mode State
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [originalBlocks, setOriginalBlocks] = useState<DndActivityBlock[] | null>(null);
-  const [pendingNavigation, setPendingNavigation] = useState<"back" | "next" | null>(null);
   const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
@@ -261,7 +248,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     if (editingBlockId === dndId) discardDraft();
   };
 
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -269,15 +255,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
   const toggleExpand = (dndId: string) =>
     setExpandedBlocks(prev => ({ ...prev, [dndId]: !prev[dndId] }));
-
-  const updateBlock = (dndId: string, patch: Partial<DndActivityBlock>) =>
-    setBlocks(prev => prev.map(b => b.dndId === dndId ? { ...b, ...patch } : b));
-
-  const buildSession = useCallback((): WorkshopSession => ({
-    ...initialSession,
-    title: sessionTitle,
-    blocks: blocks.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-  }), [initialSession, sessionTitle, blocks]);
 
   const handleSaveTitle = (dndId: string, v: string) => {
     setBlocks(prev => {
@@ -317,7 +294,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       persistBlocks(next);
       return next;
     });
-    setEditing(null);
   };
 
   const handleSaveBlockDuration = (dndId: string, v: string) => {
@@ -336,25 +312,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       persistBlocks(next);
       return next;
     });
-    setEditing(null);
-  };
-
-  const handleSaveSectionDuration = (dndId: string, sectionIdx: number, v: string) => {
-    const num = parseInt(v, 10);
-    if (!isNaN(num) && num >= 0) {
-      setBlocks(prev => {
-        const next = prev.map(b => {
-          if (b.dndId !== dndId || !b.sections) return b;
-          const sections = b.sections.map((sec, si) => si === sectionIdx ? { ...sec, duration: num } : sec);
-          const newDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-          return { ...b, sections, duration: newDuration };
-        });
-        
-        persistBlocks(next);
-        return next;
-      });
-    }
-    setEditing(null);
   };
 
   const handleSaveStepTime = (dndId: string, sectionIdx: number, stepIdx: number, newTime: string) => {
@@ -385,7 +342,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       persistBlocks(next);
       return next;
     });
-    setEditing(null);
   };
 
   const handleAddStep = (dndId: string, text: string) => {
@@ -514,7 +470,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       // Generate a fresh set of sections for the new activity
       const singleBlockSkeleton = {
         sessionId: initialSession.id,
-        omittedGoalIndices: [],
         blocks: [{
           phase: block.phase,
           title: block.phaseLabel || block.phase,
@@ -586,40 +541,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     }
   };
 
-  const enterEditMode = () => {
-    setOriginalBlocks(JSON.parse(JSON.stringify(blocks)));
-    setIsEditMode(true);
-  };
-
-  const saveEditMode = () => {
-    const latest = buildSession();
-    onSaveSessionRef.current?.(latest);
-    setIsEditMode(false);
-    setOriginalBlocks(null);
-  };
-
-  const cancelEditMode = () => {
-    if (originalBlocks) setBlocks(originalBlocks);
-    setIsEditMode(false);
-    setOriginalBlocks(null);
-    setEditing(null);
-  };
-
-  const executePendingNavigation = () => {
-    if (pendingNavigation === "back") {
-      onBack();
-    } else if (pendingNavigation === "next") {
-      const latest = buildSession();
-      onNextRef.current?.(latest);
-    }
-    setPendingNavigation(null);
-  };
-
-  const confirmNavigation = () => {
-    cancelEditMode();
-    executePendingNavigation();
-  };
-
   const handleBack = () => confirmLeave(() => onBack());
 
   const handleNext = () => confirmLeave(() => {
@@ -646,7 +567,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
       const singleBlockSkeleton = {
         sessionId: initialSession.id,
-        omittedGoalIndices: [],
         blocks: [{
           phase: block.phase,
           title: block.phaseLabel || block.phase,
@@ -704,7 +624,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     }
   };
 
-
   const [hasConfirmedEvaluatePriorities, setHasConfirmedEvaluatePriorities] = useState(
     goals.length <= 2 || (meta.evaluateMappings && meta.evaluateMappings.length > 0)
   );
@@ -721,7 +640,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
       const singleBlockSkeleton = {
         sessionId: initialSession.id,
-        omittedGoalIndices: [],
         blocks: [{
           phase: block.phase,
           title: block.phaseLabel || block.phase,
@@ -807,7 +725,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
       const singleBlockSkeleton = {
         sessionId: initialSession.id,
-        omittedGoalIndices: [],
         blocks: [{
           phase: block.phase,
           title: block.phaseLabel || block.phase,
@@ -870,16 +787,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h2 className="font-display font-bold text-3xl text-foreground mt-0.5">
-                {isEditMode ? (
-                  <Input
-                    value={sessionTitle}
-                    onChange={(e) => setSessionTitle(e.target.value)}
-                    className="font-display text-3xl font-bold h-auto py-1 px-2 -ml-2 border-primary/50 focus-visible:ring-1 focus-visible:ring-primary w-[400px]"
-                    placeholder="Workshop Title"
-                  />
-                ) : (
-                  <span className="py-1">{sessionTitle || "Workshop Title"}</span>
-                )}
+                <span className="py-1">{sessionTitle || "Workshop Title"}</span>
               </h2>
               <CardDescription className="mt-1">
                 Edit any title, activity, or step inline. Click an activity badge to switch it.
@@ -902,7 +810,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                     needsEvaluatePriority={isNeedsPriority}
                     onConfirmEvaluateMappings={(mappings) => { confirmEvaluateMappings(block.dndId, mappings); }}
                     onPendingMappingsChange={(mappings) => { pendingMappingsRef.current = { dndId: block.dndId, mappings }; }}
-                    onResetEvaluatePriority={() => setHasConfirmedEvaluatePriorities(false)}
                   isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
                   editing={editing}
                   meta={meta}
@@ -914,15 +821,10 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   onToggleExpand={() => toggleExpand(block.dndId)}
                   onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
                   onSaveTitle={v => handleSaveTitle(block.dndId, v)}
-                  onEditStep={(sIdx, stIdx) => setEditing({ type: "step", blockId: block.dndId, sectionIdx: sIdx, stepIdx: stIdx })}
                   onSaveStep={(sIdx, stIdx, v) => handleSaveStep(block.dndId, sIdx, stIdx, v)}
-                  onEditStepTime={(sIdx, stIdx) => setEditing({ type: "stepTime", blockId: block.dndId, sectionIdx: sIdx, stepIdx: stIdx })}
                   onSaveStepTime={(sIdx, stIdx, v) => handleSaveStepTime(block.dndId, sIdx, stIdx, v)}
-                  onEditBlockDuration={() => setEditing({ type: "blockDuration", blockId: block.dndId })}
                   onSaveBlockDuration={v => handleSaveBlockDuration(block.dndId, v)}
                   onSaveObjective={v => handleSaveObjective(block.dndId, v)}
-                  onEditSectionDuration={(sIdx) => setEditing({ type: "sectionDuration", blockId: block.dndId, sectionIdx: sIdx })}
-                  onSaveSectionDuration={(sIdx, v) => handleSaveSectionDuration(block.dndId, sIdx, v)}
                   onDeleteBlock={() => handleDeleteBlock(block.dndId)}
                   onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
                   onSwitchEvaluateActivity={(lgNum, newAct) => switchEvaluateActivity(block.dndId, lgNum, newAct)}
@@ -1015,8 +917,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           )}
         </div>
       </Card>
-
-
 
       {/* Undo delete banner */}
       {lastDeletedBlock && (
