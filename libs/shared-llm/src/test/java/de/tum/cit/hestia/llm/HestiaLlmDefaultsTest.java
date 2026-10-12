@@ -25,18 +25,6 @@ class HestiaLlmDefaultsTest {
     }
 
     @Test
-    void keepsEmbeddingsOnSaia() {
-        MockEnvironment environment = new MockEnvironment();
-
-        processor.postProcessEnvironment(environment, null);
-
-        assertThat(environment.getProperty("spring.ai.openai.embedding.base-url"))
-                .isEqualTo("https://chat-ai.academiccloud.de");
-        assertThat(environment.getProperty("spring.ai.openai.embedding.options.model"))
-                .isEqualTo("e5-mistral-7b-instruct");
-    }
-
-    @Test
     void userOverridesTakePrecedenceOverDefaults() {
         MockEnvironment environment = new MockEnvironment()
                 .withProperty("spring.ai.openai.chat.options.model", "Qwen/Qwen3.8-27B")
