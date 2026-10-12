@@ -265,7 +265,7 @@ class ExamGoalControllerTest {
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Apply merge sort.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
-        when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("SAIA 429"));
+        when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("HTTP 429"));
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -305,7 +305,7 @@ class ExamGoalControllerTest {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
-        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("SAIA 429"));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("HTTP 429"));
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)

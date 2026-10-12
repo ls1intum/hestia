@@ -76,7 +76,7 @@ public class ExamGoalGenerator {
      * @param context         the accumulated CONTEXT blocks preceding the task; blank for none.
      * @param taskType        the consumer's task-type label (e.g. "singleChoice"); null when unknown.
      * @param taskDescription the task statement.
-     * @param modelOverride   optional SAIA model id; falls back to the configured default when blank.
+     * @param modelOverride   optional model id; falls back to the configured default when blank.
      * @return the learning goals the task assesses.
      */
     public List<GeneratedExamGoal> generate(String context, String taskType, String taskDescription,

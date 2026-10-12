@@ -1012,7 +1012,7 @@ export interface operations {
     generate: {
         parameters: {
             query?: {
-                /** @description Optional SAIA chat-model override; omit for the configured default. */
+                /** @description Optional chat-model override; omit for the configured default. */
                 model?: string;
             };
             header?: never;

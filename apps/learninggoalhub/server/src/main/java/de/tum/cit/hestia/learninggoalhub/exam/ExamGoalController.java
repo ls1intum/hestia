@@ -39,7 +39,7 @@ public class ExamGoalController {
     @PostMapping("/learning-goals")
     public List<ExamTaskGoalsResponse> generate(@PathVariable Long courseId,
                                                 @RequestBody GenerateExamGoalsRequest request,
-                                                @Parameter(description = "Optional SAIA chat-model override; omit for the configured default.")
+                                                @Parameter(description = "Optional chat-model override; omit for the configured default.")
                                                 @RequestParam(name = "model", required = false) String model) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,

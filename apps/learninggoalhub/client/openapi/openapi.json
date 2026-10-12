@@ -423,7 +423,7 @@
           {
             "name": "model",
             "in": "query",
-            "description": "Optional SAIA chat-model override; omit for the configured default.",
+            "description": "Optional chat-model override; omit for the configured default.",
             "required": false,
             "schema": {
               "type": "string"
