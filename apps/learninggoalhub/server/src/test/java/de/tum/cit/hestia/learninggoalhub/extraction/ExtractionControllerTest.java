@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -25,7 +24,6 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
 import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
@@ -104,9 +102,6 @@ class ExtractionControllerTest {
 
     @MockitoBean
     private PageDescriptionService pageDescriptionService;
-
-    @MockitoBean
-    private EmbeddingService embeddingService;
 
     @MockitoBean
     private TaxonomyService taxonomyService;
@@ -269,10 +264,6 @@ class ExtractionControllerTest {
                 skill(new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
                         GoalKind.EXPLICIT, "...extract method..."))
         ));
-        stubEmbedAll(Map.of(
-                "Apply test-driven development.", orthogonalEmbedding(0),
-                "Value short feedback loops.", orthogonalEmbedding(1),
-                "Refactor without changing behaviour.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -285,8 +276,6 @@ class ExtractionControllerTest {
         assertThat(goals).extracting(LearningGoal::getShortLabel)
                 .containsExactlyInAnyOrder("Test-Driven Development", "Feedback Loops",
                         "Behaviour-Preserving Refactoring");
-        assertThat(goals).allSatisfy(g -> assertThat(g.getEmbedding()).isNull());
-        verifyNoInteractions(embeddingService);
 
         long sourcesForLecture = goalSourceRepository.findAll().stream()
                 .filter(s -> s.getDocument().getId().equals(lecture.getId()))
@@ -399,10 +388,6 @@ class ExtractionControllerTest {
                                 BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of()),
                         figureSkill("Figure outcome", 0),
                         figureSkill("Unsupported outcome", 4)));
-        stubEmbedAll(Map.of(
-                "Text outcome", orthogonalEmbedding(0),
-                "Figure outcome", orthogonalEmbedding(1),
-                "Unsupported outcome", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -446,10 +431,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("combined.pdf"), eq(third), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the third capability.", "Third",
                         GoalKind.EXPLICIT, ""), 0, 0)));
-        stubEmbedAll(Map.of(
-                "Apply the first capability.", orthogonalEmbedding(0),
-                "Apply the second capability.", orthogonalEmbedding(1),
-                "Apply the third capability.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -518,11 +499,6 @@ class ExtractionControllerTest {
                     .thenReturn(List.of(skill(new ExtractedGoal(labels.get(i) + " outcome", labels.get(i),
                             GoalKind.EXPLICIT, ""), 0, 0)));
         }
-        stubEmbedAll(Map.of(
-                "Page one outcome", orthogonalEmbedding(0),
-                "Page two outcome", orthogonalEmbedding(1),
-                "Page three outcome", orthogonalEmbedding(2),
-                "Page four outcome", orthogonalEmbedding(3)));
 
         startExtraction(course.getId());
 
@@ -567,7 +543,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Terminal Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -597,9 +572,6 @@ class ExtractionControllerTest {
                     .toList();
         });
         stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
-        stubEmbedAll(java.util.stream.IntStream.rangeClosed(1, 6).boxed()
-                .collect(Collectors.toMap(index -> "Apply capability " + index + ".",
-                        index -> orthogonalEmbedding(index - 1))));
 
         startExtraction(course.getId());
 
@@ -649,7 +621,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // The model placed the only goal nowhere.
         stubTopicPlan("Covered Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -685,7 +656,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Repaired Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -708,7 +678,6 @@ class ExtractionControllerTest {
                         skill(new ExtractedGoal("Apply capability 2.", "Capability 2", GoalKind.EXPLICIT, "...two..."), 0, 0)));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubEmbedAll(Map.of("Apply capability 1.", orthogonalEmbedding(0), "Apply capability 2.", orthogonalEmbedding(1)));
         stubTopicPlan("Covered", List.of(List.of(0)), List.of(1));
 
         startExtraction(course.getId());
@@ -740,7 +709,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // Everything lands on the first competency; the second is left empty.
         stubTopicPlan("Claimed", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -766,7 +734,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("First Label", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
         List<Long> extractedIdsBefore = goalRepository.findByCourseId(course.getId()).stream()
@@ -876,8 +843,6 @@ class ExtractionControllerTest {
                     .toList();
         });
         stubTopicPlan("Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
-                "Understand the basics.", orthogonalEmbedding(1)));
 
         startExtraction(course.getId());
 
@@ -943,7 +908,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Survivor", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -975,7 +939,6 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -1019,7 +982,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("HTTP 500 - No response body available"));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtractionExpectingFailure(course.getId());
 
@@ -1057,7 +1019,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("assignment call failed"));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtractionExpectingFailure(course.getId());
 
@@ -1127,8 +1088,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet..."))
         ));
-        // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1152,7 +1111,6 @@ class ExtractionControllerTest {
                 skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet...")),
                 skill(new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet..."))
         ));
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1188,7 +1146,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first..."))
         ));
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1222,10 +1179,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata..."))
         ));
-        stubEmbedAll(Map.of(
-                "Apply TDD.", orthogonalEmbedding(0),
-                "Understand SE scope.", orthogonalEmbedding(1),
-                "Practise TDD kata.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -1260,23 +1213,5 @@ class ExtractionControllerTest {
                 .filter(g -> g.getText().equals("Practise TDD kata."))
                 .findFirst().orElseThrow();
         assertThat(lectureGoal.getLectureOrder()).isLessThan(exerciseGoal.getLectureOrder());
-    }
-
-    private static float[] orthogonalEmbedding(int slot) {
-        float[] v = new float[4096];
-        v[slot] = 1.0f;
-        return v;
-    }
-
-    /**
-     * Stubs the batched goal embedding: each text maps to its vector in {@code byText}, defaulting to
-     * {@code orthogonalEmbedding(0)} for any text not listed. The returned list is aligned to the
-     * batch's input order, mirroring the real {@code embedAll}.
-     */
-    private void stubEmbedAll(Map<String, float[]> byText) {
-        when(embeddingService.embedAll(anyList())).thenAnswer(inv -> {
-            List<String> texts = inv.getArgument(0);
-            return texts.stream().map(t -> byText.getOrDefault(t, orthogonalEmbedding(0))).toList();
-        });
     }
 }

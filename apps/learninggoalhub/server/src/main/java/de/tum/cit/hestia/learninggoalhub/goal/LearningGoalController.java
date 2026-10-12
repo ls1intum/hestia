@@ -659,8 +659,6 @@ public class LearningGoalController {
                 }
                 goal.setText(text);
                 goal.setShortLabel(null);
-                // The embedding was computed from the old wording; drop it rather than keep a stale one.
-                goal.setEmbedding(null);
             }
         }
         if (request.status() != null) {

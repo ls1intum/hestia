@@ -407,11 +407,10 @@ class LearningGoalControllerTest {
     }
 
     @Test
-    void patchUpdatesTextAndDropsStaleEmbedding() throws Exception {
+    void patchUpdatesText() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setShortLabel("Test-Driven Development");
-        goal.setEmbedding(new float[4096]);
         goal = goalRepository.save(goal);
 
         mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
@@ -425,7 +424,6 @@ class LearningGoalControllerTest {
         LearningGoal reloaded = goalRepository.findById(goal.getId()).orElseThrow();
         assertThat(reloaded.getText()).isEqualTo("Apply test-driven development.");
         assertThat(reloaded.getShortLabel()).isNull();
-        assertThat(reloaded.getEmbedding()).isNull();
     }
 
     @Test

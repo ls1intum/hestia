@@ -35,12 +35,12 @@ spring:
       ddl-auto: validate
     open-in-view: false
   ai:
+    # Nothing embeds, so no embedding model is configured.
+    model:
+      embedding: none
     openai:
-      # Chat and vision run on the TUM AET Logos gateway (the shared-llm default). Logos serves no
-      # embeddings endpoint, so the exam-goal similarity search embeds on GWDG SAIA with its own key.
+      # Chat and vision run on the TUM AET Logos gateway (the shared-llm default).
       api-key: ${LOGOS_API_KEY:}
-      embedding:
-        api-key: ${SAIA_API_KEY:}
     # The gateway rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
     # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
     # so the hundreds of classify/embed/synthesis calls in one run spread out under the limit.
@@ -116,7 +116,3 @@ hestia:
     # Most pages one "Find in the slides" search may read. Each page range is extracted like a
     # session, so this caps the calls and the wait of a single search.
     max-pages: 80
-  embedding:
-    # Embeddings go to the endpoint in batches of this many texts per request instead of one call
-    # per goal, cutting hundreds of round trips to a handful.
-    batch-size: 64

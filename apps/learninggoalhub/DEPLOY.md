@@ -71,7 +71,7 @@ Actions → **Repository** secrets / variables). Every app in the monorepo deplo
 set, so app-specific values carry the app name as a prefix:
 
 - **Secrets:** `VM_SSH_PRIVATE_KEY` (SSH access to the VM), `LEARNINGGOALHUB_POSTGRES_PASSWORD`,
-  `LEARNINGGOALHUB_LOGOS_API_KEY` (chat and vision), `LEARNINGGOALHUB_SAIA_API_KEY` (embeddings)
+  `LEARNINGGOALHUB_LOGOS_API_KEY` (chat and vision)
 - **Variables:** `VM_HOST`, `VM_USERNAME`, `APP_HOST` (the VM's FQDN, must match the TLS cert
   SAN), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`
 
@@ -101,7 +101,7 @@ already be in GHCR; `docker login ghcr.io` first if the package is private):
 
 ```bash
 cd <repo>/apps/learninggoalhub
-cp .env.example .env        # fill LEARNINGGOALHUB_{POSTGRES_PASSWORD,LOGOS_API_KEY,SAIA_API_KEY}, APP_HOST; set IMAGE_TAG
+cp .env.example .env        # fill LEARNINGGOALHUB_{POSTGRES_PASSWORD,LOGOS_API_KEY}, APP_HOST; set IMAGE_TAG
 sudo docker compose -f compose.prod.yaml --env-file .env pull
 sudo docker compose -f compose.prod.yaml --env-file .env up -d
 ```

@@ -526,7 +526,7 @@ export interface components {
             courseId?: number;
             courseName?: string;
             /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
+            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "PERSISTING" | "SYNTHESIZING";
             /** Format: int32 */
             percent?: number;
             /** @enum {string} */
@@ -647,7 +647,7 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
+            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "PERSISTING" | "SYNTHESIZING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */
