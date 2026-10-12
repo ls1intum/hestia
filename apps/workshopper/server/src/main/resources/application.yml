@@ -1,6 +1,6 @@
 spring:
-  profiles:
-    active: local
+  # No default profile: the 'local' profile signs every request in as a dev user (see
+  # application-local.yml), so it must be chosen explicitly and can never apply by accident.
   application:
     name: workshopper-server
 

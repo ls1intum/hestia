@@ -38,29 +38,6 @@ class WorkshopSessionRepositoryTest {
     private WorkshopSessionRepository repository;
 
     @Test
-    void shouldFindAllOrdered() {
-        WorkshopSessionEntity e1 = new WorkshopSessionEntity();
-        e1.setTitle("Session 1");
-        e1.setDisplayOrder(2);
-        
-        WorkshopSessionEntity e2 = new WorkshopSessionEntity();
-        e2.setTitle("Session 2");
-        e2.setDisplayOrder(1);
-
-        WorkshopSessionEntity e3 = new WorkshopSessionEntity();
-        e3.setTitle("Session 3");
-        // Null displayOrder should be last (NULLS LAST)
-
-        repository.saveAll(List.of(e1, e2, e3));
-
-        List<WorkshopSessionEntity> all = repository.findAllOrdered();
-        assertThat(all).hasSize(3);
-        assertThat(all.get(0).getTitle()).isEqualTo("Session 2"); // order 1
-        assertThat(all.get(1).getTitle()).isEqualTo("Session 1"); // order 2
-        assertThat(all.get(2).getTitle()).isEqualTo("Session 3"); // order null
-    }
-
-    @Test
     void shouldFindByOwnerIdOrdered() {
         WorkshopSessionEntity e1 = new WorkshopSessionEntity();
         e1.setOwnerId("userA");

@@ -41,11 +41,11 @@ public class WorkshopSessionFacadeContractTest {
     public void generateAndSaveSession_shouldPassAvailableMaterialsToUseCase() throws Exception {
         // Arrange
         String materials = "Whiteboard, Jupyter Notebooks";
-        WorkshopInputDto meta = new WorkshopInputDto("Test Title", List.of(), 90, 10, "lecture", null, null, null, null);
-        SessionSkeletonDto skeleton = new SessionSkeletonDto(List.of(), List.of(), null);
+        WorkshopInputDto meta = new WorkshopInputDto("Test Title", 90, 10, "lecture", null, null, null);
+        SessionSkeletonDto skeleton = new SessionSkeletonDto(List.of(), null);
         GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, materials, skeleton);
 
-        WorkshopSessionDto mockResponse = new WorkshopSessionDto("id", "title", "bg", List.of(), List.of(), null);
+        WorkshopSessionDto mockResponse = new WorkshopSessionDto("id", "title", "bg", List.of(), null);
         when(generateTimetableUseCase.execute(any(), any(), any(), anyString())).thenReturn(mockResponse);
 
         WorkshopSessionEntity mockEntity = new WorkshopSessionEntity();

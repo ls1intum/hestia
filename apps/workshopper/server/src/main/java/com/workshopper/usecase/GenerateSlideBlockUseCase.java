@@ -117,7 +117,7 @@ public class GenerateSlideBlockUseCase {
      *
      * <p>The Welcome slide reflects the actual welcome/arrival step from the timetable
      * (the block's objective, sub-steps, tone) rather than a hardcoded placeholder.
-     * The Agenda slide is copied verbatim from {@code meta.learningGoals()}.
+     * The Agenda slide lists the session's learning goals verbatim.
      */
     private List<Map<String, Object>> generateWelcomeAndAgendaSlides(ActivityBlockDto block,
                                                                        WorkshopInputDto meta,
@@ -125,32 +125,11 @@ public class GenerateSlideBlockUseCase {
         List<Map<String, Object>> slides = new ArrayList<>();
 
         // ── Welcome slide (LLM-generated) ───────────────────────────────────
-        String sysPrompt = """
-                You are an expert instructional designer writing a single Welcome slide for an active-learning session.
-                
-                CONTENT TIERS (strictly enforced):
-                1. Visible slide — student-facing. Address students warmly. No instructor instructions.
-                2. Speaker notes — instructor-facing facilitation cues for this slide only.
-                3. Invisible — session-level logistics stay in the timetable. Never create slides or notes for these.
-                
-                DENSITY PROFILE: Low-density. 1–3 welcoming sentences or 2–3 short bullet points.
-                No bullet lists if a short paragraph suffices. Tone: warm, inviting, sets the session theme.
-                
-                Return ONLY a valid JSON object (not an array) matching this schema:
-                {
-                  "title": "Welcome to [session topic]",
-                  "bullets": ["Short framing sentence or warm-up cue"],
-                  "notes": "Instructor facilitation note for this slide (optional)"
-                }
-                """;
-
         Map<String, Object> welcomeSlide;
         try {
             StringBuilder sectionSteps = new StringBuilder();
             appendSectionSteps(sectionSteps, block);
             
-            StringBuilder materials = new StringBuilder();
-            appendMaterials(materials, meta, 6000);
             
             StringBuilder goalsStr = new StringBuilder();
             appendGoals(goalsStr, goals);
@@ -159,7 +138,6 @@ public class GenerateSlideBlockUseCase {
                 "blockLabel", block.phaseLabel() != null ? block.phaseLabel() : "Welcome",
                 "blockObjective", block.objective() != null ? block.objective() : "",
                 "sectionSteps", sectionSteps.toString(),
-                "materials", materials.toString(),
                 "goals", goalsStr.toString()
             );
 
@@ -184,7 +162,7 @@ public class GenerateSlideBlockUseCase {
         return slides;
     }
 
-    /** Pure Java agenda slide — no LLM. Sourced from meta.learningGoals() / goals list. */
+    /** Pure Java agenda slide — no LLM. Lists the session's learning goals. */
     private Map<String, Object> buildAgendaSlide(String blockLabel, List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
         Map<String, Object> slide = new LinkedHashMap<>();
         slide.put("group", "agenda");
@@ -192,15 +170,12 @@ public class GenerateSlideBlockUseCase {
         slide.put("subtitle", blockLabel != null ? blockLabel : "Agenda");
         slide.put("title", "Agenda");
 
-        // Prefer enriched LearningGoalPlanDto list; fall back to raw meta strings
         List<String> bullets;
         if (goals != null && !goals.isEmpty()) {
             bullets = goals.stream()
                     .map(g -> g.goal() != null && !g.goal().isBlank() ? g.goal() : g.originalGoal())
                     .filter(s -> s != null && !s.isBlank())
                     .collect(Collectors.toList());
-        } else if (meta != null && meta.learningGoals() != null && !meta.learningGoals().isEmpty()) {
-            bullets = new ArrayList<>(meta.learningGoals());
         } else {
             bullets = List.of("See session plan for today's agenda");
         }
@@ -239,22 +214,6 @@ public class GenerateSlideBlockUseCase {
         // ── Activity slide — only if the block has an associated method ──────
         Set<String> allMethods = collectMethods(block);
         if (!allMethods.isEmpty()) {
-            String sysPrompt = """
-                    You are an expert instructional designer writing ONE Activate Prior Knowledge activity slide.
-                    
-                    CONTENT TIERS (strictly enforced):
-                    1. Visible slide — student-facing. One open question/probe that activates prior knowledge.
-                       No correct-answer framing. No instructor instructions.
-                    2. Speaker notes — expected answers/misconceptions + explicit reminder NOT to confirm/correct yet.
-                    3. Invisible — omit session-level logistics entirely.
-                    
-                    DENSITY PROFILE: Single-focus, low-density. ONE open prompt. No bullet lists.
-                    
-                    Your output MUST be a flat JSON object matching this schema (do NOT nest inside another object):
-%s
-                    
-                    Return ONLY a valid JSON object (not an array).
-                    """;
             
             String method = getPrimaryMethod(block);
             String actName = getActivityName(method);
@@ -270,14 +229,7 @@ public class GenerateSlideBlockUseCase {
                     }
                     """.formatted(actName);
             } else {
-                String layout = switch (method) {
-                    case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
-                    case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_sidebar";
-                    case "qasession" -> "activity_q&a";
-                    case "handsonpractice" -> "activity_sidebar";
-                    case "quizpolls", "quiz", "poll" -> "live_poll";
-                    default -> "activity_sidebar";
-                };
+                String layout = activityLayout(method);
                 List<String> instructions = FIXED_INSTRUCTIONS.getOrDefault(method, List.of("Review the prompt", "Formulate your thoughts", "Prepare to share"));
                 String instJson = "[\\\"" + String.join("\\\", \\\"", instructions) + "\\\"]";
                 schemaSnippet = """
@@ -291,7 +243,6 @@ public class GenerateSlideBlockUseCase {
                     }
                     """.formatted(layout, actName, instJson);
             }
-            sysPrompt = sysPrompt.formatted(schemaSnippet);
 
 
             Map<String, Object> actSlide;
@@ -302,8 +253,6 @@ public class GenerateSlideBlockUseCase {
                 StringBuilder goalsList = new StringBuilder();
                 appendGoalsList(goalsList, goals, meta);
                 
-                StringBuilder materials = new StringBuilder();
-                appendMaterials(materials, meta, 6000);
 
                 Map<String, Object> model = Map.of(
                     "blockLabel", label,
@@ -312,7 +261,6 @@ public class GenerateSlideBlockUseCase {
                     "methods", String.join(", ", allMethods),
                     "sectionSteps", sectionSteps.toString(),
                     "goalsList", goalsList.toString(),
-                    "materials", materials.toString(),
                     "schemaSnippet", schemaSnippet
                 );
 
@@ -358,7 +306,6 @@ public class GenerateSlideBlockUseCase {
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Learning Cycle";
         String phaseName = "LEARNING CYCLE";
         int lgIndex = block.goalTag() != null ? parseLgIndex(block.goalTag()) : 0;
-        String lgText = resolveGoalText(lgIndex, goals, meta);
 
         // ── Slide 1: Lecture placeholder (no LLM) ───────────────────────────
         Map<String, Object> lecturePlaceholder = new LinkedHashMap<>();
@@ -372,30 +319,6 @@ public class GenerateSlideBlockUseCase {
         slides.add(lecturePlaceholder);
 
         // ── Slides 2 + 3: Activity and Debrief (one LLM call) ───────────────
-        String sysPrompt = """
-                You are an expert instructional designer writing exactly TWO slides for one learning cycle.
-                
-                CONTENT TIERS (strictly enforced):
-                1. Visible slide — student-facing. Never contains instructor instructions, answer keys, or facilitation logistics.
-                2. Speaker notes — instructor-facing (answer keys, facilitation cues, common misconceptions for THAT slide).
-                3. Invisible — omit session-level logistics entirely.
-                
-                You must return a JSON ARRAY of exactly 2 slide objects in this order:
-                
-%s
-                
-                SLIDE 2 — Per-cycle Debrief slide:
-                  "layout": "debrief"
-                  "title": "Debrief: [Topic]"
-                  "suggestedAnswer": short, student-facing correct answer. IMPORTANT: If the activity was a poll, explicitly state the correct option letter (e.g., 'Correct Answer: A') followed by a brief explanation.
-                  "commonMisconceptions": ["Misconception 1", "Misconception 2"] (array of EXACTLY 2 short common mistakes/gaps)
-                  "keyTakeaway": "One main insight participants should leave with."
-                  "notes": a PLAIN STRING — concise bullet points of suggested debrief facilitation technique (short, relevant only to this slide).
-                    CRITICAL: "notes" MUST be a flat string, NOT a JSON object or nested structure.
-                
-                Return ONLY a valid JSON array of 2 objects. No prose.
-                """.formatted(buildActivitySlidePrompt(block));
-
         Set<String> allMethods = collectMethods(block);
         log.info("LLM call: Learning cycle slides for '{}' (lgIndex={})", label, lgIndex);
         List<Map<String, Object>> llmSlides;
@@ -406,18 +329,12 @@ public class GenerateSlideBlockUseCase {
             StringBuilder goalsList = new StringBuilder();
             appendGoalsList(goalsList, goals, meta);
             
-            StringBuilder materials = new StringBuilder();
-            appendMaterials(materials, meta, 7000);
 
             Map<String, Object> model = Map.of(
                 "blockLabel", label,
-                "lgIndex", lgIndex,
-                "lgText", lgText,
                 "blockObjective", block.objective() != null ? block.objective() : "",
-                "methods", String.join(", ", allMethods),
                 "sectionSteps", sectionSteps.toString(),
                 "goalsList", goalsList.toString(),
-                "materials", materials.toString(),
                 "schemaSnippet", buildActivitySlidePrompt(block)
             );
 
@@ -488,7 +405,7 @@ public class GenerateSlideBlockUseCase {
     /**
      * EVALUATE phase → one poll question per session learning goal.
      *
-     * <p>Covers ALL session learning goals sourced from {@code meta.learningGoals()} —
+     * <p>Covers ALL session learning goals —
      * not just the LG associated with this particular timetable block.
      * Each slide carries an {@code lgIndex} field mapping it to its learning goal.
      *
@@ -505,35 +422,11 @@ public class GenerateSlideBlockUseCase {
         String phaseName = "CHECK UNDERSTANDING";
         
         int lgIndex = block.goalTag() != null ? parseLgIndex(block.goalTag()) : 0;
-        String lgText = resolveGoalText(lgIndex, goals, meta);
 
         Set<String> allMethods = collectMethods(block);
         if (!allMethods.isEmpty()) {
             for (String method : allMethods) {
                 String cleanMethod = method.toLowerCase().replaceAll("[^a-z0-9]", "");
-                String sysPrompt = """
-                        You are an expert instructional designer writing exactly TWO slides for a Check Understanding activity.
-                        
-                        CONTENT TIERS (strictly enforced):
-                        1. Visible slide — student-facing. One check understanding activity.
-                        2. Speaker notes — expected answers/misconceptions.
-                        3. Invisible — omit session-level logistics entirely.
-                        
-                        You must return a JSON ARRAY of exactly 2 slide objects in this order:
-                        
-%s
-                        
-                        SLIDE 2 — Debrief slide:
-                          "layout": "debrief"
-                          "title": "Debrief: [Topic]"
-                          "suggestedAnswer": "short, student-facing correct answer. If a poll, state correct option."
-                          "commonMisconceptions": ["Misconception 1", "Misconception 2"]
-                          "keyTakeaway": "One main insight participants should leave with."
-                          "notes": a PLAIN STRING — concise bullet points of suggested debrief facilitation technique (short, relevant only to this slide).
-                        
-                        Return ONLY a valid JSON array of 2 objects. No prose.
-                        """.formatted(buildActivitySlidePrompt(cleanMethod));
-
                 log.info("LLM call: Check Understanding slides for '{}' method='{}' (lgIndex={})", label, method, lgIndex);
                 List<Map<String, Object>> llmSlides;
                 try {
@@ -543,18 +436,12 @@ public class GenerateSlideBlockUseCase {
                     StringBuilder goalsList = new StringBuilder();
                     appendGoalsList(goalsList, goals, meta);
                     
-                    StringBuilder materials = new StringBuilder();
-                    appendMaterials(materials, meta, 6000);
 
                     Map<String, Object> model = Map.of(
                         "blockLabel", label,
-                        "lgIndex", lgIndex,
-                        "lgText", lgText,
                         "blockObjective", block.objective() != null ? block.objective() : "",
-                        "methods", method,
                         "sectionSteps", sectionSteps.toString(),
                         "goalsList", goalsList.toString(),
-                        "materials", materials.toString(),
                         "schemaSnippet", buildActivitySlidePrompt(cleanMethod)
                     );
                     llmSlides = normalizeSlides(llm.generatePptxSlides("evaluate", model));
@@ -634,40 +521,6 @@ public class GenerateSlideBlockUseCase {
         String label = block.phaseLabel() != null ? block.phaseLabel() : "Summary & Wrap-up";
         String phaseName = "SUMMARY";
 
-        String sysPrompt = """
-                You are an expert instructional designer writing the Summary & Wrap-up slides for a session.
-                
-                CONTENT TIERS (strictly enforced):
-                1. Visible slide — student-facing. Synthesis/reflection prompts. Never instructor logistics.
-                2. Speaker notes — time allocation, facilitation steps.
-                3. Invisible — omit entirely.
-                
-                DENSITY PROFILE: Structured multi-part. Numbered or spatially distinct sub-points.
-                The final slide in your array MUST be a "One-Minute Paper" reflection slide ending with:
-                  1. What is the most important concept you learned today?
-                  2. What is your biggest remaining question?
-                
-                Return a JSON ARRAY of 1–2 summary slide objects (NOT the Thank-You slide — that is added separately).
-                
-                Schema for the Summary slide (if needed):
-                {
-                  "title": "Summary & Wrap-Up",
-                  "layout": "summary",
-                  "bullets": ["Key takeaway 1", "Key takeaway 2", ...],
-                  "notes": "Concise bullet points for facilitation steps + time allocation (short, relevant only to this slide)"
-                }
-                
-                Schema for the One-Minute Paper slide:
-                {
-                  "title": "One Minute Paper",
-                  "layout": "activity_q&a",
-                  "activityPrompt": "What is the most important concept you learned today?\\n2. What is your biggest remaining question?",
-                  "notes": "Concise bullet points for facilitation steps + time allocation (short, relevant only to this slide)"
-                }
-                
-                Return ONLY a valid JSON array. No prose.
-                """;
-
         log.info("LLM call: Summary slides for '{}'", label);
         List<Map<String, Object>> llmSlides;
         try {
@@ -677,15 +530,12 @@ public class GenerateSlideBlockUseCase {
             StringBuilder goalsList = new StringBuilder();
             appendGoalsList(goalsList, goals, meta);
             
-            StringBuilder materials = new StringBuilder();
-            appendMaterials(materials, meta, 6000);
 
             Map<String, Object> model = Map.of(
                 "blockLabel", label,
                 "blockObjective", block.objective() != null ? block.objective() : "",
                 "goals", goalsList.toString(),
-                "sectionSteps", sectionSteps.toString(),
-                "materials", materials.toString()
+                "sectionSteps", sectionSteps.toString()
             );
 
             llmSlides = normalizeSlides(llm.generatePptxSlides("wrapup", model));
@@ -754,6 +604,20 @@ public class GenerateSlideBlockUseCase {
         };
     }
 
+    /**
+     * The slide layout of workshopper-default.pptx used for an activity (normalised name, e.g. "thinkpairshare").
+     * See docs/ACTIVITIES.md for the catalogue.
+     */
+    static String activityLayout(String method) {
+        return switch (method) {
+            case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
+            case "qasession" -> "activity_q&a";
+            case "quizpolls", "quiz", "poll" -> "live_poll";
+            // groupdiscussion, debate, peerreview, roleplay, conceptmapping, casestudy, handsonpractice, custom
+            default -> "activity_sidebar";
+        };
+    }
+
     private String buildActivitySlidePrompt(ActivityBlockDto block) {
         return buildActivitySlidePrompt(getPrimaryMethod(block));
     }
@@ -773,14 +637,7 @@ public class GenerateSlideBlockUseCase {
                 """.formatted(actName);
         }
 
-        String layout = switch (method) {
-            case "thinkpairshare", "brainstorming", "designsprint", "prototypechallenge", "workedproblem" -> "activity_grid3";
-            case "groupdiscussion", "debate", "peerreview", "roleplay", "conceptmapping", "casestudy" -> "activity_sidebar";
-            case "qasession" -> "activity_q&a";
-            case "handsonpractice" -> "activity_sidebar";
-            case "quizpolls", "quiz", "poll" -> "live_poll";
-            default -> "activity_sidebar";
-        };
+        String layout = activityLayout(method);
 
         String instJson;
         if (FIXED_INSTRUCTIONS.containsKey(method)) {
@@ -917,17 +774,7 @@ public class GenerateSlideBlockUseCase {
         sb.append("\nSession Learning Goals:\n");
         if (goals != null && !goals.isEmpty()) {
             appendGoals(sb, goals);
-        } else if (meta != null && meta.learningGoals() != null) {
-            for (int i = 0; i < meta.learningGoals().size(); i++)
-                sb.append("  LG").append(i + 1).append(": ").append(meta.learningGoals().get(i)).append("\n");
         }
-    }
-
-    private void appendMaterials(StringBuilder sb, WorkshopInputDto meta, int maxLen) {
-        if (meta == null || meta.uploadedMaterialsText() == null || meta.uploadedMaterialsText().isBlank()) return;
-        String text = meta.uploadedMaterialsText();
-        if (text.length() > maxLen) text = text.substring(0, maxLen) + "\n[...truncated]";
-        sb.append("\nReference Materials:\n").append(text);
     }
 
     private Set<String> collectMethods(ActivityBlockDto block) {
@@ -939,32 +786,6 @@ public class GenerateSlideBlockUseCase {
             }
         }
         return methods;
-    }
-
-    private List<String> buildFullGoalStrings(List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
-        if (goals != null && !goals.isEmpty()) {
-            return goals.stream()
-                    .map(g -> g.goal() != null && !g.goal().isBlank() ? g.goal() : g.originalGoal())
-                    .filter(s -> s != null && !s.isBlank())
-                    .collect(Collectors.toList());
-        }
-        if (meta != null && meta.learningGoals() != null) {
-            return meta.learningGoals().stream()
-                    .filter(s -> s != null && !s.isBlank())
-                    .collect(Collectors.toList());
-        }
-        return List.of();
-    }
-
-    private String resolveGoalText(int lgIndex, List<LearningGoalPlanDto> goals, WorkshopInputDto meta) {
-        if (lgIndex > 0 && goals != null && lgIndex <= goals.size()) {
-            LearningGoalPlanDto g = goals.get(lgIndex - 1);
-            return g.goal() != null ? g.goal() : (g.originalGoal() != null ? g.originalGoal() : "");
-        }
-        if (lgIndex > 0 && meta != null && meta.learningGoals() != null && lgIndex <= meta.learningGoals().size()) {
-            return meta.learningGoals().get(lgIndex - 1);
-        }
-        return "";
     }
 
     /**

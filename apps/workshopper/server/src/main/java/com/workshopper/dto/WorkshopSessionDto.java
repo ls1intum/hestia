@@ -9,8 +9,6 @@ public record WorkshopSessionDto(
         String title,
         String studentBackground,
         List<ActivityBlockDto> blocks,
-        /** Goals that were omitted because there was genuinely not enough time to cover them. May be null or empty. */
-        List<String> omittedGoals,
         /** Cached slides mapped by block index */
         java.util.Map<Integer, List<java.util.Map<String, Object>>> slides
 ) {}

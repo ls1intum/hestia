@@ -7,6 +7,5 @@ Target learning goals:
 Steps to cover in this slide/slides:
 {sectionSteps}
 
-{materials}
 
 Task: Generate the JSON array of slides as specified.

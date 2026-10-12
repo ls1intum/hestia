@@ -6,6 +6,5 @@ All session learning goals (for the summary):
 Wrap-up activity steps (Takeaways, Q&A, Logistics):
 {sectionSteps}
 
-{materials}
 
 Task: Generate the JSON array of wrap-up slides as specified.

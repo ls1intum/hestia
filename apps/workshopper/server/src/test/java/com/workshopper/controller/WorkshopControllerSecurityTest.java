@@ -104,20 +104,10 @@ class WorkshopControllerSecurityTest {
 
     @Test
     @org.springframework.security.test.context.support.WithAnonymousUser
-    @DisplayName("Anonymous GET /api/workshop/me → 401 (not 200 with anonymous identity)")
-    void anonymousGetMeReturnsUnauthorized() throws Exception {
-        mvc.perform(get("/api/workshop/me"))
+    @DisplayName("Anonymous GET /api/workshop/sessions → 401 (not 200 with anonymous identity)")
+    void anonymousListSessionsReturnsUnauthorized() throws Exception {
+        mvc.perform(get("/api/workshop/sessions"))
            .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @WithMockUser(username = "test-saml-user")
-    @DisplayName("Authenticated GET /api/workshop/me → 200 with correct user id")
-    void authenticatedGetMeReturnsUserId() throws Exception {
-        mvc.perform(get("/api/workshop/me"))
-           .andExpect(status().isOk())
-           .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
-               .jsonPath("$.id").value("test-saml-user"));
     }
 }
 

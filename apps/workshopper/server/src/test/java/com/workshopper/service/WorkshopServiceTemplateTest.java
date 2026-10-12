@@ -32,7 +32,7 @@ class WorkshopServiceTemplateTest {
         sessions = mock(WorkshopSessionRepository.class);
         courses = mock(CourseRepository.class);
         templates = mock(SlideTemplateRepository.class);
-        service = new WorkshopService(null, sessions, courses, templates);
+        service = new WorkshopService(sessions, courses, templates);
 
         CourseEntity course = new CourseEntity();
         course.setId("course-1");

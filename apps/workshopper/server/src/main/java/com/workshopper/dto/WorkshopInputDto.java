@@ -6,29 +6,24 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkshopInputDto(
         String title,
-        List<String> learningGoals,
         int duration,
         int participants,
         String sessionType,
         String sessionTypeOther,
         String studentBackground,
         List<String> selectedActivities,
-        String uploadedMaterialsText,
         List<EvaluateMappingDto> evaluateMappings
 ) {
+    /** Settings without an evaluate mapping yet. */
     public WorkshopInputDto(
             String title,
-            List<String> learningGoals,
             int duration,
             int participants,
             String sessionType,
             String sessionTypeOther,
             String studentBackground,
-            List<String> selectedActivities,
-            String uploadedMaterialsText
+            List<String> selectedActivities
     ) {
-        this(title, learningGoals, duration, participants, sessionType, sessionTypeOther,
-                studentBackground,
-                selectedActivities, uploadedMaterialsText, null);
+        this(title, duration, participants, sessionType, sessionTypeOther, studentBackground, selectedActivities, null);
     }
 }

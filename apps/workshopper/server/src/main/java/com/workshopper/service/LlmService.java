@@ -104,7 +104,7 @@ public class LlmService {
                 converter, false);
     }
     
-    public String generateSessionTitle(SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel, String skeletonStr, String goalsStr) {
+    public String generateSessionTitle(WorkshopInputDto meta, String sessionTypeLabel, String skeletonStr, String goalsStr) {
         return callWithStructuredOutput("generate-session-title-system", "generate-session-title-user",
                 Map.of("sessionType", sessionTypeLabel,
                        "duration", meta.duration(),
@@ -115,7 +115,7 @@ public class LlmService {
                 null, false);
     }
     
-    public ActivityBlockDto hydrateActivityBlock(SkeletonBlockDto targetBlock, SessionSkeletonDto skeleton, List<LearningGoalPlanDto> goals, WorkshopInputDto meta, String sessionTypeLabel, String selectedActivitiesStr, String learningGoalsStr, String skeletonBlocksStr, String targetBlockStr, String evaluateRules, String availableMaterials) {
+    public ActivityBlockDto hydrateActivityBlock(WorkshopInputDto meta, String sessionTypeLabel, String selectedActivitiesStr, String learningGoalsStr, String skeletonBlocksStr, String targetBlockStr, String evaluateRules, String availableMaterials) {
         BeanOutputConverter<ActivityBlockDto> converter = new BeanOutputConverter<>(ActivityBlockDto.class);
         return callWithStructuredOutput("generate-timetable-block-system", "generate-timetable-block-user",
                 java.util.Map.ofEntries(

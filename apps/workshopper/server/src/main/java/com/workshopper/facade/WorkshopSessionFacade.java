@@ -153,7 +153,6 @@ public class WorkshopSessionFacade {
                 session.title(),
                 session.studentBackground(),
                 session.blocks(),
-                session.omittedGoals(),
                 session.slides()
         );
     }
@@ -172,10 +171,6 @@ public class WorkshopSessionFacade {
 
     public byte[] assemblePptx(WorkshopSessionDto session, WorkshopInputDto meta, List<Map<String, Object>> prebuiltSlides, java.io.InputStream templateStream, boolean isCustomTemplate) throws Exception {
         return assemblePptxUseCase.execute(session, meta, prebuiltSlides, templateStream, isCustomTemplate);
-    }
-
-    public List<String> renderAllSlidePreviews(WorkshopSessionDto session, WorkshopInputDto meta, List<Map<String, Object>> prebuiltSlides, java.io.InputStream templateStream, boolean isCustomTemplate) throws Exception {
-        return assemblePptxUseCase.renderAllSlidePreviews(session, meta, prebuiltSlides, templateStream, isCustomTemplate);
     }
 
     public byte[] exportCourseZip(String courseId) throws Exception {
@@ -215,7 +210,6 @@ public class WorkshopSessionFacade {
                             session.title() == null && e.getTitle() != null ? e.getTitle() : session.title(),
                             session.studentBackground(),
                             session.blocks(),
-                            session.omittedGoals(),
                             finalSlides
                     );
                 }

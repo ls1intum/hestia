@@ -9,13 +9,10 @@ import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Component
 public class GenerateTimetableUseCase {
 
-    private static final Logger log = LoggerFactory.getLogger(GenerateTimetableUseCase.class);
     private final LlmService llm;
     private final ExecutorService llmExecutor = Executors.newFixedThreadPool(20);
 
@@ -95,8 +92,7 @@ public class GenerateTimetableUseCase {
                     .collect(java.util.stream.Collectors.toList());
                     
             SessionSkeletonDto filteredSkeleton = new SessionSkeletonDto(
-                    filteredBlocks,
-                    skeleton.omittedGoalIndices(), skeleton.sessionId());
+                    filteredBlocks, skeleton.sessionId());
                     
             String skeletonBlocksStr = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(filteredSkeleton.blocks());
 
@@ -112,7 +108,7 @@ public class GenerateTimetableUseCase {
                     String rules = cycleActivity != null
                             ? buildLearningCycleRules(cycleActivity)
                             : buildEvaluateRules(evaluateSlots);
-                    ActivityBlockDto hydrated = llm.hydrateActivityBlock(block, filteredSkeleton, goals, input, sessionTypeLabel, selectedActivitiesStr, goalsString, skeletonBlocksStr, targetBlockStr, rules, materialsStr);
+                    ActivityBlockDto hydrated = llm.hydrateActivityBlock(input, sessionTypeLabel, selectedActivitiesStr, goalsString, skeletonBlocksStr, targetBlockStr, rules, materialsStr);
                     ActivityBlockDto restricted = restrictToSelections(hydrated, allowedActivities, materials);
                     if (cycleActivity != null) return withSingleMethod(restricted, cycleActivity);
                     return normalizeEvaluateSteps(restricted, evaluateSlots);
@@ -132,7 +128,7 @@ public class GenerateTimetableUseCase {
             skeletonBlocksStr = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(skeleton.blocks());
         } catch(Exception e) {}
         
-        String title = llm.generateSessionTitle(skeleton, goals, input, sessionTypeLabel, skeletonBlocksStr, goalsString).trim();
+        String title = llm.generateSessionTitle(input, sessionTypeLabel, skeletonBlocksStr, goalsString).trim();
 
 
         return new WorkshopSessionDto(
@@ -140,7 +136,6 @@ public class GenerateTimetableUseCase {
                 title,
                 input.studentBackground(),
                 generatedBlocks,
-                null,
                 null
         );
     }

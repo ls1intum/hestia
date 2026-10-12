@@ -24,13 +24,11 @@ public class WorkshopService {
 
     private static final Logger log = LoggerFactory.getLogger(WorkshopService.class);
 
-    private final LlmService llm;
     private final WorkshopSessionRepository repo;
     private final SlideTemplateRepository templateRepo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopService(LlmService llm, WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
-        this.llm = llm;
+    public WorkshopService(WorkshopSessionRepository repo, com.workshopper.repository.CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
         this.repo = repo;
         this.courseRepository = courseRepository;
         this.templateRepo = templateRepo;
@@ -187,7 +185,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                                 });
                         session = new WorkshopSessionDto(
                                 session.id(), session.title(), session.studentBackground(),
-                                session.blocks(), session.omittedGoals(), slides);
+                                session.blocks(), slides);
                     }
                 } catch (Exception ex) {
                     log.warn("Could not deserialise session JSON for id={}", id);

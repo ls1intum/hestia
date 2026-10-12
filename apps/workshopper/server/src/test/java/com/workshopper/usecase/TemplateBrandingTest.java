@@ -29,8 +29,8 @@ class TemplateBrandingTest {
     @Test
     void customTemplateKeepsDefaultDesignAndAddsTitleLogoAndFooter() throws Exception {
         byte[] template = syntheticTemplate();
-        var session = new WorkshopSessionDto("id", "Linear Classifiers", "bg", List.of(), List.of(), null);
-        var meta = new WorkshopInputDto("Linear Classifiers", List.of("Goal"), 90, 20, "workshop", null, "bg", List.of(), null);
+        var session = new WorkshopSessionDto("id", "Linear Classifiers", "bg", List.of(), null);
+        var meta = new WorkshopInputDto("Linear Classifiers", 90, 20, "workshop", null, "bg", List.of());
         List<Map<String, Object>> slides = List.of(new HashMap<>(Map.of(
                 "layout", "agenda", "group", "agenda", "title", "What We'll Cover Today",
                 "bullets", new ArrayList<>(List.of("Understand linear classifiers.")))));

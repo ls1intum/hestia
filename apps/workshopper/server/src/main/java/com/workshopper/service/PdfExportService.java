@@ -11,8 +11,6 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -23,7 +21,6 @@ import java.util.List;
 @Service
 public class PdfExportService {
 
-    private static final Logger log = LoggerFactory.getLogger(PdfExportService.class);
 
     public PdfExportService() {}
 
@@ -35,7 +32,7 @@ public class PdfExportService {
         try (PDDocument document = new PDDocument()) {
             PdfRenderer renderer = new PdfRenderer(document);
             
-            // --- 1. Lecture Information ---
+            // --- 1. Session Information ---
             String title = (session.title() != null && !session.title().isBlank()) ? session.title() : "Workshop Session Plan";
             renderer.addText(title, 20, true);
             renderer.addSpace(15);

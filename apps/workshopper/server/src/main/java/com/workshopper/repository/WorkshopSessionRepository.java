@@ -11,9 +11,6 @@ import java.util.List;
 @Repository
 public interface WorkshopSessionRepository extends JpaRepository<WorkshopSessionEntity, String> {
 
-    @Query("SELECT w FROM WorkshopSessionEntity w ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
-    List<WorkshopSessionEntity> findAllOrdered();
-
     @Query("SELECT w FROM WorkshopSessionEntity w WHERE w.ownerId = :ownerId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
     List<WorkshopSessionEntity> findByOwnerIdOrdered(@Param("ownerId") String ownerId);
 

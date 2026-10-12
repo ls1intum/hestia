@@ -62,8 +62,8 @@ class AgendaSlideLayoutTest {
 
     private XSLFSlide renderAgenda(List<String> goals) throws Exception {
         byte[] template = Files.readAllBytes(TEMPLATE);
-        var session = new WorkshopSessionDto("id", "Linear Classifiers", "bg", List.of(), List.of(), null);
-        var meta = new WorkshopInputDto("Linear Classifiers", goals, 90, 20, "workshop", null, "bg", List.of(), null);
+        var session = new WorkshopSessionDto("id", "Linear Classifiers", "bg", List.of(), null);
+        var meta = new WorkshopInputDto("Linear Classifiers", 90, 20, "workshop", null, "bg", List.of());
         // The assembler edits slide data in place, so it needs mutable maps and lists
         List<Map<String, Object>> slides = List.of(new java.util.HashMap<>(Map.of(
                 "layout", "agenda", "group", "agenda", "title", "What We'll Cover Today", "bullets", new ArrayList<>(goals))));

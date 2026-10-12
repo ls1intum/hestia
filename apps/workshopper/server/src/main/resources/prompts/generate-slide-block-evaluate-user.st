@@ -6,6 +6,5 @@ Target learning goals being evaluated:
 Evaluation activity steps:
 {sectionSteps}
 
-{materials}
 
 Task: Generate the JSON array of evaluation slides as specified.

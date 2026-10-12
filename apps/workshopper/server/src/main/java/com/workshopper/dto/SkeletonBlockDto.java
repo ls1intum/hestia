@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 /**
- * A single block in the Phase A skeleton.
+ * A single block of the session skeleton.
  * lgIndex is 1-based (1 = LG1, 2 = LG2, …).
  * lgIndex = 0 means this block does not target a specific LG
  * (used for ARRIVE, ACTIVATE, BREAK, SUMMARY).

@@ -21,6 +21,6 @@ WORKDIR /app
 COPY --from=build /workspace/apps/workshopper/server/build/libs/workshopper-server.jar app.jar
 EXPOSE 8081
 # Heap is sized from the container memory limit (set in compose) to leave headroom for
-# non-heap (PDFBox rendering, Tika) on the shared VM.
+# non-heap (PDFBox and POI rendering) on the shared VM.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

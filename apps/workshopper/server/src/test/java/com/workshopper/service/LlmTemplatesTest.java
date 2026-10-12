@@ -34,7 +34,6 @@ class LlmTemplatesTest {
         dummyData.put("goal", "Learn Spring");
         dummyData.put("goals", "1. Learn Spring\n2. Learn Java");
         dummyData.put("subSkillsContext", "- sub1\n- sub2");
-        dummyData.put("document", "Some document text...");
         
         // Block specifics
         dummyData.put("skeleton", "Skeleton data");
@@ -48,10 +47,6 @@ class LlmTemplatesTest {
         dummyData.put("blockObjective", "Learn basics");
         dummyData.put("sectionSteps", "Step 1\nStep 2");
         dummyData.put("materials", "Slides");
-        dummyData.put("densityProfile", "Low");
-        dummyData.put("slideCountLimit", 3);
-        dummyData.put("phaseTitle", "Welcome");
-        dummyData.put("targetGoals", "Goal 1");
         dummyData.put("goalsList", "Goal 1");
         dummyData.put("methods", "Quiz");
         dummyData.put("objective", "Objective");

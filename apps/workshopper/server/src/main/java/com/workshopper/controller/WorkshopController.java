@@ -1,17 +1,9 @@
 package com.workshopper.controller;
 
 import com.workshopper.dto.*;
-import com.workshopper.service.WorkshopService;
 import com.workshopper.facade.WorkshopSessionFacade;
-import com.workshopper.usecase.GenerateSlideBlockUseCase;
-import com.workshopper.usecase.AssemblePptxUseCase;
-
-
-import com.workshopper.facade.WorkshopSessionFacade;
-import com.workshopper.usecase.GenerateSlideBlockUseCase;
-import com.workshopper.usecase.AssemblePptxUseCase;
-
 import com.workshopper.service.PdfExportService;
+import com.workshopper.service.WorkshopService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -23,8 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import com.workshopper.dto.BlockSlidesRequestDto;
-import com.workshopper.dto.PptxAssembleRequestDto;
 
 @RestController
 @RequestMapping("/api/workshop")
@@ -83,9 +73,8 @@ public class WorkshopController {
     }
 
     /**
-    /**
      * POST /api/workshop/session
-     * Step 3: Generate the full timetable from goals with activities.
+     * Generates the timetable (or a single block of it) from the goals and the client-built skeleton.
      */
     @PostMapping("/session")
     public ResponseEntity<?> generateSession(@RequestBody GenerateSessionRequestDto request) {
@@ -102,7 +91,7 @@ public class WorkshopController {
 
     /**
      * POST /api/workshop/export/pdf
-     * Generate a beautiful PDF document from the session using the secondary LLM.
+     * Renders the session timetable as a PDF (PDFBox, no LLM call).
      */
     @PostMapping(value = "/export/pdf", produces = "application/pdf")
     public ResponseEntity<Resource> exportPdf(@RequestBody PdfExportRequestDto request) {
@@ -122,7 +111,7 @@ public class WorkshopController {
 
     /**
      * POST /api/workshop/export/pptx
-     * Generates a lecture slides PPTX file based on the session and metadata.
+     * Generates the slide deck (PPTX) for the session, using its effective template.
      */
     @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) {
@@ -260,7 +249,7 @@ public class WorkshopController {
     /**
      * POST /api/workshop/refine-goal
      * Real-time feedback: given a single LG text, suggest refinements or splits.
-     * Returns a JSON array of SuggestionDto objects (may be empty if the goal looks fine).
+     * Returns a JSON array of GoalSuggestionDto objects (may be empty if the goal looks fine).
      */
     @PostMapping("/refine-goal")
     public ResponseEntity<?> refineGoal(@RequestBody RefineGoalRequestDto request) {
@@ -384,41 +373,6 @@ public class WorkshopController {
     }
 
     /**
-     * GET /api/workshop/sessions/{id}/slides/preview
-     * Returns an array of base64 encoded PNG renderings of the slides.
-     */
-    @GetMapping("/sessions/{id}/slides/preview")
-    public ResponseEntity<Map<String, List<String>>> getSlidePreviews(@PathVariable String id) {
-        try {
-            facade.verifyOwnership(id);
-            com.workshopper.dto.SessionDetailDto detail = service.getSession(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
-            java.io.InputStream templateStream = getTemplateStream(id);
-            
-            // Flatten the slides map into a single list
-            List<Map<String, Object>> allSlides = new java.util.ArrayList<>();
-            if (detail.session() != null && detail.session().slides() != null) {
-                // Sorting by block index to ensure correct order
-                detail.session().slides().entrySet().stream()
-                        .sorted(java.util.Map.Entry.comparingByKey())
-                        .forEach(e -> allSlides.addAll(e.getValue()));
-            }
-
-            if (allSlides.isEmpty()) {
-                return ResponseEntity.ok(Map.of("images", List.of()));
-            }
-
-            boolean isCustom = hasCustomTemplate(id);
-            List<String> base64Images = facade.renderAllSlidePreviews(detail.session(), null, allSlides, templateStream, isCustom);
-            
-            return ResponseEntity.ok(Map.of("images", base64Images));
-        } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
-            log.error("Failed to render slide previews for session {}", id, e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
-    /**
      * Delete a session completely.
      */
     @DeleteMapping("/sessions/{id}")
@@ -493,20 +447,20 @@ public class WorkshopController {
 
     /**
      * PUT /api/workshop/sessions/{id}/move
-     * Move a session into a lecture.
+     * Move a session into a course ({"courseId": "..."}), or back to the top level with an empty courseId.
      */
     @PutMapping("/sessions/{id}/move")
     public ResponseEntity<?> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
         try {
             facade.verifyOwnership(id);
-            String lectureId = body.get("courseId") != null ? body.get("courseId") : body.get("lectureId");
-            if (lectureId != null && lectureId.isBlank()) {
-                lectureId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
+            String courseId = body.get("courseId");
+            if (courseId != null && courseId.isBlank()) {
+                courseId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
             }
-            if (lectureId != null) {
-                facade.verifyCourseOwnership(lectureId);
+            if (courseId != null) {
+                facade.verifyCourseOwnership(courseId);
             }
-            service.moveSession(id, lectureId);
+            service.moveSession(id, courseId);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException
                  | org.springframework.web.server.ResponseStatusException e) { throw e; } catch (Exception e) {
@@ -518,21 +472,8 @@ public class WorkshopController {
 
     /**
      * GET /api/workshop/health
-     * Simple health check.
+     * Simple health check; the only endpoint that needs no login.
      */
-
-    /**
-     * GET /api/workshop/me
-     * Returns the currently authenticated user's ID.
-     */
-    @GetMapping("/me")
-    public ResponseEntity<java.util.Map<String, String>> getCurrentUser(org.springframework.security.core.Authentication auth) {
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            return ResponseEntity.status(401).build();
-        }
-        return ResponseEntity.ok(java.util.Map.of("id", auth.getName()));
-    }
-
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("OK");
