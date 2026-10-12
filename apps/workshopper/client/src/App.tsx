@@ -59,12 +59,18 @@ const COURSE_STEPS: Step[] = ["input-1", "input-2", "input-2b", "course-template
 
 let hasRestored = false;
 
+/** The settings forms; their values are kept while moving between them. */
+const FORM_STEPS: Step[] = ["input-1", "input-2", "input-2b"];
+
 import { useWizardState } from "@/hooks/useWizardState";
 
 export default function App() {
   const wizard = useWizardState();
   /** The step to open once the user confirms leaving an edited timetable. */
   const [timelineBackTarget, setTimelineBackTarget] = useState<Step>("goals");
+  /** Open while asking about unsaved settings on the form steps. */
+  const [settingsLeaveDialog, setSettingsLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const {
     view, setView, step, setStep, highestStepIdx, setHighestStepIdx,
     darkMode, toggleDark, isLoading, setIsLoading,
@@ -75,8 +81,19 @@ export default function App() {
     setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
     originalSession, currentCourseId, buildDraft, loadingMessages, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
+    hasUnsavedSettings, saveSettings, discardSettings,
     templateInfo, setTemplateInfo
   } = wizard;
+
+  // The form steps share one guard: leaving them with unsaved settings asks first
+  useEffect(() => {
+    if (view !== "wizard" || !FORM_STEPS.includes(step)) return;
+    leaveGuardRef.current = {
+      isDirty: hasUnsavedSettings,
+      confirmLeave: (proceed) => setSettingsLeaveDialog({ proceed }),
+    };
+    return () => { leaveGuardRef.current = null; };
+  });
 
   // The timetable counts as edited once its title or blocks differ from what was generated
   const timetableEdited = !!(session && originalSession) &&
@@ -135,8 +152,10 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (!isClickable || s.id === step) return;
+                      // Moving between the form steps keeps their values, so only leaving them asks
+                      const withinForms = FORM_STEPS.includes(step) && FORM_STEPS.includes(s.id);
                       // Unsaved input on this step (e.g. a timetable block in edit mode) is resolved first
-                      confirmLeave(() => {
+                      (withinForms ? (go: () => void) => go() : confirmLeave)(() => {
                         // M-2: send any waiting draft save now rather than dropping it
                         flushDraft();
                         // N-2: warn before navigating back past an edited timetable
@@ -185,7 +204,8 @@ export default function App() {
             isLoading={isLoading}
             initialInput={workshopInput}
             entityType={entityType}
-            onBack={currentCourseId ? () => setStep("course-summary") : undefined}
+            onBack={currentCourseId ? () => confirmLeave(() => setStep("course-summary")) : undefined}
+            onChange={(values) => setWorkshopInput(prev => ({ ...prev, ...values }))}
           />
         )}
 
@@ -363,6 +383,50 @@ export default function App() {
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <p className="font-body font-medium text-foreground">{loadingMessages[step].title}</p>
             <p className="text-sm text-muted-foreground font-body">{loadingMessages[step].sub}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved settings on the form steps */}
+      {settingsLeaveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <h3 className="font-display font-semibold text-lg text-foreground">Your settings are not saved</h3>
+            <p className="text-sm text-muted-foreground font-body">
+              You changed the {entityType === "COURSE" ? "course" : "session"} settings. Save them before you continue, or discard the changes.
+            </p>
+            <div className="flex justify-end gap-2 pt-2 flex-wrap">
+              <Button variant="outline" disabled={isSavingSettings} onClick={() => setSettingsLeaveDialog(null)}>Stay</Button>
+              <Button
+                variant="outline"
+                disabled={isSavingSettings}
+                className="text-destructive hover:text-destructive"
+                onClick={() => {
+                  const proceed = settingsLeaveDialog.proceed;
+                  setSettingsLeaveDialog(null);
+                  discardSettings();
+                  proceed();
+                }}
+              >
+                Discard changes
+              </Button>
+              <Button
+                disabled={isSavingSettings}
+                onClick={async () => {
+                  const proceed = settingsLeaveDialog.proceed;
+                  setIsSavingSettings(true);
+                  try {
+                    await saveSettings();
+                  } finally {
+                    setIsSavingSettings(false);
+                  }
+                  setSettingsLeaveDialog(null);
+                  proceed();
+                }}
+              >
+                {isSavingSettings ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : "Save and continue"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

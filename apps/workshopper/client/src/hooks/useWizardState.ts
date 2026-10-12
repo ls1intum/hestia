@@ -11,6 +11,12 @@ import type {
   KeptGoal
 } from "@/lib/workshop-generator";
 
+/** The settings edited on the three form steps (Setup, Activities, Materials). */
+const FORM_FIELDS = [
+  "title", "sessionType", "sessionTypeOther", "duration", "participants", "studentBackground",
+  "selectedActivities", "availableMaterials",
+] as const satisfies readonly (keyof WorkshopInput)[];
+
 /** Lets a step with unsaved input intercept navigation away from it. */
 export interface LeaveGuard {
   /** True while there is input that has not been saved yet. */
@@ -108,6 +114,8 @@ export function useWizardState() {
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
   /** The step the draft was last saved with, so saves that aren't a step change can keep it. */
   const lastSavedStepRef = useRef<string | null>(null);
+  /** The settings (form steps) as last saved, to tell whether the forms have unsaved changes. */
+  const savedInputRef = useRef<Partial<WorkshopInput>>({});
 
   /**
    * Set by a step with unsaved input (the timetable while a block is in edit mode). Anything that
@@ -131,6 +139,7 @@ export function useWizardState() {
     ): Promise<string> => {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
       lastSavedStepRef.current = currentStep;
+      if (draft.workshopInput) savedInputRef.current = draft.workshopInput;
       return new Promise((resolve) => {
         pendingResolvers.current.push(resolve);
         const run = async () => {
@@ -163,6 +172,51 @@ export function useWizardState() {
     },
     [entityType]
   );
+
+  // ── Unsaved settings on the form steps ──────────────────────────────────
+  // The three form steps keep their values in workshopInput while you edit, so moving between
+  // them loses nothing. Leaving the forms (to a later step, the dashboard, or by reloading)
+  // with values that differ from the saved ones asks first.
+  const workshopInputRef = useRef(workshopInput);
+  workshopInputRef.current = workshopInput;
+
+  /** The form settings as compared and saved: text trimmed, empty text as unset. */
+  const normalizeSettings = (i: Partial<WorkshopInput>): Partial<WorkshopInput> => {
+    const n: Record<string, unknown> = { ...i };
+    for (const f of FORM_FIELDS) {
+      const v = n[f];
+      if (typeof v === "string") n[f] = v.trim() || undefined;
+    }
+    return n as Partial<WorkshopInput>;
+  };
+
+  const hasUnsavedSettings = () => {
+    const pick = (i: Partial<WorkshopInput>) => FORM_FIELDS.map(f => normalizeSettings(i)[f] ?? null);
+    return JSON.stringify(pick(workshopInputRef.current)) !== JSON.stringify(pick(savedInputRef.current));
+  };
+
+  /** Saves the form settings without moving on; the session keeps the step it was saved at. */
+  const saveSettings = async () => {
+    const input = normalizeSettings(workshopInputRef.current);
+    setWorkshopInput(input);
+    const pending = persistDraft(buildDraft(input), lastSavedStepRef.current ?? step, sessionIdRef.current, currentCourseId);
+    await flushDraft();
+    const id = await pending;
+    if (!sessionIdRef.current && id) setSessionIdSynced(id);
+  };
+
+  /** Puts the form settings back to their saved values. */
+  const discardSettings = () => {
+    const saved = savedInputRef.current;
+    setWorkshopInput(prev => {
+      const next: Partial<WorkshopInput> = { ...prev };
+      for (const f of FORM_FIELDS) {
+        if (saved[f] === undefined) delete next[f];
+        else (next as Record<string, unknown>)[f] = saved[f];
+      }
+      return next;
+    });
+  };
 
   /** Keeps goal edits as a draft (or clears it with null) without regenerating the timetable. */
   const keepGoalDraft = (goals: KeptGoal[] | null) => {
@@ -208,6 +262,7 @@ export function useWizardState() {
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
+    savedInputRef.current = {};
     setRefinedGoals([]);
     setSession(null);
     setCurrentSkeleton(null);
@@ -226,6 +281,7 @@ export function useWizardState() {
     setCurrentCourseId(null);
     setEntityType("COURSE");
     setWorkshopInput({});
+    savedInputRef.current = {};
     setRefinedGoals([]);
     setSession(null);
     setCurrentSkeleton(null);
@@ -247,6 +303,7 @@ export function useWizardState() {
           const inheritedInput = { ...draft.workshopInput };
           delete inheritedInput.title;
           setWorkshopInput(inheritedInput);
+          savedInputRef.current = inheritedInput;
         }
       }
       setSessionIdSynced(null);
@@ -308,6 +365,8 @@ export function useWizardState() {
             if (draft.workshopInput) {
               if (detail.title) draft.workshopInput.title = detail.title;
               setWorkshopInput(draft.workshopInput);
+            savedInputRef.current = draft.workshopInput;
+              savedInputRef.current = draft.workshopInput;
             }
             if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
             setKeptGoals(draft.keptGoals ?? null);
@@ -519,6 +578,7 @@ export function useWizardState() {
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
+    savedInputRef.current = {};
     setRefinedGoals([]);
     setSession(null);
     setCurrentSkeleton(null);
@@ -661,6 +721,9 @@ export function useWizardState() {
     handleStep2,
     handleCourseFinish,
     flushDraft,
+    hasUnsavedSettings,
+    saveSettings,
+    discardSettings,
     keptGoals,
     keepGoalDraft,
     leaveGuardRef,

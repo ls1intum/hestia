@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,10 +14,12 @@ interface Props {
   entityType?: "SESSION" | "COURSE";
   /** N-4: when provided, renders a Back button (used when editing course session settings) */
   onBack?: () => void;
+  /** Called on every change so the wizard always holds the current values (like the other form steps) */
+  onChange?: (input: Partial<WorkshopInput>) => void;
 }
 
 
-export default function WorkshopFormStep1({ onNext, isLoading = false, initialInput, entityType = "SESSION", onBack }: Props) {
+export default function WorkshopFormStep1({ onNext, isLoading = false, initialInput, entityType = "SESSION", onBack, onChange }: Props) {
   const [title, setTitle] = useState(initialInput?.title ?? "");
   const [duration, setDuration] = useState<number | "">(initialInput?.duration ?? 90);
   const [participants, setParticipants] = useState<number | "">(initialInput?.participants ?? 50);
@@ -31,20 +33,29 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
     }
   }, [initialInput?.title]);
 
+  /** The form's values; while typing (raw) the title isn't trimmed, so a trailing space survives the sync. */
+  const currentValues = (raw = false): Partial<WorkshopInput> => ({
+    title: (raw ? title : title.trim()) || undefined,
+    duration: Math.max(0, Math.min(480, Number(duration) || 0)),
+    participants: Math.max(0, Math.min(500, Number(participants) || 0)),
+    sessionType,
+    sessionTypeOther: sessionType === "other" ? sessionTypeOther.trim() || undefined : undefined,
+    studentBackground: studentBackground.trim() || undefined,
+  });
+
+  // Keep the wizard in sync while typing (skipping the first render, which only shows saved values)
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    onChange?.(currentValues(true));
+  }, [title, duration, participants, sessionType, sessionTypeOther, studentBackground]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalDuration = Math.max(0, Math.min(480, Number(duration) || 0));
-    const finalParticipants = Math.max(0, Math.min(500, Number(participants) || 0));
-    setDuration(finalDuration);
-    setParticipants(finalParticipants);
-    onNext({
-      title: title.trim() || undefined,
-      duration: finalDuration,
-      participants: finalParticipants,
-      sessionType,
-      sessionTypeOther: sessionType === "other" ? sessionTypeOther.trim() || undefined : undefined,
-      studentBackground: studentBackground.trim() || undefined,
-    });
+    const values = currentValues();
+    setDuration(values.duration ?? 0);
+    setParticipants(values.participants ?? 0);
+    onNext(values);
   };
 
   // I-1: require at least 10 minutes so the AI can produce a meaningful timetable
