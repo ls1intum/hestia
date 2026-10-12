@@ -15,8 +15,12 @@ public record SessionDetailDto(
         String courseId,
         /** Draft state blob (opaque JSON string for the client to parse) */
         String draftStateJson,
-        /** Indicates if a custom slide template has been uploaded and saved */
+        /** Whether a custom slide template applies (the session's own or its course's) */
         boolean hasTemplate,
+        /** Where the template comes from: "SESSION", "COURSE", or null for the default design */
+        String templateSource,
+        /** File name of the applied template, if known */
+        String templateName,
         /** Only populated when status == "complete" */
         WorkshopSessionDto session
 ) {}

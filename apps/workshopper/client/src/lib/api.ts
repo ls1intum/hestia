@@ -275,6 +275,21 @@ export async function uploadCourseTemplate(courseId: string, file: File): Promis
   if (!res.ok) throw new Error("Upload failed");
 }
 
+export function deleteCourseTemplate(courseId: string): Promise<void> {
+  return del<void>(`/workshop/courses/${courseId}/template`);
+}
+
+export async function uploadSessionTemplate(sessionId: string, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append('template', file);
+  const res = await fetch(`${API_BASE}/workshop/sessions/${sessionId}/template`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Template upload failed");
+}
+
+/** Removes the template from this session only; the course template stays for other sessions. */
 export function deleteSessionTemplate(sessionId: string): Promise<void> {
   return del<void>(`/workshop/sessions/${sessionId}/template`);
 }

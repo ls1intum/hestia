@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Presentation, Upload, Sparkles, Download, RefreshCw, X, File as FileIcon, ChevronLeft, ChevronRight, Check, ChevronUp, ChevronDown, Code, Save, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { deleteSessionTemplate } from "@/lib/api";
-import { WorkshopSession, WorkshopInput, LearningGoalPlan, SlideData } from "@/lib/workshop-generator";
+import { deleteSessionTemplate, uploadSessionTemplate } from "@/lib/api";
+import { TemplateUploadBox } from "./TemplateUploadBox";
+import { WorkshopSession, WorkshopInput, LearningGoalPlan, SlideData, TemplateInfo } from "@/lib/workshop-generator";
 
 interface Props {
   session: WorkshopSession;
@@ -13,12 +14,11 @@ interface Props {
   onPreview: () => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  hasTemplate?: boolean;
-  setHasTemplate?: (v: boolean) => void;
+  templateInfo?: TemplateInfo | null;
+  setTemplateInfo?: (v: TemplateInfo | null) => void;
 }
 
-export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, onPreview, isOpen, setIsOpen, hasTemplate, setHasTemplate }: Props) {
-  const [template, setTemplate] = useState<File | null>(null);
+export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, onPreview, isOpen, setIsOpen, templateInfo, setTemplateInfo }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -49,22 +49,30 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   })();
   const totalSlides = hasSlides ? 1 + allCachedSlides.length : 0;
 
-  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setTemplate(file);
+  const handleTemplateUpload = async (file: File) => {
+    if (!session.id) return;
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append("template", file);
     try {
-      const res = await fetch(import.meta.env.BASE_URL + `api/workshop/sessions/${session.id}/template`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Template upload failed");
+      await uploadSessionTemplate(session.id, file);
+      setTemplateInfo?.({ source: "SESSION", name: file.name });
       toast({ title: "Template Saved", description: "Your branding template has been uploaded." });
     } catch (err) {
       toast({ title: "Upload Failed", description: err instanceof Error ? err.message : "Error", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  /** Removes the template from this session only; a course template stays for the course's other sessions. */
+  const handleTemplateRemove = async () => {
+    if (!session.id) return;
+    setIsUploading(true);
+    try {
+      await deleteSessionTemplate(session.id);
+      setTemplateInfo?.(null);
+      toast({ title: "Template removed", description: "This session now uses the default design." });
+    } catch {
+      toast({ title: "Failed to remove template", variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
@@ -143,7 +151,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
         formData.append("session", JSON.stringify(session));
         formData.append("meta", JSON.stringify(meta));
         formData.append("slides", JSON.stringify(allCachedSlides));
-        if (template) formData.append("template", template);
+        // Without a file the server uses the template stored for this session
 
         const res2 = await fetch(import.meta.env.BASE_URL + "api/workshop/export/pptx-with-template", {
           method: "POST",
@@ -753,69 +761,15 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
               <h4 style={{ fontFamily: 'var(--hestia-font-mono)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--hestia-text-muted)' }}>
                 PowerPoint Template
               </h4>
-              <div className="relative group">
-                <input
-                  type="file"
-                  accept=".pptx"
-                  onChange={handleTemplateUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                />
-                <div
-                  className="border-[2px] border-dashed rounded-md p-3 flex flex-col items-center justify-center gap-1 transition-all min-h-[72px]"
-                  style={template || hasTemplate ? {
-                    borderColor: 'var(--hestia-accent)',
-                    background: 'color-mix(in srgb, var(--hestia-accent) 5%, var(--hestia-surface))',
-                    borderRadius: 'var(--hestia-radius-md)'
-                  } : {
-                    borderColor: 'var(--hestia-border)',
-                    background: 'var(--hestia-surface)',
-                    borderRadius: 'var(--hestia-radius-md)'
-                  }}
-                  onMouseEnter={(e) => { if (!template && !hasTemplate) { e.currentTarget.style.borderColor = 'var(--hestia-accent)'; e.currentTarget.style.background = 'color-mix(in srgb, var(--hestia-accent) 5%, var(--hestia-surface))' } }}
-                  onMouseLeave={(e) => { if (!template && !hasTemplate) { e.currentTarget.style.borderColor = 'var(--hestia-border)'; e.currentTarget.style.background = 'var(--hestia-surface)' } }}
-                >
-                  {isUploading ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" style={{ color: 'var(--hestia-accent)' }} />
-                  ) : template || hasTemplate ? (
-                    <div className="relative group flex flex-col items-center justify-center w-full h-full">
-                      <button 
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (session.id) {
-                            try {
-                              setIsUploading(true);
-                              await deleteSessionTemplate(session.id);
-                            } catch (err) {
-                              toast({ title: "Failed to delete template", variant: "destructive" });
-                              setIsUploading(false);
-                              return;
-                            }
-                            setIsUploading(false);
-                          }
-                          setTemplate(null);
-                          if (setHasTemplate) setHasTemplate(false);
-                          toast({ title: "Template removed" });
-                        }}
-                        className="absolute -top-1 -right-1 p-1 rounded-full bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors opacity-0 group-hover:opacity-100 shadow-sm"
-                        title="Remove template"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                      <div className="h-8 w-8 rounded-md flex items-center justify-center mb-1" style={{ background: 'color-mix(in srgb, var(--hestia-accent) 12%, var(--hestia-surface))' }}>
-                        <FileIcon className="h-4 w-4" style={{ color: 'var(--hestia-accent)' }} />
-                      </div>
-                      <span className="text-xs font-medium text-center truncate w-full px-1" style={{ color: 'var(--hestia-accent)', fontFamily: 'var(--hestia-font-body)' }}>{template ? template.name : "Saved Template"}</span>
-                      <span className="text-xs" style={{ color: 'color-mix(in srgb, var(--hestia-accent) 70%, transparent)', fontFamily: 'var(--hestia-font-body)' }}>Click to replace</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="h-5 w-5 mb-1 transition-colors group-hover:text-[var(--hestia-primary)]" style={{ color: 'var(--hestia-text-muted)' }} />
-                      <span className="text-[0.875rem] font-medium text-center" style={{ color: 'var(--hestia-text)', fontFamily: 'var(--hestia-font-body)' }}>Upload</span>
-                      <span className="text-[0.75rem] text-center" style={{ color: 'var(--hestia-text-muted)', fontFamily: 'var(--hestia-font-body)' }}>Hint: optional branding</span>
-                    </>
-                  )}
-                </div>
-              </div>
+              <TemplateUploadBox
+                fileName={templateInfo ? (templateInfo.name ?? null) || (templateInfo.source === "COURSE" ? "Course template" : "Saved Template") : null}
+                caption={templateInfo?.source === "COURSE" ? "From course template" : "Click to replace"}
+                isBusy={isUploading}
+                onUpload={handleTemplateUpload}
+                onRemove={handleTemplateRemove}
+                removeTitle={templateInfo?.source === "COURSE" ? "Use the default design for this session" : "Remove template"}
+                note={templateInfo?.source === "COURSE" ? "Removing it here only affects this session." : undefined}
+              />
             </div>
 
 

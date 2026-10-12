@@ -94,18 +94,24 @@ public class WorkshopService {
         repo.save(entity);
     }
 
-public void saveTemplate(String sessionId, byte[] templateData) {
+public void saveTemplate(String sessionId, byte[] templateData, String fileName) {
         WorkshopSessionEntity entity = repo.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
         SlideTemplateEntity template = new SlideTemplateEntity();
         template.setId(sessionId); // Tier 1: 1:1 with session
         template.setOwnerId(entity.getOwnerId());
+        template.setFileName(fileName);
         template.setFileData(templateData);
         templateRepo.save(template);
         entity.setTemplateId(sessionId);
+        entity.setUseDefaultTemplate(false);
         repo.save(entity);
     }
 
+    /**
+     * Removes the template from this session only: its own upload is deleted and it stops
+     * inheriting the course template, so it uses the default design. The course template is untouched.
+     */
     @org.springframework.transaction.annotation.Transactional
     public void deleteTemplate(String sessionId) {
         WorkshopSessionEntity entity = repo.findById(sessionId)
@@ -113,8 +119,16 @@ public void saveTemplate(String sessionId, byte[] templateData) {
         if (entity.getTemplateId() != null) {
             templateRepo.deleteById(entity.getTemplateId());
             entity.setTemplateId(null);
-            repo.save(entity);
         }
+        entity.setUseDefaultTemplate(true);
+        repo.save(entity);
+    }
+
+    /** The id of the template that applies to a session: its own, else its course's (unless it opted out). */
+    private String effectiveTemplateId(WorkshopSessionEntity entity) {
+        if (entity.getTemplateId() != null) return entity.getTemplateId();
+        if (entity.isUseDefaultTemplate() || entity.getCourseId() == null) return null;
+        return courseRepository.findById(entity.getCourseId()).map(CourseEntity::getTemplateId).orElse(null);
     }
 
     /** Returns the effective template (session's own, else its course's), or null to use the default. */
@@ -122,26 +136,40 @@ public void saveTemplate(String sessionId, byte[] templateData) {
         // Unknown/unsaved session IDs fall back to the default template instead of failing the export.
         WorkshopSessionEntity entity = repo.findById(sessionId).orElse(null);
         if (entity == null) return null;
-        String templateId = entity.getTemplateId();
-        if (templateId == null && entity.getCourseId() != null) {
-            templateId = courseRepository.findById(entity.getCourseId())
-                    .map(CourseEntity::getTemplateId)
-                    .orElse(null);
-        }
+        String templateId = effectiveTemplateId(entity);
         if (templateId == null) return null;
         return templateRepo.findById(templateId).map(SlideTemplateEntity::getFileData).orElse(null);
     }
 
-    public void saveCourseTemplate(String courseId, byte[] templateData) {
+    /** The stored file name of a template, or null. */
+    public String templateFileName(String templateId) {
+        return templateId == null ? null : templateRepo.findFileNameById(templateId).orElse(null);
+    }
+
+    public void saveCourseTemplate(String courseId, byte[] templateData, String fileName) {
         CourseEntity course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
         SlideTemplateEntity template = new SlideTemplateEntity();
         template.setId(courseId);
         template.setOwnerId(course.getOwnerId());
+        template.setFileName(fileName);
         template.setFileData(templateData);
         templateRepo.save(template);
         course.setTemplateId(courseId);
         courseRepository.save(course);
+    }
+
+    /** Removes a course's template; its sessions fall back to the default design (or their own template). */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteCourseTemplate(String courseId) {
+        CourseEntity course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+        if (course.getTemplateId() != null) {
+            String templateId = course.getTemplateId();
+            course.setTemplateId(null);
+            courseRepository.save(course);
+            templateRepo.deleteById(templateId);
+        }
     }
 
     /** Fetch a single session by ID, returning its full detail + draft state. */
@@ -165,6 +193,9 @@ public void saveTemplate(String sessionId, byte[] templateData) {
                     log.warn("Could not deserialise session JSON for id={}", id);
                 }
             }
+            String templateId = effectiveTemplateId(e);
+            String templateSource = templateId == null ? null
+                    : templateId.equals(e.getTemplateId()) ? "SESSION" : "COURSE";
             return new SessionDetailDto(
                     e.getId(),
                     e.getTitle(),
@@ -172,7 +203,9 @@ public void saveTemplate(String sessionId, byte[] templateData) {
                     e.getCurrentStep(),
                     e.getCourseId(),
                     e.getDraftStateJson(),
-                    e.getTemplateId() != null,
+                    templateId != null,
+                    templateSource,
+                    templateFileName(templateId),
                     session);
         });
     }
@@ -224,6 +257,7 @@ public void saveTemplate(String sessionId, byte[] templateData) {
         repo.findById(id).ifPresent(entity -> {
             entity.setCourseId(courseId);
             entity.setDisplayOrder(null);
+            entity.setUseDefaultTemplate(false); // a moved session inherits its new course's template
             repo.save(entity);
         });
     }

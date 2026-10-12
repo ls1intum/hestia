@@ -6,17 +6,19 @@ import type {
   LearningGoalPlan,
   WorkshopSession,
   SessionSkeleton,
-  DraftState
+  DraftState,
+  TemplateInfo
 } from "@/lib/workshop-generator";
 import { defaultEvaluateMappings } from "@/lib/activity-taxonomy";
-import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
+import { generateDefaultSkeleton, SlideData, templateInfoFromDetail } from "@/lib/workshop-generator";
 
-type Step = "input-1" | "input-2" | "input-2b" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "input-2b", label: "Materials" },
+  { id: "course-template", label: "Template" },
   { id: "course-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
   { id: "timeline", label: "Timetable" },
@@ -24,12 +26,16 @@ const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "final-review", label: "Final Review" },
 ];
 
+/** Steps of creating or editing a course; sessions use the rest. */
+const COURSE_STEPS: Step[] = ["input-1", "input-2", "input-2b", "course-template"];
+
 let hasRestored = false;
 
 function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
-      if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+      if (entityType === "COURSE") return COURSE_STEPS.includes(s.id);
+      if (s.id === "course-template") return false;
       if (!courseId && s.id === "course-summary") return false;
       return true;
     })
@@ -64,7 +70,8 @@ export function useWizardState() {
   const [entityType, setEntityType] = useState<"SESSION" | "COURSE">("SESSION");
 
   const STEPS = ALL_STEPS.filter(s => {
-    if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+    if (entityType === "COURSE") return COURSE_STEPS.includes(s.id);
+    if (s.id === "course-template") return false;
     if (!currentCourseId && s.id === "course-summary") return false;
     return true;
   });
@@ -78,7 +85,7 @@ export function useWizardState() {
   const [currentSkeleton, setCurrentSkeleton] = useState<SessionSkeleton | null>(null);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [slidesCache, setSlidesCache] = useState<Record<number, SlideData[]>>({});
-  const [hasTemplate, setHasTemplate] = useState(false);
+  const [templateInfo, setTemplateInfo] = useState<TemplateInfo | null>(null);
 
   // Debounce ref for draft saves
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,6 +153,7 @@ export function useWizardState() {
 
   const startNewSession = () => {
     setSessionIdSynced(null);
+    setTemplateInfo(null);
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -162,6 +170,7 @@ export function useWizardState() {
 
   const startNewCourse = () => {
     setSessionIdSynced(null);
+    setTemplateInfo(null);
     setCurrentCourseId(null);
     setEntityType("COURSE");
     setWorkshopInput({});
@@ -191,6 +200,7 @@ export function useWizardState() {
       setSessionIdSynced(null);
       setCurrentCourseId(courseId);
       setCourseTitle(detail.title || "Untitled Course");
+      setTemplateInfo(templateInfoFromDetail(detail));
       setEntityType("SESSION");
       setRefinedGoals([]);
       setSession(null);
@@ -227,7 +237,7 @@ export function useWizardState() {
 
       const sessionIsFinished = detail.status === "complete" && detail.currentStep === "finished";
       setIsFinished(sessionIsFinished);
-      setHasTemplate(detail.hasTemplate ?? false);
+      setTemplateInfo(templateInfoFromDetail(detail));
 
       // R-2: use locally computed step order, not the stale component-state STEP_ORDER
       const localStepOrder = computeStepOrder(resolvedEntityType, resolvedCourseId);
@@ -362,18 +372,25 @@ export function useWizardState() {
     setWorkshopInput(input);
     try {
       const draft = buildDraft(input);
-      const id = await persistDraft(draft, entityType === "COURSE" ? "result" : "goals", sessionIdRef.current, currentCourseId);
+      const id = await persistDraft(draft, entityType === "COURSE" ? "course-template" : "goals", sessionIdRef.current, currentCourseId);
       if (!sessionId) setSessionIdSynced(id);
-      if (entityType === "COURSE") {
-        toast({ title: "Course successfully created", description: "Your course has been saved to the dashboard." });
-        // C-3: short delay so the toast is visible before navigating away
-        setTimeout(() => handleReset(), 1500);
-      } else {
-        setStep("goals");
-      }
+      setStep(entityType === "COURSE" ? "course-template" : "goals");
     } finally {
-      if (entityType !== "COURSE") setIsLoading(false);
-      // For COURSE, handleReset() will run after 1500ms — keep spinner until then
+      setIsLoading(false);
+    }
+  };
+
+  /** Last step of a course: save it and go back to the dashboard. */
+  const handleCourseFinish = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      await persistDraft(buildDraft(workshopInput), "result", sessionIdRef.current, currentCourseId);
+      toast({ title: "Course saved", description: "Your course has been saved to the dashboard." });
+      // C-3: short delay so the toast is visible before navigating away; keep the spinner until then
+      setTimeout(() => handleReset(), 1500);
+    } catch {
+      setIsLoading(false);
     }
   };
 
@@ -436,6 +453,7 @@ export function useWizardState() {
     if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
     setView("dashboard");
     setSessionIdSynced(null);
+    setTemplateInfo(null);
     setCurrentCourseId(null);
     setEntityType("SESSION");
     setWorkshopInput({});
@@ -475,6 +493,7 @@ export function useWizardState() {
     "input-1":  { title: "Loading…",                    sub: "" },
     "input-2":  { title: "Loading…",                    sub: "" },
     "input-2b": { title: "Loading…",                    sub: "" },
+    "course-template": { title: "Loading…",            sub: "" },
     "course-summary": { title: "Loading…",             sub: "" },
     "goals":    { title: "Loading…",                    sub: "" },
     "timeline": { title: "Loading…", sub: "" },
@@ -532,8 +551,8 @@ export function useWizardState() {
     setWorkshopInput,
     refinedGoals,
     setRefinedGoals,
-    hasTemplate,
-    setHasTemplate,
+    templateInfo,
+    setTemplateInfo,
     session,
     setSession,
     originalSession,
@@ -555,6 +574,7 @@ export function useWizardState() {
     handleStep1,
     handleStep2Activities,
     handleStep2,
+    handleCourseFinish,
     handleGoalsEntered,
     handleReset,
     toggleDark,

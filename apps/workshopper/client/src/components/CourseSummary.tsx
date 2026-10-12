@@ -3,37 +3,19 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Pencil } from "lucide-react";
-import { WorkshopInput } from "@/lib/workshop-generator";
-import { uploadCourseTemplate } from "@/lib/api";
-import { useState } from "react";
+import { WorkshopInput, TemplateInfo } from "@/lib/workshop-generator";
+import { TemplateUploadBox } from "./TemplateUploadBox";
 
 interface Props {
-  courseId?: string;
   settings: Partial<WorkshopInput>;
+  /** The course's slide template, shown read-only; null means the default design */
+  courseTemplate?: TemplateInfo | null;
   onEdit: () => void;
   onContinue: () => void;
   isLoading?: boolean;
 }
 
-export default function CourseSummary({ settings, onEdit, onContinue, isLoading = false, courseId }: Props) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-
-  const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && courseId) {
-      setUploading(true);
-      try {
-        await uploadCourseTemplate(courseId, file);
-        setUploadSuccess(true);
-      } catch (err) {
-        console.error("Upload failed", err);
-      } finally {
-        setUploading(false);
-      }
-    }
-  };
-
+export default function CourseSummary({ settings, onEdit, onContinue, isLoading = false, courseTemplate }: Props) {
   return (
     <div className="space-y-4">
       <Card className="border-border/60 shadow-lg">
@@ -71,11 +53,14 @@ export default function CourseSummary({ settings, onEdit, onContinue, isLoading 
             </div>
           
             <div className="col-span-2 pt-4 border-t border-border/50">
-              <p className="text-sm font-semibold text-muted-foreground font-body mb-2">Default Course Slide Template (PPTX)</p>
-              <div className="flex items-center gap-4">
-                <input type="file" accept=".pptx" onChange={handleTemplateUpload} disabled={uploading || !courseId} className="text-sm" />
-                {uploading && <span className="text-sm text-muted-foreground">Uploading...</span>}
-                {uploadSuccess && <span className="text-sm text-green-600">Upload successful!</span>}
+              <p className="text-sm font-semibold text-muted-foreground font-body mb-2">Slide Template</p>
+              <div className="w-[220px]">
+                <TemplateUploadBox
+                  fileName={courseTemplate ? courseTemplate.name || "Course template" : null}
+                  caption="From course template"
+                  emptyHint="Default design"
+                  note="Can be edited in a later step."
+                />
               </div>
             </div>
           </div>

@@ -25,15 +25,17 @@ import type {
 import { generateDefaultSkeleton, SlideData } from "@/lib/workshop-generator";
 
 import CourseSummary from "@/components/CourseSummary";
+import CourseTemplateStep from "@/components/CourseTemplateStep";
 import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 
-type Step = "input-1" | "input-2" | "input-2b" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
+type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 // Helper: compute the ordered step IDs for a given entity configuration
 function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | null): Step[] {
   return ALL_STEPS
     .filter(s => {
-      if (entityType === "COURSE") return s.id === "input-1" || s.id === "input-2" || s.id === "input-2b";
+      if (entityType === "COURSE") return COURSE_STEPS.includes(s.id);
+      if (s.id === "course-template") return false;
       if (!courseId && s.id === "course-summary") return false;
       return true;
     })
@@ -44,12 +46,16 @@ const ALL_STEPS: { id: Step; label: string }[] = [
   { id: "input-1",  label: "Setup" },
   { id: "input-2",  label: "Activities" },
   { id: "input-2b", label: "Materials" },
+  { id: "course-template", label: "Template" },
   { id: "course-summary", label: "Review" },
   { id: "goals",    label: "Goals" },
   { id: "timeline", label: "Timetable" },
   { id: "prepare",  label: "Preparation" },
   { id: "final-review", label: "Final Review" },
 ];
+
+/** Steps of creating or editing a course; sessions use the rest. */
+const COURSE_STEPS: Step[] = ["input-1", "input-2", "input-2b", "course-template"];
 
 let hasRestored = false;
 
@@ -62,11 +68,12 @@ export default function App() {
     darkMode, toggleDark, isLoading, setIsLoading,
     sessionId, session, workshopInput, refinedGoals, currentSkeleton, slidesCache, completedTasks,
     STEP_ORDER, currentIdx, entityType, isFinished,
-    handleStep1, handleStep2Activities, handleStep2, handleGoalsEntered,
+    handleStep1, handleStep2Activities, handleStep2, handleCourseFinish, handleGoalsEntered,
     handleReset, startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
     setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentCourseId, buildDraft, draftSaveTimeout, loadingMessages
+    originalSession, currentCourseId, buildDraft, draftSaveTimeout, loadingMessages,
+    templateInfo, setTemplateInfo
   } = wizard;
 
   // ── Dashboard view ────────────────────────────────────────────────────
@@ -208,9 +215,20 @@ export default function App() {
           />
         )}
 
+        {step === "course-template" && entityType === "COURSE" && (
+          <CourseTemplateStep
+            courseId={sessionId}
+            template={templateInfo}
+            onTemplateChange={setTemplateInfo}
+            onBack={() => setStep("input-2b")}
+            onFinish={handleCourseFinish}
+            isLoading={isLoading}
+          />
+        )}
+
         {step === "course-summary" && currentCourseId && (
           <CourseSummary
-            courseId={currentCourseId}
+            courseTemplate={templateInfo}
             settings={workshopInput}
             onEdit={() => setStep("input-1")}
             onContinue={() => {
@@ -261,6 +279,8 @@ export default function App() {
         {step === "prepare" && session && (
           <WorkshopPreparation
             session={session}
+            templateInfo={templateInfo}
+            setTemplateInfo={setTemplateInfo}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
             completedTasks={completedTasks}

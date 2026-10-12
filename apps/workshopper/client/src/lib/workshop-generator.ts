@@ -170,9 +170,23 @@ export interface SessionDetail {
   currentStep?: string;
   courseId?: string;
   draftStateJson?: string;
-  /** True if a custom slide template is stored for this session/course */
+  /** True if a custom slide template applies (the session's own or its course's) */
   hasTemplate?: boolean;
+  /** Where the applied template comes from; null means the default design */
+  templateSource?: "SESSION" | "COURSE" | null;
+  /** File name of the applied template, if known */
+  templateName?: string | null;
   session?: WorkshopSession;
+}
+
+/** The slide template that applies to the session or course being edited. */
+export interface TemplateInfo {
+  source: "SESSION" | "COURSE";
+  name?: string | null;
+}
+
+export function templateInfoFromDetail(detail: SessionDetail): TemplateInfo | null {
+  return detail.templateSource ? { source: detail.templateSource, name: detail.templateName ?? null } : null;
 }
 
 /**

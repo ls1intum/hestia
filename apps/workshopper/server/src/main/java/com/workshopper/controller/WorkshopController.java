@@ -34,7 +34,7 @@ public class WorkshopController {
     public ResponseEntity<?> uploadCourseTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
         try {
             facade.verifyCourseOwnership(id);
-            service.saveCourseTemplate(id, template.getBytes());
+            service.saveCourseTemplate(id, template.getBytes(), template.getOriginalFilename());
             return ResponseEntity.ok().build();
         } catch (org.springframework.security.access.AccessDeniedException
                  | org.springframework.web.server.ResponseStatusException e) { throw e; } catch (Exception e) {
@@ -43,6 +43,14 @@ public class WorkshopController {
         }
     }
 
+
+    /** DELETE /api/workshop/courses/{id}/template — remove the course's slide template. */
+    @DeleteMapping("/courses/{id}/template")
+    public ResponseEntity<?> deleteCourseTemplate(@PathVariable String id) {
+        facade.verifyCourseOwnership(id);
+        service.deleteCourseTemplate(id);
+        return ResponseEntity.noContent().build();
+    }
 
     private static final Logger log = LoggerFactory.getLogger(WorkshopController.class);
 
@@ -351,7 +359,7 @@ public class WorkshopController {
     public ResponseEntity<?> uploadTemplate(@PathVariable String id, @org.springframework.web.bind.annotation.RequestPart("template") org.springframework.web.multipart.MultipartFile template) {
         try {
             facade.verifyOwnership(id);
-            service.saveTemplate(id, template.getBytes());
+            service.saveTemplate(id, template.getBytes(), template.getOriginalFilename());
             return ResponseEntity.ok(Map.of("success", true));
         } catch (org.springframework.security.access.AccessDeniedException e) { throw e; } catch (Exception e) {
             log.error("Failed to upload template for session {}", id, e);
@@ -361,7 +369,7 @@ public class WorkshopController {
 
     /**
      * DELETE /api/workshop/sessions/{id}/template
-     * Remove the session's own uploaded PPTX template (falls back to course/default template).
+     * Remove the template from this session only (own upload, and inheriting the course template).
      */
     @DeleteMapping("/sessions/{id}/template")
     public ResponseEntity<?> deleteTemplate(@PathVariable String id) {

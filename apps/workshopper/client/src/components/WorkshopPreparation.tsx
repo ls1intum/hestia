@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { saveAs } from "file-saver";
-import { WorkshopSession, WorkshopInput, LearningGoalPlan, ActivityBlock, SlideData } from "@/lib/workshop-generator";
+import { WorkshopSession, WorkshopInput, LearningGoalPlan, ActivityBlock, SlideData, TemplateInfo } from "@/lib/workshop-generator";
 import { ArrowLeft, ArrowRight, Download, CheckCircle2, Presentation, ListChecks, Check, ChevronDown, ChevronUp, Loader2, X, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -16,13 +16,13 @@ interface Props {
   onUpdateTasks?: (tasks: string[], isAllDone: boolean) => void;
   onBack: () => void;
   onDone: (tasks?: string[]) => void;
-  hasTemplate?: boolean;
-  setHasTemplate?: (v: boolean) => void;
+  templateInfo?: TemplateInfo | null;
+  setTemplateInfo?: (v: TemplateInfo | null) => void;
 }
 
 import { phaseEmojis, getMechanicDescription } from "@/lib/constants";
 
-export default function WorkshopPreparation({ session, goals = [], meta, completedTasks: initialTasks = [], slidesCache, setSlidesCache, onUpdateTasks, onBack, onDone, hasTemplate, setHasTemplate }: Props) {
+export default function WorkshopPreparation({ session, goals = [], meta, completedTasks: initialTasks = [], slidesCache, setSlidesCache, onUpdateTasks, onBack, onDone, templateInfo, setTemplateInfo }: Props) {
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set(initialTasks));
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [loadingSlides, setLoadingSlides] = useState<number | null>(null);
@@ -207,7 +207,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
         </div>
       </div>
 
-      <SlideWorkstation hasTemplate={hasTemplate} setHasTemplate={setHasTemplate}
+      <SlideWorkstation templateInfo={templateInfo} setTemplateInfo={setTemplateInfo}
         session={session}
         meta={meta}
         goals={goals}

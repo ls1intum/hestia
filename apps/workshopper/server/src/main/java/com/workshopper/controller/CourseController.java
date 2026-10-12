@@ -108,6 +108,8 @@ public class CourseController {
                 null, // courseId
                 course.getDraftStateJson(),
                 course.getTemplateId() != null, // hasTemplate
+                course.getTemplateId() != null ? "COURSE" : null,
+                workshopService.templateFileName(course.getTemplateId()),
                 null // session
         );
         return ResponseEntity.ok(dto);

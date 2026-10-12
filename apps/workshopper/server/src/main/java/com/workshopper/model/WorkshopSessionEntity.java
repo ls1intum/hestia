@@ -60,6 +60,10 @@ public class WorkshopSessionEntity {
     /** Uploaded PPTX template file. */
     private String templateId;
 
+    /** True when the session should ignore its course's template and use the default design. */
+    @Column(name = "use_default_template", nullable = false)
+    private boolean useDefaultTemplate = false;
+
     /** Generated slides stored as JSONB mapping block index to slide arrays. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
@@ -131,6 +135,8 @@ public class WorkshopSessionEntity {
 
     public String getTemplateId() { return templateId; }
     public void setTemplateId(String templateId) { this.templateId = templateId; }
+    public boolean isUseDefaultTemplate() { return useDefaultTemplate; }
+    public void setUseDefaultTemplate(boolean useDefaultTemplate) { this.useDefaultTemplate = useDefaultTemplate; }
 
     public String getSlidesJson() { return slidesJson; }
     public void setSlidesJson(String slidesJson) { this.slidesJson = slidesJson; }

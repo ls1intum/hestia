@@ -124,7 +124,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with session detail when found")
         void returns200WithDetail() throws Exception {
-            var detail = new SessionDetailDto("abc123", "My Session", "draft", "goals", "courseId", "{}", false, null);
+            var detail = new SessionDetailDto("abc123", "My Session", "draft", "goals", "courseId", "{}", false, null, null, null);
             when(workshopService.getSession("abc123"))
                     .thenReturn(java.util.Optional.of(detail));
 
