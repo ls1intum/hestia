@@ -90,7 +90,7 @@ workshopper/
 ├── client/                ← Vite React app
 │   └── src/
 │       ├── components/    ← wizard steps, dashboard, timetable/ rows and panels, ui/ (shadcn)
-│       ├── hooks/         ← useWizardState (all wizard state and navigation), use-toast
+│       ├── hooks/         ← useWizardState (all wizard state and navigation), timetable and slide deck hooks
 │       └── lib/           ← api.ts, workshop-generator.ts (types, default skeleton),
 │                            phases.ts (block phases), activity-taxonomy.ts, constants.ts, …
 ├── server/                ← Spring Boot app

@@ -8,7 +8,10 @@ The Workshopper client is a single-page app built with React 18, Vite and TypeSc
 client/src/
 ├── App.tsx            # layout: header, step bar, renders the current step, confirmation dialogs
 ├── hooks/
-│   ├── useWizardState.ts  # all wizard state, step order, draft saving, leave guard
+│   ├── useWizardState.ts      # all wizard state, step order, draft saving, leave guard
+│   ├── useTimetableEditing.ts # timetable blocks: inline edits, edit-mode drafts, add/delete/reorder, saving
+│   ├── useBlockRegeneration.ts  # timetable changes that regenerate a block with the LLM
+│   ├── useSlideDeck.ts        # slide deck: generate, download, template upload/remove
 │   └── use-toast.ts
 ├── lib/
 │   ├── api.ts             # every call to the server (components never call fetch), 401/403 handling
@@ -17,6 +20,7 @@ client/src/
 │   ├── activity-taxonomy.ts   # Bloom's/SOLO → activity (mirror of the server's ActivityRecommender)
 │   ├── phases.ts              # the block phases: label, emoji, colour, templates for added blocks
 │   ├── block-content.ts       # what an expanded block shows (prompt, content, takeaways) from its steps
+│   ├── block-edits.ts         # pure edits of one block (step text and minutes, add/delete step)
 │   ├── constants.ts           # activity catalogue, colours
 │   ├── learning-goal-hub.ts   # client for importing goals from the Learning Goal Hub
 │   └── utils.ts
@@ -26,10 +30,11 @@ client/src/
 │   ├── CourseTemplateStep.tsx # course step 4: slide template
 │   ├── CourseSummary.tsx      # Review step of a session inside a course
 │   ├── WorkshopGoalEntry.tsx  # Goals (+ LGHImportModal)
-│   ├── WorkshopGeneratedTimetable.tsx  # Timetable
+│   ├── WorkshopGeneratedTimetable.tsx  # Timetable (layout; logic in the timetable hooks)
 │   ├── timetable/             # block row, block details (shared with Final Review), inline editors,
 │   │                          #   understanding check, evaluate mapping panel
 │   ├── SlideWorkstation.tsx   # Preparation: slides, prep tasks per slide, template, download
+│   ├── slides/                # slide preview, slide editor form, prep tasks, navigation
 │   ├── WorkshopFinalReview.tsx  # Final Review and export
 │   ├── TemplateUploadBox.tsx    # the PowerPoint template box (used in three places)
 │   └── ui/                      # shadcn/ui components

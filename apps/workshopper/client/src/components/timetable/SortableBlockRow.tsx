@@ -20,7 +20,7 @@ import { getStepEmoji, ACTIVITY_GROUPS, MODE_COLORS, getSectionMode, getStepMode
 import { phaseInfo } from "@/lib/phases";
 import { blockContent, blockMethods, ShownStep } from "@/lib/block-content";
 import { BlockDetails } from "./BlockDetails";
-import { EditTarget, DndActivityBlock } from "../WorkshopGeneratedTimetable";
+import type { EditTarget, DndActivityBlock } from "@/hooks/useTimetableEditing";
 import { LearningGoalPlan, WorkshopInput } from "@/lib/workshop-generator";
 import { EvaluateMappingPanel } from "./EvaluateMappingPanel";
 import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
@@ -30,7 +30,7 @@ export function SortableBlockRow({
   onToggleExpand, onEditTitle, onSaveTitle, onSaveStep, onSaveStepTime,
   onSaveBlockDuration, onSaveObjective,
   onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
-  isEditMode = false, onToggleEditMode, onCancelEditMode, onSwitchEvaluateActivity,
+  isEditMode = false, onToggleEditMode, onCancelEditMode,
   goals, needsEvaluatePriority, onConfirmEvaluateMappings, onPendingMappingsChange
 }: {
   block: DndActivityBlock;
@@ -55,7 +55,6 @@ export function SortableBlockRow({
   isEditMode?: boolean;
   onToggleEditMode?: () => void;
   onCancelEditMode?: () => void;
-  onSwitchEvaluateActivity?: (lgNum: number, newActivity: string) => void;
   goals?: LearningGoalPlan[];
   needsEvaluatePriority?: boolean;
   onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
@@ -181,48 +180,7 @@ export function SortableBlockRow({
                         </div>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent onClick={e => e.stopPropagation()} className="w-52">
-                        {/* Grouped activities */}
-                        {ACTIVITY_GROUPS.map(group => {
-                          const groupActivities = Array.from(new Set([
-                            ...group.activities.map(a => a.name),
-                            // include selected activities that belong to this group
-                            ...selectedActivities.filter(sa => group.activities.some(a => a.name === sa)),
-                          ]));
-                          return (
-                            <DropdownMenuSub key={group.label}>
-                              <DropdownMenuSubTrigger className="flex items-center gap-2">
-                                <span>{group.groupEmoji}</span>
-                                <span>{group.label}</span>
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                {groupActivities.map(act => (
-                                  <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onSwitchActivity(m, act); }}>
-                                    {act}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          );
-                        })}
-                        {/* Custom (user-added) activities not in any group */}
-                        {(() => {
-                          const allGrouped = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
-                          const custom = Array.from(new Set(selectedActivities)).filter(a => !allGrouped.includes(a));
-                          return custom.length > 0 ? (
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger className="flex items-center gap-2">
-                                <span>✨</span><span>Other</span>
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                {custom.map(act => (
-                                  <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onSwitchActivity(m, act); }}>
-                                    {act}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          ) : null;
-                        })()}
+                        <ActivityMenuItems selectedActivities={selectedActivities} onPick={act => onSwitchActivity(m, act)} />
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -250,45 +208,7 @@ export function SortableBlockRow({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent onClick={e => e.stopPropagation()} className="w-52">
-                        {ACTIVITY_GROUPS.map(group => {
-                          const groupActivities = Array.from(new Set([
-                            ...group.activities.map(a => a.name),
-                            ...selectedActivities.filter(sa => group.activities.some(a => a.name === sa)),
-                          ]));
-                          return (
-                            <DropdownMenuSub key={group.label}>
-                              <DropdownMenuSubTrigger className="flex items-center gap-2">
-                                <span>{group.groupEmoji}</span>
-                                <span>{group.label}</span>
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                {groupActivities.map(act => (
-                                  <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onAddActivity(act); }}>
-                                    Add {act}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          );
-                        })}
-                        {(() => {
-                          const allGrouped = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
-                          const custom = Array.from(new Set(selectedActivities)).filter(a => !allGrouped.includes(a));
-                          return custom.length > 0 ? (
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger className="flex items-center gap-2">
-                                <span>✨</span><span>Other</span>
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                {custom.map(act => (
-                                  <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onAddActivity(act); }}>
-                                    Add {act}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          ) : null;
-                        })()}
+                        <ActivityMenuItems selectedActivities={selectedActivities} label={act => `Add ${act}`} onPick={onAddActivity} />
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
@@ -420,11 +340,6 @@ export function SortableBlockRow({
                 return (
                   <UnderstandingCheckSteps
                     allSteps={content.steps}
-                    isEditMode={isEditMode}
-                    isRegenerating={isRegenerating}
-                    onSwitchEvaluateActivity={onSwitchEvaluateActivity}
-                    onDeleteStep={onDeleteStep}
-                    findStepIndices={findStepIndices}
                     renderEditable={renderEditable}
                     mappings={meta.evaluateMappings}
                     goalIds={goals?.map(g => g.id)}
@@ -507,6 +422,42 @@ export function SortableBlockRow({
         </div>
       </Collapsible>
     </div>
+  );
+}
+
+/**
+ * The activity catalogue as submenus (Individual, Pair, …), plus "Other" for the lecturer's own
+ * activities that are not in the catalogue. Used to switch and to add an activity.
+ */
+function ActivityMenuItems({ selectedActivities, onPick, label = act => act }: {
+  selectedActivities: string[];
+  onPick: (activity: string) => void;
+  label?: (activity: string) => string;
+}) {
+  const catalogue = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
+  const custom = Array.from(new Set(selectedActivities)).filter(a => !catalogue.includes(a));
+  const groups = [
+    ...ACTIVITY_GROUPS.map(g => ({ key: g.label, emoji: g.groupEmoji, label: g.label, activities: g.activities.map(a => a.name) })),
+    ...(custom.length > 0 ? [{ key: "other", emoji: "✨", label: "Other", activities: custom }] : []),
+  ];
+  return (
+    <>
+      {groups.map(group => (
+        <DropdownMenuSub key={group.key}>
+          <DropdownMenuSubTrigger className="flex items-center gap-2">
+            <span>{group.emoji}</span>
+            <span>{group.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {group.activities.map(act => (
+              <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onPick(act); }}>
+                {label(act)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ))}
+    </>
   );
 }
 

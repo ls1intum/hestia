@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { ActivityBlock, LearningGoalPlan, SessionSkeleton, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
-import { generateSession, errorMessage, handleAuthError } from "@/lib/api";
+import { useRef } from "react";
+import { LearningGoalPlan, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, ChevronDown, Clock, Plus, Loader2, X } from "lucide-react";
@@ -20,33 +19,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { toast } from "@/hooks/use-toast";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { LeaveGuard } from "@/hooks/useWizardState";
+import { useTimetableEditing, EvaluateMappings } from "@/hooks/useTimetableEditing";
+import { useBlockRegeneration } from "@/hooks/useBlockRegeneration";
 import { SortableBlockRow } from "./timetable/SortableBlockRow";
-import { parseStepDuration } from "@/lib/utils";
-import { ADDABLE_PHASES, PHASES, createBlockFromTemplate, phaseInfo } from "@/lib/phases";
+import { ADDABLE_PHASES, PHASES } from "@/lib/phases";
 
-// ── Editing state ──────────────────────────────────────────────────
-/** The block title being edited inline (click-to-edit, also outside edit mode). */
-export type EditTarget = { type: "title"; blockId: string } | null;
-
-// ── Internal block with stable dnd ID ─────────────────────────────
-export interface DndActivityBlock extends ActivityBlock {
-  dndId: string;
-  lgIndex?: number;
-}
-
-// ── Props ──────────────────────────────────────────────────────────
 interface Props {
   session: WorkshopSession;
   goals: LearningGoalPlan[];
@@ -54,677 +34,52 @@ interface Props {
   onBack: () => void;
   onNext: (latestSession: WorkshopSession) => void;
   onSaveSession?: (session: WorkshopSession) => void;
-  onMetaChanged?: (meta: import('@/lib/workshop-generator').WorkshopInput) => void;
+  onMetaChanged?: (meta: WorkshopInput) => void;
   /** Lets the wizard ask this step before navigating away while a block has unsaved edits. */
   registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
 
-// ── Inline editable text component removed and imported ───────────────────────────────────────────
-
-// ── Sortable block row component removed and imported ─────────────────────────────────────────────
-
-// ── Main component ─────────────────────────────────────────────────
+/**
+ * Timetable step: the generated blocks as sortable rows. Block state, edit mode and saving live in
+ * useTimetableEditing; changes that need the LLM in useBlockRegeneration.
+ */
 export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onMetaChanged, registerLeaveGuard }: Props) {
-  const onSaveSessionRef = useRef(onSaveSession);
-  useEffect(() => {
-    onSaveSessionRef.current = onSaveSession;
-  }, [onSaveSession]);
-
   const onNextRef = useRef(onNext);
-  useEffect(() => {
-    onNextRef.current = onNext;
-  }, [onNext]);
+  onNextRef.current = onNext;
+  const onSaveSessionRef = useRef(onSaveSession);
+  onSaveSessionRef.current = onSaveSession;
 
-  const [blocks, setBlocks] = useState<DndActivityBlock[]>(() =>
-    (initialSession.blocks || []).map((b, i) => ({
-      ...b,
-      dndId: b.blockId || `block-${i}`,
-      lgIndex: (b as any).lgIndex ?? 0,
-    }))
-  );
-  const sessionTitle = initialSession.title || "";
-  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
-  const [editing, setEditing] = useState<EditTarget>(null);
-  const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
-
-  // Edit Mode State
-  const [lastDeletedBlock, setLastDeletedBlock] = useState<{ block: DndActivityBlock; index: number } | null>(null);
-  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
-  const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
-
-  // ── Edit-mode drafts ──────────────────────────────────────────────────
-  // Changes made while a block is in edit mode are a draft: they are shown, but every save
-  // uses the block as it was when edit mode was opened, until the user clicks Done (✓).
-  // Refs mirror the state so event handlers and the leave guard always see the latest values.
-  const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
-  const editingRef = useRef<{ id: string | null; original: DndActivityBlock | null }>({ id: null, original: null });
-  editingRef.current = { id: editingBlockId, original: editingBlockOriginal };
-  /** Unconfirmed boxes of the evaluate mapping panel of the block in edit mode. */
-  const pendingMappingsRef = useRef<{ dndId: string; mappings: { method: string; lgIds: string[] }[] } | null>(null);
-  const lastSavedRef = useRef<string | null>(null);
-  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
-
-  const toSession = (list: DndActivityBlock[]): WorkshopSession => ({
-    ...initialSession,
-    title: sessionTitle,
-    blocks: list.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+  // Saving an evaluate block's draft regenerates it (useBlockRegeneration), which itself needs the
+  // editing state; the ref connects the two hooks.
+  const confirmMappingsRef = useRef<(dndId: string, mappings: EvaluateMappings) => Promise<boolean>>(async () => false);
+  const timetable = useTimetableEditing({
+    initialSession, goals, meta, onSaveSession, registerLeaveGuard,
+    confirmMappings: (dndId, mappings) => confirmMappingsRef.current(dndId, mappings),
   });
+  const { regeneratingBlockId, hasConfirmedEvaluatePriorities, switchActivity, addActivity, confirmEvaluateMappings } =
+    useBlockRegeneration({ editing: timetable, initialSession, goals, meta, onMetaChanged });
+  confirmMappingsRef.current = confirmEvaluateMappings;
 
-  // What the server already has, so the first save after opening the step isn't a redundant one
-  if (lastSavedRef.current === null) {
-    const loaded = toSession(blocks);
-    lastSavedRef.current = JSON.stringify([loaded.title, loaded.blocks]);
-  }
-
-  /** The blocks as they may be saved: the block in edit mode counts as its pre-edit version. */
-  const savable = (list: DndActivityBlock[], includeDraftOf?: string) => {
-    const { id, original } = editingRef.current;
-    if (!id || !original || includeDraftOf === id) return list;
-    return list.map(b => b.dndId === id ? original : b);
-  };
-
-  /** Saves the session now (used from event handlers), skipping saves that change nothing. */
-  const saveNow = (list: DndActivityBlock[], includeDraftOf?: string) => {
-    if (!onSaveSession) return;
-    const session = toSession(savable(list, includeDraftOf));
-    const key = JSON.stringify([session.title, session.blocks]);
-    if (key === lastSavedRef.current) return;
-    lastSavedRef.current = key;
-    onSaveSessionRef.current?.(session);
-  };
-
-  /** Saves from inside a state updater, where the parent's state can't be updated synchronously. */
-  const persistBlocks = (next: DndActivityBlock[], includeDraftOf?: string) => {
-    setTimeout(() => saveNow(next, includeDraftOf), 0);
-  };
-
-  /**
-   * One-click changes to a block (switching, adding or removing an activity) are saved at once,
-   * even while it is in edit mode; the block's current state becomes its new pre-edit version.
-   */
-  const commitBlock = (dndId: string, next: DndActivityBlock[]) => {
-    if (editingRef.current.id === dndId) {
-      const block = next.find(b => b.dndId === dndId);
-      if (block) {
-        const copy = JSON.parse(JSON.stringify(block));
-        editingRef.current = { id: dndId, original: copy };
-        setEditingBlockOriginal(copy);
-      }
-    }
-    persistBlocks(next, dndId);
-  };
-
-  const pendingMappingsChanged = () => {
-    const pending = pendingMappingsRef.current;
-    if (!pending || pending.dndId !== editingRef.current.id) return false;
-    return pending.mappings.some(m => m.lgIds.length > 0)
-      && JSON.stringify(pending.mappings) !== JSON.stringify(meta.evaluateMappings || []);
-  };
-
-  /** True while the block in edit mode differs from its pre-edit version (or a field in it is being typed in). */
-  const isDraftDirty = () => {
-    const { id, original } = editingRef.current;
-    if (!id || !original) return false;
-    const current = blocksRef.current.find(b => b.dndId === id);
-    if (current && JSON.stringify(current) !== JSON.stringify(original)) return true;
-    if (pendingMappingsChanged()) return true;
-    // Text typed into a field is only applied when the field loses focus
-    const active = document.activeElement as HTMLElement | null;
-    return !!active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
-      && !!active.closest(`[data-block-id="${id}"]`);
-  };
-
-  const closeEditMode = () => {
-    editingRef.current = { id: null, original: null };
-    pendingMappingsRef.current = null;
-    setEditingBlockId(null);
-    setEditingBlockOriginal(null);
-  };
-
-  /** Done (✓): applies and saves the draft of the block in edit mode. Resolves false if saving failed. */
-  const commitDraft = async (): Promise<boolean> => {
-    const id = editingRef.current.id;
-    if (!id) return true;
-    (document.activeElement as HTMLElement | null)?.blur?.();
-    const block = blocksRef.current.find(b => b.dndId === id);
-    const pending = pendingMappingsRef.current;
-    if (block?.phase === "EVALUATE" && pending && pendingMappingsChanged()) {
-      const ok = await confirmEvaluateMappings(id, pending.mappings);
-      if (!ok) return false;
-      closeEditMode();
-      return true;
-    }
-    saveNow(blocksRef.current, id);
-    closeEditMode();
-    return true;
-  };
-
-  /** Cancel (✗): puts the block in edit mode back to its pre-edit version. */
-  const discardDraft = () => {
-    const { id, original } = editingRef.current;
-    if (id && original) {
-      const restored = blocksRef.current.map(b => b.dndId === id ? original : b);
-      blocksRef.current = restored;
-      setBlocks(restored);
-    }
-    closeEditMode();
-  };
-
-  /** Runs `proceed` now, or after asking what to do with an unsaved draft. */
-  const confirmLeave = (proceed: () => void) => {
-    if (isDraftDirty()) setLeaveDialog({ proceed });
-    else {
-      if (editingRef.current.id) closeEditMode();
-      proceed();
-    }
-  };
-
-  // Let the wizard ask before leaving this step (step bar, dashboard, browser back, reload)
-  useEffect(() => {
-    registerLeaveGuard?.({ isDirty: isDraftDirty, confirmLeave });
-    return () => registerLeaveGuard?.(null);
-  });
-
-  const openEditMode = (dndId: string) => {
-    const block = blocksRef.current.find(b => b.dndId === dndId);
-    const copy = block ? JSON.parse(JSON.stringify(block)) : null;
-    editingRef.current = { id: dndId, original: copy };
-    setEditingBlockId(dndId);
-    setEditingBlockOriginal(copy);
-  };
-
-  const toggleEditBlock = async (dndId: string) => {
-    if (editingBlockId === dndId) {
-      await commitDraft();
-    } else {
-      // Only one block is edited at a time: settle the other block's draft first
-      confirmLeave(() => openEditMode(dndId));
-    }
-  };
-
-  const cancelEditBlock = (dndId: string) => {
-    if (editingBlockId === dndId) discardDraft();
-  };
+  const {
+    blocks, sessionTitle, latestSession, expandedBlocks, toggleExpand, editing, setEditing,
+    editingBlockId, toggleEditBlock, cancelEditBlock, pendingMappingsRef,
+    confirmLeave, leaveDialog, setLeaveDialog, isSavingDraft, discardAndProceed, saveAndProceed,
+    saveTitle, saveObjective, saveStep, saveStepTime, saveBlockDuration, addStep, deleteStep, deleteActivity,
+    addBlock, deleteBlock, lastDeletedBlock, setLastDeletedBlock, undoDelete, handleDragEnd,
+  } = timetable;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const toggleExpand = (dndId: string) =>
-    setExpandedBlocks(prev => ({ ...prev, [dndId]: !prev[dndId] }));
-
-  const handleSaveTitle = (dndId: string, v: string) => {
-    setBlocks(prev => {
-      const next = prev.map(b => b.dndId === dndId ? { ...b, phaseLabel: v } : b);
-      persistBlocks(next);
-      return next;
-    });
-    setEditing(null);
-  };
-
-  const handleSaveObjective = (dndId: string, v: string) => {
-    setBlocks(prev => {
-      const next = prev.map(b => b.dndId === dndId ? { ...b, objective: v } : b);
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleSaveStep = (dndId: string, sectionIdx: number, stepIdx: number, v: string) => {
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId || !b.sections) return b;
-        const sections = b.sections.map((sec, si) => {
-          if (si !== sectionIdx) return sec;
-          const steps = (sec.steps || []).map((st, ti) => {
-            if (ti !== stepIdx) return st;
-            // The editor hands back the full step text, time prefix included; only add one if it is missing
-            if (/^\d+\s*(?:min|m)\b/i.test(v)) return v;
-            const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
-            const timePrefix = match ? `${match[1]} min - ` : "";
-            return timePrefix + v;
-          });
-          return { ...sec, steps };
-        });
-        return { ...b, sections };
-      });
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleSaveBlockDuration = (dndId: string, v: string) => {
-    let num = parseInt(v, 10);
-    if (isNaN(num) || num < 0) num = 0;
-    
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId) return b;
-        // With a single section, the section carries the same time box as the block
-        const sections = b.sections && b.sections.length === 1
-          ? [{ ...b.sections[0], duration: num }]
-          : b.sections;
-        return { ...b, sections, duration: num };
-      });
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleSaveStepTime = (dndId: string, sectionIdx: number, stepIdx: number, newTime: string) => {
-    let num = parseInt(newTime, 10);
-    if (isNaN(num) || num < 0) num = 0;
-    
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId || !b.sections) return b;
-        const sections = b.sections.map((sec, si) => {
-          let steps = sec.steps || [];
-          if (si === sectionIdx) {
-            steps = steps.map((st, ti) => {
-              if (ti !== stepIdx) return st;
-              const match = st.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
-              const contentText = match ? match[2] : st;
-              return `${num} min - ${contentText}`;
-            });
-          }
-          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
-          const finalDuration = steps.length > 0 ? newDuration : (sec.duration || 0);
-          return { ...sec, steps, duration: finalDuration };
-        });
-        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-        return { ...b, sections, duration: newBlockDuration };
-      });
-      
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleAddStep = (dndId: string, text: string) => {
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId) return b;
-        const sections = b.sections ? [...b.sections] : [];
-        if (sections.length === 0) {
-          sections.push({ title: "", duration: 5, steps: [`5 min - ${text}`], methods: [], materials: [] });
-        } else {
-          const lastSection = { ...sections[sections.length - 1] };
-          lastSection.steps = [...(lastSection.steps || []), `5 min - ${text}`];
-          lastSection.duration = (lastSection.duration || 0) + 5;
-          sections[sections.length - 1] = lastSection;
-        }
-        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-        return { ...b, sections, duration: newBlockDuration };
-      });
-      
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleDeleteStep = (dndId: string, sectionIdx: number, stepIdx: number) => {
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId || !b.sections) return b;
-        const sections = b.sections.map((sec, si) => {
-          if (si !== sectionIdx) return sec;
-          const steps = (sec.steps || []).filter((_, ti) => ti !== stepIdx);
-          const newDuration = steps.reduce((acc, st) => acc + parseStepDuration(st), 0);
-          return { ...sec, steps, duration: newDuration };
-        });
-        const newBlockDuration = sections.reduce((acc, sec) => acc + (sec.duration || 0), 0);
-        return { ...b, sections, duration: newBlockDuration };
-      });
-      
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleAddBlock = (phase: string) => confirmLeave(() => addBlock(phase));
-
-  const addBlock = (phase: string) => {
-    const dndId = `custom-${Date.now()}`;
-    const newBlock: DndActivityBlock = {
-      ...createBlockFromTemplate(phase, goals, meta.selectedActivities || []),
-      dndId,
-      lgIndex: 0,
-    };
-    setBlocks(prev => {
-      const next = [...prev, newBlock];
-      persistBlocks(next);
-      return next;
-    });
-    // Breaks and buffers have nothing to fill in: they stay a single collapsed row
-    if (!phaseInfo(newBlock.phase).expandable) return;
-    setExpandedBlocks(prev => ({ ...prev, [dndId]: true }));
-    // Open the new block for editing so its fields can be filled in straight away.
-    // Evaluate blocks are edited through the mapping panel instead, so they open read-only.
-    if (newBlock.phase !== "EVALUATE") {
-      const copy = JSON.parse(JSON.stringify(newBlock));
-      editingRef.current = { id: dndId, original: copy };
-      setEditingBlockId(dndId);
-      setEditingBlockOriginal(copy);
-    }
-  };
-
-  const handleDeleteBlock = (dndId: string) => {
-    if (editingRef.current.id === dndId) closeEditMode();
-    setBlocks(prev => {
-      const index = prev.findIndex(b => b.dndId === dndId);
-      const deleted = prev[index];
-      if (deleted) setLastDeletedBlock({ block: deleted, index });
-      const next = prev.filter(b => b.dndId !== dndId);
-      persistBlocks(next);
-      return next;
-    });
-  };
-
-  const handleUndoDelete = () => {
-    if (!lastDeletedBlock) return;
-    setBlocks(prev => {
-      const next = [...prev];
-      next.splice(lastDeletedBlock.index, 0, lastDeletedBlock.block);
-      persistBlocks(next);
-      return next;
-    });
-    setLastDeletedBlock(null);
-  };
-
-  const handleDeleteActivity = (dndId: string, methodToRemove: string) => {
-    setBlocks(prev => {
-      const next = prev.map(b => {
-        if (b.dndId !== dndId) return b;
-        const newMethods = (b.methods || []).filter(m => m !== methodToRemove);
-        const newSections = (b.sections || []).map(s => ({
-          ...s,
-          methods: (s.methods || []).filter(m => m !== methodToRemove),
-        }));
-        return { ...b, methods: newMethods, sections: newSections };
-      });
-      commitBlock(dndId, next);
-      return next;
-    });
-  };
-
-  const handleAddActivity = async (dndId: string, methodToAdd: string) => {
-    setRegeneratingBlockId(dndId);
-    try {
-      const block = blocks.find(b => b.dndId === dndId);
-      if (!block) return;
-      const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
-
-      // Try to find the existing practice/activity section to use as a baseline duration
-      const practiceSection = (block.sections || []).find(s => {
-        const t = (s.title || "").toLowerCase();
-        return t.includes("activity") || t.includes("practice") || t.includes("application");
-      });
-      const requestedDuration = practiceSection?.duration 
-        ? practiceSection.duration 
-        : Math.max(10, Math.floor((block.duration || 40) / 2));
-
-      // Generate a fresh set of sections for the new activity
-      const singleBlockSkeleton: SessionSkeleton = {
-        sessionId: initialSession.id,
-        blocks: [{
-          phase: block.phase,
-          title: block.phaseLabel || block.phase,
-          description: (block.objective || "") + "\nIMPORTANT: Only generate the interactive participant practice section and setup. Skip the 'Explain' or 'Lecture' phase since it was already covered.",
-          lgIndex,
-          duration: requestedDuration,
-          sections: [], // Empty sections so AI generates a fresh loop
-        }],
-      };
-
-      const newSession = await generateSession(goals, { ...meta, selectedActivities: [methodToAdd] }, singleBlockSkeleton);
-      
-      if (newSession.blocks?.[0]) {
-        const generatedBlock = newSession.blocks[0];
-        setBlocks(prev => {
-          const next = prev.map(b => {
-            if (b.dndId !== dndId) return b;
-            
-            // Append the new sections (filtering out intro/explain since it's an addition to an existing block)
-            const filteredSections = (generatedBlock.sections || []).filter((s: any) => {
-              const t = (s.title || "").toLowerCase();
-              return !t.includes("explain") && !t.includes("lecture") && !t.includes("introduction") && !t.includes("theory");
-            });
-            const newSections = [...(b.sections || []), ...filteredSections];
-            const newDuration = (b.duration || 0) + filteredSections.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
-            
-            return {
-              ...b,
-              sections: newSections,
-              duration: newDuration,
-              methods: Array.from(new Set([...(b.methods || []), methodToAdd])),
-            };
-          });
-          
-          commitBlock(dndId, next);
-          return next;
-        });
-        toast({ title: "Activity added", description: `Added ${methodToAdd}` });
-      }
-    } catch (e) {
-      if (!handleAuthError(e)) toast({ title: "Addition failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
-    } finally {
-      setRegeneratingBlockId(null);
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setBlocks((items) => {
-        const oldIndex = items.findIndex((item) => item.dndId === active.id);
-        const newIndex = items.findIndex((item) => item.dndId === over.id);
-        const next = arrayMove(items, oldIndex, newIndex);
-        persistBlocks(next);
-        return next;
-      });
-    }
-  };
-
   const handleBack = () => confirmLeave(() => onBack());
 
   const handleNext = () => confirmLeave(() => {
-    const latest = toSession(blocksRef.current);
+    const latest = latestSession();
     onSaveSessionRef.current?.(latest);
     onNextRef.current?.(latest);
   });
-
-  const switchActivity = async (dndId: string, oldActivity: string, newActivity: string) => {
-    setRegeneratingBlockId(dndId);
-    try {
-      const block = blocks.find(b => b.dndId === dndId);
-      if (!block) return;
-      const lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
-
-      const currentMethods = block.methods || [];
-      const newMethods = [...currentMethods];
-      const methodIndex = newMethods.indexOf(oldActivity);
-      if (methodIndex !== -1) {
-        newMethods[methodIndex] = newActivity;
-      } else {
-        newMethods.push(newActivity);
-      }
-
-      const singleBlockSkeleton: SessionSkeleton = {
-        sessionId: initialSession.id,
-        blocks: [{
-          phase: block.phase,
-          title: block.phaseLabel || block.phase,
-          description: block.objective,
-          lgIndex,
-          duration: block.duration,
-          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
-        }],
-      };
-
-      const newSession = await generateSession(goals, { ...meta, selectedActivities: newMethods }, singleBlockSkeleton);
-      if (newSession.blocks?.[0]) {
-        const updatedBlock = newSession.blocks[0];
-        setBlocks(prev => {
-          const next = prev.map(b => {
-            if (b.dndId !== dndId) return b;
-            
-            // If the server returns a generic phase name as the label, preserve the user's custom label
-            const finalPhaseLabel = (updatedBlock.phaseLabel && updatedBlock.phaseLabel !== updatedBlock.phase)
-              ? updatedBlock.phaseLabel
-              : (b.phaseLabel || b.phase);
-
-            return {
-              ...b,
-              ...updatedBlock,
-              phaseLabel: finalPhaseLabel,
-              methods: updatedBlock.methods || newMethods,
-              dndId,
-              lgIndex,
-              blockId: block.blockId,
-            };
-          });
-          
-          commitBlock(dndId, next);
-          return next;
-        });
-        toast({ title: "Activity updated", description: `Switched to ${newActivity}` });
-      }
-    } catch (e) {
-      if (!handleAuthError(e)) toast({ title: "Generation failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
-    } finally {
-      setRegeneratingBlockId(null);
-    }
-  };
-
-  const [hasConfirmedEvaluatePriorities, setHasConfirmedEvaluatePriorities] = useState(
-    goals.length <= 2 || (meta.evaluateMappings && meta.evaluateMappings.length > 0)
-  );
-
-  /** Regenerates a Check Understanding block for new mappings; resolves false if that failed. */
-  const confirmEvaluateMappings = async (dndId: string, mappings: { method: string; lgIds: string[] }[]): Promise<boolean> => {
-    setRegeneratingBlockId(dndId);
-    try {
-      const block = blocks.find(b => b.dndId === dndId);
-      if (!block) return false;
-      const newMeta = { ...meta, evaluateMappings: mappings };
-      onMetaChanged?.(newMeta);
-      setHasConfirmedEvaluatePriorities(true);
-
-      const singleBlockSkeleton: SessionSkeleton = {
-        sessionId: initialSession.id,
-        blocks: [{
-          phase: block.phase,
-          title: block.phaseLabel || block.phase,
-          description: block.objective,
-          lgIndex: block.lgIndex ?? 0,
-          duration: block.duration,
-        }]
-      };
-
-      const generated = await generateSession(goals, newMeta, singleBlockSkeleton);
-      
-      if (generated.blocks && generated.blocks.length > 0) {
-        setBlocks(prev => {
-          const next = [...prev];
-          const idx = next.findIndex(b => b.dndId === dndId);
-          if (idx !== -1) {
-            const updatedBlock = generated.blocks[0];
-            const originalBlock = prev[idx];
-
-            next[idx] = { 
-              ...updatedBlock, 
-              dndId: originalBlock.dndId,
-              phaseLabel: originalBlock.phaseLabel || originalBlock.phase
-            };
-            commitBlock(dndId, next);
-          }
-          return next;
-        });
-        setHasConfirmedEvaluatePriorities(true);
-        toast({ title: "Mappings updated", description: "Understanding Check regenerated." });
-      }
-      return true;
-    } catch (e) {
-      if (!handleAuthError(e)) toast({ title: "Update failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
-      return false;
-    } finally {
-      setRegeneratingBlockId(null);
-    }
-  };
-  const switchEvaluateActivity = async (dndId: string, targetLgNum: number, newActivity: string) => {
-    setRegeneratingBlockId(dndId);
-    try {
-      const block = blocks.find(b => b.dndId === dndId);
-      if (!block) return;
-      
-      const exactMappings: string[] = [];
-      const section = (block.sections || [])[0];
-      if (section && section.steps) {
-        section.steps.forEach((s: string) => {
-          const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
-          const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•\-]\s*([^:]+):\s*(.*)/i);
-          const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
-          
-          const lgNumStr = lgMatch ? lgMatch[1] : (lgFallback ? lgFallback[1] : null);
-          const currentAct = lgMatch ? lgMatch[2].trim() : null;
-
-          if (lgNumStr) {
-            const num = parseInt(lgNumStr);
-            if (num === targetLgNum) {
-              exactMappings.push(`LG${num}:${newActivity}`);
-            } else if (currentAct) {
-              exactMappings.push(`LG${num}:${currentAct}`);
-            }
-          }
-        });
-      }
-      
-      // If the LLM failed to include methods correctly, we force our exactMappings as the block methods fallback
-      const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
-
-      const singleBlockSkeleton: SessionSkeleton = {
-        sessionId: initialSession.id,
-        blocks: [{
-          phase: block.phase,
-          title: block.phaseLabel || block.phase,
-          description: block.objective,
-          lgIndex: block.lgIndex ?? 0,
-          duration: block.duration,
-          sections: (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 })),
-        }],
-      };
-
-      const newSession = await generateSession(goals, { ...meta, selectedActivities: exactMappings }, singleBlockSkeleton);
-      if (newSession.blocks?.[0]) {
-        const updatedBlock = newSession.blocks[0];
-        setBlocks(prev => {
-          const next = prev.map(b => {
-            if (b.dndId !== dndId) return b;
-            return {
-              ...b,
-              ...updatedBlock,
-              phaseLabel: b.phaseLabel || b.phase,
-              methods: (updatedBlock.methods && updatedBlock.methods.length > 0) ? updatedBlock.methods : derivedMethods,
-              dndId,
-              lgIndex: b.lgIndex,
-              blockId: b.blockId,
-            };
-          });
-          commitBlock(dndId, next);
-          return next;
-        });
-        toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
-      }
-    } catch (e) {
-      if (!handleAuthError(e)) toast({ title: "Update failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
-    } finally {
-      setRegeneratingBlockId(null);
-    }
-  };
 
   const evaluateBlockNeedsPrioritySelection = goals.length > 2 && !hasConfirmedEvaluatePriorities;
   const totalDuration = blocks.reduce((s, b) => s + b.duration, 0);
@@ -761,29 +116,28 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                     needsEvaluatePriority={isNeedsPriority}
                     onConfirmEvaluateMappings={(mappings) => { confirmEvaluateMappings(block.dndId, mappings); }}
                     onPendingMappingsChange={(mappings) => { pendingMappingsRef.current = { dndId: block.dndId, mappings }; }}
-                  isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
-                  editing={editing}
-                  meta={meta}
-                  isRegenerating={regeneratingBlockId === block.dndId}
-                  selectedActivities={meta.selectedActivities || []}
-                  isEditMode={editingBlockId === block.dndId}
-                  onToggleEditMode={() => toggleEditBlock(block.dndId)}
-                  onCancelEditMode={() => cancelEditBlock(block.dndId)}
-                  onToggleExpand={() => toggleExpand(block.dndId)}
-                  onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
-                  onSaveTitle={v => handleSaveTitle(block.dndId, v)}
-                  onSaveStep={(sIdx, stIdx, v) => handleSaveStep(block.dndId, sIdx, stIdx, v)}
-                  onSaveStepTime={(sIdx, stIdx, v) => handleSaveStepTime(block.dndId, sIdx, stIdx, v)}
-                  onSaveBlockDuration={v => handleSaveBlockDuration(block.dndId, v)}
-                  onSaveObjective={v => handleSaveObjective(block.dndId, v)}
-                  onDeleteBlock={() => handleDeleteBlock(block.dndId)}
-                  onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
-                  onSwitchEvaluateActivity={(lgNum, newAct) => switchEvaluateActivity(block.dndId, lgNum, newAct)}
-                  onDeleteActivity={method => handleDeleteActivity(block.dndId, method)}
-                  onAddActivity={method => handleAddActivity(block.dndId, method)}
-                  onAddStep={text => handleAddStep(block.dndId, text)}
-                  onDeleteStep={(sIdx, stIdx) => handleDeleteStep(block.dndId, sIdx, stIdx)}
-                />
+                    isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
+                    editing={editing}
+                    meta={meta}
+                    isRegenerating={regeneratingBlockId === block.dndId}
+                    selectedActivities={meta.selectedActivities || []}
+                    isEditMode={editingBlockId === block.dndId}
+                    onToggleEditMode={() => toggleEditBlock(block.dndId)}
+                    onCancelEditMode={() => cancelEditBlock(block.dndId)}
+                    onToggleExpand={() => toggleExpand(block.dndId)}
+                    onEditTitle={() => setEditing({ type: "title", blockId: block.dndId })}
+                    onSaveTitle={v => saveTitle(block.dndId, v)}
+                    onSaveStep={(sIdx, stIdx, v) => saveStep(block.dndId, sIdx, stIdx, v)}
+                    onSaveStepTime={(sIdx, stIdx, v) => saveStepTime(block.dndId, sIdx, stIdx, v)}
+                    onSaveBlockDuration={v => saveBlockDuration(block.dndId, v)}
+                    onSaveObjective={v => saveObjective(block.dndId, v)}
+                    onDeleteBlock={() => deleteBlock(block.dndId)}
+                    onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
+                    onDeleteActivity={method => deleteActivity(block.dndId, method)}
+                    onAddActivity={method => addActivity(block.dndId, method)}
+                    onAddStep={text => addStep(block.dndId, text)}
+                    onDeleteStep={(sIdx, stIdx) => deleteStep(block.dndId, sIdx, stIdx)}
+                  />
                 );
               })}
             </SortableContext>
@@ -800,12 +154,12 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
                   {ADDABLE_PHASES.map(t => (
-                    <DropdownMenuItem key={t.phase} onClick={() => handleAddBlock(t.phase)}>
+                    <DropdownMenuItem key={t.phase} onClick={() => addBlock(t.phase)}>
                       <span className="mr-2">{t.emoji}</span>{t.label}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleAddBlock("CUSTOM")}>
+                  <DropdownMenuItem onClick={() => addBlock("CUSTOM")}>
                     <span className="mr-2">{PHASES.CUSTOM.emoji}</span>{PHASES.CUSTOM.label}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -874,7 +228,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         <div className="fixed bottom-24 right-4 z-50 flex items-center gap-3 bg-foreground text-background text-sm font-body px-4 py-3 rounded-xl shadow-xl border border-border/10">
           <span className="opacity-80">Block deleted</span>
           <button
-            onClick={handleUndoDelete}
+            onClick={undoDelete}
             className="font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity whitespace-nowrap"
           >
             Undo
@@ -908,26 +262,13 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               variant="outline"
               disabled={isSavingDraft}
               className="text-destructive hover:text-destructive"
-              onClick={() => {
-                const proceed = leaveDialog?.proceed;
-                setLeaveDialog(null);
-                discardDraft();
-                proceed?.();
-              }}
+              onClick={discardAndProceed}
             >
               Discard changes
             </Button>
             <Button
               disabled={isSavingDraft}
-              onClick={async () => {
-                const proceed = leaveDialog?.proceed;
-                setIsSavingDraft(true);
-                const ok = await commitDraft();
-                setIsSavingDraft(false);
-                if (!ok) return; // keep the dialog and the draft; the error was shown as a toast
-                setLeaveDialog(null);
-                proceed?.();
-              }}
+              onClick={saveAndProceed}
             >
               {isSavingDraft ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : "Save and continue"}
             </Button>

@@ -243,8 +243,6 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                                   <div className="mt-2">
                                     <UnderstandingCheckSteps
                                       allSteps={content.steps}
-                                      isEditMode={false}
-                                      isRegenerating={false}
                                       renderEditable={(_, text, className) => <span className={className}>{text}</span>}
                                       mappings={meta.evaluateMappings}
                                       goalIds={goals.map(g => g.id)}
