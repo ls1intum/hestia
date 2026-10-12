@@ -414,7 +414,8 @@ public class AssemblePptxUseCase {
                             }
                         }
                     }
-                    // Enable normAutoFit so replaced text shrinks to fit the shape
+                    // Shrink the text now so it fits in every viewer, and keep normAutoFit for later edits
+                    shrinkTextToFit(ts);
                     enableAutoFit(ts);
                 }
             }
@@ -430,6 +431,39 @@ public class AssemblePptxUseCase {
             shape.setTextAutofit(org.apache.poi.sl.usermodel.TextShape.TextAutofit.NORMAL);
         } catch (Exception e) {
             log.debug("Could not enable auto-fit on shape: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Lowers the font size of a text shape until its text fits inside the shape, keeping the
+     * relative sizes of its runs. PowerPoint's own shrink-on-overflow only kicks in once the text
+     * is edited, so without this a long replacement spills out of its box when the file is opened.
+     */
+    private void shrinkTextToFit(XSLFTextShape ts) {
+        try {
+            java.awt.geom.Rectangle2D anchor = ts.getAnchor();
+            if (anchor == null) return;
+            double width = anchor.getWidth() - ts.getLeftInset() - ts.getRightInset();
+            double height = anchor.getHeight() - ts.getTopInset() - ts.getBottomInset();
+            List<String> paragraphs = new ArrayList<>();
+            double maxSize = 0;
+            for (var p : ts.getTextParagraphs()) {
+                paragraphs.add(p.getText());
+                for (var r : p.getTextRuns()) {
+                    if (r.getFontSize() != null) maxSize = Math.max(maxSize, r.getFontSize());
+                }
+            }
+            if (maxSize <= 0) return;
+            double fitted = PptxTextFit.fitFontSize(paragraphs, maxSize, Math.max(8, maxSize * 0.4), width, height);
+            if (fitted >= maxSize) return;
+            double scale = fitted / maxSize;
+            for (var p : ts.getTextParagraphs()) {
+                for (var r : p.getTextRuns()) {
+                    if (r.getFontSize() != null) r.setFontSize(Math.max(8, Math.floor(r.getFontSize() * scale * 2) / 2));
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not fit text to shape: {}", e.getMessage());
         }
     }
 
@@ -608,6 +642,7 @@ public class AssemblePptxUseCase {
                         br.setBold(defaultBold);
                         br.setItalic(defaultItalic);
                     }
+                    shrinkTextToFit(ts);
                     break;
                 }
             }
@@ -616,6 +651,20 @@ public class AssemblePptxUseCase {
 
     private byte[] buildPptx(WorkshopSessionDto session, WorkshopInputDto meta,
                               List<Map<String, Object>> slidesData, java.io.InputStream templateStream, boolean isCustomTemplate) throws Exception {
+        // An uploaded template only supplies branding: build the deck in the default design,
+        // then add the template's title slide, logo and footer on top
+        if (isCustomTemplate && templateStream != null) {
+            byte[] templateBytes = templateStream.readAllBytes();
+            try (java.io.InputStream defaultTemplate =
+                         new org.springframework.core.io.ClassPathResource("templates/workshopper-default.pptx").getInputStream()) {
+                byte[] deck = buildPptx(session, meta, slidesData, defaultTemplate, false);
+                return TemplateBranding.apply(deck, templateBytes, session != null ? session.title() : null);
+            } catch (Exception e) {
+                log.warn("Could not apply the uploaded template's branding, using its layouts instead: {}", e.getMessage());
+                templateStream = new java.io.ByteArrayInputStream(templateBytes);
+            }
+        }
+
         try (org.apache.poi.xslf.usermodel.XMLSlideShow ppt = templateStream != null
                 ? new org.apache.poi.xslf.usermodel.XMLSlideShow(templateStream)
                 : new org.apache.poi.xslf.usermodel.XMLSlideShow()) {
@@ -823,6 +872,212 @@ public class AssemblePptxUseCase {
     }
 
     @SuppressWarnings("unchecked")
+    /** One numbered row of the agenda slide: background box, number circle, number and goal text. */
+    private record AgendaRow(org.apache.poi.xslf.usermodel.XSLFShape box,
+                             org.apache.poi.xslf.usermodel.XSLFShape circle,
+                             XSLFTextShape number,
+                             XSLFTextShape goal,
+                             List<org.apache.poi.xslf.usermodel.XSLFShape> members) {}
+
+    /**
+     * Gives the agenda slide one row per learning goal: rows beyond the number of goals are
+     * removed, extra rows are copied from the last one, and the rows are re-spaced to fill the
+     * same area. Each goal text box fills its row and its font shrinks until every goal fits.
+     *
+     * @return false if the slide does not have the expected row structure, so the caller can
+     *         fall back to plain placeholder replacement
+     */
+    private boolean layoutAgendaRows(XSLFSlide slide, List<String> goals) {
+        List<AgendaRow> rows = findAgendaRows(slide);
+        if (rows.isEmpty()) return false;
+        try {
+            // Template leftovers inside a row (e.g. a hidden second number) are dropped
+            java.util.Set<org.apache.poi.xslf.usermodel.XSLFShape> removed = new java.util.HashSet<>();
+            for (AgendaRow row : rows) {
+                for (var m : row.members()) {
+                    if (m != row.box() && m != row.circle() && m != row.number() && m != row.goal() && removed.add(m)) {
+                        slide.removeShape(m);
+                    }
+                }
+            }
+
+            int count = goals.size();
+            int templateRows = rows.size();
+            java.awt.geom.Rectangle2D firstBox = rows.get(0).box().getAnchor();
+            java.awt.geom.Rectangle2D lastBox = rows.get(templateRows - 1).box().getAnchor();
+            double top = firstBox.getY();
+            double bottom = lastBox.getY() + lastBox.getHeight();
+            double rowHeight = firstBox.getHeight();
+            double gap = templateRows > 1
+                    ? rows.get(1).box().getAnchor().getY() - (top + rowHeight)
+                    : 12;
+
+            // Fewer goals: drop the rows that are not needed
+            for (int i = templateRows - 1; i >= count; i--) {
+                for (var m : rows.get(i).members()) {
+                    if (removed.add(m)) slide.removeShape(m);
+                }
+            }
+
+            // Shape geometry and text are edited on the XML, which also covers the copied rows
+            List<org.openxmlformats.schemas.presentationml.x2006.main.CTShape[]> rowXml = new ArrayList<>();
+            for (int i = 0; i < Math.min(count, templateRows); i++) {
+                AgendaRow row = rows.get(i);
+                rowXml.add(new org.openxmlformats.schemas.presentationml.x2006.main.CTShape[]{
+                        ctShape(row.box()), ctShape(row.circle()), ctShape(row.number()), ctShape(row.goal())});
+            }
+            if (count > templateRows) {
+                var spTree = slide.getXmlObject().getCSld().getSpTree();
+                long nextId = slide.getShapes().stream().mapToLong(org.apache.poi.xslf.usermodel.XSLFShape::getShapeId).max().orElse(100) + 1;
+                var source = rowXml.get(rowXml.size() - 1);
+                for (int i = templateRows; i < count; i++) {
+                    var copy = new org.openxmlformats.schemas.presentationml.x2006.main.CTShape[source.length];
+                    for (int j = 0; j < source.length; j++) {
+                        var added = spTree.addNewSp();
+                        added.set(source[j].copy());
+                        added.getNvSpPr().getCNvPr().setId(nextId++);
+                        copy[j] = added;
+                    }
+                    rowXml.add(copy);
+                }
+                // More rows than the template has: share the same area with a tighter gap
+                gap = Math.min(gap, 10);
+                rowHeight = (bottom - top - gap * (count - 1)) / count;
+            }
+
+            AgendaRow template = rows.get(0);
+            java.awt.geom.Rectangle2D circle = template.circle().getAnchor();
+            java.awt.geom.Rectangle2D goalBox = template.goal().getAnchor();
+            double circleSize = Math.min(circle.getHeight(), rowHeight - 8);
+            double numberSize = fontSizeOf(template.number(), 14) * circleSize / circle.getHeight();
+            double goalPad = 4;
+            double goalHeight = rowHeight - 2 * goalPad;
+            double goalWidth = goalBox.getWidth() - template.goal().getLeftInset() - template.goal().getRightInset();
+
+            double goalFont = fontSizeOf(template.goal(), 30);
+            for (String g : goals) {
+                goalFont = Math.min(goalFont, PptxTextFit.fitFontSize(List.of(g), goalFont, 10, goalWidth,
+                        goalHeight - template.goal().getTopInset() - template.goal().getBottomInset()));
+            }
+
+            for (int i = 0; i < rowXml.size(); i++) {
+                var xml = rowXml.get(i);
+                double y = top + i * (rowHeight + gap);
+                setShapeY(xml[0], y, rowHeight);
+                setShapeY(xml[1], y + (rowHeight - circleSize) / 2, circleSize);
+                setShapeWidth(xml[1], circleSize);
+                setShapeY(xml[2], y + (rowHeight - circleSize) / 2, circleSize);
+                setShapeWidth(xml[2], circleSize);
+                setShapeY(xml[3], y + goalPad, goalHeight);
+                setShapeText(xml[2], String.valueOf(i + 1), numberSize);
+                setShapeText(xml[3], goals.get(i), goalFont);
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("Agenda row layout failed, using plain placeholder replacement: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** Finds the agenda rows by their "[Learning Goal ...]" placeholders, top to bottom. */
+    private List<AgendaRow> findAgendaRows(XSLFSlide slide) {
+        List<AgendaRow> rows = new ArrayList<>();
+        List<XSLFTextShape> goalShapes = new ArrayList<>();
+        for (var s : slide.getShapes()) {
+            if (s instanceof XSLFTextShape ts && ts.getText().contains("[Learning Goal") && ts.getAnchor() != null) goalShapes.add(ts);
+        }
+        goalShapes.sort(java.util.Comparator.comparingDouble(s -> s.getAnchor().getY()));
+
+        for (int i = 0; i < goalShapes.size(); i++) {
+            XSLFTextShape goal = goalShapes.get(i);
+            java.awt.geom.Rectangle2D g = goal.getAnchor();
+            // The row's background box: an empty shape that contains the goal text's top-left corner
+            org.apache.poi.xslf.usermodel.XSLFShape box = null;
+            for (var s : slide.getShapes()) {
+                var a = s.getAnchor();
+                if (a == null || s == goal || hasText(s) || a.getHeight() > 200) continue;
+                if (a.getX() <= g.getX() + 1 && a.getY() <= g.getY() + 1 && g.getY() < a.getY() + a.getHeight()
+                        && (box == null || a.getWidth() * a.getHeight() > box.getAnchor().getWidth() * box.getAnchor().getHeight())) {
+                    box = s;
+                }
+            }
+            if (box == null) return List.of();
+            java.awt.geom.Rectangle2D b = box.getAnchor();
+            List<org.apache.poi.xslf.usermodel.XSLFShape> members = new ArrayList<>();
+            for (var s : slide.getShapes()) {
+                var a = s.getAnchor();
+                if (a != null && a.getX() >= b.getX() - 2 && a.getY() >= b.getY() - 2
+                        && a.getMaxX() <= b.getMaxX() + 2 && a.getMaxY() <= b.getMaxY() + 2) {
+                    members.add(s);
+                }
+            }
+            String expected = String.valueOf(i + 1);
+            XSLFTextShape number = null;
+            org.apache.poi.xslf.usermodel.XSLFShape circle = null;
+            for (var m : members) {
+                if (m instanceof XSLFTextShape ts && ts.getText().trim().equals(expected) && number == null) number = ts;
+            }
+            if (number == null) return List.of();
+            for (var m : members) {
+                if (m != box && !hasText(m) && m.getAnchor().getY() <= number.getAnchor().getY() + 1
+                        && m.getAnchor().getMaxY() >= number.getAnchor().getMaxY() - 1) circle = m;
+            }
+            if (circle == null) return List.of();
+            rows.add(new AgendaRow(box, circle, number, goal, members));
+        }
+        return rows;
+    }
+
+    private static boolean hasText(org.apache.poi.xslf.usermodel.XSLFShape s) {
+        return s instanceof XSLFTextShape ts && !ts.getText().isBlank();
+    }
+
+    private static org.openxmlformats.schemas.presentationml.x2006.main.CTShape ctShape(org.apache.poi.xslf.usermodel.XSLFShape s) {
+        return (org.openxmlformats.schemas.presentationml.x2006.main.CTShape) s.getXmlObject();
+    }
+
+    private static double fontSizeOf(XSLFTextShape ts, double fallback) {
+        for (var p : ts.getTextParagraphs()) {
+            for (var r : p.getTextRuns()) {
+                if (r.getFontSize() != null) return r.getFontSize();
+            }
+        }
+        return fallback;
+    }
+
+    private static void setShapeY(org.openxmlformats.schemas.presentationml.x2006.main.CTShape sp, double yPt, double heightPt) {
+        var xfrm = sp.getSpPr().getXfrm();
+        xfrm.getOff().setY(Long.valueOf(Math.round(yPt * 12700)));
+        xfrm.getExt().setCy(Math.round(heightPt * 12700));
+    }
+
+    private static void setShapeWidth(org.openxmlformats.schemas.presentationml.x2006.main.CTShape sp, double widthPt) {
+        sp.getSpPr().getXfrm().getExt().setCx(Math.round(widthPt * 12700));
+    }
+
+    /**
+     * Puts {@code text} in the first run of a shape at {@code sizePt}, keeping that run's formatting.
+     * Other runs and paragraphs are emptied rather than removed, so cached POI wrappers stay valid.
+     */
+    private static void setShapeText(org.openxmlformats.schemas.presentationml.x2006.main.CTShape sp, String text, double sizePt) {
+        var body = sp.getTxBody();
+        if (body == null || body.sizeOfPArray() == 0) return;
+        boolean placed = false;
+        for (var p : body.getPArray()) {
+            for (var r : p.getRArray()) {
+                r.setT(placed ? "" : text);
+                var rPr = r.isSetRPr() ? r.getRPr() : r.addNewRPr();
+                rPr.setSz((int) Math.round(sizePt * 100));
+                placed = true;
+            }
+        }
+        if (!placed) {
+            var r = body.getPArray(0).addNewR();
+            r.setT(text);
+            r.addNewRPr().setSz((int) Math.round(sizePt * 100));
+        }
+    }
+
     private void populateSlideBody(org.apache.poi.xslf.usermodel.XSLFSlide slide,
                                    Map<String, Object> slideData, String layout) {
         if (layout == null) layout = "default";
@@ -946,7 +1201,9 @@ public class AssemblePptxUseCase {
             // ── Agenda (bullets) ─────────────────────────────────────────────────
             case "agenda" -> {
                 List<String> bullets = (List<String>) slideData.get("bullets");
-                if (bullets != null) {
+                if (bullets != null && layoutAgendaRows(slide, bullets)) {
+                    // Rows were added, removed and filled to match the goals
+                } else if (bullets != null) {
                     String[] placeholders = {
                         "[Learning Goal 1]", 
                         "[Learning Goal 2]", 
