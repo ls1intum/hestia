@@ -7,20 +7,26 @@ import com.workshopper.dto.*;
 import com.workshopper.facade.WorkshopSessionFacade;
 import com.workshopper.service.PdfExportService;
 import com.workshopper.service.WorkshopService;
+import com.workshopper.util.FileNames;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -85,19 +91,19 @@ public class WorkshopController {
     /** Renders the session timetable as a PDF (no LLM call). */
     @PostMapping(value = "/export/pdf", produces = "application/pdf")
     public ResponseEntity<Resource> exportPdf(@RequestBody PdfExportRequestDto request) throws Exception {
-        return file(pdfService.exportToPdf(request), "session.pdf", MediaType.APPLICATION_PDF);
+        return file(pdfService.exportToPdf(request), FileNames.timetable(titleOf(request.session())), MediaType.APPLICATION_PDF);
     }
 
     /** Generates the slide deck with the LLM, in the session's effective template. */
     @PostMapping(value = "/export/pptx", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptx(@RequestBody PdfExportRequestDto request) throws Exception {
-        return file(buildDeck(request.session(), request.meta(), null, null), "slides.pptx", PPTX);
+        return file(buildDeck(request.session(), request.meta(), null, null), FileNames.slides(titleOf(request.session())), PPTX);
     }
 
     /** Builds the slide deck from slides that were already generated (no LLM call). */
     @PostMapping(value = "/export/pptx-assemble", produces = "application/vnd.openxmlformats-officedocument.presentationml.presentation")
     public ResponseEntity<Resource> exportPptxAssemble(@RequestBody PptxAssembleRequestDto request) throws Exception {
-        return file(buildDeck(request.session(), request.meta(), request.prebuiltSlides(), null), "slides.pptx", PPTX);
+        return file(buildDeck(request.session(), request.meta(), request.prebuiltSlides(), null), FileNames.slides(titleOf(request.session())), PPTX);
     }
 
     /**
@@ -115,15 +121,15 @@ public class WorkshopController {
         List<Map<String, Object>> slides = slidesJson == null || slidesJson.isBlank() ? null
                 : mapper.readValue(slidesJson, new TypeReference<List<Map<String, Object>>>() {});
         byte[] pptx = buildDeck(session, meta, slides, template != null && !template.isEmpty() ? template : null);
-        String safeTitle = (session.title() != null ? session.title() : "Workshop").replaceAll("[^a-zA-Z0-9.-]", "_");
-        return file(pptx, safeTitle + "_slides.pptx", PPTX);
+        return file(pptx, FileNames.slides(session.title()), PPTX);
     }
 
     /** All finished sessions of a course as one ZIP of PDFs and PPTXs. */
     @GetMapping(value = "/export/course/{id}/zip", produces = "application/zip")
     public ResponseEntity<Resource> exportCourseZip(@PathVariable String id) throws Exception {
         facade.verifyCourseOwnership(id);
-        return file(facade.exportCourseZip(id), "course-materials.zip", MediaType.parseMediaType("application/zip"));
+        String courseTitle = service.getCourse(id).map(SessionDetailDto::title).orElse(null);
+        return file(facade.exportCourseZip(id), FileNames.course(courseTitle), MediaType.parseMediaType("application/zip"));
     }
 
     // ── Sessions ────────────────────────────────────────────────────────────
@@ -216,7 +222,7 @@ public class WorkshopController {
     @PostMapping(value = "/sessions/{id}/template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Boolean> uploadTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
         facade.verifyOwnership(id);
-        service.saveTemplate(id, template.getBytes(), template.getOriginalFilename());
+        service.saveTemplate(id, readTemplate(template), template.getOriginalFilename());
         return Map.of("success", true);
     }
 
@@ -231,7 +237,7 @@ public class WorkshopController {
     @PostMapping("/courses/{id}/template")
     public ResponseEntity<Void> uploadCourseTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
         facade.verifyCourseOwnership(id);
-        service.saveCourseTemplate(id, template.getBytes(), template.getOriginalFilename());
+        service.saveCourseTemplate(id, readTemplate(template), template.getOriginalFilename());
         return ResponseEntity.ok().build();
     }
 
@@ -278,9 +284,25 @@ public class WorkshopController {
         }
     }
 
+    /** The uploaded template's bytes, if it opens as a PowerPoint file (400 otherwise, instead of failing at export). */
+    private static byte[] readTemplate(MultipartFile template) throws IOException {
+        byte[] bytes = template.getBytes();
+        try (XMLSlideShow ignored = new XMLSlideShow(new ByteArrayInputStream(bytes))) {
+            return bytes;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This file is not a PowerPoint (.pptx) file.");
+        }
+    }
+
+    private static String titleOf(WorkshopSessionDto session) {
+        return session != null ? session.title() : null;
+    }
+
+    /** A file download; the name is encoded by ContentDisposition, so quotes or non-ASCII in titles are safe. */
     private static ResponseEntity<Resource> file(byte[] bytes, String fileName, MediaType type) {
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(fileName, StandardCharsets.UTF_8).build().toString())
                 .contentType(type)
                 .contentLength(bytes.length)
                 .body(new ByteArrayResource(bytes));

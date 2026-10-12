@@ -74,7 +74,10 @@ public class LlmService {
         try {
             return converter.convert(output);
         } catch (Exception e) {
-            log.error("Failed to parse LLM output: {}", output);
+            // Shortened and on one line: the output contains user text
+            String preview = String.valueOf(output).replaceAll("[\\r\\n]+", " ");
+            log.error("Failed to parse LLM output ({} chars): {}", String.valueOf(output).length(),
+                    preview.length() > 500 ? preview.substring(0, 500) + "…" : preview);
             throw new RuntimeException("LLM output parsing failed", e);
         }
     }

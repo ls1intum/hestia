@@ -41,9 +41,21 @@ spring:
       hibernate:
         format_sql: false
 
+  servlet:
+    multipart:
+      # PowerPoint templates with images are often several MB
+      max-file-size: 20MB
+      max-request-size: 25MB
+
 server:
   port: 8081
   forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # The login cookie is not sent with requests started by other sites
+        same-site: lax
+        http-only: true
 
 # ── LLM Configuration ──────────────────────────────────────────────
 # We use the shared Hestia LLM defaults (spring.ai.openai properties): the TUM AET Logos gateway

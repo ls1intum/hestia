@@ -33,6 +33,9 @@ public class WorkshopSessionFacadeContractTest {
     @Mock
     private com.fasterxml.jackson.databind.ObjectMapper mapper;
 
+    @org.mockito.Spy
+    private UsageGuard usageGuard = new UsageGuard(4, 120, 10);
+
     @InjectMocks
     private WorkshopSessionFacade facade;
 

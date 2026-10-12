@@ -13,4 +13,6 @@ public interface CourseRepository extends JpaRepository<CourseEntity, String> {
 
     @Query("SELECT c FROM CourseEntity c WHERE c.ownerId = :ownerId ORDER BY c.displayOrder ASC NULLS LAST, c.createdAt DESC")
     List<CourseEntity> findByOwnerIdOrdered(@Param("ownerId") String ownerId);
+
+    long countByOwnerId(String ownerId);
 }

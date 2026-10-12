@@ -13,6 +13,9 @@ import com.workshopper.model.SlideTemplateEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import com.workshopper.facade.UsageGuard;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -49,11 +52,16 @@ public class WorkshopService {
      * it; otherwise creates a new entity and returns the assigned ID.
      */
     public String saveDraft(SaveDraftRequestDto req, String ownerId) {
+        UsageGuard.checkTitle(req.title());
+        UsageGuard.checkStoredSize("The session", req.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
         WorkshopSessionEntity entity = null;
         if (req.sessionId() != null && !req.sessionId().isBlank()) {
-            entity = repo.findById(req.sessionId()).orElse(null);
+            // Deleted in the meantime (e.g. in another tab): say so instead of re-creating it
+            entity = repo.findById(req.sessionId()).orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "This session no longer exists. It may have been deleted."));
         }
         if (entity == null) {
+            UsageGuard.checkSessionCount(repo.countByOwnerId(ownerId));
             entity = new WorkshopSessionEntity();
             entity.setOwnerId(ownerId); // Bind the new draft to the creator
         }
@@ -83,7 +91,9 @@ public class WorkshopService {
             }
         }
 
+        // Preparation and Final Review work on a generated session, so it stays complete there
         if ("result".equals(req.currentStep()) || "prepare".equals(req.currentStep())
+                || "final-review".equals(req.currentStep())
                 || "finished".equals(req.currentStep())) {
             entity.setStatus("complete");
         } else {
@@ -96,7 +106,9 @@ public class WorkshopService {
             throws Exception {
         WorkshopSessionEntity entity = repo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
-        entity.setSlidesJson(mapper.writeValueAsString(slidesCache));
+        String json = mapper.writeValueAsString(slidesCache);
+        UsageGuard.checkStoredSize("The slides", json, UsageGuard.MAX_SLIDES_CHARS);
+        entity.setSlidesJson(json);
         repo.save(entity);
     }
 
@@ -284,6 +296,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
 
     /** Rename a session. */
     public void renameSession(String id, String newTitle) {
+        UsageGuard.checkTitle(newTitle);
         repo.findById(id).ifPresent(entity -> {
             entity.setTitle(newTitle);
 
@@ -319,14 +332,19 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
 
     @Transactional
     public String saveCourseDraft(SaveDraftRequestDto request, String ownerId) {
+        UsageGuard.checkTitle(request.title());
+        UsageGuard.checkStoredSize("The course", request.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
         CourseEntity course = null;
         if (request.sessionId() != null && !request.sessionId().isBlank()) {
-            course = courseRepository.findById(request.sessionId()).orElse(null);
-            if (course != null && !course.getOwnerId().equals(ownerId)) {
+            // Deleted in the meantime (e.g. in another tab): say so instead of re-creating it
+            course = courseRepository.findById(request.sessionId()).orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted."));
+            if (!ownerId.equals(course.getOwnerId())) {
                 throw new AccessDeniedException("Not authorized");
             }
         }
         if (course == null) {
+            UsageGuard.checkCourseCount(courseRepository.countByOwnerId(ownerId));
             course = new CourseEntity();
             course.setOwnerId(ownerId);
             course.setStatus("draft");
@@ -405,6 +423,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     /** Rename a course, keeping the title inside its draft state in sync so later draft saves don't revert it. */
     @Transactional
     public boolean renameCourse(String id, String newTitle, String ownerId) {
+        UsageGuard.checkTitle(newTitle);
         CourseEntity course = courseRepository.findById(id).orElse(null);
         if (course == null) return false;
         if (!course.getOwnerId().equals(ownerId)) {

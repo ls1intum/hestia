@@ -16,4 +16,6 @@ public interface WorkshopSessionRepository extends JpaRepository<WorkshopSession
 
     @Query("SELECT w FROM WorkshopSessionEntity w WHERE w.courseId = :courseId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
     List<WorkshopSessionEntity> findAllByCourseIdOrdered(@Param("courseId") String courseId);
+
+    long countByOwnerId(String ownerId);
 }

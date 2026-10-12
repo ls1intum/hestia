@@ -49,6 +49,9 @@ public class WorkshopSessionFacadeSecurityTest {
     @Mock
     private com.workshopper.usecase.GenerateSlideBlockUseCase generateSlideBlockUseCase;
 
+    @org.mockito.Spy
+    private UsageGuard usageGuard = new UsageGuard(4, 120, 10);
+
     @InjectMocks
     private WorkshopSessionFacade facade;
 
@@ -100,5 +103,43 @@ public class WorkshopSessionFacadeSecurityTest {
         assertThrows(AccessDeniedException.class, () -> {
             facade.generateAndSaveSession(request);
         });
+    }
+
+    @Test
+    public void verifyOwnership_shouldReturn404_whenTheSessionNoLongerExists() {
+        // Deleted in another tab: saving must not quietly re-create it
+        var ex = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> facade.verifyOwnership("deleted-id"));
+        org.junit.jupiter.api.Assertions.assertEquals(404, ex.getStatusCode().value());
+    }
+
+    @Test
+    public void verifyOwnership_shouldDeny_whenTheSessionHasNoOwner() {
+        WorkshopSessionEntity orphan = new WorkshopSessionEntity();
+        orphan.setId("orphan");
+        when(repo.findById("orphan")).thenReturn(Optional.of(orphan));
+        assertThrows(AccessDeniedException.class, () -> facade.verifyOwnership("orphan"));
+    }
+
+    @Test
+    public void generateAndSaveSession_shouldRejectOversizedRequests_beforeCallingTheLlm() throws Exception {
+        var block = new com.workshopper.dto.SkeletonBlockDto("LEARNING_CYCLE", 1, 10, "b", null, List.of());
+        var blocks = java.util.Collections.nCopies(5_000, block);
+        WorkshopInputDto meta = new WorkshopInputDto("Title", 60, 20, "workshop", "", "", List.of());
+        var request = new GenerateSessionRequestDto(List.of(), meta, "", new SessionSkeletonDto(blocks, null));
+
+        var ex = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> facade.generateAndSaveSession(request));
+        org.junit.jupiter.api.Assertions.assertEquals(400, ex.getStatusCode().value());
+        org.mockito.Mockito.verifyNoInteractions(generateTimetableUseCase);
+    }
+
+    @Test
+    public void exportCourseZip_shouldExplain_whenNoSessionIsReady() {
+        when(courseRepo.findById("course-1")).thenReturn(Optional.empty());
+        when(repo.findAllByCourseIdOrdered("course-1")).thenReturn(List.of());
+        var ex = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> facade.exportCourseZip("course-1"));
+        org.junit.jupiter.api.Assertions.assertEquals(400, ex.getStatusCode().value());
     }
 }

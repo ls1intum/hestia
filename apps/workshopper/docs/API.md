@@ -5,11 +5,19 @@ All endpoints live under `/api/workshop` and need a logged-in user (see [AUTH.md
 Common responses:
 * `401` not logged in (the client redirects to the SAML login)
 * `403` the session or course belongs to someone else
-* `404` unknown session or course
+* `400` input over a limit (see below), or an uploaded template that is not a `.pptx`
+* `404` unknown session or course; also when saving a session or course that was deleted meanwhile (it is not re-created)
 * `409` a timetable generation for the same session is already running
+* `413` a draft (over 2 MB of JSON) or slide set (over 5 MB) too large to store
+* `429` too many AI requests (see below)
 * `500` an unexpected server error, with `{"error": "..."}`; the details are only in the server log
 
-All of these come from `ApiExceptionHandler`, so the controllers themselves have no error handling.
+All of these come from `ApiExceptionHandler`, so the controllers themselves have no error handling. Error bodies are `{"error": "..."}` or Spring's `{"detail": "..."}`; the client shows that message.
+
+**Limits** (`facade/UsageGuard.java`), far above normal use, so one user can't burn LLM credits, starve others or fill the database:
+* AI requests (`/session`, `/export/block-slides`, `/refine-goal`, `/fix-goals-grammar`): at most 4 running and 120 per 10 minutes per user (`workshopper.limits.*` in `application.yml` to change), 40 blocks, 20 goals, 3,000 characters per text field, 600 minutes per session or block.
+* Storage: 500 sessions and 100 courses per user, titles up to 300 characters, drafts up to 2 MB and slides up to 5 MB of JSON.
+* Uploads: templates up to 20 MB, checked to open as a PowerPoint file.
 
 Request and response bodies are the DTOs in `server/src/main/java/com/workshopper/dto`; their TypeScript counterparts are in `client/src/lib/workshop-generator.ts`.
 

@@ -8,7 +8,8 @@ The Workshopper server is a Spring Boot 3.5 application (Java 21, Gradle module 
 server/src/main/java/com/workshopper/
 ├── controller/   WorkshopController (sessions, generation, export), CourseController (courses),
 │                 ApiExceptionHandler (turns exceptions into 403/404/409/500 answers)
-├── facade/       WorkshopSessionFacade: ownership checks, generation orchestration, course ZIP
+├── facade/       WorkshopSessionFacade: ownership checks, generation orchestration, course ZIP;
+│                 UsageGuard: limits on AI requests, input sizes and stored data (see API.md)
 ├── usecase/      GenerateTimetableUseCase, GenerateSlideBlockUseCase, AssemblePptxUseCase,
 │                 RefineLearningGoalUseCase, FixGoalsGrammarUseCase,
 │                 ActivityRecommender, TemplateBranding, PptxTextFit
@@ -18,7 +19,8 @@ server/src/main/java/com/workshopper/
 ├── dto/          request/response records (JSON contract with the client)
 ├── model/        JPA entities: WorkshopSessionEntity, CourseEntity, SlideTemplateEntity
 ├── repository/   Spring Data repositories
-└── exception/    SessionLockedException (409)
+├── exception/    SessionLockedException (409)
+└── util/         FileNames: download names from session/course titles ("<Title> - Slides.pptx")
 
 server/src/main/resources/
 ├── application.yml, application-local.yml, application-test.yml
