@@ -15,7 +15,7 @@ public final class FileNames {
                 .replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", " ")
                 .replaceAll("\\s+", " ")
                 .trim()
-                .replaceAll("^\\.+|\\.+$", "");
+                .replaceAll("^\\.+", ""); // a leading dot would hide the file
         if (clean.length() > MAX_LENGTH) clean = clean.substring(0, MAX_LENGTH);
         clean = clean.trim();
         return clean.isEmpty() ? fallback : clean;

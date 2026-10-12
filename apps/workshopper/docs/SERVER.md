@@ -46,7 +46,7 @@ Migrations run on startup. Never edit a migration that has run anywhere; add a n
 | `slides_json` (JSONB) | generated or edited slides, by block index |
 | `template_id` | FK to `slide_templates`: the session's own uploaded template |
 | `use_default_template` | true if the session opted out of its course's template (V8) |
-| `status` | `draft` or `complete` |
+| `status` | `complete` once the session has a generated timetable (on any step from the timetable on), otherwise `draft`; only complete sessions are exported from the dashboard and in the course ZIP |
 | `current_step` | the wizard step the session was last saved at |
 | `created_at`, `updated_at` | timestamps |
 

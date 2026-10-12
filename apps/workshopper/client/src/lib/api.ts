@@ -98,7 +98,7 @@ export function safeFileName(title: string | undefined, fallback = "Workshop"): 
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^\.+|\.+$/g, "")
+    .replace(/^\.+/, "") // a leading dot would hide the file
     .slice(0, 100)
     .trim();
   return clean || fallback;
