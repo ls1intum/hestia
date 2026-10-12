@@ -16,17 +16,12 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { InlineEditText } from "./InlineEditText";
 import { InlineEditableStep } from "./InlineEditableStep";
-import {
-  phaseEmojis,
-  getStepEmoji,
-  ACTIVITY_GROUPS,
-  MODE_COLORS,
-  getPhaseMode,
-  getSectionMode,
-  getStepMode,
-} from "@/lib/constants";
+import { getStepEmoji, ACTIVITY_GROUPS, MODE_COLORS, getSectionMode, getStepMode } from "@/lib/constants";
+import { phaseInfo } from "@/lib/phases";
+import { blockContent, blockMethods, ShownStep } from "@/lib/block-content";
+import { BlockDetails } from "./BlockDetails";
 import { EditTarget, DndActivityBlock } from "../WorkshopGeneratedTimetable";
-import { WorkshopInput } from "@/lib/workshop-generator";
+import { LearningGoalPlan, WorkshopInput } from "@/lib/workshop-generator";
 import { EvaluateMappingPanel } from "./EvaluateMappingPanel";
 import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
 
@@ -61,7 +56,7 @@ export function SortableBlockRow({
   onToggleEditMode?: () => void;
   onCancelEditMode?: () => void;
   onSwitchEvaluateActivity?: (lgNum: number, newActivity: string) => void;
-  goals?: import('@/lib/workshop-generator').LearningGoalPlan[];
+  goals?: LearningGoalPlan[];
   needsEvaluatePriority?: boolean;
   onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
   /** Reports the mapping panel's unconfirmed boxes while the block is in edit mode. */
@@ -79,7 +74,8 @@ export function SortableBlockRow({
     zIndex: isDragging ? 10 : undefined,
   };
 
-  const mode = getPhaseMode(block.phase);
+  const phase = phaseInfo(block.phase);
+  const mode = phase.mode;
   const modeColors = MODE_COLORS[mode];
   const isBreak = mode === "break";
 
@@ -90,14 +86,7 @@ export function SortableBlockRow({
     boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
     borderRadius: "12px",
   };
-  const rawMethods = Array.from(new Set([
-    ...(block.methods || []),
-    ...(block.sections || []).flatMap(s => s.methods || []),
-  ])).filter(m => m && !m.toLowerCase().includes("lecture") && !m.toLowerCase().includes("presentation"));
-
-  const allMethods = rawMethods.filter(m => {
-    return !rawMethods.some(other => other !== m && other.toLowerCase().includes(m.toLowerCase()));
-  });
+  const allMethods = blockMethods(block);
 
   const isTitleEditing = editing?.type === "title" && editing.blockId === block.dndId;
 
@@ -141,7 +130,7 @@ export function SortableBlockRow({
             {/* Emoji + Title + Methods */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-base shrink-0">{phaseEmojis[block.phase] || "✨"}</span>
+                <span className="text-base shrink-0">{phase.emoji}</span>
                 <InlineEditText
                   value={block.phaseLabel || block.phase}
                   editing={isTitleEditing}
@@ -246,6 +235,7 @@ export function SortableBlockRow({
                     </DropdownMenu>
                   ) : (
                     <div
+                      key={j}
                       style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
                       className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0"
                     >
@@ -339,7 +329,7 @@ export function SortableBlockRow({
               </Button>
 
               {/* Expand chevron — rightmost */}
-              {block.phase !== "BREAK" && block.phase !== "BUFFER" ? (
+              {phase.expandable ? (
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8">
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -354,8 +344,7 @@ export function SortableBlockRow({
           {/* Expanded: sections and steps */}
           <CollapsibleContent className="mt-3 pb-1 relative z-0">
             {(() => {
-              const phase = block.phase;
-              const allSteps = (block.sections || []).flatMap(s => s.steps || []);
+              const content = blockContent(block, (goals ?? []).map(g => g.goal).filter(Boolean));
 
               // Helper to find the absolute indices of a step for saving
               const findStepIndices = (targetStepText: string) => {
@@ -402,153 +391,13 @@ export function SortableBlockRow({
                 );
               };
 
-              // ── ARRIVE / Welcome ───────────────
-              if (phase === "ARRIVE") {
-                // The session's goals; older blocks without them fall back to the goals written in the steps
-                const sessionGoals = (goals ?? []).map(g => g.goal).filter(Boolean);
-                const stepGoals = allSteps
-                  .filter((s: string) => /learning goal|objective/i.test(s))
-                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
-                const shownGoals = sessionGoals.length > 0 ? sessionGoals : stepGoals.length > 0 ? stepGoals : allSteps
-                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
-                  .filter((s: string) => s.length > 0);
+              /** Shows one item of the block details, editable in edit mode where it came from a step or the objective. */
+              const renderItem = (item: ShownStep, className: string) =>
+                item.objective ? renderEditable(block.objective || "", item.text, className)
+                : item.step ? renderEditable(item.step, item.text, className)
+                : <span className={className}>{item.text}</span>;
 
-                return (
-                  <div className="pl-4 space-y-1.5">
-                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
-                    {shownGoals.map((g: string, i: number) => {
-                      const origStep = allSteps.find(s => s.includes(g)) || g;
-                      return (
-                        <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
-                          style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                          <span className="font-mono text-xs font-bold shrink-0 mt-0.5 whitespace-nowrap" style={{ color: 'var(--hestia-primary)' }}>Learning Goal {i + 1}</span>
-                          {renderEditable(origStep, g, "leading-relaxed w-full")}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              }
-
-              // ── ACTIVATE: show the activity prompt question ──────────────────
-              if (phase === "ACTIVATE") {
-                const promptStep = allSteps.find(s =>
-                  /prompt|question|discuss|think|consider|reflect/i.test(s)
-                ) || allSteps[0] || block.objective;
-                const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
-                return (
-                  <div className="pl-4 space-y-1.5">
-                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
-                    <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
-                      style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                      {renderEditable(promptStep || "", clean || block.objective || "", "w-full")}
-                    </div>
-                  </div>
-                );
-              }
-
-              // ── LEARNING_CYCLE: content checklist + activity prompt ───────────
-              if (phase === "LEARNING_CYCLE") {
-                const sections = block.sections || [];
-                const rawContentSteps = sections.length > 0 ? (sections[0].steps || []) : [];
-                const activityStep = allSteps.find(s =>
-                  /^(?:\d+\s*(?:min|m)[\s—:-]*)?prompt[:\s]/i.test(s)
-                ) || allSteps.find(s =>
-                  /^(?:\d+\s*(?:min|m)[\s—:-]*)?(?:activity|task|scenario)[:\s]/i.test(s)
-                ) || allSteps.find(s =>
-                  /prompt|activity|task|scenario|discuss|question/i.test(s)
-                );
-                
-                // Separate the activity step from the content to teach
-                const contentSteps = rawContentSteps.filter(s => s !== activityStep);
-                const cleanActivity = activityStep
-                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
-                  .replace(/^(activity|prompt)[:\s]*/i, "")
-                  .trim();
-
-                return (
-                  <div className="pl-4 space-y-3">
-                    {contentSteps.length > 0 && (
-                      <div>
-                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
-                        <div className="space-y-1">
-                          {contentSteps.map((s, i) => {
-                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
-                            return (
-                              <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
-                                style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                <span className="shrink-0 mt-0.5 text-muted-foreground font-mono">{i + 1}.</span>
-                                {renderEditable(s, clean, "leading-relaxed w-full")}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {(cleanActivity || block.objective || isEditMode) && (
-                      <div>
-                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
-                        </p>
-                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
-                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-setup)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                          {renderEditable(activityStep || block.objective || "", cleanActivity || block.objective || "", "w-full")}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              // ── SUMMARY: key takeaways + activity prompt ─────────────────────
-              if (phase === "SUMMARY") {
-                const takeawaySteps = allSteps.filter(s =>
-                  !/^(\d+\s*(?:min|m)[\s—:-]*)?(activity|prompt|q&a|questions|logistics|thank)/i.test(s)
-                );
-                const activityStep = allSteps.find(s =>
-                  /prompt|one.minute|q&a|question|take.?away/i.test(s)
-                );
-                const cleanActivity = activityStep
-                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
-                  .replace(/^(activity|prompt)[:\s]*/i, "")
-                  .trim();
-
-                return (
-                  <div className="pl-4 space-y-3">
-                    {takeawaySteps.length > 0 && (
-                      <div>
-                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
-                        <div className="space-y-1">
-                          {takeawaySteps.map((s, i) => {
-                            const clean = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^explain[s]?:?\s*/i, "").trim();
-                            return (
-                              <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg text-sm"
-                                style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                <span className="shrink-0 mt-0.5" style={{ color: 'var(--hestia-primary)' }}>✦</span>
-                                {renderEditable(s, clean, "leading-relaxed w-full")}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {(cleanActivity || block.objective || isEditMode) && (
-                      <div>
-                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
-                        </p>
-                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed flex items-start"
-                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-primary)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                          {renderEditable(activityStep || block.objective || "", cleanActivity || block.objective || "", "w-full")}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              // ── EVALUATE: one prompt per LG ─────────────────────
-              if (phase === "EVALUATE") {
+              if (content.kind === "evaluate") {
                 if ((needsEvaluatePriority || isEditMode) && goals) {
                   return (
                     <EvaluateMappingPanel 
@@ -570,7 +419,7 @@ export function SortableBlockRow({
 
                 return (
                   <UnderstandingCheckSteps
-                    allSteps={allSteps}
+                    allSteps={content.steps}
                     isEditMode={isEditMode}
                     isRegenerating={isRegenerating}
                     onSwitchEvaluateActivity={onSwitchEvaluateActivity}
@@ -583,7 +432,11 @@ export function SortableBlockRow({
                 );
               }
 
-              // Fallback generic renderer for BUFFER, BREAK, SETUP
+              if (content.kind !== "other") {
+                return <BlockDetails content={content} methods={allMethods} isEditMode={isEditMode} renderText={renderItem} />;
+              }
+
+              // Custom blocks: every section and step, with times
               return (
                 <div className="space-y-4">
                   {(block.sections || []).map((section, sIdx) => {

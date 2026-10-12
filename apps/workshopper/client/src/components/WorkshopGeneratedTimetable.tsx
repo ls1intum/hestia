@@ -33,9 +33,8 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { toast } from "@/hooks/use-toast";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import { SortableBlockRow } from "./timetable/SortableBlockRow";
-import { phaseEmojis } from "@/lib/constants";
 import { parseStepDuration } from "@/lib/utils";
-import { ADDABLE_BLOCK_TYPES, createBlockFromTemplate } from "@/lib/block-templates";
+import { ADDABLE_PHASES, PHASES, createBlockFromTemplate, phaseInfo } from "@/lib/phases";
 
 // ── Editing state ──────────────────────────────────────────────────
 /** The block title being edited inline (click-to-edit, also outside edit mode). */
@@ -401,7 +400,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       return next;
     });
     // Breaks and buffers have nothing to fill in: they stay a single collapsed row
-    if (newBlock.phase === "BREAK" || newBlock.phase === "BUFFER") return;
+    if (!phaseInfo(newBlock.phase).expandable) return;
     setExpandedBlocks(prev => ({ ...prev, [dndId]: true }));
     // Open the new block for editing so its fields can be filled in straight away.
     // Evaluate blocks are edited through the mapping panel instead, so they open read-only.
@@ -800,14 +799,14 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  {ADDABLE_BLOCK_TYPES.map(t => (
+                  {ADDABLE_PHASES.map(t => (
                     <DropdownMenuItem key={t.phase} onClick={() => handleAddBlock(t.phase)}>
-                      <span className="mr-2">{phaseEmojis[t.phase]}</span>{t.label}
+                      <span className="mr-2">{t.emoji}</span>{t.label}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleAddBlock("CUSTOM")}>
-                    <span className="mr-2">{phaseEmojis.CUSTOM}</span>Custom Block
+                    <span className="mr-2">{PHASES.CUSTOM.emoji}</span>{PHASES.CUSTOM.label}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

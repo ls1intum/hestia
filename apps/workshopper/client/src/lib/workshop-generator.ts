@@ -1,5 +1,7 @@
 // ── Types shared across all Workshopper components ─────────────────
 
+import { PHASES } from "./phases";
+
 export type SessionType =
   | "workshop"
   | "lecture"
@@ -233,8 +235,8 @@ export function generateDefaultSkeleton(goals: LearningGoalPlan[], totalDuration
   const leftover = Math.max(0, remaining - allocatedToGoals);
 
   const blocks: SkeletonBlock[] = [
-    { phase: "ARRIVE", title: "Arrive & Welcome", duration: arriveTime, lgIndex: 0 },
-    { phase: "ACTIVATE", title: "Activate Knowledge", duration: activateTime, lgIndex: 0 },
+    { phase: "ARRIVE", title: PHASES.ARRIVE.label, duration: arriveTime, lgIndex: 0 },
+    { phase: "ACTIVATE", title: PHASES.ACTIVATE.label, duration: activateTime, lgIndex: 0 },
   ];
 
   goals.forEach((g, i) => {
@@ -255,14 +257,14 @@ export function generateDefaultSkeleton(goals: LearningGoalPlan[], totalDuration
     });
 
     if (i === Math.floor(goals.length / 2) - 1 && breakTime > 0) {
-      blocks.push({ phase: "BREAK", title: "Break", duration: breakTime, lgIndex: 0 });
+      blocks.push({ phase: "BREAK", title: PHASES.BREAK.label, duration: breakTime, lgIndex: 0 });
     }
   });
 
-  blocks.push({ phase: "EVALUATE", title: "Check Understanding", duration: globalEvaluateTime, lgIndex: 0 });
-  blocks.push({ phase: "SUMMARY", title: "Summary & Wrap-up", duration: summaryTime, lgIndex: 0 });
+  blocks.push({ phase: "EVALUATE", title: PHASES.EVALUATE.label, duration: globalEvaluateTime, lgIndex: 0 });
+  blocks.push({ phase: "SUMMARY", title: PHASES.SUMMARY.label, duration: summaryTime, lgIndex: 0 });
   if (bufferTime > 0) {
-    blocks.push({ phase: "BUFFER", title: "Buffer", duration: bufferTime, lgIndex: 0 });
+    blocks.push({ phase: "BUFFER", title: PHASES.BUFFER.label, duration: bufferTime, lgIndex: 0 });
   }
 
   return {

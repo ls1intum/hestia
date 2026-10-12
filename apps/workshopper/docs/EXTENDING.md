@@ -24,11 +24,9 @@ Removing a step is the reverse; also search for its id string (`grep -rn '"<id>"
 Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, `BUFFER`) are plain strings shared by client, server and prompts.
 
 **Client:**
-1. `lib/constants.ts`: `phaseEmojis`, and `getPhaseMode` (decides its colours).
+1. `lib/phases.ts`: add an entry to `PHASES`: label, emoji, colour family (`mode`), whether it is compact, expandable and gets slides, and a `template` if users can add it by hand (it then appears in the Add Block menu). The timetable, Final Review and slide workstation read this table.
 2. `lib/workshop-generator.ts`: `generateDefaultSkeleton`, if the phase should be part of generated sessions.
-3. `lib/block-templates.ts`: `ADDABLE_BLOCK_TYPES` and `createBlockFromTemplate`, if users can add it by hand.
-4. `components/timetable/SortableBlockRow.tsx`: how the expanded block shows its content. Phases without their own branch use the generic step list.
-5. `components/WorkshopFinalReview.tsx`: the same, for the final review.
+3. Only if the expanded block needs its own layout: a case in `blockContent` (`lib/block-content.ts`, which picks the prompt and content out of the steps) and, for a new layout, in `components/timetable/BlockDetails.tsx`. Both the timetable and Final Review use these. Without a case, the timetable shows the block's steps with times and Final Review its objective.
 
 **Server:**
 1. `prompts/generate-timetable-block-system.st`: tell the model what the phase is for.

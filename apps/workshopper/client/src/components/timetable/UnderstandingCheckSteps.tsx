@@ -11,8 +11,9 @@ interface UnderstandingCheckStepsProps {
   isEditMode: boolean;
   isRegenerating: boolean;
   onSwitchEvaluateActivity?: (lgNum: number, newActivity: string) => void;
-  onDeleteStep: (sIdx: number, stIdx: number) => void;
-  findStepIndices: (stepText: string) => { sIdx: number; stIdx: number } | null;
+  /** Edit mode only: deleting a goal's activity from its dropdown */
+  onDeleteStep?: (sIdx: number, stIdx: number) => void;
+  findStepIndices?: (stepText: string) => { sIdx: number; stIdx: number } | null;
   renderEditable: (rawStep: string, cleanContent: string, className: string, style?: any) => React.ReactNode;
   /** The user's activity-to-goal mapping; when present, cards follow it instead of the raw steps */
   mappings?: { method: string; lgIds: string[] }[];
@@ -161,8 +162,8 @@ export function UnderstandingCheckSteps({
                         className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                         onClick={e => {
                           e.stopPropagation();
-                          const indices = findStepIndices(s);
-                          if (indices) onDeleteStep(indices.sIdx, indices.stIdx);
+                          const indices = findStepIndices?.(s);
+                          if (indices) onDeleteStep?.(indices.sIdx, indices.stIdx);
                         }}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />

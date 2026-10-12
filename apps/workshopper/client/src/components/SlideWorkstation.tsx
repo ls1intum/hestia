@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { saveAs } from "file-saver";
+import { phaseInfo } from "@/lib/phases";
 import {
   deleteSessionTemplate, uploadSessionTemplate, generateBlockSlides, saveSlides, exportPptxWithTemplate,
   errorMessage, handleAuthError, safeFileName,
@@ -120,8 +121,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
         const chunk = session.blocks.slice(i, i + concurrencyLimit);
         const promises = chunk.map(async (block, chunkIdx) => {
           const actualIdx = i + chunkIdx;
-          // Skip BUFFER blocks — no slides generated for these
-          if (block.phase === "BUFFER") {
+          if (!phaseInfo(block.phase).hasSlides) {
             return { idx: actualIdx, slides: [] };
           }
           try {

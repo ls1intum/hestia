@@ -8,7 +8,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
 import { assemblePptx, exportPdf, exportPptx, errorMessage, handleAuthError, safeFileName } from "@/lib/api";
-import { phaseEmojis, getMechanicDescription, MODE_COLORS, getPhaseMode } from "@/lib/constants";
+import { getMechanicDescription, MODE_COLORS } from "@/lib/constants";
+import { phaseInfo } from "@/lib/phases";
+import { blockContent, blockMethods } from "@/lib/block-content";
+import { BlockDetails } from "./timetable/BlockDetails";
+import { UnderstandingCheckSteps } from "./timetable/UnderstandingCheckSteps";
 
 // Removed duplicate local declarations
 
@@ -108,7 +112,8 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
             <div className="relative mt-2">
               <Accordion type="multiple" className="flex flex-col">
                 {rows.map(({ block }, i) => {
-                  const mode = getPhaseMode(block.phase);
+                  const phase = phaseInfo(block.phase);
+                  const mode = phase.mode;
                   const modeColors = MODE_COLORS[mode];
                   const isBreak = mode === "break";
                   
@@ -116,14 +121,11 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                   // Gap below this block encodes its duration on the timeline
                   const gapBelow = i < rows.length - 1 ? Math.max(12, block.duration * 5) : 0;
                   
-                  const nextIsSmall = nextBlock && (nextBlock.phase === "BREAK" || nextBlock.phase === "BUFFER" || nextBlock.phase === "ARRIVE");
+                  const nextIsSmall = nextBlock && phaseInfo(nextBlock.phase).compact;
                   const nextDot = nextIsSmall ? 18 : 26;
                   
                   const tagsContent = (() => {
-                    const allMethods = Array.from(new Set([
-                      ...(block.methods || []),
-                      ...(block.sections || []).flatMap(s => s.methods || [])
-                    ])).filter(m => m && !m.toLowerCase().includes("lecture") && !m.toLowerCase().includes("presentation"));
+                    const allMethods = blockMethods(block);
 
                     if (allMethods.length === 0) return null;
 
@@ -168,30 +170,30 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
 
                         {/* The block — fixed height, gap below encodes duration */}
                         <div 
-                          className={`transition-all rounded-xl ${block.phase === "BREAK" || block.phase === "BUFFER" || block.phase === "ARRIVE" ? "px-3" : "px-4"} flex items-center gap-2 shrink-0`}
+                          className={`transition-all rounded-xl ${phase.compact ? "px-3" : "px-4"} flex items-center gap-2 shrink-0`}
                           style={{
-                            height: block.phase === "BREAK" || block.phase === "BUFFER" || block.phase === "ARRIVE" ? "36px" : "44px",
+                            height: phase.compact ? "36px" : "44px",
                             backgroundColor: modeColors.bgTint,
                             border: isBreak ? `1.5px dashed ${modeColors.border}` : `1px solid rgba(0,0,0,0.08)`,
                             boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
                           }}
                         >
-                          <span className="text-base shrink-0">{phaseEmojis[block.phase] || "✨"}</span>
+                          <span className="text-base shrink-0">{phase.emoji}</span>
                           <span className="font-body text-sm font-medium text-foreground whitespace-nowrap">{block.phaseLabel}</span>
                           {tagsContent}
-                          {block.phase !== "BREAK" && <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 hidden sm:block ml-1" />}
+                          {phase.expandable && <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 hidden sm:block ml-1" />}
                         </div>
                           </div>
                       );
 
-                      if (block.phase === "BREAK") {
+                      if (!phase.expandable) {
                         return (
                           <div 
                             key={block.blockId || i} 
                             className="border-0 relative bg-transparent mb-[var(--gap-below)]" 
                             style={{ '--gap-below': `${gapBelow}px` } as React.CSSProperties}
                           >
-                            {/* Timeline spine for BREAK */}
+                            {/* Timeline spine for blocks without details (break, buffer) */}
                             {i < rows.length - 1 && (
                               <div 
                                 className="absolute w-[2px] z-0 opacity-60 hidden sm:block transition-all duration-300"
@@ -235,197 +237,35 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                           </AccordionTrigger>
                           <AccordionContent className="pl-0 sm:pl-[5.5rem] pr-0 pb-4 pt-2 relative z-10">
                             {(() => {
-                              const phase = block.phase;
-                              const allSteps = (block.sections || []).flatMap(s => s.steps || []);
-                              const allMethods = Array.from(new Set([
-                                ...(block.methods || []),
-                                ...(block.sections || []).flatMap(s => s.methods || [])
-                              ])).filter(m => m && !m.toLowerCase().includes("lecture") && !m.toLowerCase().includes("presentation"));
-
-                              // ── ARRIVE / Welcome: just list the learning goals ───────────────
-                              if (phase === "ARRIVE") {
-                                // The session's goals; older blocks without them fall back to the goals written in the steps
-                                const sessionGoals = goals.map(g => g.goal).filter(Boolean);
-                                const stepGoals = allSteps
-                                  .filter((s: string) => /learning goal|objective/i.test(s))
-                                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^learning goal[s]?[:\s]*/i, "").trim());
-                                const shownGoals = sessionGoals.length > 0 ? sessionGoals : stepGoals.length > 0 ? stepGoals : allSteps
-                                  .map((s: string) => s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim())
-                                  .filter((s: string) => s.length > 0);
+                              const content = blockContent(block, goals.map(g => g.goal).filter(Boolean));
+                              if (content.kind === "evaluate") {
                                 return (
-                                  <div className="pl-6 space-y-1.5 mt-2">
-                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Learning Goals</p>
-                                    {shownGoals.map((g: string, i: number) => (
-                                      <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
-                                        style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                        <span className="font-mono text-xs font-bold shrink-0 mt-0.5 whitespace-nowrap" style={{ color: 'var(--hestia-primary)' }}>Learning Goal {i + 1}</span>
-                                        <span className="leading-relaxed">{g}</span>
-                                      </div>
-                                    ))}
+                                  <div className="mt-2">
+                                    <UnderstandingCheckSteps
+                                      allSteps={content.steps}
+                                      isEditMode={false}
+                                      isRegenerating={false}
+                                      renderEditable={(_, text, className) => <span className={className}>{text}</span>}
+                                      mappings={meta.evaluateMappings}
+                                      goalIds={goals.map(g => g.id)}
+                                    />
                                   </div>
                                 );
                               }
-
-                              // ── ACTIVATE: show the activity prompt question ──────────────────
-                              if (phase === "ACTIVATE") {
-                                const promptStep = allSteps.find(s =>
-                                  /prompt|question|discuss|think|consider|reflect/i.test(s)
-                                ) || allSteps[0] || block.objective;
-                                const clean = promptStep?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").replace(/^prompt[:\s]*/i, "").trim();
+                              if (content.kind === "other") {
                                 return (
-                                  <div className="pl-6 space-y-1.5 mt-2">
-                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Activity Prompt</p>
-                                    <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
-                                      style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-evaluate)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                      {clean || block.objective}
-                                    </div>
+                                  <div className="pl-4 mt-2">
+                                    <p className="text-sm text-muted-foreground leading-relaxed">{block.objective || block.description}</p>
                                   </div>
                                 );
                               }
-
-                              // ── LEARNING_CYCLE: content checklist + activity prompt ───────────
-                              if (phase === "LEARNING_CYCLE") {
-                                // Content: only steps from sections that are NOT "Participants Practice"
-                                const contentSteps = (block.sections || [])
-                                  .filter((s: { title?: string }) => !/participants\s*practice/i.test(s.title || ""))
-                                  .flatMap((s: { steps?: string[] }) => (s.steps || []).map((step: string) =>
-                                    step.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim()
-                                  ))
-                                  .filter((s: string) => s.length > 0);
-
-                                const practiceSection = (block.sections || []).find((s: { title?: string }) =>
-                                  /participants\s*practice/i.test(s.title || "")
-                                );
-                                const promptStep = (practiceSection?.steps || []).find((s: string) =>
-                                  /^(\d+\s*(?:min|m)[\s—:-]*)?prompt/i.test(s)
-                                ) || allSteps.find((s: string) => /prompt/i.test(s));
-                                const cleanActivity = promptStep
-                                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
-                                  .replace(/^prompt[:\s]*/i, "")
-                                  .trim();
-
-                                return (
-                                  <div className="pl-6 space-y-3 mt-2">
-                                    {contentSteps.length > 0 && (
-                                      <div>
-                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Content to Teach</p>
-                                        <div className="space-y-1.5">
-                                          {contentSteps.map((s: string, i: number) => (
-                                            <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
-                                              style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                              <span className="shrink-0 mt-0.5 text-muted-foreground">•</span>
-                                              <span className="leading-relaxed">{s}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {(cleanActivity || block.objective) && (
-                                      <div>
-                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
-                                        </p>
-                                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
-                                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-phase-setup)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                          {cleanActivity || block.objective}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }
-
-                              // ── SUMMARY: key takeaways + activity prompt ─────────────────────
-                              if (phase === "SUMMARY") {
-                                const takeawaySteps = allSteps
-                                  .filter((s: string) => /^takeaway:/i.test(s.trim()))
-                                  .map((s: string) => s.replace(/^takeaway:\s*/i, "").trim());
-                                const activityStep = allSteps.find((s: string) =>
-                                  /^\d+\s*(?:min|m)/i.test(s) && /prompt|one.minute|q&a|question/i.test(s)
-                                );
-                                const cleanActivity = activityStep
-                                  ?.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "")
-                                  .replace(/^(activity|prompt)[:\s]*/i, "")
-                                  .trim();
-
-                                return (
-                                  <div className="pl-6 space-y-3 mt-2">
-                                    {takeawaySteps.length > 0 && (
-                                      <div>
-                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">Key Takeaways</p>
-                                        <div className="space-y-1.5">
-                                          {takeawaySteps.map((s: string, i: number) => (
-                                            <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm"
-                                              style={{ backgroundColor: 'var(--hestia-surface)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                              <span className="shrink-0 mt-0.5" style={{ color: 'var(--hestia-primary)' }}>✦</span>
-                                              <span className="leading-relaxed">{s}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                    {(cleanActivity || block.objective) && (
-                                      <div>
-                                        <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                                          Activity{allMethods.length > 0 ? ` · ${allMethods[0]}` : ""}
-                                        </p>
-                                        <div className="px-3 py-2 rounded-lg text-sm italic leading-relaxed"
-                                          style={{ backgroundColor: 'var(--hestia-surface)', borderLeft: '2px dashed var(--hestia-primary)', border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)' }}>
-                                          {cleanActivity || block.objective}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }
-
-                              // ── EVALUATE: one prompt per LG, each with its own activity ─────────────────────
-                              if (phase === "EVALUATE") {
-                                return (
-                                  <div className="pl-6 space-y-2 mt-2">
-                                    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                                      Understanding Check
-                                    </p>
-                                    {allSteps.map((s: string, i: number) => {
-                                      const noTime = s.replace(/^\d+\s*(?:min|m)[\s—:-]*/i, "").trim();
-                                      const lgMatch = noTime.match(/^Prompt\s+LG(\d+)\s*[·•]\s*([^:]+):\s*(.*)/i);
-                                      const lgFallback = !lgMatch ? noTime.match(/^Prompt\s+LG(\d+)[:\s]+(.*)/i) : null;
-                                      const lgNum = lgMatch ? lgMatch[1] : lgFallback ? lgFallback[1] : null;
-                                      const activity = lgMatch ? lgMatch[2].trim() : null;
-                                      const question = lgMatch ? lgMatch[3].trim() : lgFallback ? lgFallback[2].trim() : noTime;
-                                      return (
-                                        <div key={i} className="rounded-lg text-sm overflow-hidden"
-                                          style={{ border: '1px solid color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeft: '2px solid var(--hestia-phase-evaluate)' }}>
-                                          {lgNum && (
-                                            <div className="flex items-center gap-2 px-3 py-1 border-b"
-                                              style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--hestia-text) 8%, transparent)' }}>
-                                              <span className="font-mono text-xs font-bold" style={{ color: 'var(--hestia-phase-evaluate)' }}>
-                                                Learning Goal {lgNum}
-                                              </span>
-                                              {activity && (
-                                                <span className="text-xs font-mono px-1.5 py-0.5 rounded"
-                                                  style={{ backgroundColor: 'color-mix(in srgb, var(--hestia-phase-evaluate) 15%, transparent)', color: 'var(--hestia-phase-evaluate)' }}>
-                                                  {activity}
-                                                </span>
-                                              )}
-                                            </div>
-                                          )}
-                                          <div className="px-3 py-2 italic leading-relaxed"
-                                            style={{ backgroundColor: 'var(--hestia-surface)' }}>
-                                            {question}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              }
-
-                              // ── BREAK / BUFFER / custom: show objective only ──────
                               return (
-                                <div className="pl-6 mt-2">
-                                  <p className="text-sm text-muted-foreground leading-relaxed">{block.objective || block.description}</p>
-                                </div>
+                                <BlockDetails
+                                  content={content}
+                                  methods={blockMethods(block)}
+                                  renderText={(item, className) => <span className={className}>{item.text}</span>}
+                                  className="pl-4 mt-2"
+                                />
                               );
                             })()}
                           </AccordionContent>

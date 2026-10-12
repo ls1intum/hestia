@@ -92,7 +92,7 @@ workshopper/
 │       ├── components/    ← wizard steps, dashboard, timetable/ rows and panels, ui/ (shadcn)
 │       ├── hooks/         ← useWizardState (all wizard state and navigation), use-toast
 │       └── lib/           ← api.ts, workshop-generator.ts (types, default skeleton),
-│                            activity-taxonomy.ts, block-templates.ts, constants.ts, …
+│                            phases.ts (block phases), activity-taxonomy.ts, constants.ts, …
 ├── server/                ← Spring Boot app
 │   └── src/main/
 │       ├── java/com/workshopper/

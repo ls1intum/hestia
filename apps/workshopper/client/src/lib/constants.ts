@@ -1,16 +1,3 @@
-export const phaseEmojis: Record<string, string> = {
-  ARRIVE: "👋",
-  ACTIVATE: "💡",
-  INFORM: "🗣️",
-  PROCESS: "🛠️",
-  BREAK: "☕",
-  EVALUATE: "✅",
-  SUMMARY: "🏁",
-  LEARNING_CYCLE: "🎯",
-  CUSTOM: "✏️",
-  BUFFER: "⏳",
-};
-
 export type ActivityMode = "setup" | "lecture" | "practice" | "evaluate" | "summary" | "break";
 
 export const MODE_COLORS: Record<ActivityMode, { border: string; dot: string; bgTint: string; badgeBg: string; badgeText: string }> = {
@@ -56,17 +43,6 @@ export const MODE_COLORS: Record<ActivityMode, { border: string; dot: string; bg
     badgeBg: "color-mix(in srgb, var(--hestia-phase-break) 10%, transparent)",
     badgeText: "var(--hestia-text)",
   },
-};
-
-export const getPhaseMode = (phase: string): ActivityMode => {
-  const p = phase.toUpperCase();
-  if (p === "ARRIVE") return "setup";
-  if (p === "BREAK" || p === "BUFFER") return "break";
-  if (p === "EVALUATE") return "evaluate";
-  if (p === "SUMMARY") return "summary";
-  if (p === "ACTIVATE" || p === "PROCESS" || p === "LEARNING_CYCLE") return "practice";
-  if (p === "INFORM") return "lecture";
-  return "practice";
 };
 
 export const getStepMode = (text: string, parentMode: ActivityMode): ActivityMode => {

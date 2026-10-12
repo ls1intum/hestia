@@ -15,8 +15,9 @@ client/src/
 │   ├── workshop-generator.ts  # shared types (WorkshopInput, LearningGoalPlan, WorkshopSession,
 │   │                          #   SlideData, DraftState, …) and generateDefaultSkeleton
 │   ├── activity-taxonomy.ts   # Bloom's/SOLO → activity (mirror of the server's ActivityRecommender)
-│   ├── block-templates.ts     # templates for blocks added by hand in the timetable
-│   ├── constants.ts           # activity catalogue, phase emojis and colours
+│   ├── phases.ts              # the block phases: label, emoji, colour, templates for added blocks
+│   ├── block-content.ts       # what an expanded block shows (prompt, content, takeaways) from its steps
+│   ├── constants.ts           # activity catalogue, colours
 │   ├── learning-goal-hub.ts   # client for importing goals from the Learning Goal Hub
 │   └── utils.ts
 ├── components/
@@ -26,7 +27,8 @@ client/src/
 │   ├── CourseSummary.tsx      # Review step of a session inside a course
 │   ├── WorkshopGoalEntry.tsx  # Goals (+ LGHImportModal)
 │   ├── WorkshopGeneratedTimetable.tsx  # Timetable
-│   ├── timetable/             # block row, inline editors, evaluate mapping panel
+│   ├── timetable/             # block row, block details (shared with Final Review), inline editors,
+│   │                          #   understanding check, evaluate mapping panel
 │   ├── SlideWorkstation.tsx   # Preparation: slides, prep tasks per slide, template, download
 │   ├── WorkshopFinalReview.tsx  # Final Review and export
 │   ├── TemplateUploadBox.tsx    # the PowerPoint template box (used in three places)
