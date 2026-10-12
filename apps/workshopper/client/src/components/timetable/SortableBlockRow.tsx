@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   GripVertical, ChevronDown, ChevronUp,
@@ -27,7 +27,7 @@ export function SortableBlockRow({
   onEditBlockDuration, onSaveBlockDuration, onSaveObjective, onEditSectionDuration, onSaveSectionDuration,
   onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
   isEditMode = false, onToggleEditMode, onCancelEditMode, onSwitchEvaluateActivity,
-  goals, needsEvaluatePriority, onConfirmEvaluateMappings, onResetEvaluatePriority
+  goals, needsEvaluatePriority, onConfirmEvaluateMappings, onResetEvaluatePriority, onPendingMappingsChange
 }: {
   block: DndActivityBlock;
   isExpanded: boolean;
@@ -61,6 +61,8 @@ export function SortableBlockRow({
   needsEvaluatePriority?: boolean;
   onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
   onResetEvaluatePriority?: () => void;
+  /** Reports the mapping panel's unconfirmed boxes while the block is in edit mode. */
+  onPendingMappingsChange?: (mappings: { method: string; lgIds: string[] }[]) => void;
 }) {
   
   
@@ -96,21 +98,11 @@ export function SortableBlockRow({
 
   const isTitleEditing = editing?.type === "title" && editing.blockId === block.dndId;
 
-  // Unconfirmed boxes from the evaluate mapping panel, so the header's Done button applies them too
-  const pendingMappingsRef = useRef<{ method: string; lgIds: string[] }[] | null>(null);
-  const handleToggleEditMode = () => {
-    const pending = pendingMappingsRef.current;
-    if (isEditMode && block.phase === "EVALUATE" && pending && onConfirmEvaluateMappings
-        && pending.some(m => m.lgIds.length > 0)
-        && JSON.stringify(pending) !== JSON.stringify(meta.evaluateMappings || [])) {
-      onConfirmEvaluateMappings(pending);
-    }
-    pendingMappingsRef.current = null;
-    onToggleEditMode?.();
-  };
+  // ✓ applies the whole draft, including unconfirmed evaluate mappings; the timetable does that
+  const handleToggleEditMode = () => onToggleEditMode?.();
 
   return (
-    <div ref={setNodeRef} style={style} className="mb-3">
+    <div ref={setNodeRef} style={style} className="mb-3" data-block-id={block.dndId}>
       <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
         <div style={parentCardStyle} className={`flex flex-col p-3 transition-colors relative ${isDragging ? "ring-2 ring-primary/30" : ""}`}>
           {/* Main row */}
@@ -566,10 +558,11 @@ export function SortableBlockRow({
                       isRegenerating={isRegenerating}
                       isEditMode={isEditMode}
                       onConfirmEvaluateMappings={(mappings) => {
-                         if (onConfirmEvaluateMappings) onConfirmEvaluateMappings(mappings);
+                         // In edit mode the panel's Done goes through ✓ (onToggleEditMode), which applies the mappings
+                         if (!isEditMode && onConfirmEvaluateMappings) onConfirmEvaluateMappings(mappings);
                       }}
-                      onToggleEditMode={() => { pendingMappingsRef.current = null; onToggleEditMode?.(); }}
-                      onChange={(m) => { pendingMappingsRef.current = m; }}
+                      onToggleEditMode={onToggleEditMode}
+                      onChange={(m) => onPendingMappingsChange?.(m)}
                     />
                   );
                 }

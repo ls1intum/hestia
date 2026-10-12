@@ -9,6 +9,14 @@ import type {
   DraftState,
   TemplateInfo
 } from "@/lib/workshop-generator";
+
+/** Lets a step with unsaved input intercept navigation away from it. */
+export interface LeaveGuard {
+  /** True while there is input that has not been saved yet. */
+  isDirty(): boolean;
+  /** Shows the step's save/discard/stay dialog and calls `proceed` once the user chose to leave. */
+  confirmLeave(proceed: () => void): void;
+}
 import { defaultEvaluateMappings } from "@/lib/activity-taxonomy";
 import { generateDefaultSkeleton, SlideData, templateInfoFromDetail } from "@/lib/workshop-generator";
 
@@ -94,6 +102,21 @@ export function useWizardState() {
 
   /** Persist current draft state to the server, debounced. Returns the session id. */
   const pendingResolvers = useRef<Array<(id: string) => void>>([]);
+  /** The save waiting for its debounce, so navigation can send it right away instead of dropping it. */
+  const pendingSave = useRef<(() => Promise<void>) | null>(null);
+
+  /**
+   * Set by a step with unsaved input (the timetable while a block is in edit mode). Anything that
+   * leaves the step asks it first, so it can offer to save or discard instead of losing the input.
+   */
+  const leaveGuardRef = useRef<LeaveGuard | null>(null);
+
+  /** Runs `proceed` right away, or after the current step's unsaved-changes dialog. */
+  const confirmLeave = useCallback((proceed: () => void) => {
+    const guard = leaveGuardRef.current;
+    if (guard && guard.isDirty()) guard.confirmLeave(proceed);
+    else proceed();
+  }, []);
 
   const persistDraft = useCallback(
     async (
@@ -105,7 +128,9 @@ export function useWizardState() {
       if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
       return new Promise((resolve) => {
         pendingResolvers.current.push(resolve);
-        draftSaveTimeout.current = setTimeout(async () => {
+        const run = async () => {
+          draftSaveTimeout.current = null;
+          pendingSave.current = null;
           try {
             
             let id: string;
@@ -126,11 +151,23 @@ export function useWizardState() {
             pendingResolvers.current = [];
             resolvers.forEach(r => r(currentSessionId ?? ""));
           }
-        }, 300);
+        };
+        pendingSave.current = run;
+        draftSaveTimeout.current = setTimeout(run, 300);
       });
     },
     [entityType]
   );
+
+  /** Sends a save that is still waiting for its debounce right away (instead of cancelling it). */
+  const flushDraft = useCallback(async () => {
+    if (draftSaveTimeout.current) {
+      clearTimeout(draftSaveTimeout.current);
+      draftSaveTimeout.current = null;
+    }
+    const run = pendingSave.current;
+    if (run) await run();
+  }, []);
 
   const buildDraft = useCallback(
     (
@@ -300,8 +337,9 @@ export function useWizardState() {
 
       // Navigate to where the user left off
       let targetStepStr = (detail.currentStep as string) ?? "input-1";
-      if (resolvedEntityType === "COURSE" && targetStepStr === "result") {
-        targetStepStr = "input-2";
+      // Opening a course always starts at its first step; every course step stays reachable
+      if (resolvedEntityType === "COURSE") {
+        targetStepStr = "input-1";
       }
       if (targetStepStr === "result" || targetStepStr === "skeleton") {
         if (hasSession) {
@@ -322,7 +360,9 @@ export function useWizardState() {
 
       setStep(targetStep);
       // R-2: use localStepOrder — guaranteed to reflect resolved entity/course state
-      setHighestStepIdx(targetIdx >= 0 ? targetIdx : 0);
+      setHighestStepIdx(resolvedEntityType === "COURSE"
+        ? localStepOrder.length - 1
+        : targetIdx >= 0 ? targetIdx : 0);
       setView("wizard");
     } catch (e) {
       if (handleAuthError(e)) return;
@@ -450,7 +490,7 @@ export function useWizardState() {
   };
 
   const handleReset = () => {
-    if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
+    flushDraft();
     setView("dashboard");
     setSessionIdSynced(null);
     setTemplateInfo(null);
@@ -506,7 +546,15 @@ export function useWizardState() {
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
       if (view === "wizard") {
-        setView("dashboard");
+        const guard = leaveGuardRef.current;
+        if (guard && guard.isDirty()) {
+          // Stay on the page until the user decides about the unsaved changes
+          window.history.pushState({ page: "wizard" }, "");
+          guard.confirmLeave(() => { flushDraft(); setView("dashboard"); });
+        } else {
+          flushDraft();
+          setView("dashboard");
+        }
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -518,6 +566,21 @@ export function useWizardState() {
       window.history.pushState({ page: "wizard" }, "");
     }
   }, [view]);
+
+  // Reloading or closing the tab: send any waiting save, and let the browser ask first if input could be lost
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const unsaved = leaveGuardRef.current?.isDirty() ?? false;
+      const waiting = pendingSave.current !== null;
+      if (waiting) flushDraft();
+      if (unsaved || waiting) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [flushDraft]);
 
   // ── Dashboard view ────────────────────────────────────────────────────
 
@@ -575,6 +638,9 @@ export function useWizardState() {
     handleStep2Activities,
     handleStep2,
     handleCourseFinish,
+    flushDraft,
+    leaveGuardRef,
+    confirmLeave,
     handleGoalsEntered,
     handleReset,
     toggleDark,

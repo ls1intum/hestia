@@ -63,6 +63,8 @@ import { useWizardState } from "@/hooks/useWizardState";
 
 export default function App() {
   const wizard = useWizardState();
+  /** The step to open once the user confirms leaving an edited timetable. */
+  const [timelineBackTarget, setTimelineBackTarget] = useState<Step>("goals");
   const {
     view, setView, step, setStep, highestStepIdx, setHighestStepIdx,
     darkMode, toggleDark, isLoading, setIsLoading,
@@ -72,9 +74,13 @@ export default function App() {
     handleReset, startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
     setSlidesCache, setWorkshopInput, setRefinedGoals, setCurrentSkeleton, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentCourseId, buildDraft, draftSaveTimeout, loadingMessages,
+    originalSession, currentCourseId, buildDraft, loadingMessages, flushDraft, leaveGuardRef, confirmLeave,
     templateInfo, setTemplateInfo
   } = wizard;
+
+  // The timetable counts as edited once its title or blocks differ from what was generated
+  const timetableEdited = !!(session && originalSession) &&
+    JSON.stringify([session.title, session.blocks]) !== JSON.stringify([originalSession.title, originalSession.blocks]);
 
   // ── Dashboard view ────────────────────────────────────────────────────
 
@@ -111,7 +117,7 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
-          <button onClick={() => setView("dashboard")} className="flex items-center gap-3 hover:opacity-80 transition-opacity shrink-0">
+          <button onClick={() => confirmLeave(() => { flushDraft(); setView("dashboard"); })} className="flex items-center gap-3 hover:opacity-80 transition-opacity shrink-0">
             <ArrowLeft className="h-5 w-5 text-muted-foreground" />
             <img src={hestiaLogoLight} alt="Hestia" className="h-6 w-auto dark:hidden" />
             <img src={hestiaLogoDark} alt="Hestia" className="h-6 w-auto hidden dark:block" />
@@ -128,18 +134,19 @@ export default function App() {
                 <span key={s.id} className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
-                      if (!isClickable) return;
-                      // M-2: cancel any pending draft debounce before navigating
-                      if (draftSaveTimeout.current) {
-                        clearTimeout(draftSaveTimeout.current);
-                        draftSaveTimeout.current = null;
-                      }
-                      // N-2: warn before navigating back past the timeline step
-                      if (step === "timeline" && STEP_ORDER.indexOf(s.id) < STEP_ORDER.indexOf("timeline")) {
-                        setShowTimelineBackConfirm(true);
-                        return;
-                      }
-                      setStep(s.id);
+                      if (!isClickable || s.id === step) return;
+                      // Unsaved input on this step (e.g. a timetable block in edit mode) is resolved first
+                      confirmLeave(() => {
+                        // M-2: send any waiting draft save now rather than dropping it
+                        flushDraft();
+                        // N-2: warn before navigating back past an edited timetable
+                        if (step === "timeline" && STEP_ORDER.indexOf(s.id) < STEP_ORDER.indexOf("timeline") && timetableEdited) {
+                          setTimelineBackTarget(s.id);
+                          setShowTimelineBackConfirm(true);
+                          return;
+                        }
+                        setStep(s.id);
+                      });
                     }}
                     disabled={!isClickable && effectiveStep !== s.id}
                     className={`flex items-center gap-1.5 transition-opacity ${
@@ -252,13 +259,14 @@ export default function App() {
         {step === "timeline" && session && (
           <WorkshopGeneratedTimetable
             session={session}
+            registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
             onGoalsChanged={(newGoals: LearningGoalPlan[]) => setRefinedGoals(newGoals)}
             onMetaChanged={(newMeta: WorkshopInput) => setWorkshopInput(newMeta)}
             onBack={() => {
-              // Check if session differs from original
-              if (originalSession && JSON.stringify(session) !== JSON.stringify(originalSession)) {
+              if (timetableEdited) {
+                setTimelineBackTarget("goals");
                 setShowTimelineBackConfirm(true);
               } else {
                 setStep("goals");
@@ -359,9 +367,10 @@ export default function App() {
       {showTimelineBackConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
-            <h3 className="font-display font-semibold text-lg text-foreground">Discard timetable edits?</h3>
+            <h3 className="font-display font-semibold text-lg text-foreground">Leave the edited timetable?</h3>
             <p className="text-sm text-muted-foreground font-body">
-              Going back to Goals will re-generate the session plan when you continue, discarding any edits you've made to the timetable.
+              Your timetable edits are saved and stay when you come back. But continuing from the Goals step
+              generates a new timetable, which replaces your edits.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setShowTimelineBackConfirm(false)}>Stay here</Button>
@@ -369,7 +378,7 @@ export default function App() {
                 variant="destructive"
                 onClick={() => {
                   setShowTimelineBackConfirm(false);
-                  setStep("goals");
+                  setStep(timelineBackTarget);
                 }}
               >
                 Go back anyway

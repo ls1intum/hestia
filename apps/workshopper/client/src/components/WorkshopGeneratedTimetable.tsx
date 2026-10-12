@@ -31,6 +31,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "@/hooks/use-toast";
+import type { LeaveGuard } from "@/hooks/useWizardState";
 import { SortableBlockRow } from "./timetable/SortableBlockRow";
 import { InlineEditText } from "./timetable/InlineEditText";
 
@@ -64,6 +65,8 @@ interface Props {
   onSaveSession?: (session: WorkshopSession) => void;
   onGoalsChanged?: (goals: LearningGoalPlan[]) => void;
   onMetaChanged?: (meta: import('@/lib/workshop-generator').WorkshopInput) => void;
+  /** Lets the wizard ask this step before navigating away while a block has unsaved edits. */
+  registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
 
 // ── Inline editable text component removed and imported ───────────────────────────────────────────
@@ -71,7 +74,7 @@ interface Props {
 // ── Sortable block row component removed and imported ─────────────────────────────────────────────
 
 // ── Main component ─────────────────────────────────────────────────
-export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged }: Props) {
+export default function WorkshopGeneratedTimetable({ session: initialSession, goals, meta, onBack, onNext, onSaveSession, onGoalsChanged, onMetaChanged, registerLeaveGuard }: Props) {
   const onSaveSessionRef = useRef(onSaveSession);
   useEffect(() => {
     onSaveSessionRef.current = onSaveSession;
@@ -102,24 +105,160 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editingBlockOriginal, setEditingBlockOriginal] = useState<DndActivityBlock | null>(null);
 
-  const toggleEditBlock = (dndId: string) => {
+  // ── Edit-mode drafts ──────────────────────────────────────────────────
+  // Changes made while a block is in edit mode are a draft: they are shown, but every save
+  // uses the block as it was when edit mode was opened, until the user clicks Done (✓).
+  // Refs mirror the state so event handlers and the leave guard always see the latest values.
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const editingRef = useRef<{ id: string | null; original: DndActivityBlock | null }>({ id: null, original: null });
+  editingRef.current = { id: editingBlockId, original: editingBlockOriginal };
+  /** Unconfirmed boxes of the evaluate mapping panel of the block in edit mode. */
+  const pendingMappingsRef = useRef<{ dndId: string; mappings: { method: string; lgIds: string[] }[] } | null>(null);
+  const lastSavedRef = useRef<string | null>(null);
+  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+
+  const toSession = (list: DndActivityBlock[]): WorkshopSession => ({
+    ...initialSession,
+    title: sessionTitle,
+    blocks: list.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
+  });
+
+  // What the server already has, so the first save after opening the step isn't a redundant one
+  if (lastSavedRef.current === null) {
+    const loaded = toSession(blocks);
+    lastSavedRef.current = JSON.stringify([loaded.title, loaded.blocks]);
+  }
+
+  /** The blocks as they may be saved: the block in edit mode counts as its pre-edit version. */
+  const savable = (list: DndActivityBlock[], includeDraftOf?: string) => {
+    const { id, original } = editingRef.current;
+    if (!id || !original || includeDraftOf === id) return list;
+    return list.map(b => b.dndId === id ? original : b);
+  };
+
+  /** Saves the session now (used from event handlers), skipping saves that change nothing. */
+  const saveNow = (list: DndActivityBlock[], includeDraftOf?: string) => {
+    if (!onSaveSession) return;
+    const session = toSession(savable(list, includeDraftOf));
+    const key = JSON.stringify([session.title, session.blocks]);
+    if (key === lastSavedRef.current) return;
+    lastSavedRef.current = key;
+    onSaveSessionRef.current?.(session);
+  };
+
+  /** Saves from inside a state updater, where the parent's state can't be updated synchronously. */
+  const persistBlocks = (next: DndActivityBlock[], includeDraftOf?: string) => {
+    setTimeout(() => saveNow(next, includeDraftOf), 0);
+  };
+
+  /**
+   * One-click changes to a block (switching, adding or removing an activity) are saved at once,
+   * even while it is in edit mode; the block's current state becomes its new pre-edit version.
+   */
+  const commitBlock = (dndId: string, next: DndActivityBlock[]) => {
+    if (editingRef.current.id === dndId) {
+      const block = next.find(b => b.dndId === dndId);
+      if (block) {
+        const copy = JSON.parse(JSON.stringify(block));
+        editingRef.current = { id: dndId, original: copy };
+        setEditingBlockOriginal(copy);
+      }
+    }
+    persistBlocks(next, dndId);
+  };
+
+  const pendingMappingsChanged = () => {
+    const pending = pendingMappingsRef.current;
+    if (!pending || pending.dndId !== editingRef.current.id) return false;
+    return pending.mappings.some(m => m.lgIds.length > 0)
+      && JSON.stringify(pending.mappings) !== JSON.stringify(meta.evaluateMappings || []);
+  };
+
+  /** True while the block in edit mode differs from its pre-edit version (or a field in it is being typed in). */
+  const isDraftDirty = () => {
+    const { id, original } = editingRef.current;
+    if (!id || !original) return false;
+    const current = blocksRef.current.find(b => b.dndId === id);
+    if (current && JSON.stringify(current) !== JSON.stringify(original)) return true;
+    if (pendingMappingsChanged()) return true;
+    // Text typed into a field is only applied when the field loses focus
+    const active = document.activeElement as HTMLElement | null;
+    return !!active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
+      && !!active.closest(`[data-block-id="${id}"]`);
+  };
+
+  const closeEditMode = () => {
+    editingRef.current = { id: null, original: null };
+    pendingMappingsRef.current = null;
+    setEditingBlockId(null);
+    setEditingBlockOriginal(null);
+  };
+
+  /** Done (✓): applies and saves the draft of the block in edit mode. Resolves false if saving failed. */
+  const commitDraft = async (): Promise<boolean> => {
+    const id = editingRef.current.id;
+    if (!id) return true;
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const block = blocksRef.current.find(b => b.dndId === id);
+    const pending = pendingMappingsRef.current;
+    if (block?.phase === "EVALUATE" && pending && pendingMappingsChanged()) {
+      const ok = await confirmEvaluateMappings(id, pending.mappings);
+      if (!ok) return false;
+      closeEditMode();
+      return true;
+    }
+    saveNow(blocksRef.current, id);
+    closeEditMode();
+    return true;
+  };
+
+  /** Cancel (✗): puts the block in edit mode back to its pre-edit version. */
+  const discardDraft = () => {
+    const { id, original } = editingRef.current;
+    if (id && original) {
+      const restored = blocksRef.current.map(b => b.dndId === id ? original : b);
+      blocksRef.current = restored;
+      setBlocks(restored);
+    }
+    closeEditMode();
+  };
+
+  /** Runs `proceed` now, or after asking what to do with an unsaved draft. */
+  const confirmLeave = (proceed: () => void) => {
+    if (isDraftDirty()) setLeaveDialog({ proceed });
+    else {
+      if (editingRef.current.id) closeEditMode();
+      proceed();
+    }
+  };
+
+  // Let the wizard ask before leaving this step (step bar, dashboard, browser back, reload)
+  useEffect(() => {
+    registerLeaveGuard?.({ isDirty: isDraftDirty, confirmLeave });
+    return () => registerLeaveGuard?.(null);
+  });
+
+  const openEditMode = (dndId: string) => {
+    const block = blocksRef.current.find(b => b.dndId === dndId);
+    const copy = block ? JSON.parse(JSON.stringify(block)) : null;
+    editingRef.current = { id: dndId, original: copy };
+    setEditingBlockId(dndId);
+    setEditingBlockOriginal(copy);
+  };
+
+  const toggleEditBlock = async (dndId: string) => {
     if (editingBlockId === dndId) {
-      setEditingBlockId(null);
-      setEditingBlockOriginal(null);
-      onSaveSessionRef.current?.(buildSession());
+      await commitDraft();
     } else {
-      setEditingBlockId(dndId);
-      const block = blocks.find(b => b.dndId === dndId);
-      if (block) setEditingBlockOriginal(JSON.parse(JSON.stringify(block)));
+      // Only one block is edited at a time: settle the other block's draft first
+      confirmLeave(() => openEditMode(dndId));
     }
   };
 
   const cancelEditBlock = (dndId: string) => {
-    if (editingBlockId === dndId && editingBlockOriginal) {
-      setBlocks(prev => prev.map(b => b.dndId === dndId ? editingBlockOriginal : b));
-      setEditingBlockId(null);
-      setEditingBlockOriginal(null);
-    }
+    if (editingBlockId === dndId) discardDraft();
   };
 
 
@@ -139,18 +278,6 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     title: sessionTitle,
     blocks: blocks.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
   }), [initialSession, sessionTitle, blocks]);
-
-  const persistBlocks = (next: DndActivityBlock[]) => {
-    if (!isEditMode && onSaveSession) {
-      setTimeout(() => {
-        onSaveSessionRef.current?.({
-          ...initialSession,
-          title: sessionTitle,
-          blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-        });
-      }, 0);
-    }
-  };
 
   const handleSaveTitle = (dndId: string, v: string) => {
     setBlocks(prev => {
@@ -206,15 +333,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           : b.sections;
         return { ...b, sections, duration: num };
       });
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      persistBlocks(next);
       return next;
     });
     setEditing(null);
@@ -231,15 +350,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           return { ...b, sections, duration: newDuration };
         });
         
-        if (!isEditMode && onSaveSession) {
-          setTimeout(() => {
-            onSaveSessionRef.current?.({
-              ...initialSession,
-              title: sessionTitle,
-              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-            });
-          }, 0);
-        }
+        persistBlocks(next);
         return next;
       });
     }
@@ -271,15 +382,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         return { ...b, sections, duration: newBlockDuration };
       });
       
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      persistBlocks(next);
       return next;
     });
     setEditing(null);
@@ -302,15 +405,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         return { ...b, sections, duration: newBlockDuration };
       });
       
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      persistBlocks(next);
       return next;
     });
   };
@@ -329,20 +424,14 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         return { ...b, sections, duration: newBlockDuration };
       });
       
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      persistBlocks(next);
       return next;
     });
   };
 
-  const handleAddBlock = (phase: string) => {
+  const handleAddBlock = (phase: string) => confirmLeave(() => addBlock(phase));
+
+  const addBlock = (phase: string) => {
     const dndId = `custom-${Date.now()}`;
     const newBlock: DndActivityBlock = {
       ...createBlockFromTemplate(phase, goals, meta.selectedActivities || []),
@@ -360,26 +449,21 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     // Open the new block for editing so its fields can be filled in straight away.
     // Evaluate blocks are edited through the mapping panel instead, so they open read-only.
     if (newBlock.phase !== "EVALUATE") {
+      const copy = JSON.parse(JSON.stringify(newBlock));
+      editingRef.current = { id: dndId, original: copy };
       setEditingBlockId(dndId);
-      setEditingBlockOriginal(JSON.parse(JSON.stringify(newBlock)));
+      setEditingBlockOriginal(copy);
     }
   };
 
   const handleDeleteBlock = (dndId: string) => {
+    if (editingRef.current.id === dndId) closeEditMode();
     setBlocks(prev => {
       const index = prev.findIndex(b => b.dndId === dndId);
       const deleted = prev[index];
       if (deleted) setLastDeletedBlock({ block: deleted, index });
       const next = prev.filter(b => b.dndId !== dndId);
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      persistBlocks(next);
       return next;
     });
   };
@@ -389,6 +473,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     setBlocks(prev => {
       const next = [...prev];
       next.splice(lastDeletedBlock.index, 0, lastDeletedBlock.block);
+      persistBlocks(next);
       return next;
     });
     setLastDeletedBlock(null);
@@ -405,15 +490,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         }));
         return { ...b, methods: newMethods, sections: newSections };
       });
-      if (!isEditMode && onSaveSession) {
-        setTimeout(() => {
-          onSaveSessionRef.current?.({
-            ...initialSession,
-            title: sessionTitle,
-            blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-          });
-        }, 0);
-      }
+      commitBlock(dndId, next);
       return next;
     });
   };
@@ -484,15 +561,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
             };
           });
           
-          if (!isEditMode && onSaveSession) {
-            setTimeout(() => {
-              onSaveSessionRef.current?.({
-                ...initialSession,
-                title: sessionTitle,
-                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-              });
-            }, 0);
-          }
+          commitBlock(dndId, next);
           return next;
         });
         toast({ title: "Activity added", description: `Added ${methodToAdd}` });
@@ -511,15 +580,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         const oldIndex = items.findIndex((item) => item.dndId === active.id);
         const newIndex = items.findIndex((item) => item.dndId === over.id);
         const next = arrayMove(items, oldIndex, newIndex);
-        if (!isEditMode && onSaveSession) {
-          setTimeout(() => {
-            onSaveSessionRef.current?.({
-              ...initialSession,
-              title: sessionTitle,
-              blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-            });
-          }, 0);
-        }
+        persistBlocks(next);
         return next;
       });
     }
@@ -559,23 +620,13 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     executePendingNavigation();
   };
 
-  const handleBack = () => {
-    if (isEditMode) {
-      setPendingNavigation("back");
-    } else {
-      onBack();
-    }
-  };
+  const handleBack = () => confirmLeave(() => onBack());
 
-  const handleNext = () => {
-    if (isEditMode) {
-      setPendingNavigation("next");
-    } else {
-      const latest = buildSession();
-      onSaveSessionRef.current?.(latest);
-      onNextRef.current?.(latest);
-    }
-  };
+  const handleNext = () => confirmLeave(() => {
+    const latest = toSession(blocksRef.current);
+    onSaveSessionRef.current?.(latest);
+    onNextRef.current?.(latest);
+  });
 
   const switchActivity = async (dndId: string, oldActivity: string, newActivity: string) => {
     setRegeneratingBlockId(dndId);
@@ -641,15 +692,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
             };
           });
           
-          if (!isEditMode && onSaveSession) {
-            setTimeout(() => {
-              onSaveSessionRef.current?.({
-                ...initialSession,
-                title: sessionTitle,
-                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-              });
-            }, 0);
-          }
+          commitBlock(dndId, next);
           return next;
         });
         toast({ title: "Activity updated", description: `Switched to ${newActivity}` });
@@ -666,11 +709,12 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     goals.length <= 2 || (meta.evaluateMappings && meta.evaluateMappings.length > 0)
   );
 
-  const confirmEvaluateMappings = async (dndId: string, mappings: { method: string; lgIds: string[] }[]) => {
+  /** Regenerates a Check Understanding block for new mappings; resolves false if that failed. */
+  const confirmEvaluateMappings = async (dndId: string, mappings: { method: string; lgIds: string[] }[]): Promise<boolean> => {
     setRegeneratingBlockId(dndId);
     try {
       const block = blocks.find(b => b.dndId === dndId);
-      if (!block) return;
+      if (!block) return false;
       const newMeta = { ...meta, evaluateMappings: mappings };
       onMetaChanged?.(newMeta);
       setHasConfirmedEvaluatePriorities(true);
@@ -715,24 +759,17 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               dndId: originalBlock.dndId,
               phaseLabel: originalBlock.phaseLabel || originalBlock.phase
             };
-            if (!isEditMode && onSaveSession) {
-              setTimeout(() => {
-                const sessionTitle = initialSession.title || meta.title || "Workshop Session";
-                onSaveSessionRef.current?.({
-                  ...initialSession,
-                  title: sessionTitle,
-                  blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-                });
-              }, 0);
-            }
+            commitBlock(dndId, next);
           }
           return next;
         });
         setHasConfirmedEvaluatePriorities(true);
         toast({ title: "Mappings updated", description: "Understanding Check regenerated." });
       }
+      return true;
     } catch (e) {
       toast({ title: "Update failed", description: String(e), variant: "destructive" });
+      return false;
     } finally {
       setRegeneratingBlockId(null);
     }
@@ -809,15 +846,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               blockId: b.blockId,
             };
           });
-          if (!isEditMode && onSaveSession) {
-            setTimeout(() => {
-              onSaveSessionRef.current?.({
-                ...initialSession,
-                title: sessionTitle,
-                blocks: next.map(({ dndId: _dndId, lgIndex: _lgIndex, ...rest }) => rest),
-              });
-            }, 0);
-          }
+          commitBlock(dndId, next);
           return next;
         });
         toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
@@ -871,7 +900,8 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                     block={block}
                     goals={goals}
                     needsEvaluatePriority={isNeedsPriority}
-                    onConfirmEvaluateMappings={(mappings) => confirmEvaluateMappings(block.dndId, mappings)}
+                    onConfirmEvaluateMappings={(mappings) => { confirmEvaluateMappings(block.dndId, mappings); }}
+                    onPendingMappingsChange={(mappings) => { pendingMappingsRef.current = { dndId: block.dndId, mappings }; }}
                     onResetEvaluatePriority={() => setHasConfirmedEvaluatePriorities(false)}
                   isExpanded={expandedBlocks[block.dndId] ?? (block.phase === "EVALUATE" && isNeedsPriority)}
                   editing={editing}
@@ -1007,26 +1037,49 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         </div>
       )}
 
-      {/* Unsaved Changes Dialog */}
-      <AlertDialog open={pendingNavigation !== null} onOpenChange={(open) => {
-        if (!open) setPendingNavigation(null);
-      }}>
+      {/* Unsaved edit-mode draft: decide before leaving it */}
+      <AlertDialog open={leaveDialog !== null} onOpenChange={(open) => { if (!open && !isSavingDraft) setLeaveDialog(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>You have unsaved work</AlertDialogTitle>
+            <AlertDialogTitle>
+              {(() => {
+                const block = blocks.find(b => b.dndId === editingBlockId);
+                return `"${block?.phaseLabel || block?.phase || "This block"}" has unsaved changes`;
+              })()}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to proceed?
-              <br/><br/>
-              If you click <strong>Yes</strong>, your recent edits will be undone.
-              <br/>
-              If you click <strong>No</strong>, you will remain on this page with your edits intact.
+              The block is still in edit mode. Save your changes before you continue, or discard them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingNavigation(null)}>No, stay here</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmNavigation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Yes, undo changes & proceed
-            </AlertDialogAction>
+            <AlertDialogCancel disabled={isSavingDraft} onClick={() => setLeaveDialog(null)}>Stay</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingDraft}
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                const proceed = leaveDialog?.proceed;
+                setLeaveDialog(null);
+                discardDraft();
+                proceed?.();
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              disabled={isSavingDraft}
+              onClick={async () => {
+                const proceed = leaveDialog?.proceed;
+                setIsSavingDraft(true);
+                const ok = await commitDraft();
+                setIsSavingDraft(false);
+                if (!ok) return; // keep the dialog and the draft; the error was shown as a toast
+                setLeaveDialog(null);
+                proceed?.();
+              }}
+            >
+              {isSavingDraft ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : "Save and continue"}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
