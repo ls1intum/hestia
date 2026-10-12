@@ -12,6 +12,12 @@ npm run dev
 
 The dev server serves the app at http://localhost:5173/workshopper/ and proxies the API to the Workshopper server (`VITE_API_TARGET`, default `http://localhost:8081`) and the Learning Goal Hub import to `VITE_LGH_TARGET` (default `http://localhost:8080`).
 
+Unit tests (Vitest; the pure logic in `src/lib` and `src/hooks`, e.g. what a block shows, step and duration edits, slide re-matching, download names):
+
+```bash
+npm test
+```
+
 Type-check:
 
 ```bash

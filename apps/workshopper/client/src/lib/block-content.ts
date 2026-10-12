@@ -79,7 +79,7 @@ export function blockContent(block: ActivityBlock, sessionGoals: string[]): Bloc
         allSteps.find(s => /prompt|activity|task|scenario|discuss|question/i.test(s));
       const content = (block.sections?.[0]?.steps || [])
         .filter(s => s !== activityStep)
-        .map(s => ({ step: s, text: stripStepTime(s).replace(/^explain[s]?:?\s*/i, "").trim() }));
+        .map(s => ({ step: s, text: stripStepTime(s).replace(/^explains?:\s*/i, "").trim() }));
       return { kind: "cycle", content, activity: promptItem(activityStep, /^(activity|prompt)[:\s]*/i, objective) };
     }
 
@@ -87,7 +87,7 @@ export function blockContent(block: ActivityBlock, sessionGoals: string[]): Bloc
       const activityStep = allSteps.find(s => /prompt|one.minute|q&a|question|take.?away/i.test(s));
       const takeaways = allSteps
         .filter(s => s !== activityStep && !/^(\d+\s*(?:min|m)[\s—:-]*)?(activity|prompt|q&a|questions|logistics|thank)/i.test(s))
-        .map(s => ({ step: s, text: stripStepTime(s).replace(/^explain[s]?:?\s*/i, "").trim() }));
+        .map(s => ({ step: s, text: stripStepTime(s).replace(/^explains?:\s*/i, "").trim() }));
       return { kind: "summary", takeaways, activity: promptItem(activityStep, /^(activity|prompt)[:\s]*/i, objective) };
     }
 
