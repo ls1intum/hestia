@@ -75,7 +75,7 @@ Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, 
 
 1. Add it to `WorkshopController` (or `CourseController`). Check ownership first: `facade.verifyOwnership(id)` or `facade.verifyCourseOwnership(id)`.
 2. Put the logic in the facade (generation) or `WorkshopService` (persistence).
-3. Add a function in `client/src/lib/api.ts`, and document it in `docs/API.md`.
+3. Add a function in `client/src/lib/api.ts` (built on its `get`/`post`/`postForBlob` helpers, which throw an `ApiError` for any failed answer), and document it in `docs/API.md`. Components never call `fetch` themselves; in a `catch`, call `handleAuthError(e)` first and show `errorMessage(e, fallback)` otherwise.
 4. Add a MockMvc test in `server/src/test/.../controller/` (see `WorkshopControllerTest` and `WorkshopControllerSecurityTest`).
 
 ## Checks before committing

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { ActivityBlock, LearningGoalPlan, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
+import { ActivityBlock, LearningGoalPlan, SessionSkeleton, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
+import { generateSession, errorMessage, handleAuthError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, ChevronDown, Clock, Plus, Loader2, X } from "lucide-react";
@@ -468,7 +469,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         : Math.max(10, Math.floor((block.duration || 40) / 2));
 
       // Generate a fresh set of sections for the new activity
-      const singleBlockSkeleton = {
+      const singleBlockSkeleton: SessionSkeleton = {
         sessionId: initialSession.id,
         blocks: [{
           phase: block.phase,
@@ -480,19 +481,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         }],
       };
 
-      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          availableMaterials: meta.availableMaterials?.join("\n") || "",
-          goals,
-          meta: { ...meta, selectedActivities: [methodToAdd] },
-          skeleton: singleBlockSkeleton,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to add activity");
-      const newSession = await res.json();
+      const newSession = await generateSession(goals, { ...meta, selectedActivities: [methodToAdd] }, singleBlockSkeleton);
       
       if (newSession.blocks?.[0]) {
         const generatedBlock = newSession.blocks[0];
@@ -522,7 +511,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         toast({ title: "Activity added", description: `Added ${methodToAdd}` });
       }
     } catch (e) {
-      toast({ title: "Addition failed", description: String(e), variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Addition failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
     } finally {
       setRegeneratingBlockId(null);
     }
@@ -565,7 +554,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         newMethods.push(newActivity);
       }
 
-      const singleBlockSkeleton = {
+      const singleBlockSkeleton: SessionSkeleton = {
         sessionId: initialSession.id,
         blocks: [{
           phase: block.phase,
@@ -577,19 +566,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         }],
       };
 
-      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          availableMaterials: meta.availableMaterials?.join("\n") || "",
-          goals,
-          meta: { ...meta, selectedActivities: newMethods },
-          skeleton: singleBlockSkeleton,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to regenerate activity");
-      const newSession = await res.json();
+      const newSession = await generateSession(goals, { ...meta, selectedActivities: newMethods }, singleBlockSkeleton);
       if (newSession.blocks?.[0]) {
         const updatedBlock = newSession.blocks[0];
         setBlocks(prev => {
@@ -618,7 +595,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         toast({ title: "Activity updated", description: `Switched to ${newActivity}` });
       }
     } catch (e) {
-      toast({ title: "Generation failed", description: String(e), variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Generation failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
     } finally {
       setRegeneratingBlockId(null);
     }
@@ -638,7 +615,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       onMetaChanged?.(newMeta);
       setHasConfirmedEvaluatePriorities(true);
 
-      const singleBlockSkeleton = {
+      const singleBlockSkeleton: SessionSkeleton = {
         sessionId: initialSession.id,
         blocks: [{
           phase: block.phase,
@@ -646,23 +623,10 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
           description: block.objective,
           lgIndex: block.lgIndex ?? 0,
           duration: block.duration,
-          methods: mappings.map(m => m.method),
-          materials: []
         }]
       };
 
-      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          availableMaterials: meta.availableMaterials?.join("\n") || "",
-          skeleton: singleBlockSkeleton,
-          meta: newMeta,
-          goals: goals
-        })
-      });
-      if (!res.ok) throw new Error("Failed to regenerate");
-      const generated = await res.json();
+      const generated = await generateSession(goals, newMeta, singleBlockSkeleton);
       
       if (generated.blocks && generated.blocks.length > 0) {
         setBlocks(prev => {
@@ -686,7 +650,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       }
       return true;
     } catch (e) {
-      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Update failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
       return false;
     } finally {
       setRegeneratingBlockId(null);
@@ -723,7 +687,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
       // If the LLM failed to include methods correctly, we force our exactMappings as the block methods fallback
       const derivedMethods = Array.from(new Set(exactMappings.map(m => m.split(":")[1])));
 
-      const singleBlockSkeleton = {
+      const singleBlockSkeleton: SessionSkeleton = {
         sessionId: initialSession.id,
         blocks: [{
           phase: block.phase,
@@ -735,19 +699,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         }],
       };
 
-      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          availableMaterials: meta.availableMaterials?.join("\n") || "",
-          goals,
-          meta: { ...meta, selectedActivities: exactMappings },
-          skeleton: singleBlockSkeleton,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to regenerate evaluate activity");
-      const newSession = await res.json();
+      const newSession = await generateSession(goals, { ...meta, selectedActivities: exactMappings }, singleBlockSkeleton);
       if (newSession.blocks?.[0]) {
         const updatedBlock = newSession.blocks[0];
         setBlocks(prev => {
@@ -769,7 +721,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
         toast({ title: "Activity updated", description: `LG${targetLgNum} switched to ${newActivity}` });
       }
     } catch (e) {
-      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Update failed", description: errorMessage(e, "The AI request failed."), variant: "destructive" });
     } finally {
       setRegeneratingBlockId(null);
     }

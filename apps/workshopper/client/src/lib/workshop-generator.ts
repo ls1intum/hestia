@@ -116,6 +116,13 @@ export interface WorkshopSession {
   slides?: Record<number, SlideData[]>;
 }
 
+/** A suggestion from the AI goal check (POST /api/workshop/refine-goal) */
+export interface GoalSuggestion {
+  type: "split" | "refine";
+  values: string[];
+  message: string;
+}
+
 export interface SkeletonSection {
   title: string;
   duration: number;

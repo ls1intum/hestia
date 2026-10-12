@@ -4,6 +4,9 @@ import type {
   WorkshopInput,
   LearningGoalPlan,
   WorkshopSession,
+  ActivityBlock,
+  SlideData,
+  GoalSuggestion,
   SessionSkeleton,
   SessionSummary,
   SessionDetail,
@@ -50,51 +53,39 @@ async function parseJson<T>(res: Response): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+/** Sends a request to the Workshopper API; throws an ApiError for any non-2xx answer. */
+async function send(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
     const text = await res.text();
     throw new ApiError(res.status, text || `HTTP ${res.status}`);
   }
-  return parseJson<T>(res);
+  return res;
 }
 
-async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(res.status, text || `HTTP ${res.status}`);
-  }
-  return parseJson<T>(res);
+function jsonBody(method: string, body: unknown): RequestInit {
+  return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
-async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(res.status, text || `HTTP ${res.status}`);
-  }
-  return parseJson<T>(res);
+const get = <T>(path: string) => send(path).then(res => parseJson<T>(res));
+const post = <T>(path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => parseJson<T>(res));
+const put = <T>(path: string, body: unknown) => send(path, jsonBody("PUT", body)).then(res => parseJson<T>(res));
+const del = <T>(path: string) => send(path, { method: "DELETE" }).then(res => parseJson<T>(res));
+/** POSTs JSON and returns the answer as a file (exports). */
+const postForBlob = (path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => res.blob());
+const postForm = (path: string, form: FormData) => send(path, { method: "POST", body: form });
+
+/** The message to show for a failed request: the Error's own message, otherwise the fallback. */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.status >= 500 || !err.message ? fallback : err.message;
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(res.status, text || `HTTP ${res.status}`);
-  }
-  return parseJson<T>(res);
+/** A file name made from a session title, e.g. "Intro to ML" → "intro_to_ml". */
+export function safeFileName(title: string | undefined, fallback = "workshop"): string {
+  return (title || fallback).slice(0, 40).replace(/[^a-z0-9]+/gi, "_").toLowerCase();
 }
+
 /** Generates the session timetable from the goals, settings and client-built skeleton */
 export function generateSession(
   goals: LearningGoalPlan[],
@@ -171,59 +162,78 @@ export function reorderSessions(sessionIds: string[]): Promise<void> {
   return put<void>('/workshop/sessions/reorder', sessionIds);
 }
 
-/** Download PDF */
-export async function downloadPdf(id: string): Promise<void> {
-  const detail = await getSessionDetail(id);
-  if (!detail.session) throw new Error("No session generated yet");
-  
-  // Ensure the embedded session matches the top-level entity title
-  if (detail.title) {
-    detail.session.title = detail.title;
-  }
+// ── Generation ─────────────────────────────────────────────────────────────
 
-  const res = await fetch(`${API_BASE}/workshop/export/pdf`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session: detail.session,
-      meta: detail.draftStateJson ? JSON.parse(detail.draftStateJson).workshopInput : undefined
-    }),
-  });
-  if (!res.ok) throw new Error("PDF export failed");
-  const blob = await res.blob();
-  saveAs(blob, `session-${id}.pdf`);
+/** Generates the slides of one timetable block */
+export function generateBlockSlides(block: ActivityBlock, meta: WorkshopInput, goals: LearningGoalPlan[]): Promise<SlideData[]> {
+  return post<SlideData[]>("/workshop/export/block-slides", { block, meta, goals });
 }
 
-/** Download PPTX */
-export async function downloadPptx(id: string): Promise<void> {
+/** Saves the slides of a session, keyed by block index */
+export function saveSlides(sessionId: string, slides: Record<number, SlideData[]>): Promise<void> {
+  return post<void>(`/workshop/sessions/${sessionId}/slides`, slides);
+}
+
+/** Checks one learning goal and returns suggestions to split or refine it */
+export function refineGoal(goal: string, context: Record<string, unknown>): Promise<GoalSuggestion[]> {
+  return post<GoalSuggestion[]>("/workshop/refine-goal", { goal, context });
+}
+
+/** Fixes the grammar of the goals; returns them in the same order */
+export function fixGoalsGrammar(goals: string[]): Promise<string[]> {
+  return post<string[]>("/workshop/fix-goals-grammar", goals);
+}
+
+// ── Exports ────────────────────────────────────────────────────────────────
+
+/** The session plan as PDF */
+export function exportPdf(session: WorkshopSession, meta?: WorkshopInput, goals?: LearningGoalPlan[]): Promise<Blob> {
+  return postForBlob("/workshop/export/pdf", { session, meta, goals });
+}
+
+/** The slide deck as PPTX, generating the slides with the LLM */
+export function exportPptx(session: WorkshopSession, meta?: WorkshopInput, goals?: LearningGoalPlan[]): Promise<Blob> {
+  return postForBlob("/workshop/export/pptx", { session, meta, goals });
+}
+
+/** The slide deck as PPTX, built from slides that were already generated */
+export function assemblePptx(session: WorkshopSession, meta: WorkshopInput, prebuiltSlides: SlideData[]): Promise<Blob> {
+  return postForBlob("/workshop/export/pptx-assemble", { session, meta, prebuiltSlides });
+}
+
+/** The slide deck as PPTX in the slide template stored for the session (or its course) */
+export async function exportPptxWithTemplate(session: WorkshopSession, meta: WorkshopInput, slides: SlideData[]): Promise<Blob> {
+  const form = new FormData();
+  form.append("session", JSON.stringify(session));
+  form.append("meta", JSON.stringify(meta));
+  form.append("slides", JSON.stringify(slides));
+  return (await postForm("/workshop/export/pptx-with-template", form)).blob();
+}
+
+/** Loads a saved session for export, with the title the dashboard shows */
+async function loadForExport(id: string): Promise<{ session: WorkshopSession; meta?: WorkshopInput }> {
   const detail = await getSessionDetail(id);
   if (!detail.session) throw new Error("No session generated yet");
-  
-  // Ensure the embedded session matches the top-level entity title
-  if (detail.title) {
-    detail.session.title = detail.title;
-  }
+  if (detail.title) detail.session.title = detail.title;
+  const meta = detail.draftStateJson ? JSON.parse(detail.draftStateJson).workshopInput : undefined;
+  return { session: detail.session, meta };
+}
 
-  const res = await fetch(`${API_BASE}/workshop/export/pptx`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session: detail.session,
-      meta: detail.draftStateJson ? JSON.parse(detail.draftStateJson).workshopInput : undefined
-    }),
-  });
-  if (!res.ok) throw new Error("PPTX export failed");
-  const blob = await res.blob();
-  saveAs(blob, `slides-${id}.pptx`);
+/** Downloads the PDF of a saved session (dashboard) */
+export async function downloadPdf(id: string): Promise<void> {
+  const { session, meta } = await loadForExport(id);
+  saveAs(await exportPdf(session, meta), `session-${id}.pdf`);
+}
+
+/** Downloads the PPTX of a saved session (dashboard) */
+export async function downloadPptx(id: string): Promise<void> {
+  const { session, meta } = await loadForExport(id);
+  saveAs(await exportPptx(session, meta), `slides-${id}.pptx`);
 }
 
 /** Download ZIP of all Course Sessions */
 export async function downloadCourseZip(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/workshop/export/course/${id}/zip`, {
-    method: "GET",
-  });
-  if (!res.ok) throw new Error("ZIP export failed");
-  const blob = await res.blob();
+  const blob = await send(`/workshop/export/course/${id}/zip`).then(res => res.blob());
   saveAs(blob, `course-${id}.zip`);
 }
 
@@ -262,11 +272,7 @@ export function getCourseDetail(id: string): Promise<SessionDetail> {
 export async function uploadCourseTemplate(courseId: string, file: File): Promise<void> {
   const formData = new FormData();
   formData.append('template', file);
-  const res = await fetch(`${API_BASE}/workshop/courses/${courseId}/template`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) throw new Error("Upload failed");
+  await postForm(`/workshop/courses/${courseId}/template`, formData);
 }
 
 export function deleteCourseTemplate(courseId: string): Promise<void> {
@@ -276,11 +282,7 @@ export function deleteCourseTemplate(courseId: string): Promise<void> {
 export async function uploadSessionTemplate(sessionId: string, file: File): Promise<void> {
   const formData = new FormData();
   formData.append('template', file);
-  const res = await fetch(`${API_BASE}/workshop/sessions/${sessionId}/template`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) throw new Error("Template upload failed");
+  await postForm(`/workshop/sessions/${sessionId}/template`, formData);
 }
 
 /** Removes the template from this session only; the course template stays for other sessions. */

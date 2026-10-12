@@ -11,7 +11,7 @@ client/src/
 │   ├── useWizardState.ts  # all wizard state, step order, draft saving, leave guard
 │   └── use-toast.ts
 ├── lib/
-│   ├── api.ts             # REST client (fetch wrappers, 401/403 handling)
+│   ├── api.ts             # every call to the server (components never call fetch), 401/403 handling
 │   ├── workshop-generator.ts  # shared types (WorkshopInput, LearningGoalPlan, WorkshopSession,
 │   │                          #   SlideData, DraftState, …) and generateDefaultSkeleton
 │   ├── activity-taxonomy.ts   # Bloom's/SOLO → activity (mirror of the server's ActivityRecommender)

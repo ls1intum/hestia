@@ -25,7 +25,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { deleteSessionTemplate, uploadSessionTemplate } from "@/lib/api";
+import { saveAs } from "file-saver";
+import {
+  deleteSessionTemplate, uploadSessionTemplate, generateBlockSlides, saveSlides, exportPptxWithTemplate,
+  errorMessage, handleAuthError, safeFileName,
+} from "@/lib/api";
 import { TemplateUploadBox } from "./TemplateUploadBox";
 import { WorkshopSession, WorkshopInput, LearningGoalPlan, SlideData, TemplateInfo } from "@/lib/workshop-generator";
 
@@ -120,13 +124,11 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
           if (block.phase === "BUFFER") {
             return { idx: actualIdx, slides: [] };
           }
-          const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/block-slides", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ block, meta, goals }),
-          });
-          if (!res.ok) throw new Error("Failed to generate slides for block " + block.phaseLabel);
-          return { idx: actualIdx, slides: await res.json() };
+          try {
+            return { idx: actualIdx, slides: await generateBlockSlides(block, meta, goals) };
+          } catch (e) {
+            throw handleAuthError(e) ? e : new Error("Failed to generate slides for block " + block.phaseLabel);
+          }
         });
 
         const results = await Promise.all(promises);
@@ -136,17 +138,13 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
       }
       setSlidesCache(newCache);
 
-      await fetch(import.meta.env.BASE_URL + `api/workshop/sessions/${session.id}/slides`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newCache),
-      });
+      if (session.id) await saveSlides(session.id, newCache);
 
       toast({ title: "Slides Generated!", description: "Scroll right to preview your deck." });
       setShowSlidesGenerated(true);
       setTimeout(() => setShowSlidesGenerated(false), 4000);
     } catch (e) {
-      toast({ title: "Generation failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Generation failed", description: errorMessage(e, "Unknown error"), variant: "destructive" });
     } finally {
       setIsGenerating(false);
     }
@@ -156,29 +154,12 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     setIsSaving(true);
     toast({ title: "Preparing Download…" });
     try {
-      const formData = new FormData();
-      formData.append("session", JSON.stringify(session));
-      formData.append("meta", JSON.stringify(meta));
-      formData.append("slides", JSON.stringify(allCachedSlides));
-      // Without a template file the server uses the template stored for this session (or its course)
-      const res = await fetch(import.meta.env.BASE_URL + "api/workshop/export/pptx-with-template", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Assembly failed");
-      const blob = await res.blob();
-      const safeName = (session.title || "workshop").slice(0, 40).replace(/[^a-zA-Z0-9.-]+/gi, "_").toLowerCase();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeName}_slides.pptx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      // The server uses the template stored for this session (or its course)
+      const blob = await exportPptxWithTemplate(session, meta, allCachedSlides);
+      saveAs(blob, `${safeFileName(session.title)}_slides.pptx`);
       toast({ title: "Downloaded!", description: "Your slide deck is ready." });
     } catch (err) {
-      toast({ title: "Download Failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      if (!handleAuthError(err)) toast({ title: "Download Failed", description: errorMessage(err, "Assembly failed"), variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -193,19 +174,15 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
   const handleSaveEdits = async (): Promise<boolean> => {
     setIsSavingEdits(true);
     try {
-      const res = await fetch(import.meta.env.BASE_URL + `api/workshop/sessions/${session.id}/slides`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editableRef.current),
-      });
-      if (!res.ok) throw new Error("Failed to save slides to server");
+      if (!session.id) throw new Error("The session has not been saved yet");
+      await saveSlides(session.id, editableRef.current);
       setSlidesCache(editableRef.current);
       toast({ title: "Slides Updated", description: "Your manual edits have been saved." });
       isEditModeRef.current = false;
       setIsEditMode(false);
       return true;
     } catch (e) {
-      toast({ title: "Save Failed", description: e instanceof Error ? e.message : "Error saving", variant: "destructive" });
+      if (!handleAuthError(e)) toast({ title: "Save Failed", description: errorMessage(e, "Failed to save slides to server"), variant: "destructive" });
       return false;
     } finally {
       setIsSavingEdits(false);

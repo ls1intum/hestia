@@ -2,7 +2,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { LearningGoalPlan, KeptGoal } from "@/lib/workshop-generator";
+import { LearningGoalPlan, KeptGoal, GoalSuggestion } from "@/lib/workshop-generator";
+import { refineGoal, fixGoalsGrammar, handleAuthError } from "@/lib/api";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -19,7 +20,7 @@ import { LGHImportModal, SelectedSkillData } from "./LGHImportModal";
 interface GoalDraft {
   id: string;
   text: string;
-  suggestions: SuggestionItem[];
+  suggestions: GoalSuggestion[];
   checking: boolean;
   dirty: boolean;
   looksGood?: boolean;
@@ -27,12 +28,6 @@ interface GoalDraft {
   soloLevel?: string;
   session?: string;
   subSkills?: { id: string; text: string; bloomLevel?: string; soloLevel?: string }[];
-}
-
-interface SuggestionItem {
-  type: "split" | "refine";
-  values: string[];
-  message: string;
 }
 
 interface Props {
@@ -62,7 +57,6 @@ const toKept = (g: GoalDraft): KeptGoal => ({
 const goalsKey = (goals: { id: string; text: string }[]) =>
   JSON.stringify(goals.filter(g => g.text.trim()).map(g => [g.id, g.text.trim()]));
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? import.meta.env.BASE_URL + "api";
 
 // ── Main component ────────────────────────────────────────────────────
 export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, isLoading, initialGoals, keptGoals, onKeepDraft, registerLeaveGuard }: Props) {
@@ -131,30 +125,21 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       }
       updateGoal(id, { checking: true, dirty: false });
       try {
-        const res = await fetch(`${API_BASE}/workshop/refine-goal`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            goal: text.trim(),
-            context: {
-              sessionType: initialInput.sessionType,
-              duration: initialInput.duration,
-              participants: initialInput.participants,
-              studentBackground: initialInput.studentBackground,
-              subSkills: subSkills?.map(s => s.text) || []
-            },
-          }),
+        const data = await refineGoal(text.trim(), {
+          sessionType: initialInput.sessionType,
+          duration: initialInput.duration,
+          participants: initialInput.participants,
+          studentBackground: initialInput.studentBackground,
+          subSkills: subSkills?.map(s => s.text) || []
         });
-        if (!res.ok) throw new Error("Server error");
-        const data: SuggestionItem[] = await res.json();
 
         if (!data || data.length === 0) {
           updateGoal(id, { suggestions: [], checking: false, looksGood: true });
         } else {
           updateGoal(id, { suggestions: data, checking: false, looksGood: false });
         }
-      } catch {
-        toast({ title: "Check failed", description: "Could not connect to AI service.", variant: "destructive" });
+      } catch (e) {
+        if (!handleAuthError(e)) toast({ title: "Check failed", description: "Could not connect to AI service.", variant: "destructive" });
         updateGoal(id, { checking: false, suggestions: [] });
       }
     },
@@ -165,7 +150,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     updateGoal(id, { text: value, dirty: true, suggestions: [], looksGood: false });
   };
 
-  const acceptSuggestion = (goalId: string, suggestion: SuggestionItem) => {
+  const acceptSuggestion = (goalId: string, suggestion: GoalSuggestion) => {
     if (suggestion.type === "refine") {
       updateGoal(goalId, { text: suggestion.values[0], suggestions: [], dirty: false });
     } else {
@@ -243,16 +228,9 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     setIsFixingGrammar(true);
     let finalGoalsText = validGoals.map((g) => g.text.trim());
     try {
-      const res = await fetch(`${API_BASE}/workshop/fix-goals-grammar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(finalGoalsText),
-      });
-      if (res.ok) {
-        const fixed = await res.json();
-        if (Array.isArray(fixed) && fixed.length === finalGoalsText.length) {
-          finalGoalsText = fixed;
-        }
+      const fixed = await fixGoalsGrammar(finalGoalsText);
+      if (Array.isArray(fixed) && fixed.length === finalGoalsText.length) {
+        finalGoalsText = fixed;
       }
     } catch (e) {
       console.error("Grammar check failed", e);
