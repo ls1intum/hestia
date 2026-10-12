@@ -289,6 +289,7 @@ export default function App() {
             session={session}
             templateInfo={templateInfo}
             setTemplateInfo={setTemplateInfo}
+            registerLeaveGuard={(guard) => { leaveGuardRef.current = guard; }}
             goals={refinedGoals}
             meta={workshopInput as WorkshopInput}
             completedTasks={completedTasks}
@@ -312,14 +313,14 @@ export default function App() {
               }
               persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, tasks), nextStep, sessionId, currentCourseId);
             }}
-            onBack={() => setStep("timeline")}
-            onDone={(latestTasks) => {
+            onBack={() => confirmLeave(() => setStep("timeline"))}
+            onDone={(latestTasks) => confirmLeave(() => {
               if (latestTasks) setCompletedTasks(latestTasks);
               persistDraft(buildDraft(workshopInput, refinedGoals, currentSkeleton ?? undefined, session, latestTasks ?? completedTasks), "final-review", sessionId, currentCourseId);
               setStep("final-review");
               setHighestStepIdx(STEP_ORDER.indexOf("final-review"));
               window.scrollTo(0, 0);
-            }}
+            })}
           />
         )}
 

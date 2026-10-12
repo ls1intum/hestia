@@ -18,11 +18,13 @@ interface Props {
   onDone: (tasks?: string[]) => void;
   templateInfo?: TemplateInfo | null;
   setTemplateInfo?: (v: TemplateInfo | null) => void;
+  registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
 
 import { phaseEmojis, getMechanicDescription } from "@/lib/constants";
+import type { LeaveGuard } from "@/hooks/useWizardState";
 
-export default function WorkshopPreparation({ session, goals = [], meta, completedTasks: initialTasks = [], slidesCache, setSlidesCache, onUpdateTasks, onBack, onDone, templateInfo, setTemplateInfo }: Props) {
+export default function WorkshopPreparation({ session, goals = [], meta, completedTasks: initialTasks = [], slidesCache, setSlidesCache, onUpdateTasks, onBack, onDone, templateInfo, setTemplateInfo, registerLeaveGuard }: Props) {
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set(initialTasks));
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [loadingSlides, setLoadingSlides] = useState<number | null>(null);
@@ -207,7 +209,7 @@ export default function WorkshopPreparation({ session, goals = [], meta, complet
         </div>
       </div>
 
-      <SlideWorkstation templateInfo={templateInfo} setTemplateInfo={setTemplateInfo}
+      <SlideWorkstation templateInfo={templateInfo} setTemplateInfo={setTemplateInfo} registerLeaveGuard={registerLeaveGuard}
         session={session}
         meta={meta}
         goals={goals}

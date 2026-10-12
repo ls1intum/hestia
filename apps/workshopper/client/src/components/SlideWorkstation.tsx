@@ -1,6 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Presentation, Upload, Sparkles, Download, RefreshCw, X, File as FileIcon, ChevronLeft, ChevronRight, Check, ChevronUp, ChevronDown, Code, Save, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import type { LeaveGuard } from "@/hooks/useWizardState";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { deleteSessionTemplate, uploadSessionTemplate } from "@/lib/api";
 import { TemplateUploadBox } from "./TemplateUploadBox";
 import { WorkshopSession, WorkshopInput, LearningGoalPlan, SlideData, TemplateInfo } from "@/lib/workshop-generator";
@@ -16,9 +22,11 @@ interface Props {
   setIsOpen: (open: boolean) => void;
   templateInfo?: TemplateInfo | null;
   setTemplateInfo?: (v: TemplateInfo | null) => void;
+  /** Lets the wizard ask before navigating away while slide edits are unsaved. */
+  registerLeaveGuard?: (guard: LeaveGuard | null) => void;
 }
 
-export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, onPreview, isOpen, setIsOpen, templateInfo, setTemplateInfo }: Props) {
+export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesCache, onPreview, isOpen, setIsOpen, templateInfo, setTemplateInfo, registerLeaveGuard }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -182,24 +190,62 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
     setIsEditMode(true);
   };
 
-  const handleSaveEdits = async () => {
+  /** Saves the slide edits; resolves false (and stays in edit mode) if saving failed. */
+  const handleSaveEdits = async (): Promise<boolean> => {
     setIsSavingEdits(true);
     try {
-      setSlidesCache(editableCache);
       const res = await fetch(import.meta.env.BASE_URL + `api/workshop/sessions/${session.id}/slides`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editableCache),
+        body: JSON.stringify(editableRef.current),
       });
       if (!res.ok) throw new Error("Failed to save slides to server");
+      setSlidesCache(editableRef.current);
       toast({ title: "Slides Updated", description: "Your manual edits have been saved." });
+      isEditModeRef.current = false;
       setIsEditMode(false);
+      return true;
     } catch (e) {
       toast({ title: "Save Failed", description: e instanceof Error ? e.message : "Error saving", variant: "destructive" });
+      return false;
     } finally {
       setIsSavingEdits(false);
     }
   };
+
+  // ── Unsaved slide edits ───────────────────────────────────────────────
+  // Edit mode works on a copy of the slides. Anything that would drop that copy (leaving the
+  // step, View, Regenerate, Download) asks first: save, discard or stay.
+  const isEditModeRef = useRef(isEditMode);
+  isEditModeRef.current = isEditMode;
+  const editableRef = useRef(editableCache);
+  editableRef.current = editableCache;
+  const savedRef = useRef(slidesCache);
+  savedRef.current = slidesCache;
+  const [leaveDialog, setLeaveDialog] = useState<{ proceed: () => void } | null>(null);
+
+  const hasUnsavedEdits = () =>
+    isEditModeRef.current && JSON.stringify(editableRef.current) !== JSON.stringify(savedRef.current);
+
+  const leaveEditMode = () => {
+    isEditModeRef.current = false;
+    setIsEditMode(false);
+  };
+
+  /** Runs `proceed` now, or after asking what to do with unsaved slide edits. Leaves edit mode either way. */
+  const confirmLeave = (proceed: () => void) => {
+    if (hasUnsavedEdits()) {
+      setLeaveDialog({ proceed });
+    } else {
+      if (isEditModeRef.current) leaveEditMode();
+      proceed();
+    }
+  };
+
+  useEffect(() => {
+    registerLeaveGuard?.({ isDirty: hasUnsavedEdits, confirmLeave });
+    return () => registerLeaveGuard?.(null);
+  });
 
   const nextSlide = () => setCurrentSlideIndex(i => Math.min(totalSlides - 1, i + 1));
   const prevSlide = () => setCurrentSlideIndex(i => Math.max(0, i - 1));
@@ -664,7 +710,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleGenerate();
+              // Regenerating replaces the slides, so unsaved edits are settled first
+              confirmLeave(() => handleGenerate());
             }}
             disabled={isGenerating || isUploading}
             className={
@@ -699,7 +746,8 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleDownload();
+                // The download uses the saved slides, so unsaved edits are settled first
+                confirmLeave(() => handleDownload());
               }}
               disabled={isSaving}
               className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50 text-white"
@@ -720,7 +768,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (isEditMode) setIsEditMode(false);
+                if (isEditMode) confirmLeave(() => {});
                 else handleEditSlide();
                 if (!isOpen && !isEditMode) setIsOpen(true);
               }}
@@ -862,7 +910,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                   <span style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', fontWeight: 600, color: 'var(--hestia-text)' }}>Slide Editor</span>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setIsEditMode(false)}
+                      onClick={leaveEditMode}
                       disabled={isSavingEdits}
                       className="px-3 py-1.5 flex items-center gap-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50"
                       style={{ fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', color: 'var(--hestia-text)' }}
@@ -872,7 +920,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
                       <X className="h-4 w-4" /> Cancel
                     </button>
                     <button
-                      onClick={handleSaveEdits}
+                      onClick={() => { handleSaveEdits(); }}
                       disabled={isSavingEdits}
                       className="px-3 py-1.5 flex items-center gap-1.5 rounded-md transition-colors text-white focus:outline-none focus-visible:ring-2 disabled:opacity-50"
                       style={{ background: 'var(--hestia-primary)', fontFamily: 'var(--hestia-font-body)', fontSize: '0.875rem', fontWeight: 500 }}
@@ -1193,6 +1241,44 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
           </div>
         </div>
       )}
+      <AlertDialog open={leaveDialog !== null} onOpenChange={(open) => { if (!open && !isSavingEdits) setLeaveDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Your slide edits are not saved</AlertDialogTitle>
+            <AlertDialogDescription>
+              Save your changes to the slides before you continue, or discard them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingEdits} onClick={() => setLeaveDialog(null)}>Stay</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingEdits}
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                const proceed = leaveDialog?.proceed;
+                setLeaveDialog(null);
+                leaveEditMode();
+                proceed?.();
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              disabled={isSavingEdits}
+              onClick={async () => {
+                const proceed = leaveDialog?.proceed;
+                const ok = await handleSaveEdits();
+                if (!ok) return; // keep the dialog and the edits; the error was shown as a toast
+                setLeaveDialog(null);
+                proceed?.();
+              }}
+            >
+              {isSavingEdits ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : "Save and continue"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
