@@ -103,6 +103,13 @@ public class WorkshopSessionFacade {
                 request.availableMaterials()
             );
             
+            // A single block regenerated for an existing session (switching or adding an activity)
+            // is not a timetable: the client merges it into its blocks and saves the whole timetable
+            // as a draft. Saving it here would replace the session's timetable with one block.
+            if (isSingleBlockRegeneration(request, sessionId)) {
+                return generatedDto;
+            }
+
             // 2. Fast DB Persist (INSIDE short transaction scope)
             return persistGeneratedSession(generatedDto, sessionId);
             
@@ -111,6 +118,11 @@ public class WorkshopSessionFacade {
         }
     }
     
+    static boolean isSingleBlockRegeneration(GenerateSessionRequestDto request, String sessionId) {
+        return sessionId != null && request.skeleton() != null
+                && request.skeleton().blocks() != null && request.skeleton().blocks().size() == 1;
+    }
+
     public void verifyOwnership(String id) {
         WorkshopSessionEntity entity = repo.findById(id).orElse(null);
         if (entity != null) {

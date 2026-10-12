@@ -63,4 +63,25 @@ public class WorkshopSessionFacadeContractTest {
 
         assertEquals(materials, materialsCaptor.getValue(), "availableMaterials must be passed unmodified to the UseCase");
     }
+
+    @Test
+    @WithMockUser(username = "dev-local-user")
+    public void generateAndSaveSession_shouldNotSaveASingleRegeneratedBlockOverTheTimetable() throws Exception {
+        WorkshopInputDto meta = new WorkshopInputDto("Test Title", 90, 10, "lecture", null, null, null);
+        SkeletonBlockDto block = new SkeletonBlockDto("LEARNING_CYCLE", 1, 20, "Cycle", null, List.of());
+        SessionSkeletonDto skeleton = new SessionSkeletonDto(List.of(block), "session-1");
+        GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, "", skeleton);
+
+        WorkshopSessionDto generated = new WorkshopSessionDto("session-1", "title", "bg", List.of(), null);
+        when(generateTimetableUseCase.execute(any(), any(), any(), anyString())).thenReturn(generated);
+        WorkshopSessionEntity entity = new WorkshopSessionEntity();
+        entity.setId("session-1");
+        entity.setOwnerId(com.workshopper.config.AuthContext.getCurrentUserId()); // the caller owns the session
+        when(repository.findById("session-1")).thenReturn(Optional.of(entity));
+
+        WorkshopSessionDto result = facade.generateAndSaveSession(request);
+
+        assertEquals(generated, result);
+        verify(repository, org.mockito.Mockito.never()).save(any());
+    }
 }
