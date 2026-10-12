@@ -1,8 +1,27 @@
 import { useState } from "react";
 import { toast } from "@/hooks/use-toast";
 import { generateSession, errorMessage, handleAuthError } from "@/lib/api";
-import type { ActivityBlock, LearningGoalPlan, SkeletonBlock, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
+import type { ActivityBlock, ActivitySection, LearningGoalPlan, SkeletonBlock, WorkshopInput, WorkshopSession } from "@/lib/workshop-generator";
 import type { DndActivityBlock, EvaluateMappings, TimetableEditing } from "./useTimetableEditing";
+
+/** Asks for only the practice part of a block; its explain part is kept as it is. */
+const PRACTICE_ONLY = "\nIMPORTANT: Only generate the interactive participant practice section and setup. Skip the 'Explain' or 'Lecture' phase since it was already covered.";
+
+/** A section where participants do the activity ("Participants Practice"), not the lecturer's explain part. */
+const isPracticeSection = (s: ActivitySection) => /activity|practice|application/i.test(s.title || "");
+
+const withoutExplainSections = (sections: ActivitySection[]) =>
+  sections.filter(s => !/explain|lecture|introduction|theory/i.test(s.title || ""));
+
+/**
+ * Positions of the practice sections an activity switch replaces: those that list the activity,
+ * otherwise all practice sections (generated sections often don't list their activity).
+ */
+function practiceSectionsOf(block: ActivityBlock, activity: string): number[] {
+  const practice = (block.sections || []).map((s, i) => ({ s, i })).filter(({ s }) => isPracticeSection(s));
+  const ofActivity = practice.filter(({ s }) => (s.methods || []).includes(activity));
+  return (ofActivity.length > 0 ? ofActivity : practice).map(({ i }) => i);
+}
 
 /**
  * Changes to a timetable block that need the LLM: switching or adding an activity, and the
@@ -60,31 +79,69 @@ export function useBlockRegeneration({ editing, initialSession, goals, meta, onM
   const skeletonSections = (block: DndActivityBlock) =>
     (block.sections || []).map(s => ({ title: s.title, duration: s.duration || 0 }));
 
-  /** Replaces one activity of a block (or adds it if the block didn't have it) and regenerates the block. */
+  /**
+   * Replaces one activity of a block (or adds it if the block didn't have it). When the block has
+   * practice sections next to its explain part (a learning cycle), only the practice sections of
+   * that activity are regenerated, so the content to teach stays as it is. Other blocks are
+   * regenerated as a whole.
+   */
   const switchActivity = (dndId: string, oldActivity: string, newActivity: string) => {
     let newMethods: string[] = [];
     let lgIndex = 0;
+    /** Positions of the practice sections being replaced; empty when the whole block is regenerated */
+    let replaced: number[] = [];
     return regenerate(dndId,
       block => {
         lgIndex = block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0);
         newMethods = [...(block.methods || [])];
         const i = newMethods.indexOf(oldActivity);
         if (i !== -1) newMethods[i] = newActivity; else newMethods.push(newActivity);
+        replaced = practiceSectionsOf(block, oldActivity);
+        const practiceOnly = replaced.length > 0 && replaced.length < (block.sections || []).length;
+        if (!practiceOnly) replaced = [];
+        const replacedSections = replaced.map(i => block.sections![i]);
         return {
-          skeleton: { phase: block.phase, title: block.phaseLabel || block.phase, description: block.objective, lgIndex, duration: block.duration, sections: skeletonSections(block) },
-          meta: { ...meta, selectedActivities: newMethods },
+          skeleton: practiceOnly
+            ? {
+                phase: block.phase,
+                title: block.phaseLabel || block.phase,
+                description: (block.objective || "") + PRACTICE_ONLY,
+                lgIndex,
+                duration: replacedSections.reduce((acc, s) => acc + (s.duration || 0), 0) || block.duration,
+                sections: replacedSections.map(s => ({ title: s.title, duration: s.duration || 0 })),
+              }
+            : { phase: block.phase, title: block.phaseLabel || block.phase, description: block.objective, lgIndex, duration: block.duration, sections: skeletonSections(block) },
+          meta: { ...meta, selectedActivities: practiceOnly ? [newActivity] : newMethods },
         };
       },
-      (b, updated) => ({
-        ...b,
-        ...updated,
-        // If the server returns a generic phase name as the label, keep the user's label
-        phaseLabel: updated.phaseLabel && updated.phaseLabel !== updated.phase ? updated.phaseLabel : (b.phaseLabel || b.phase),
-        methods: updated.methods || newMethods,
-        dndId,
-        lgIndex,
-        blockId: b.blockId,
-      }),
+      (b, updated) => {
+        if (replaced.length > 0) {
+          // Swap the old practice sections for the new ones, where the first of them was
+          const fresh = withoutExplainSections(updated.sections || []);
+          const old = b.sections || [];
+          const sections = [
+            ...old.slice(0, replaced[0]).filter((_, i) => !replaced.includes(i)),
+            ...fresh,
+            ...old.slice(replaced[0]).filter((_, i) => !replaced.includes(i + replaced[0])),
+          ];
+          return {
+            ...b,
+            sections,
+            duration: sections.reduce((acc, s) => acc + (s.duration || 0), 0),
+            methods: newMethods,
+          };
+        }
+        return {
+          ...b,
+          ...updated,
+          // If the server returns a generic phase name as the label, keep the user's label
+          phaseLabel: updated.phaseLabel && updated.phaseLabel !== updated.phase ? updated.phaseLabel : (b.phaseLabel || b.phase),
+          methods: updated.methods || newMethods,
+          dndId,
+          lgIndex,
+          blockId: b.blockId,
+        };
+      },
       { success: { title: "Activity updated", description: `Switched to ${newActivity}` }, failure: "Generation failed" },
     );
   };
@@ -93,12 +150,12 @@ export function useBlockRegeneration({ editing, initialSession, goals, meta, onM
   const addActivity = (dndId: string, methodToAdd: string) => regenerate(dndId,
     block => {
       // The existing practice section's length is the baseline for the new activity
-      const practice = (block.sections || []).find(s => /activity|practice|application/i.test(s.title || ""));
+      const practice = (block.sections || []).find(isPracticeSection);
       return {
         skeleton: {
           phase: block.phase,
           title: block.phaseLabel || block.phase,
-          description: (block.objective || "") + "\nIMPORTANT: Only generate the interactive participant practice section and setup. Skip the 'Explain' or 'Lecture' phase since it was already covered.",
+          description: (block.objective || "") + PRACTICE_ONLY,
           lgIndex: block.lgIndex ?? (block.phase === "LEARNING_CYCLE" ? 1 : 0),
           duration: practice?.duration || Math.max(10, Math.floor((block.duration || 40) / 2)),
           sections: [], // no sections, so the AI generates a fresh practice loop
@@ -108,7 +165,7 @@ export function useBlockRegeneration({ editing, initialSession, goals, meta, onM
     },
     (b, generated) => {
       // Append the new sections without any explain/lecture part, since the block already has one
-      const added = (generated.sections || []).filter(s => !/explain|lecture|introduction|theory/i.test(s.title || ""));
+      const added = withoutExplainSections(generated.sections || []);
       return {
         ...b,
         sections: [...(b.sections || []), ...added],
