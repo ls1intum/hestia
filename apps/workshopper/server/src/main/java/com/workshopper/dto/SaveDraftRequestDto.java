@@ -1,0 +1,28 @@
+package com.workshopper.dto;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+/**
+ * Request body for POST /api/workshop/sessions/draft
+ * Saves or updates the in-progress draft state for a session.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record SaveDraftRequestDto(
+        /** If present, update the existing session with this ID; otherwise create a new one. */
+        String sessionId,
+
+        /** The step the user is currently on (e.g. "input-1", "goals", "skeleton") */
+        String currentStep,
+
+        /** Human-readable display title derived from step 1 input */
+        String title,
+
+        /**
+         * Full draft state as a JSON string (opaque blob from client).
+         * Contains: workshopInput, refinedGoals, skeleton, etc. for each step.
+         */
+        String draftStateJson,
+
+        /** ID of parent course, if any */
+        String courseId
+) {}

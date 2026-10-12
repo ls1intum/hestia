@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   server:
-    image: ghcr.io/ls1intum/hestia/workshopper/backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/workshopper/server:${IMAGE_TAG:-latest}
     container_name: workshopper-server
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/ls1intum/hestia/workshopper/frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/workshopper/client:${IMAGE_TAG:-latest}
     container_name: workshopper-web
     expose:
       - "80"

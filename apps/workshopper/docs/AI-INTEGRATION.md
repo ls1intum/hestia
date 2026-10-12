@@ -1,38 +1,53 @@
-# AI/LLM Prompts & Integration Guide
+# AI Integration
 
-The Workshopper backend leverages Spring AI to orchestrate LLM prompts that convert user metadata into structured workshop sessions.
+Workshopper uses Spring AI (via the `libs:shared-llm` module) for the steps that need language: checking goals, writing the timetable content and writing slides. Everything structural is plain code: the session skeleton, which activity a goal gets, PPTX/PDF assembly and template branding.
 
-## Multi-Stage Prompt Pipeline
+## Where the LLM is called
 
-To ensure high-quality output, the generation is split into multiple distinct LLM calls rather than one monolithic prompt. This reduces hallucinations and enforces a strict sequence of thought.
+All calls go through `LlmService.callWithStructuredOutput(systemTemplate, userTemplate, model, converter, useSecondary)`:
+1. It loads `server/src/main/resources/prompts/<name>.st` and renders it with Spring AI's `PromptTemplate`, filling `{placeholders}` from the model map.
+2. It sends the request, and parses the JSON answer into a DTO with `BeanOutputConverter`.
 
-### 1. Learning Goals Generation (`/plan`)
-**Goal**: Convert unstructured context and topic into discrete, measurable learning goals.
-- **Input**: Topic, Target Audience, Prior Knowledge, Context, Optional PDF text.
-- **Output**: A JSON array of `LearningGoalPlanDto` objects.
-- **System Prompt Focus**: Enforces Bloom's Taxonomy, making sure verbs are observable and actionable.
+| Feature | Endpoint | Code | Prompt templates |
+|---|---|---|---|
+| Goal check (refine or split one goal) | `POST /refine-goal` | `RefineLearningGoalUseCase` | `refine-learning-goal-{system,user}.st` |
+| Grammar fix for all goals | `POST /fix-goals-grammar` | `FixGoalsGrammarUseCase` | `fix-goals-grammar-{system,user}.st` |
+| Timetable block content (one call per block, run in parallel) | `POST /session` | `GenerateTimetableUseCase` | `generate-timetable-block-{system,user}.st` |
+| Session title | `POST /session` | `GenerateTimetableUseCase` | `generate-session-title-{system,user}.st` |
+| Slides for one block | `POST /export/block-slides` | `GenerateSlideBlockUseCase` | `generate-slide-block-{welcome,activate,learning-cycle,evaluate,wrapup}-{system,user}.st` |
 
-### 2. Activity Generation (`/activities`)
-**Goal**: Attach specific teaching phases and practical activities to each learning goal.
-- **Input**: The approved learning goals from Step 1, plus preferred activity types (e.g., Think-Pair-Share, Group Discussion).
-- **Output**: Updated `LearningGoalPlanDto` objects containing the nested activities.
-- **System Prompt Focus**: Enforces realistic time constraints and ensures the selected activities match the cognitive level of the goal.
+To change what the AI writes, edit the `.st` template. Every placeholder in a template must be in the model map built by the calling code; `LlmTemplatesTest` renders all templates and fails on a missing placeholder.
 
-### 3. Session Timetable Generation (`/session`)
-**Goal**: Organize the goals and activities into a coherent chronological timetable.
-- **Input**: The goals with attached activities, plus contextual constraints like `availableMaterials` (e.g., whiteboards, laptops).
-- **Output**: A `WorkshopSessionDto` containing a list of `TimetableBlockDto` objects.
-- **System Prompt Focus**: Managing time logic, ensuring smooth transitions between blocks, and generating introductory and concluding blocks to frame the session while strictly adhering to the permitted physical materials and selected activities.
+## Timetable generation
 
-### 4. Slide Generation (`/export/block-slides`)
-**Goal**: Generate presentation slide content for each block in the timetable.
-- **Input**: A single timetable block and its associated activities.
-- **Output**: A JSON array of slide objects (title, bullet points, presenter notes).
-- **System Prompt Focus**: Condensing complex activity instructions into readable slide formats.
+1. The client builds the session skeleton itself (`generateDefaultSkeleton` in `client/src/lib/workshop-generator.ts`): the sequence of blocks, which goal each covers, and their durations.
+2. The server fills each block in one LLM call (`hydrateActivityBlock`). It sends:
+   * the session settings, the goals (with Bloom's/SOLO level and prerequisites), the selected activities and the available materials;
+   * for a learning cycle, the **required activity**, chosen by `ActivityRecommender` from the goal's Bloom's/SOLO level within the selected activities (falling back to lower levels; any activity if none are selected);
+   * for Check Understanding, the activity-to-goal mapping, with one exact line to fill per mapped activity.
+3. The server then checks the answer:
+   * activity tags and materials the user didn't select are dropped (`restrictToSelections`);
+   * a learning cycle gets exactly its required activity;
+   * Check Understanding is rebuilt to one combined question per mapped activity (`normalizeEvaluateSteps`).
+
+A second generation request for the same session while one is running is rejected with `409`.
+
+## Slide generation
+
+Slides are generated per timetable block. The phase decides the template: ARRIVE → welcome, ACTIVATE → activate, LEARNING_CYCLE → learning-cycle, EVALUATE → evaluate, SUMMARY → wrapup. The agenda slide (the goals, verbatim) and the break slides are built without the LLM. If an LLM call fails, the block gets fallback slides instead of an error.
+
+Each slide is a map with a `layout` (which slide of the default template it uses, e.g. `activity_grid3`, `live_poll`, `debrief`) and a `group`. See the `SlideData` type in `workshop-generator.ts`.
+
+## Not AI
+
+* **PPTX assembly** (`AssemblePptxUseCase`): copies slides from `server/src/main/resources/templates/workshopper-default.pptx` and fills their placeholders.
+  * The agenda slide gets one row per goal.
+  * Text that doesn't fit is shrunk (`PptxTextFit`).
+  * An uploaded template only contributes its title slide, logo and footer (`TemplateBranding`).
+* **PDF export** (`PdfExportService`): rendered with Apache PDFBox.
 
 ## Configuration
 
-LLM connections are configured via the `libs:shared-llm` module and `application.yml`.
-Requests go to the TUM AET Logos gateway (the `shared-llm` default); the API key is provided via the `WORKSHOPPER_LOGOS_API_KEY` environment variable.
-
-The models are usually configured for high structure (temperature = 0.0) for the JSON-returning endpoints to ensure reliable parsing by Jackson.
+* **Provider:** requests go to the TUM AET Logos gateway (the `shared-llm` default). The API key comes from `WORKSHOPPER_LOGOS_API_KEY`.
+* **Secondary model:** `LLM_SECONDARY_MODEL` (property `llm.secondary-model`) optionally sets a second model, used for slide generation; it must be a Logos model id.
+* **Temperature:** the JSON-returning calls use the shared default (temperature 0.0) so the output parses reliably.

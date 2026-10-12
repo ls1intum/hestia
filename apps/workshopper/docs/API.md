@@ -1,77 +1,77 @@
-# Workshopper API Documentation
+# Workshopper API
 
-The Workshopper backend provides a set of REST endpoints under the `/api/workshop` base path. These endpoints handle the AI-driven workshop generation process, session management, and document export.
+All endpoints live under `/api/workshop` and need a logged-in user (see [AUTH.md](AUTH.md)); the only exception is `GET /api/workshop/health`.
 
-## Workshop Generation Flow
+Common responses:
+* `401` not logged in (the client redirects to the SAML login)
+* `403` the session or course belongs to someone else
+* `400` input over a limit (see below), or an uploaded template that is not a `.pptx`
+* `404` unknown session or course; also when saving a session or course that was deleted meanwhile (it is not re-created)
+* `409` a timetable generation for the same session is already running
+* `413` a draft (over 2 MB of JSON) or slide set (over 5 MB) too large to store
+* `429` too many AI requests (see below)
+* `500` an unexpected server error, with `{"error": "..."}`; the details are only in the server log
 
-The workshop generation is a multi-step process:
+All of these come from `ApiExceptionHandler`, so the controllers themselves have no error handling. Error bodies are `{"error": "..."}` or Spring's `{"detail": "..."}`; the client shows that message.
 
-### 1. `POST /api/workshop/plan`
-Generates the initial learning goal plans based on user input.
-- **Request Body**: `WorkshopInputDto` (Target audience, context, topic, etc.)
-- **Response**: `List<LearningGoalPlanDto>`
+**Limits** (`facade/UsageGuard.java`), far above normal use, so one user can't burn LLM credits, starve others or fill the database:
+* AI requests (`/session`, `/export/block-slides`, `/refine-goal`, `/fix-goals-grammar`): at most 4 running and 120 per 10 minutes per user (`workshopper.limits.*` in `application.yml` to change), 40 blocks, 20 goals, 3,000 characters per text field, 600 minutes per session or block.
+* Storage: 500 sessions and 100 courses per user, titles up to 300 characters, drafts up to 2 MB and slides up to 5 MB of JSON.
+* Uploads: templates up to 20 MB, checked to open as a PowerPoint file.
 
-### 2. `POST /api/workshop/session`
-Generates the full, finalized timetable session from the goals and activities.
-- **Request Body**: `GenerateSessionRequestDto` (Goals, metadata including `availableMaterials`, session skeleton)
-- **Response**: `WorkshopSessionDto` (The complete timetable)
+Request and response bodies are the DTOs in `server/src/main/java/com/workshopper/dto`; their TypeScript counterparts are in `client/src/lib/workshop-generator.ts`.
 
-## Session Management
+## Generation
 
-### `POST /api/workshop/sessions/draft`
-Saves the current state of a workshop generation in progress.
-- **Request Body**: `SaveDraftRequestDto`
-- **Response**: `{"id": "<session-id>"}`
+| Method | Path | Body | Purpose |
+|---|---|---|---|
+| POST | `/session` | `GenerateSessionRequestDto` (goals, meta, availableMaterials, skeleton) | Generates the timetable, or one block of it when the skeleton has one block (used when switching or adding an activity). `skeleton.sessionId` is the draft to save it to. Returns `WorkshopSessionDto`. |
+| POST | `/refine-goal` | `RefineGoalRequestDto` (goal, context) | AI check of one learning goal. Returns `GoalSuggestionDto[]` (`refine` or `split`); empty if the goal looks fine. |
+| POST | `/fix-goals-grammar` | `string[]` | Fixes the grammar of the goals; returns the original goals if the LLM call fails. |
+| POST | `/export/block-slides` | `BlockSlidesRequestDto` (block, meta, goals) | Generates the slides of one timetable block (JSON, not a file). |
 
-### `GET /api/workshop/sessions/{id}`
-Retrieves a full session detail (including draft state if not finished).
-- **Response**: Session JSON payload.
+## Export
 
-### `GET /api/workshop/sessions`
-Lists all sessions as lightweight summaries.
-- **Response**: `List<SessionSummaryDto>`
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/export/pdf` | `PdfExportRequestDto` (session, meta, goals) | Timetable as PDF (rendered with PDFBox, no LLM). |
+| POST | `/export/pptx` | `PdfExportRequestDto` | Slide deck as PPTX, from the slides stored in the session. |
+| POST | `/export/pptx-assemble` | `PptxAssembleRequestDto` (session, meta, prebuiltSlides) | Slide deck assembled from slides the client already has. |
+| POST | `/export/pptx-with-template` | multipart: `session`, `meta` (JSON strings), optional `slides`, optional `template` file | Slide deck; without a `template` file the session's stored template is used. |
+| GET | `/export/course/{id}/zip` | – | ZIP with the PDF and PPTX of every session in a course. |
 
-### `PUT /api/workshop/sessions/{id}/finish`
-Marks a draft session as fully finished and saved.
+All PPTX exports use the default Workshopper design, branded with the session's effective template if there is one (its own upload, else its course's, unless the session opted out). See [SERVER.md](SERVER.md#slide-templates).
 
-### `PUT /api/workshop/sessions/{id}/rename`
-Renames an existing session.
+## Sessions
 
-### `DELETE /api/workshop/sessions/{id}`
-Deletes a session.
+| Method | Path | Body | Purpose |
+|---|---|---|---|
+| GET | `/sessions` | – | The user's sessions (`SessionSummaryDto[]`, without timetables). |
+| GET | `/sessions/{id}` | – | One session with its draft state, timetable and template info (`SessionDetailDto`). |
+| POST | `/sessions/draft` | `SaveDraftRequestDto` (sessionId, currentStep, title, draftStateJson, courseId) | Creates or updates a session draft; returns `{ "id": ... }`. A `courseId` must be one of the user's courses. |
+| POST | `/sessions/{id}/slides` | `{ [blockIndex]: slide[] }` | Stores the generated or edited slides. |
+| PUT | `/sessions/{id}/finish` | – | Marks the session as finished. |
+| PUT | `/sessions/{id}/rename` | `{ "title": ... }` | Renames the session. |
+| PUT | `/sessions/{id}/move` | `{ "courseId": ... }` | Moves the session into a course; an empty `courseId` moves it back to the top level. |
+| PUT | `/sessions/reorder` | `string[]` (session ids in order) | Saves the order of sessions within one level. |
+| DELETE | `/sessions/{id}` | – | Deletes the session and its own template. |
+| POST | `/sessions/{id}/template` | multipart `template` (.pptx) | Uploads the session's own slide template. |
+| DELETE | `/sessions/{id}/template` | – | Removes the template from this session only: deletes its own upload and opts out of the course template. |
 
-### `PUT /api/workshop/sessions/reorder`
-Updates the display order of sessions.
+## Courses
 
-### `PUT /api/workshop/sessions/{id}/move`
-Moves a session into a specific lecture group.
+| Method | Path | Body | Purpose |
+|---|---|---|---|
+| GET | `/courses` | – | The user's courses (`CourseSummaryDto[]`). |
+| GET | `/courses/{id}` | – | One course with its settings (`draftStateJson`) and template info. |
+| POST | `/courses/draft` | `SaveDraftRequestDto` (sessionId = course id) | Creates or updates a course; fields that are not sent are left unchanged. |
+| PUT | `/courses/{id}/rename` | `{ "title": ... }` | Renames the course. |
+| DELETE | `/courses/{id}` | – | Deletes the course, its sessions and their templates. |
+| POST | `/courses/{id}/template` | multipart `template` (.pptx) | Uploads the course's slide template. |
+| DELETE | `/courses/{id}/template` | – | Removes the course's template. |
 
-## Export Endpoints
+## Other
 
-### `POST /api/workshop/export/pdf`
-Exports a generated session to a highly-formatted PDF document using an LLM to generate LaTeX/Markdown.
-- **Response**: `application/pdf`
-
-### `POST /api/workshop/export/pptx`
-Exports a session to a PowerPoint presentation.
-- **Response**: `application/vnd.openxmlformats-officedocument.presentationml.presentation`
-
-### `POST /api/workshop/export/pptx-assemble`
-Assembles a PPTX from pre-built/cached slides without calling the LLM.
-
-### `POST /api/workshop/export/pptx-with-template` (Multipart)
-Upload a custom PPTX template, and export the session using the template.
-
-### `POST /api/workshop/export/block-slides`
-Generates JSON representation of slides for a single timetable block (used for frontend preview).
-
-## Utility Endpoints
-
-### `POST /api/workshop/refine-goal`
-Provides real-time feedback and suggestions on a specific learning goal string.
-
-### `POST /api/workshop/extract-goals`
-Extracts raw learning goals from uploaded PDF materials.
-
-### `POST /api/workshop/fix-goals-grammar`
-Automatically fixes grammar and typos in learning goals.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Returns `OK`; needs no login. |
