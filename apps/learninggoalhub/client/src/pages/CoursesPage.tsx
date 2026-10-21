@@ -28,6 +28,8 @@ export default function CoursesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  // An error from a course creation that kept running after its dialog was closed.
+  const [createError, setCreateError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
   const [renameCourse, setRenameCourse] = useState<CourseSummary | null>(null);
@@ -175,6 +177,27 @@ export default function CoursesPage() {
           )}
         </div>
       </div>
+
+      {createError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-xl border border-hestia-danger bg-hestia-surface px-4 py-3 text-sm text-hestia-danger"
+        >
+          <span>{createError}</span>
+          <Button variant="ghost" size="icon-sm" onClick={() => setCreateError(null)} aria-label="Dismiss">
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </Button>
+        </div>
+      )}
 
       <div ref={listRef} className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         {coursesQuery.isLoading && (
@@ -392,7 +415,12 @@ export default function CoursesPage() {
         </nav>
       )}
 
-      {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
+      {createOpen && (
+        <CreateCourseDialog
+          onClose={() => setCreateOpen(false)}
+          onBackgroundError={setCreateError}
+        />
+      )}
       {courseToDelete?.id != null && (
         <ConfirmDialog
           title="Delete course?"
