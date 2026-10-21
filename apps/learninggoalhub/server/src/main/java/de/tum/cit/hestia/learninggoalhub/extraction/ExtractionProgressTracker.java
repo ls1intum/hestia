@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -7,6 +9,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
@@ -23,10 +26,7 @@ public class ExtractionProgressTracker {
     /** Ordered to match the pipeline so the client can show the current pipeline step if it wants. */
     public enum Phase {
         DESCRIBING_FIGURES,
-        OUTLINING,
-        PARSING,
         EXTRACTING,
-        CLASSIFYING,
         PERSISTING,
         SYNTHESIZING
     }
@@ -73,6 +73,12 @@ public class ExtractionProgressTracker {
         return run == null ? Optional.empty() : Optional.of(new Current(courseId, run.snapshot()));
     }
 
+    /** The handle of the run holding the global slot, for work that must be booked to it. */
+    public Optional<Run> activeRun() {
+        Long courseId = runningCourseId.get();
+        return courseId == null ? Optional.empty() : Optional.ofNullable(runs.get(courseId));
+    }
+
     /** Begins (or replaces) tracking for a course and returns the handle the runner updates. */
     public Run start(Long courseId, String model) {
         // The controller claims the slot before submitting the job. Reuse that handle so the
@@ -103,6 +109,8 @@ public class ExtractionProgressTracker {
         private volatile String error;
         private volatile ExtractionRunner.ExtractionSummary summary;
         private final AtomicInteger lastPercent = new AtomicInteger();
+        /** Token counts per "phase / model", in the order the phases first called a model. */
+        private final Map<String, TokenTally> usage = Collections.synchronizedMap(new LinkedHashMap<>());
         /** Frees the global slot; run before the terminal status becomes visible. */
         private final Runnable releaseSlot;
 
@@ -143,6 +151,25 @@ public class ExtractionProgressTracker {
             return List.copyOf(failedSessionNames);
         }
 
+        /** Books one answered LLM call to the phase the run is in. */
+        public void recordUsage(String model, int prompt, int completion, int reasoning) {
+            usage.computeIfAbsent(phase + " / " + model, ignored -> new TokenTally())
+                    .add(prompt, completion, reasoning);
+        }
+
+        /** One line per phase and model plus a total, for the log at the end of the run. */
+        public String usageReport() {
+            TokenTally total = new TokenTally();
+            StringBuilder report = new StringBuilder();
+            synchronized (usage) {
+                usage.forEach((key, tally) -> {
+                    report.append("\n  ").append(key).append(": ").append(tally);
+                    total.add(tally);
+                });
+            }
+            return "total: " + total + report;
+        }
+
         public void succeed(ExtractionRunner.ExtractionSummary summary) {
             this.summary = summary;
             releaseSlot.run();
@@ -173,16 +200,42 @@ public class ExtractionProgressTracker {
 
     private static int weightedPercent(Phase phase, int completed, int total) {
         int[] envelope = switch (phase) {
-            case DESCRIBING_FIGURES -> new int[] {0, 30};
-            case OUTLINING -> new int[] {30, 35};
-            case PARSING -> new int[] {35, 40};
-            case EXTRACTING -> new int[] {40, 70};
-            case CLASSIFYING -> new int[] {70, 80};
+            case DESCRIBING_FIGURES -> new int[] {0, 40};
+            case EXTRACTING -> new int[] {40, 80};
             case PERSISTING -> new int[] {80, 90};
             case SYNTHESIZING -> new int[] {90, 100};
         };
         double fraction = total <= 0 ? 0 : Math.min(1, Math.max(0, (double) completed / total));
         return (int) Math.round(envelope[0] + (envelope[1] - envelope[0]) * fraction);
+    }
+
+    /** Running token counts for one phase and model. */
+    private static final class TokenTally {
+
+        private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicLong prompt = new AtomicLong();
+        private final AtomicLong completion = new AtomicLong();
+        private final AtomicLong reasoning = new AtomicLong();
+
+        void add(int promptTokens, int completionTokens, int reasoningTokens) {
+            calls.incrementAndGet();
+            prompt.addAndGet(promptTokens);
+            completion.addAndGet(completionTokens);
+            reasoning.addAndGet(reasoningTokens);
+        }
+
+        void add(TokenTally other) {
+            calls.addAndGet(other.calls.get());
+            prompt.addAndGet(other.prompt.get());
+            completion.addAndGet(other.completion.get());
+            reasoning.addAndGet(other.reasoning.get());
+        }
+
+        @Override
+        public String toString() {
+            return "%d calls, %d prompt + %d completion (of which %d reasoning) tokens".formatted(
+                    calls.get(), prompt.get(), completion.get(), reasoning.get());
+        }
     }
 
     /**

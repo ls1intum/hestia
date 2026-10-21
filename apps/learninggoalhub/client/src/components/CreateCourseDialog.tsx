@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
@@ -26,9 +26,16 @@ const STEP_LABEL: Record<Step, string> = {
 
 /**
  * Create a course, stage + upload its materials, then start extraction before returning to the
- * courses list. The list owns live extraction progress and review.
+ * courses list. The list owns live extraction progress and review. The dialog can be closed while
+ * this runs; the run then finishes in the background and hands any error to `onBackgroundError`.
  */
-export default function CreateCourseDialog({ onClose }: { onClose: () => void }) {
+export default function CreateCourseDialog({
+  onClose,
+  onBackgroundError,
+}: {
+  onClose: () => void;
+  onBackgroundError: (message: string) => void;
+}) {
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
@@ -70,23 +77,20 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
 
   const files = [...staged.LECTURE, ...staged.EXERCISE];
 
-  const extract = useMutation({
-    mutationFn: async (id: number) => {
-      const result = await api.POST("/api/courses/{courseId}/extract", {
-        params: { path: { courseId: id }, query: {} },
-      });
-      if (result.error || !result.data) {
-        const message = result.response.status === 409
-          ? "Another extraction is already running. Please wait."
-          : "Could not start extraction.";
-        throw new Error(message);
-      }
-      return result.data;
-    },
-  });
+  const [error, setError] = useState<string | null>(null);
+  // Set once the dialog is gone. A run started here keeps going after that, but must neither close
+  // a dialog reopened in the meantime nor report its errors into one that is no longer shown.
+  const closed = useRef(false);
+  useEffect(() => {
+    closed.current = false;
+    return () => {
+      closed.current = true;
+    };
+  }, []);
 
-  const create = useMutation({
-    mutationFn: async () => {
+  const create = async () => {
+    setError(null);
+    try {
       setStep("creating");
       const { data, error } = await api.POST("/api/courses", {
         body: {
@@ -96,43 +100,37 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
         },
       });
       if (error || !data?.id) throw new Error("Could not create the course.");
+      // The row shows up straight away, so closing the dialog mid-upload still leaves the course
+      // in the list.
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
 
       if (files.length > 0) {
         setUploadPercent(0);
         setStep("uploading");
         await uploadDocuments(data.id, staged, setUploadPercent, () => setStep("processing"));
+        setStep("starting");
+        await startExtraction(data.id);
+        // The list picks the run up from its own polling and shows progress on the course's row.
+        queryClient.invalidateQueries({ queryKey: ["courses"] });
+        queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
       }
-      return data.id as number;
-    },
-    onSuccess: (id) => {
-      queryClient.invalidateQueries({ queryKey: ["courses"] });
-      // No materials → nothing to extract, so hand the list back straight away.
-      if (files.length === 0) {
-        onClose();
-        return;
+      if (!closed.current) onClose();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not create the course.";
+      if (closed.current) {
+        onBackgroundError(message);
+      } else {
+        setError(message);
+        setStep(null);
       }
-      setStep("starting");
-      // Closing is the dialog owner's job: the courses list renders this dialog and it is itself
-      // routed at "/", so navigating there would not dismiss anything. The list picks the run up
-      // from its own polling and shows progress inline on the course's row.
-      extract.mutate(id, {
-        onSuccess: () => onClose(),
-        onError: () => setStep(null),
-      });
-    },
-    onError: () => setStep(null),
-  });
+    }
+  };
 
   const trimmed = name.trim();
-  const busy = create.isPending || extract.isPending;
+  const busy = step != null;
   // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
   // exercises alone would extract fine and still leave the course without a competency tree.
   const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
-  const formError = extract.isError
-    ? extract.error.message
-    : create.isError
-      ? create.error.message
-      : null;
   const progressPercent = step == null
     ? 0
     : step === "creating"
@@ -143,15 +141,14 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           ? 85
           : 95;
 
-  // Escape closes the dialog, but not mid-flight (an in-progress upload/extraction must not be
-  // abandoned by a stray key).
+  // Escape closes the dialog at any point: a run already under way carries on without it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+  }, [onClose]);
 
   return (
     <div
@@ -165,7 +162,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           at ~30fps while typing here (16 of 45 frames over 32ms, against 2 of 65 without it). */}
       <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
       <div
-        onClick={busy ? undefined : onClose}
+        onClick={onClose}
         className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       >
         {/* One animation for the whole panel rather than per tile: every element animating over
@@ -174,7 +171,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed && !busy && !exercisesOnly) create.mutate();
+            if (trimmed && !busy && !exercisesOnly) void create();
           }}
           className="comp-unfold flex w-full max-w-5xl flex-col gap-4 sm:mt-[6vh]"
         >
@@ -190,7 +187,6 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               variant="ghost"
               size="icon-sm"
               onClick={onClose}
-              disabled={busy}
               aria-label="Close"
             >
               <svg
@@ -303,10 +299,10 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     lecture.
                   </p>
                 )}
-                {formError && <p className="text-sm text-hestia-danger">{formError}</p>}
+                {error && <p className="text-sm text-hestia-danger">{error}</p>}
                 <div className="flex items-center justify-between gap-3">
-                  <Button variant="neutral" className="h-9" onClick={onClose} disabled={busy}>
-                    Cancel
+                  <Button variant="neutral" className="h-9" onClick={onClose}>
+                    {busy ? "Close" : "Cancel"}
                   </Button>
                   <Button
                     type="submit"
@@ -510,6 +506,19 @@ function MaterialsBox({
       )}
     </div>
   );
+}
+
+async function startExtraction(courseId: number): Promise<void> {
+  const result = await api.POST("/api/courses/{courseId}/extract", {
+    params: { path: { courseId }, query: {} },
+  });
+  if (result.error || !result.data) {
+    throw new Error(
+      result.response.status === 409
+        ? "Course created, but another extraction is already running. Start it from the course once that one finishes."
+        : "Course created, but extraction could not be started.",
+    );
+  }
 }
 
 /**

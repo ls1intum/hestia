@@ -220,6 +220,8 @@ public class ExtractionRunner {
                 throw new IllegalStateException(error, ex);
             }
             throw ex;
+        } finally {
+            log.info("LLM token usage for extraction of course {}: {}", courseId, run.usageReport());
         }
     }
 
@@ -273,17 +275,14 @@ public class ExtractionRunner {
         // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
         // one module root. Sessions come from the document's persisted structural sections (PDF
         // bookmarks, detected deterministically at upload); a document with none is one session.
-        run.phase(ExtractionProgressTracker.Phase.OUTLINING, documents.size());
         HierarchyNode moduleRoot = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName()));
         Map<Long, List<Unit>> unitsByDocument = new HashMap<>();
         for (Document d : documents) {
             unitsByDocument.put(d.getId(), buildUnits(course, moduleRoot, d));
-            run.increment();
         }
 
         // Each session gets the complete text range of its structural node.
-        run.phase(ExtractionProgressTracker.Phase.PARSING, documents.size());
         List<SessionUnit<HierarchyNode>> sessions = new ArrayList<>();
         for (Document d : documents) {
             String text = d.getRawText();
@@ -298,7 +297,6 @@ public class ExtractionRunner {
                     }
                 }
             }
-            run.increment();
         }
 
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, sessions.size());
@@ -1056,7 +1054,6 @@ public class ExtractionRunner {
      * that read the Bloom level off the finished sentence. Extraction now returns bloom and solo with
      * the outcome, so the levels are simply carried across — one fewer call per twenty goals, and no
      * second opinion that can disagree with the verb the writer chose while the material was in view.
-     * The phase is still reported so the progress bar keeps its shape.
      */
     private List<ClassifiedGoal> classifyInParallel(List<UnitExtraction<HierarchyNode>> extractions,
                                                     String modelOverride,
@@ -1070,8 +1067,6 @@ public class ExtractionRunner {
                         session.figures(), goal.classification()));
             }
         }
-        run.phase(ExtractionProgressTracker.Phase.CLASSIFYING, classified.size());
-        run.increment(classified.size());
         return List.copyOf(classified);
     }
 

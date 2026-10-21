@@ -587,10 +587,7 @@ export default function ExtractionProgressModal({
                       {(deleteGoalMutation.error as Error).message}
                     </p>
                   )}
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-hestia-text-muted">
-                      Add sub-skills afterwards in the table.
-                    </p>
+                  <div className="flex flex-wrap items-center justify-end gap-3">
                     <Button className="h-9" onClick={onClose}>
                       Done
                     </Button>
@@ -896,29 +893,27 @@ function SkillRow({
         style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
       />
       <span className="h-5 w-5 shrink-0" aria-hidden="true" />
-      <span className="mr-2 flex min-w-0 flex-1 flex-wrap items-center gap-y-1 text-[13px] leading-relaxed text-hestia-text">
-        <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
+      {/* No wrapping here: the number keeps its own column and a long name wraps beside it. */}
+      <span className="mr-2 flex min-w-0 flex-1 items-baseline text-[13px] leading-relaxed text-hestia-text">
+        <span className="mr-1 shrink-0 tabular-nums text-hestia-text-muted">{number}.</span>
         {renaming ? (
           <RenameField text={skill.goal.text ?? ""} onDone={onRename} />
         ) : (
-          skill.goal.text
-        )}
-        {skill.goal.originalText != null && !renaming && (
-          <span
-            title={`Generated as: ${skill.goal.originalText}`}
-            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
-          >
-            Edited
-          </span>
-        )}
-        {skill.role === "skill" && (
-          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-[color-mix(in_srgb,var(--hestia-accent)_50%,var(--hestia-surface))] px-2 align-middle text-xs font-medium text-hestia-accent">
-            {COMPETENCY_ROLE_META.skill.label}
-          </span>
-        )}
-        {provenanceLabel && (
-          <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted">
-            {provenanceLabel}
+          <span className="min-w-0 flex-1">
+            {skill.goal.text}
+            {skill.goal.originalText != null && (
+              <span
+                title={`Generated as: ${skill.goal.originalText}`}
+                className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+              >
+                Edited
+              </span>
+            )}
+            {provenanceLabel && (
+              <span className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted">
+                {provenanceLabel}
+              </span>
+            )}
           </span>
         )}
       </span>
