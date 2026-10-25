@@ -55,6 +55,8 @@ services:
       # On the shared VM, call LGH's nginx container over Docker DNS instead of
       # hairpinning through the public Traefik URL.
       LGH_BASE_URL: ${LGH_BASE_URL:-http://learninggoalhub-web}
+      # LGH's service key for ExamLens. The same repository secret configures LGH's side.
+      LGH_API_KEY: ${LEARNINGGOALHUB_API_KEY_EXAMLENSE:-}
       # SHARED bootstrap token — must match the value baked into the client build.
       # Anyone presenting it authenticates as the seeded legacy user, which bypasses
       # per-user isolation, and it ships inside the client bundle. Use it once to mint

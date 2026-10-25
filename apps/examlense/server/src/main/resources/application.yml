@@ -45,6 +45,8 @@ storage:
 
 learninggoalhub:
   base-url: ${LGH_BASE_URL:https://hestia-test.aet.cit.tum.de/learninggoalhub}
+  # LGH's service key for ExamLens (X-Api-Key); LGH requires it on the exam-task endpoint.
+  api-key: ${LGH_API_KEY:}
 
 ai:
   openai:

@@ -99,6 +99,9 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
   and any native-provider keys you want to enable: `EXAMLENSE_OPENAI_API_KEY` (gpt-* strategies),
   `EXAMLENSE_ANTHROPIC_API_KEY` (claude-*), `EXAMLENSE_GEMINI_API_KEY` (gemini-* PDF parsers).
   Omit a provider key to disable its strategies.
+- **Secret (shared with LearningGoalHub):** `LEARNINGGOALHUB_API_KEY_EXAMLENSE` — the key ExamLense
+  sends to LGH as `X-Api-Key`. LGH's deployment reads the same repository secret, so it is set once
+  (see LGH's `DEPLOY.md`); compose passes it to the server as `LGH_API_KEY`.
 - **Variables (required):** `APP_HOST` — the VM's FQDN, must match the TLS cert SAN (shared,
   not prefixed — it's the same host for every app on the VM).
 - **Variables (optional, all have compose defaults):** `POSTGRES_DB`, `POSTGRES_USER`,
