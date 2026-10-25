@@ -181,6 +181,21 @@ class CourseControllerTest {
     }
 
     @Test
+    void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
+        Course course = new Course("Language Course");
+        course.setOutputLanguage("de");
+        course = courseRepository.save(course);
+
+        // Like the document PATCH: an omitted field is left alone, an explicit null clears it.
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed"))
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+    }
+
+    @Test
     void createsPatchesAndReadsFiguresSetting() throws Exception {
         mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)

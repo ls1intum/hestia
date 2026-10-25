@@ -4,11 +4,7 @@ import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import Button from "./Button.tsx";
 
-/**
- * Renames a course. The course PATCH replaces `outputLanguage` and `figuresEnabled` with whatever
- * the body carries, so the rename echoes the course's current settings back rather than dropping
- * the instructor's language override on the way through.
- */
+/** Renames a course. The course PATCH leaves every field the body omits alone. */
 export default function RenameCourseDialog({
   course,
   onClose,
@@ -23,11 +19,7 @@ export default function RenameCourseDialog({
     mutationFn: async (nextName: string) => {
       const { error } = await api.PATCH("/api/courses/{id}", {
         params: { path: { id: course.id as number } },
-        body: {
-          name: nextName,
-          outputLanguage: course.outputLanguage ?? undefined,
-          figuresEnabled: course.figuresEnabled,
-        },
+        body: { name: nextName },
       });
       if (error) throw new Error("Could not rename the course.");
     },

@@ -1756,7 +1756,10 @@
             "type": "string"
           },
           "outputLanguage": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "figuresEnabled": {
             "type": "boolean"
