@@ -19,6 +19,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 // Keep all existing API endpoints open for now
                 .requestMatchers("/api/**").permitAll()
+                // The OpenAPI contract is public for API consumers and client codegen (docs/api.md)
+                .requestMatchers("/v3/api-docs", "/v3/api-docs/**").permitAll()
+                // Container healthcheck and post-deploy smoke check
+                .requestMatchers("/actuator/health").permitAll()
                 // Explicitly allow anyone to download the metadata XML (Central IT needs this!)
                 .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
                 // Require SAML authentication for any other endpoints
