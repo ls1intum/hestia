@@ -6,6 +6,8 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/courses/{courseId}")
 public class ExtractionController {
+
+    private static final Logger log = LoggerFactory.getLogger(ExtractionController.class);
 
     private final ExtractionRunner runner;
     private final ExtractionProgressTracker progressTracker;
@@ -50,13 +54,12 @@ public class ExtractionController {
     @PostMapping("/extract")
     public ResponseEntity<ExtractionStartResponse> extract(
             @PathVariable Long courseId,
-            @RequestParam(name = "model", required = false) String model,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
         if (!courseRepository.existsById(courseId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
         }
 
-        Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, model);
+        Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
             String runningCourse = progressTracker.current()
                     .map(current -> current.courseId().toString())
@@ -71,15 +74,16 @@ public class ExtractionController {
                 try {
                     // Marked terminal out here, after runForCourse's transaction has committed, so
                     // a client that polls "SUCCEEDED" can actually read the goals it produced.
-                    run.succeed(runner.runForCourse(courseId, model, force));
+                    run.succeed(runner.runForCourse(courseId, null, force));
                 } catch (RuntimeException | Error ex) {
-                    run.fail(errorMessage(ex));
+                    log.warn("Extraction of course {} failed", courseId, ex);
+                    run.fail(ExtractionErrors.describe(ex));
                 } finally {
                     progressTracker.finish(courseId);
                 }
             });
         } catch (RuntimeException ex) {
-            run.fail(errorMessage(ex));
+            run.fail(ExtractionErrors.describe(ex));
             progressTracker.finish(courseId);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Could not queue the extraction.", ex);
@@ -100,9 +104,8 @@ public class ExtractionController {
     @PostMapping("/competency-tree")
     public ExtractionRunner.CompetencyTreeResult rebuildCompetencyTree(
             @PathVariable Long courseId,
-            @RequestParam(name = "model", required = false) String model,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
-        Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, model);
+        Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Another extraction or competency-tree rebuild is already running.");
@@ -110,13 +113,13 @@ public class ExtractionController {
         ExtractionProgressTracker.Run run = claimed.get();
         run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
         try {
-            ExtractionRunner.CompetencyTreeResult result = runner.rebuildCompetencyTree(courseId, model, force);
+            ExtractionRunner.CompetencyTreeResult result = runner.rebuildCompetencyTree(courseId, null, force);
             run.increment();
             extractionRunAuditService.finishTreeRetry(courseId);
             run.succeed(new ExtractionRunner.ExtractionSummary(0, 0, result.competencies()));
             return result;
         } catch (RuntimeException | Error ex) {
-            run.fail(errorMessage(ex));
+            run.fail(ExtractionErrors.describe(ex));
             throw ex;
         } finally {
             progressTracker.finish(courseId);
@@ -162,12 +165,6 @@ public class ExtractionController {
                 succeeded ? 100 : 99,
                 extractionRun.getFailedSessions() == null ? 0 : extractionRun.getFailedSessions(),
                 List.of());
-    }
-
-    private static String errorMessage(Throwable error) {
-        return error.getMessage() == null || error.getMessage().isBlank()
-                ? error.getClass().getSimpleName()
-                : error.getMessage();
     }
 
     public record ExtractionStartResponse(Long courseId, ExtractionProgressTracker.Status status) {

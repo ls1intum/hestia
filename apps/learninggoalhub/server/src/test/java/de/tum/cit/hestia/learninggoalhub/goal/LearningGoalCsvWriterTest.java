@@ -194,4 +194,11 @@ class LearningGoalCsvWriterTest {
             throw new IllegalStateException(e);
         }
     }
+
+    @Test
+    void prefixesCellsThatASpreadsheetWouldRunAsFormulas() {
+        assertThat(LearningGoalCsvWriter.neutralizeFormulas(
+                new String[]{"=HYPERLINK(\"x\")", "+1", "-2", "@SUM(A1)", "\tTab", "Apply TDD.", "", null}))
+                .containsExactly("'=HYPERLINK(\"x\")", "'+1", "'-2", "'@SUM(A1)", "'\tTab", "Apply TDD.", "", null);
+    }
 }

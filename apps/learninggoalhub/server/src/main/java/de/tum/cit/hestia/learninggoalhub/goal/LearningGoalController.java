@@ -112,6 +112,7 @@ public class LearningGoalController {
 
     /** Label of the COMPETENCY hierarchy root; mirrors the one the extraction pipeline creates. */
     static final String COMPETENCY_ROOT_LABEL = "Terminal Competencies";
+    static final int MAX_GENERATED_TOPIC_CHARS = 500;
 
     @GetMapping
     @Transactional(readOnly = true)
@@ -295,8 +296,7 @@ public class LearningGoalController {
     /** Returns transient AI suggestions grounded in the already extracted course goals. */
     @PostMapping("/skill-suggestions")
     @Transactional(readOnly = true)
-    public List<SkillSuggestionResponse> suggestTerminalSkills(@PathVariable Long courseId,
-                                                               @RequestParam(required = false) String model) {
+    public List<SkillSuggestionResponse> suggestTerminalSkills(@PathVariable Long courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
         List<LearningGoal> extractedGoals = goalRepository
@@ -324,7 +324,7 @@ public class LearningGoalController {
                 .toList();
 
         List<SkillSuggestionSynthesizer.Suggestion> suggestions = skillSuggestionSynthesizer.suggest(
-                existingTerminals, evidence, courseLanguageName(course), model);
+                existingTerminals, evidence, courseLanguageName(course), null);
         return suggestions == null ? List.of() : suggestions.stream()
                 .filter(suggestion -> suggestion != null && suggestion.text() != null && !suggestion.text().isBlank())
                 .map(suggestion -> new SkillSuggestionResponse(suggestion.text(), suggestion.shortLabel()))
@@ -339,13 +339,17 @@ public class LearningGoalController {
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
     public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
-                                                             @RequestParam(required = false) String model,
                                                              @RequestBody CreateGeneratedTerminalSkillRequest request) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
         String text = request.text() == null ? "" : request.text().strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
+        }
+        // The text is the whole prompt input of the generation call.
+        if (text.length() > MAX_GENERATED_TOPIC_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Skill text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
         }
         boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
                 .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
@@ -354,7 +358,7 @@ public class LearningGoalController {
         }
 
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(text, courseLanguageName(course), model));
+                subtreeSynthesizer.generateSubtree(text, courseLanguageName(course), null));
         LearningGoal terminal = newGeneratedGoal(course, text, GoalOrigin.TERMINAL);
         terminal.setShortLabel(trimToNull(request.shortLabel()));
         terminal.setHierarchyNode(competencyRoot(course));
@@ -362,7 +366,7 @@ public class LearningGoalController {
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         // The terminal is a topic, a noun phrase with no level of its own; only the nodes beneath it
         // state a performance.
-        applyClassifications(generatedNodes.nodes(), model);
+        applyClassifications(generatedNodes.nodes());
         persistGeneratedNodes(terminal, generatedNodes);
         return LearningGoalResponse.from(terminal, List.of(), List.of());
     }
@@ -379,8 +383,7 @@ public class LearningGoalController {
     @PostMapping("/{goalId}/subtree")
     @Transactional
     public LearningGoalResponse generateSubtree(@PathVariable Long courseId,
-                                                @PathVariable Long goalId,
-                                                @RequestParam(required = false) String model) {
+                                                @PathVariable Long goalId) {
         LearningGoal terminal = findGoal(courseId, goalId);
         if (terminal.getOrigin() != GoalOrigin.TERMINAL) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -393,9 +396,9 @@ public class LearningGoalController {
 
         Course course = terminal.getCourse();
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), model));
+                subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), null));
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
-        applyClassifications(generatedNodes.nodes(), model);
+        applyClassifications(generatedNodes.nodes());
 
         deleteWizardGeneratedDescendants(terminal);
         goalRepository.flush();
@@ -557,10 +560,10 @@ public class LearningGoalController {
         return goal;
     }
 
-    private void applyClassifications(List<LearningGoal> nodes, String model) {
+    private void applyClassifications(List<LearningGoal> nodes) {
         List<String> texts = nodes.stream().map(LearningGoal::getText).toList();
         try {
-            List<TaxonomyClassification> classifications = taxonomyService.classifyBatch(texts, model);
+            List<TaxonomyClassification> classifications = taxonomyService.classifyBatch(texts, null);
             if (classifications == null || classifications.size() != nodes.size()) {
                 return;
             }

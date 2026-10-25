@@ -682,8 +682,7 @@ class LearningGoalControllerTest {
                 .thenReturn(List.of(new SkillSuggestionSynthesizer.Suggestion(
                         "Automate secure deployments.", "Secure Deployment Automation")));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/skill-suggestions", course.getId())
-                        .param("model", "test-model"))
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/skill-suggestions", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].text").value("Automate secure deployments."))
@@ -845,8 +844,7 @@ class LearningGoalControllerTest {
                         "Explain pipeline stages."));
 
         mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
-                        course.getId(), terminalId)
-                        .param("model", "test-model"))
+                        course.getId(), terminalId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(terminalId.intValue()))
                 .andExpect(jsonPath("$.text").value("Automate secure deployments."))

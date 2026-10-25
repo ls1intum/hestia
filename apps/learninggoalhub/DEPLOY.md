@@ -80,9 +80,15 @@ Actions → **Repository** secrets / variables). Every app in the monorepo deplo
 set, so app-specific values carry the app name as a prefix:
 
 - **Secrets:** `VM_SSH_PRIVATE_KEY` (SSH access to the VM), `LEARNINGGOALHUB_POSTGRES_PASSWORD`,
-  `LEARNINGGOALHUB_LOGOS_API_KEY` (chat and vision)
+  `LEARNINGGOALHUB_LOGOS_API_KEY` (chat and vision), and the service keys
+  `LEARNINGGOALHUB_API_KEY_EXAMLENSE` and `LEARNINGGOALHUB_API_KEY_WORKSHOPPER` (each consuming
+  server sends its key in `X-Api-Key`; generate with `openssl rand -hex 32` and give the same
+  value to that app's deployment)
 - **Variables:** `VM_HOST`, `VM_USERNAME`, `APP_HOST` (the VM's FQDN, must match the TLS cert
-  SAN), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`
+  SAN), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`, and
+  `LEARNINGGOALHUB_ENFORCE_SERVICE_KEYS` (`true` makes the service-only endpoints reject requests
+  without a key; leave it unset until both consumers send theirs, and check the server log for
+  `Would reject` lines before switching it on)
 
 The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config — they do not
 need to be set per repo. Everything except the connection keys is written verbatim into `.env`

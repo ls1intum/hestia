@@ -122,14 +122,6 @@
               "type": "integer",
               "format": "int64"
             }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -252,14 +244,6 @@
               "type": "integer",
               "format": "int64"
             }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -301,14 +285,6 @@
               "type": "integer",
               "format": "int64"
             }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -342,14 +318,6 @@
             "schema": {
               "type": "integer",
               "format": "int64"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           },
           {
@@ -418,15 +386,6 @@
             "schema": {
               "type": "integer",
               "format": "int64"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "description": "Optional chat-model override; omit for the configured default.",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           }
         ],
@@ -562,14 +521,6 @@
             "schema": {
               "type": "integer",
               "format": "int64"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           },
           {
@@ -1170,14 +1121,6 @@
               "type": "integer",
               "format": "int64"
             }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -1218,14 +1161,6 @@
             "schema": {
               "type": "integer",
               "format": "int64"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           }
         ],

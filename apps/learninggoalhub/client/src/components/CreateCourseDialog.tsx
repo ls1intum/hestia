@@ -5,10 +5,10 @@ import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
 
-// The upload endpoint runs everything through Apache Tika, which parses these
-// out of the box. Kept in sync with the hint shown in the drop zone.
-const ACCEPT = ".pdf,.docx,.pptx,.txt";
-const ACCEPT_LABEL = "PDF, DOCX, PPTX, TXT";
+// The server accepts PDFs only: the source viewer, quote highlights and bookmark sessions all
+// read the PDF itself. Kept in sync with the hint shown in the drop zone.
+const ACCEPT = ".pdf";
+const ACCEPT_LABEL = "PDF";
 
 /**
  * Steps between hitting "Create course" and extraction taking over in the courses list. Upload byte
@@ -55,7 +55,8 @@ export default function CreateCourseDialog({
     if (!incoming || incoming.length === 0) return;
     // Snapshot before updating state: the file input is reset right after this call, which empties
     // the live FileList before React gets around to running the updater below.
-    const picked = Array.from(incoming);
+    // A drop bypasses the picker's accept filter, so other file types are skipped here too.
+    const picked = Array.from(incoming).filter((file) => file.name.toLowerCase().endsWith(ACCEPT));
     setStaged((prev) => {
       const seen = new Set(
         [...prev.LECTURE, ...prev.EXERCISE].map((f) => `${f.name}:${f.size}`),
