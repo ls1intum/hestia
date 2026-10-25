@@ -147,7 +147,11 @@ export default function CoursePage() {
       bloomLevel?: LearningGoal["bloomLevel"];
       soloLevel?: LearningGoal["soloLevel"];
     },
-  ) => updateGoalMutation.mutate({ goalId, ...changes });
+    onFailed: () => void,
+  ) => {
+    // Per call: mutate()'s own onError fires only for the latest of several quick edits.
+    updateGoalMutation.mutateAsync({ goalId, ...changes }).catch(onFailed);
+  };
 
   // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
   // the pipeline still synthesises and stores them, only the client filters.
