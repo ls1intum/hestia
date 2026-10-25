@@ -36,6 +36,13 @@ import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -312,6 +319,47 @@ class ExamGoalControllerTest {
                 .containsExactly(GoalOrigin.TERMINAL);
         assertThat(hierarchyNodeRepository.findByCourseId(course.getId())).isEmpty();
         assertThat(submissionRepository.count()).isEqualTo(submissionsBefore);
+    }
+
+    @Test
+    void anIdenticalRequestWhileTheFirstIsRunningJoinsItInsteadOfGeneratingAgain() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        CountDownLatch firstGenerating = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        AtomicInteger generations = new AtomicInteger();
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenAnswer(inv -> {
+            generations.incrementAndGet();
+            firstGenerating.countDown();
+            assertThat(releaseFirst.await(10, TimeUnit.SECONDS)).isTrue();
+            return List.of(new GeneratedExamGoal("Recall a fact."));
+        });
+        when(taxonomyService.classifyBatch(anyList(), isNull()))
+                .thenReturn(java.util.Collections.singletonList(null));
+        String payload = """
+                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                """;
+        Callable<String> request = () -> mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long submissionsBefore = submissionRepository.count();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> first = pool.submit(request);
+            assertThat(firstGenerating.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<String> retry = pool.submit(request);
+            // Give the retry time to arrive while the first request is still generating.
+            Thread.sleep(300);
+            releaseFirst.countDown();
+
+            assertThat(retry.get(10, TimeUnit.SECONDS)).isEqualTo(first.get(10, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(generations).hasValue(1);
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(1);
+        assertThat(submissionRepository.count()).isEqualTo(submissionsBefore + 1);
     }
 
     @Test

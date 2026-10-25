@@ -19,7 +19,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,6 +41,11 @@ import org.springframework.transaction.support.TransactionOperations;
  * <p>Deliberately NOT transactional across the LLM calls — generation can take seconds per task.
  * Every call runs first; the submission, the exam root, the goals, and their placement edges are then
  * stored in one short transaction, so a failed request leaves nothing behind.
+ *
+ * <p>A consumer gives up on a slow request and the user submits it again while the first is still
+ * generating. An identical request for the same course therefore joins the one in flight and gets
+ * its goals instead of generating a second copy. Once a request has finished, resubmitting it
+ * generates afresh.
  */
 @Service
 public class ExamGoalService {
@@ -58,6 +67,7 @@ public class ExamGoalService {
     private final ExamSubmissionRepository submissionRepository;
     private final ExamGoalPlacer placer;
     private final TransactionOperations transactions;
+    private final Map<RequestKey, CompletableFuture<List<TaskGoals>>> inFlight = new ConcurrentHashMap<>();
 
     public ExamGoalService(ExamGoalGenerator generator,
                            TaxonomyService taxonomyService,
@@ -81,7 +91,38 @@ public class ExamGoalService {
     public record TaskGoals(String blockId, List<LearningGoal> goals) {
     }
 
+    /** What makes two requests identical: the course, the blocks in order, and the model. */
+    private record RequestKey(Long courseId, List<ExamBlock> blocks, String modelOverride) {
+    }
+
     public List<TaskGoals> generateForBlocks(Course course, List<ExamBlock> blocks, String modelOverride) {
+        RequestKey key = new RequestKey(course.getId(), List.copyOf(blocks), modelOverride);
+        CompletableFuture<List<TaskGoals>> own = new CompletableFuture<>();
+        CompletableFuture<List<TaskGoals>> running = inFlight.putIfAbsent(key, own);
+        if (running != null) {
+            log.info("Exam-goal request for course {} is already running, joining it", course.getId());
+            try {
+                return running.join();
+            } catch (CompletionException ex) {
+                if (ex.getCause() instanceof RuntimeException cause) {
+                    throw cause;
+                }
+                throw ex;
+            }
+        }
+        try {
+            List<TaskGoals> result = generate(course, blocks, modelOverride);
+            own.complete(result);
+            return result;
+        } catch (RuntimeException | Error ex) {
+            own.completeExceptionally(ex);
+            throw ex;
+        } finally {
+            inFlight.remove(key, own);
+        }
+    }
+
+    private List<TaskGoals> generate(Course course, List<ExamBlock> blocks, String modelOverride) {
         record TaskGeneration(SubmittedExamBlock block, List<GeneratedExamGoal> goals) {
         }
 
