@@ -2,7 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;

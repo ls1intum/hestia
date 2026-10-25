@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

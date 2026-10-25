@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyPath;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
 import java.util.List;

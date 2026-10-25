@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.goal;
+package de.tum.cit.hestia.learninggoalhub.taxonomy;
 
 public enum BloomLevel {
     REMEMBER,

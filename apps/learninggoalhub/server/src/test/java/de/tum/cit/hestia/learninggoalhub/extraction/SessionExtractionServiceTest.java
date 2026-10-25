@@ -11,9 +11,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;

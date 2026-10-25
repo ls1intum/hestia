@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

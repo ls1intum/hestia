@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;

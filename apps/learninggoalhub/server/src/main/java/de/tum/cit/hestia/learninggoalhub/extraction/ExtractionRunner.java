@@ -20,7 +20,7 @@ import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SourceLineSele
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitExtraction;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitGoal;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.Window;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
@@ -30,7 +30,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalStatus;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;

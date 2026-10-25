@@ -39,6 +39,8 @@ import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;

@@ -9,8 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;

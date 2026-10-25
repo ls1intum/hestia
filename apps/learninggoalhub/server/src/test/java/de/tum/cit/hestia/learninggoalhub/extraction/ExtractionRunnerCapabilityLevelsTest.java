@@ -2,8 +2,8 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import java.util.List;
 import org.junit.jupiter.api.Test;
