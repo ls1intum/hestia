@@ -2,8 +2,6 @@ package de.tum.cit.hestia.learninggoalhub.goal;
 
 import com.opencsv.CSVWriter;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyPath;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import java.io.IOException;

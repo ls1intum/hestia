@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.relationships;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 import java.util.Collection;
 import java.util.List;

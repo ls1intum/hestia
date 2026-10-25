@@ -1,8 +1,5 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import java.util.Comparator;
 
 public record GoalRelationshipResponse(RelationshipType type,

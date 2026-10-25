@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.relationships;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 public enum RelationshipType {
     CONTRIBUTES_TO,
