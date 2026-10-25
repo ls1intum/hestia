@@ -24,6 +24,11 @@ public final class OutcomeWording {
                 + "action label in the natural word order of the output language.";
     }
 
+    /** A generated short label or text, stripped, or null when the model left it blank. */
+    static String stripToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+
     static void validate(String text, String shortLabel, String languageName, String subject) {
         validateTextAndLabelPresence(text, shortLabel, subject);
         validateLabelReadsAsALabel(text, shortLabel, subject);

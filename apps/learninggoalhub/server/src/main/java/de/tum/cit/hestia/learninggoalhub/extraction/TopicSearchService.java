@@ -201,7 +201,7 @@ public class TopicSearchService {
         Set<String> terms = new LinkedHashSet<>();
         terms.add(topic);
         try {
-            terms.addAll(topicSearchSynthesizer.searchTerms(topic, languageName(course, documents), modelOverride));
+            terms.addAll(topicSearchSynthesizer.searchTerms(topic, LanguageUtils.courseLanguageName(course, documents), modelOverride));
         } catch (RuntimeException ex) {
             log.warn("Search terms for topic '{}' failed, searching for the topic alone: {}", topic, ex.getMessage());
         }
@@ -293,8 +293,8 @@ public class TopicSearchService {
         Map<Long, Document> documentsById = courseDocuments.stream()
                 .collect(Collectors.toMap(Document::getId, document -> document));
         int pagesRead = validateRanges(ranges, documentsById);
-        String dominantLanguage = ExtractionRunner.dominantLanguage(courseDocuments);
-        String languageName = languageName(course, courseDocuments);
+        String dominantLanguage = LanguageUtils.dominantLanguage(courseDocuments);
+        String languageName = LanguageUtils.courseLanguageName(course, courseDocuments);
 
         List<SessionUnit<PageRange>> units = new ArrayList<>();
         Map<Long, List<FigureDescription>> figuresByDocument = new HashMap<>();
@@ -609,8 +609,7 @@ public class TopicSearchService {
             }
         });
         // Locked so a concurrent request cannot add the same topic between the check and the insert.
-        Course course = courseRepository.lockById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.lockOrThrow(courseId);
         Set<Integer> ticked = new HashSet<>();
         for (String key : subSkillKeys == null ? List.<String>of() : subSkillKeys) {
             Integer index = subSkillIndex(key, proposal.candidates().size());
@@ -621,18 +620,13 @@ public class TopicSearchService {
         if (ticked.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Keep at least one sub-skill.");
         }
-        boolean duplicateTopic = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL))
-                .stream()
-                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(proposal.topic()));
-        if (duplicateTopic) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
+        goalRepository.rejectDuplicateTopic(courseId, proposal.topic());
 
         LearningGoal topic = new LearningGoal(course, proposal.topic(), GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         topic.setStatus(GoalStatus.PENDING);
         topic.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        topic.setHierarchyNode(competencyRoot(course));
+        topic.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
         goalRepository.saveAndFlush(topic);
 
         Map<Integer, LearningGoal> subSkills = new HashMap<>();
@@ -750,12 +744,6 @@ public class TopicSearchService {
                         new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName())));
     }
 
-    private HierarchyNode competencyRoot(Course course) {
-        return hierarchyNodeRepository.findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
-                .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies")));
-    }
-
     /** Places new goals among the goals already on their session, or after every goal of the course. */
     private int lectureOrderFor(Course course, HierarchyNode node) {
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
@@ -786,8 +774,7 @@ public class TopicSearchService {
     }
 
     private Course course(Long courseId) {
-        return courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        return courseRepository.findOrThrow(courseId);
     }
 
     private static String requireTopic(String text) {
@@ -800,11 +787,6 @@ public class TopicSearchService {
                     "Topic text must be at most " + MAX_TOPIC_CHARS + " characters");
         }
         return topic;
-    }
-
-    private static String languageName(Course course, List<Document> documents) {
-        return LanguageUtils.englishName(
-                ExtractionRunner.resolveLanguage(course, null, ExtractionRunner.dominantLanguage(documents)));
     }
 
     /**

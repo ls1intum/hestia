@@ -44,9 +44,7 @@ public class ExamGoalController {
     @PostMapping("/learning-goals")
     public List<ExamTaskGoalsResponse> generate(@PathVariable Long courseId,
                                                 @RequestBody GenerateExamGoalsRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
         validate(request);
 
         return examGoalService.generateForBlocks(course, request.blocks(), null).stream()

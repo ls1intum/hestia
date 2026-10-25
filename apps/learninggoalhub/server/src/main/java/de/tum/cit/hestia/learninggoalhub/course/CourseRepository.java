@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
 
@@ -15,6 +17,31 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Course c where c.id = :id")
     Optional<Course> lockById(@Param("id") Long id);
+
+    /** The course, or a 404 when there is none. */
+    default Course findOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> notFound(id));
+    }
+
+    /**
+     * The course with its row locked until the transaction ends, or a 404. Writes that check before
+     * they insert (a duplicate topic, the next lecture order) take it first, so two concurrent
+     * requests for one course cannot both pass the check.
+     */
+    default Course lockOrThrow(Long id) {
+        return lockById(id).orElseThrow(() -> notFound(id));
+    }
+
+    /** Throws a 404 unless the course exists. */
+    default void requireExists(Long id) {
+        if (!existsById(id)) {
+            throw notFound(id);
+        }
+    }
+
+    private static ResponseStatusException notFound(Long id) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id);
+    }
 
     /** Goal count per course for the given ids — one row per course that has at least one goal. */
     @Query("select g.course.id as courseId, count(g.id) as count "

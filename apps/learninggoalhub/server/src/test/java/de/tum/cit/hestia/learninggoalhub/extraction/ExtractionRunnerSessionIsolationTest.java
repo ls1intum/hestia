@@ -32,7 +32,6 @@ import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.StructuredOutputConverter;
@@ -105,7 +104,7 @@ class ExtractionRunnerSessionIsolationTest {
         when(course.getId()).thenReturn(1L);
         when(course.getName()).thenReturn("Maths-heavy course");
         when(course.isFiguresEnabled()).thenReturn(false);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
 
         // No sections, so each document is exactly one session. Both documents are stubbed before
         // the call below: nesting mock setup inside a when() argument breaks the outer stubbing.

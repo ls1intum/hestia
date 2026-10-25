@@ -503,13 +503,13 @@ public class SessionExtractionService {
                         offeredFigure(knowledge.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every knowledge item");
                 knowledgeItems.add(new ExtractedSkill.Knowledge(
-                        knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                        knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                         knowledge.bloom(), knowledge.solo(),
                         knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                         knowledgeCitation.figure()));
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     knowledgeItems));
@@ -722,7 +722,7 @@ public class SessionExtractionService {
                             offeredFigure(knowledge.sourceFigure(), figureCount),
                             numberedLines, figureCount, "Every knowledge item");
                     validKnowledge.add(new ExtractedSkill.Knowledge(
-                            knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                            knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                             knowledge.bloom(), knowledge.solo(),
                             knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                             knowledgeCitation.figure()));
@@ -732,7 +732,7 @@ public class SessionExtractionService {
                 }
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     validKnowledge));
@@ -768,10 +768,6 @@ public class SessionExtractionService {
             count += 1 + (int) skill.knowledge().stream().filter(Objects::nonNull).count();
         }
         return count;
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
     }
 
     private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,

@@ -55,9 +55,7 @@ public class ExtractionController {
     public ResponseEntity<ExtractionStartResponse> extract(
             @PathVariable Long courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
 
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {

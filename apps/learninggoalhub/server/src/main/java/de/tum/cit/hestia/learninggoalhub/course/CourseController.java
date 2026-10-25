@@ -97,8 +97,7 @@ public class CourseController {
 
     @GetMapping("/{id}")
     public CourseSummaryResponse getCourse(@PathVariable Long id) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
+        Course course = courseRepository.findOrThrow(id);
         List<Long> ids = List.of(course.getId());
         long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
         long topicCount = toCountMap(courseRepository.countTopicsByCourseIds(ids)).getOrDefault(id, 0L);
@@ -122,8 +121,7 @@ public class CourseController {
      */
     @PostMapping("/{id}/skills-reviewed")
     public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
+        Course course = courseRepository.findOrThrow(id);
         if (course.getSkillsReviewedAt() == null) {
             course.setSkillsReviewedAt(OffsetDateTime.now());
             courseRepository.save(course);
@@ -137,8 +135,7 @@ public class CourseController {
      */
     @PatchMapping("/{id}")
     public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
+        Course course = courseRepository.findOrThrow(id);
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
         }
@@ -170,9 +167,7 @@ public class CourseController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        if (!courseRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id);
-        }
+        courseRepository.requireExists(id);
         courseRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }

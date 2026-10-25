@@ -45,7 +45,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.support.TransactionOperations;
@@ -66,7 +65,7 @@ class TopicSearchServiceTest {
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-16T10:00:00Z"));
 
     private TopicSearchService service(int maxPages) {
-        when(courseRepository.findById(COURSE_ID)).thenReturn(Optional.of(new Course("Machine Learning")));
+        when(courseRepository.findOrThrow(COURSE_ID)).thenReturn(new Course("Machine Learning"));
         UnitExtractor unitExtractor = new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class),
                 mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000, 3_000);
         return new TopicSearchService(courseRepository, documentRepository, sectionRepository,

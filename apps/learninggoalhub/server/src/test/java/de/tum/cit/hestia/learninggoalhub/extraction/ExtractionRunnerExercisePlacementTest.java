@@ -38,7 +38,6 @@ import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepositor
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionOperations;
@@ -188,8 +187,8 @@ class ExtractionRunnerExercisePlacementTest {
     private void stubCourse(List<LearningGoal> goals) {
         Course course = mock(Course.class);
         when(course.getId()).thenReturn(1L);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
-        when(courseRepository.lockById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
+        when(courseRepository.lockOrThrow(1L)).thenReturn(course);
         when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(goals);
     }
 

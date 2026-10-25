@@ -60,9 +60,7 @@ public class DocumentController {
 
     @GetMapping
     public List<DocumentResponse> list(@PathVariable Long courseId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
         return documentRepository.findByCourseId(courseId).stream()
                 .sorted(DocumentOrder.comparator())
                 .map(DocumentResponse::from)
@@ -76,8 +74,7 @@ public class DocumentController {
                                          @Parameter(description = "Optional kind of every file in this upload: LECTURE or EXERCISE. "
                                                  + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
                                          @RequestParam(required = false) DocumentKind kind) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
 
         // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
         // upload instead of leaving the files before it saved.

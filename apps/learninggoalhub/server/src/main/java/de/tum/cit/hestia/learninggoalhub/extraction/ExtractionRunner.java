@@ -46,7 +46,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.EnumSet;
 import java.util.List;
@@ -150,9 +149,7 @@ public class ExtractionRunner {
         ExtractionStageSummary[] persistedStage = new ExtractionStageSummary[1];
         try {
             ExtractionInput input = extractionTransactions.execute(status -> {
-                Course course = courseRepository.findById(courseId)
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+                Course course = courseRepository.findOrThrow(courseId);
                 boolean hasExtractedGoals = !goalRepository.findByCourseIdAndOriginIn(
                         courseId, List.of(GoalOrigin.EXTRACTED)).isEmpty();
                 boolean hasExtractionHierarchy = hierarchyNodeRepository.existsByCourseIdAndLevel(
@@ -166,8 +163,8 @@ public class ExtractionRunner {
                 List<Document> documents = documentRepository.findByCourseId(courseId).stream()
                         .sorted(DocumentOrder.comparator())
                         .toList();
-                String dominantLanguage = dominantLanguage(documents);
-                String courseLanguage = resolveLanguage(course, null, dominantLanguage);
+                String dominantLanguage = LanguageUtils.dominantLanguage(documents);
+                String courseLanguage = LanguageUtils.resolveLanguage(course, null, dominantLanguage);
                 String promptVersion = SessionExtractionService.PROMPT_VERSION;
                 String effectiveModel = modelOverride == null || modelOverride.isBlank()
                         ? configuredDefaultModel : modelOverride;
@@ -268,7 +265,7 @@ public class ExtractionRunner {
                         documentContentRepository.findById(document.getId())
                                 .map(DocumentContent::getBytes)
                                 .ifPresent(bytes -> {
-                                    String languageCode = resolveLanguage(
+                                    String languageCode = LanguageUtils.resolveLanguage(
                                             course, document.getLanguage(), dominantLanguage);
                                     pageDescriptionService.describeEligiblePages(document, bytes,
                                             languageCode, LanguageUtils.englishName(languageCode),
@@ -452,43 +449,6 @@ public class ExtractionRunner {
                 + ",\"figure-prompt-version\":\"" + PageDescriptionService.FIGURE_PROMPT_VERSION + "\"}";
     }
 
-    static String resolveLanguage(Course course, String documentLanguage, String dominantLanguage) {
-        if (course != null && course.getOutputLanguage() != null) {
-            return course.getOutputLanguage();
-        }
-        if (documentLanguage != null && !documentLanguage.isBlank()) {
-            return documentLanguage;
-        }
-        if (dominantLanguage != null && !dominantLanguage.isBlank()) {
-            return dominantLanguage;
-        }
-        return "en";
-    }
-
-    static String dominantLanguage(List<Document> documents) {
-        Map<String, Long> weights = new LinkedHashMap<>();
-        for (Document document : documents) {
-            String language = document.getLanguage();
-            if (language == null || language.isBlank()) {
-                continue;
-            }
-            String text = document.getRawText();
-            long weight = text == null ? 0 : text.length();
-            if (weight > 0) {
-                weights.merge(language, weight, Long::sum);
-            }
-        }
-        String dominant = null;
-        long highestWeight = -1;
-        for (Map.Entry<String, Long> entry : weights.entrySet()) {
-            if (entry.getValue() > highestWeight) {
-                dominant = entry.getKey();
-                highestWeight = entry.getValue();
-            }
-        }
-        return dominant;
-    }
-
     private static String errorMessage(RuntimeException ex) {
         Throwable cause = ex;
         while (cause instanceof CompletionException && cause.getCause() != null) {
@@ -598,11 +558,10 @@ public class ExtractionRunner {
      */
     public CompetencyTreeResult rebuildCompetencyTree(Long courseId, String modelOverride, boolean force) {
         RebuildInput input = extractionTransactions.execute(status -> {
-            Course course = courseRepository.findById(courseId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            Course course = courseRepository.findOrThrow(courseId);
             rejectManualWorkUnlessForced(courseId, force);
             List<Document> documents = documentRepository.findByCourseId(courseId);
-            String courseLanguage = resolveLanguage(course, null, dominantLanguage(documents));
+            String courseLanguage = LanguageUtils.resolveLanguage(course, null, LanguageUtils.dominantLanguage(documents));
             return new RebuildInput(course, LanguageUtils.englishName(courseLanguage), loadTreeSeeds(course));
         });
         if (input == null) {
@@ -627,8 +586,7 @@ public class ExtractionRunner {
         }
 
         CompetencyTreeResult result = extractionTransactions.execute(status -> {
-            Course course = courseRepository.lockById(courseId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            Course course = courseRepository.lockOrThrow(courseId);
             // Checked again under the course lock: an instructor may have added to the tree while
             // the replacement was being planned.
             List<LearningGoal> terminals = rejectManualWorkUnlessForced(courseId, force);
@@ -814,9 +772,7 @@ public class ExtractionRunner {
     private CompetencyTreeResult buildCompetencyTree(Long courseId, String modelOverride,
                                                      String languageName) {
         Optional<TreeInput> input = extractionTransactions.execute(status -> {
-            Course course = courseRepository.findById(courseId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            Course course = courseRepository.findOrThrow(courseId);
             if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
                 return Optional.empty();
             }
@@ -834,9 +790,7 @@ public class ExtractionRunner {
             return CompetencyTreeResult.NONE;
         }
         CompetencyTreeResult result = extractionTransactions.execute(status -> {
-            Course course = courseRepository.lockById(courseId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            Course course = courseRepository.lockOrThrow(courseId);
             if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
                 return CompetencyTreeResult.NONE;
             }
@@ -1114,8 +1068,7 @@ public class ExtractionRunner {
      * All LLM work is already done by the time this runs.
      */
     private void persistCompetencyTree(Course course, CompetencyTreePlan plan) {
-        HierarchyNode competencyRoot = hierarchyNodeRepository.save(
-                new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
+        HierarchyNode competencyRoot = hierarchyNodeRepository.findOrCreateCompetencyRoot(course);
 
         for (PlannedCompetency competency : plan.competencies()) {
             LearningGoal terminal = new LearningGoal(course, competency.text(), GoalKind.IMPLICIT);

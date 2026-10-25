@@ -5,7 +5,6 @@ import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
-import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
@@ -119,7 +118,6 @@ public class LearningGoalController {
     }
 
     /** Label of the COMPETENCY hierarchy root; mirrors the one the extraction pipeline creates. */
-    static final String COMPETENCY_ROOT_LABEL = "Terminal Competencies";
     static final int MAX_GENERATED_TOPIC_CHARS = 500;
 
     @GetMapping
@@ -130,9 +128,7 @@ public class LearningGoalController {
                                                  @RequestParam(required = false) GoalRole role,
                                                  @ParameterObject @PageableDefault(size = 50, sort = "id", direction = Sort.Direction.ASC)
                                                  Pageable pageable) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
 
         Page<LearningGoal> page;
         if (status == null && role == null) {
@@ -177,9 +173,7 @@ public class LearningGoalController {
                                                     @Parameter(description = "Optional id of a single hierarchy node (module/session/exercise) to return only that group. "
                                                             + "Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list.")
                                                     @RequestParam(required = false) Long nodeId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
 
         List<LearningGoal> goals;
         if (status == null && role == null) {
@@ -279,18 +273,18 @@ public class LearningGoalController {
     @Transactional
     public LearningGoalResponse createTerminalSkill(@PathVariable Long courseId,
                                                     @RequestBody CreateTerminalSkillRequest request) {
-        Course course = lockCourse(courseId);
+        Course course = courseRepository.lockOrThrow(courseId);
         String text = request.text() == null ? "" : request.text().strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
         }
-        rejectDuplicateTopic(courseId, text);
+        goalRepository.rejectDuplicateTopic(courseId, text);
 
         LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
         goal.setOrigin(GoalOrigin.TERMINAL);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        goal.setHierarchyNode(competencyRoot(course));
+        goal.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
         goal.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(goal);
         return LearningGoalResponse.from(goal, List.of(), List.of());
@@ -300,8 +294,7 @@ public class LearningGoalController {
     @PostMapping("/skill-suggestions")
     @Transactional(readOnly = true)
     public List<SkillSuggestionResponse> suggestTerminalSkills(@PathVariable Long courseId) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
         List<LearningGoal> extractedGoals = goalRepository
                 .findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED)).stream()
                 .filter(goal -> goal.getHierarchyNode() != null
@@ -327,7 +320,7 @@ public class LearningGoalController {
                 .toList();
 
         List<SkillSuggestionSynthesizer.Suggestion> suggestions = skillSuggestionSynthesizer.suggest(
-                existingTerminals, evidence, courseLanguageName(course), null);
+                existingTerminals, evidence, LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null);
         return suggestions == null ? List.of() : suggestions.stream()
                 .filter(suggestion -> suggestion != null && suggestion.text() != null && !suggestion.text().isBlank())
                 .map(suggestion -> new SkillSuggestionResponse(suggestion.text(), suggestion.shortLabel()))
@@ -343,8 +336,7 @@ public class LearningGoalController {
     @ResponseStatus(HttpStatus.CREATED)
     public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
                                                              @RequestBody CreateGeneratedTerminalSkillRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
         String text = request.text() == null ? "" : request.text().strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
@@ -354,22 +346,22 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Skill text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
         }
-        rejectDuplicateTopic(courseId, text);
+        goalRepository.rejectDuplicateTopic(courseId, text);
 
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(text, courseLanguageName(course), null));
+                subtreeSynthesizer.generateSubtree(text, LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null));
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         // The terminal is a topic, a noun phrase with no level of its own; only the nodes beneath it
         // state a performance.
         applyClassifications(generatedNodes.nodes());
 
         return transactions.execute(status -> {
-            Course locked = lockCourse(courseId);
+            Course locked = courseRepository.lockOrThrow(courseId);
             // Checked again under the lock: the same topic may have been added during generation.
-            rejectDuplicateTopic(courseId, text);
+            goalRepository.rejectDuplicateTopic(courseId, text);
             LearningGoal created = newGeneratedGoal(locked, text, GoalOrigin.TERMINAL);
             created.setShortLabel(trimToNull(request.shortLabel()));
-            created.setHierarchyNode(competencyRoot(locked));
+            created.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(locked));
             persistGeneratedNodes(created, generatedNodes);
             return LearningGoalResponse.from(created, List.of(), List.of());
         });
@@ -398,15 +390,14 @@ public class LearningGoalController {
         }
 
         // Read outside a transaction, the terminal's lazy course cannot be followed.
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), null));
+                subtreeSynthesizer.generateSubtree(terminal.getText(), LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null));
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         applyClassifications(generatedNodes.nodes());
 
         return transactions.execute(status -> {
-            lockCourse(courseId);
+            courseRepository.lockOrThrow(courseId);
             LearningGoal current = findGoal(courseId, goalId);
             deleteWizardGeneratedDescendants(current);
             goalRepository.flush();
@@ -438,7 +429,7 @@ public class LearningGoalController {
         }
         rejectIfKnowledgeTier(parent);
 
-        Course course = lockCourse(courseId);
+        Course course = courseRepository.lockOrThrow(courseId);
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
         child.setRole(request.role());
@@ -617,60 +608,11 @@ public class LearningGoalController {
                 .collect(Collectors.joining(" | "));
     }
 
-    private String courseLanguageName(Course course) {
-        List<Document> documents = documentRepository.findByCourseId(course.getId());
-        Map<String, Long> weights = new LinkedHashMap<>();
-        for (Document document : documents) {
-            String language = document.getLanguage();
-            if (language == null || language.isBlank()) {
-                continue;
-            }
-            long weight = document.getRawText() == null ? 0 : document.getRawText().length();
-            if (weight > 0) {
-                weights.merge(language, weight, Long::sum);
-            }
-        }
-        String dominantLanguage = weights.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey)
-                .orElse(null);
-        String language = course.getOutputLanguage() != null
-                ? course.getOutputLanguage()
-                : dominantLanguage;
-        return LanguageUtils.englishName(language == null ? "en" : language);
-    }
-
     private String trimToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
         return value.strip();
-    }
-
-    /**
-     * Locks the course row until the transaction ends. Writes that check before they insert (the
-     * duplicate-topic check, the next lecture order) take it first, so two concurrent requests for
-     * one course cannot both pass the check.
-     */
-    private Course lockCourse(Long courseId) {
-        return courseRepository.lockById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
-    }
-
-    private void rejectDuplicateTopic(Long courseId, String text) {
-        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
-                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
-        if (duplicate) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
-    }
-
-    /** All terminal skills of a course share one COMPETENCY root node, created on first use. */
-    private HierarchyNode competencyRoot(Course course) {
-        return hierarchyNodeRepository
-                .findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
-                .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, COMPETENCY_ROOT_LABEL)));
     }
 
     @PatchMapping("/{goalId}")
@@ -887,9 +829,7 @@ public class LearningGoalController {
     @GetMapping(value = "/export.csv", produces = "text/csv")
     @Transactional(readOnly = true)
     public void exportCsv(@PathVariable Long courseId, HttpServletResponse response) throws IOException {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
 
         List<LearningGoal> goals = goalRepository.findByCourseId(courseId);
         List<Long> goalIds = goals.stream().map(LearningGoal::getId).toList();

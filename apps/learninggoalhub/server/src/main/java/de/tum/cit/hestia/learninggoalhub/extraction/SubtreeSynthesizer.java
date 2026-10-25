@@ -161,12 +161,12 @@ public class SubtreeSynthesizer {
                         throw new IllegalArgumentException("Generated subtree contains blank knowledge");
                     }
                     requireDistinct(nodeTexts, item.text());
-                    knowledge.add(new GeneratedKnowledge(item.text().strip(), blankToNull(item.shortLabel())));
+                    knowledge.add(new GeneratedKnowledge(item.text().strip(), OutcomeWording.stripToNull(item.shortLabel())));
                 }
-                subSkills.add(new GeneratedSubSkill(subSkill.text().strip(), blankToNull(subSkill.shortLabel()),
+                subSkills.add(new GeneratedSubSkill(subSkill.text().strip(), OutcomeWording.stripToNull(subSkill.shortLabel()),
                         knowledge));
             }
-            validSkills.add(new GeneratedSkill(skill.text().strip(), blankToNull(skill.shortLabel()), subSkills));
+            validSkills.add(new GeneratedSkill(skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), subSkills));
         }
         return new GeneratedSubtree(validSkills);
     }
@@ -200,8 +200,4 @@ public class SubtreeSynthesizer {
         return text.strip().toLowerCase(Locale.ROOT);
     }
 
-    /** shortLabel is best-effort: a missing one falls back to the full text on display, not an error. */
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
-    }
-}
+    /** shortLabel is best-effort: a missing one falls back to the full text on display, not an error. */}

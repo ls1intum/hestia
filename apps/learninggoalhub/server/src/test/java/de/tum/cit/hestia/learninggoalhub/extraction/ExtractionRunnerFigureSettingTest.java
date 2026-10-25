@@ -111,7 +111,7 @@ class ExtractionRunnerFigureSettingTest {
         when(course.getId()).thenReturn(1L);
         when(course.getName()).thenReturn("Figure course");
         when(course.isFiguresEnabled()).thenReturn(figuresEnabled);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
 
         String text = "text from the lecture";
         Document document = mock(Document.class);
