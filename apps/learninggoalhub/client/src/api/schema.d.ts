@@ -822,9 +822,7 @@ export interface operations {
     };
     generateSubtree: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -900,9 +898,7 @@ export interface operations {
     };
     createGeneratedTerminalSkill: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -928,9 +924,7 @@ export interface operations {
     };
     suggestTerminalSkills: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -953,7 +947,6 @@ export interface operations {
     extract: {
         parameters: {
             query?: {
-                model?: string;
                 force?: boolean;
             };
             header?: never;
@@ -1011,10 +1004,7 @@ export interface operations {
     };
     generate: {
         parameters: {
-            query?: {
-                /** @description Optional chat-model override; omit for the configured default. */
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -1089,7 +1079,6 @@ export interface operations {
     rebuildCompetencyTree: {
         parameters: {
             query?: {
-                model?: string;
                 force?: boolean;
             };
             header?: never;
@@ -1436,9 +1425,7 @@ export interface operations {
     };
     search: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -1464,9 +1451,7 @@ export interface operations {
     };
     pages: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;

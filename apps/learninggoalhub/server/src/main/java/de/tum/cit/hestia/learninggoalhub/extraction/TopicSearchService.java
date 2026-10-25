@@ -91,6 +91,12 @@ public class TopicSearchService {
 
     static final Duration PROPOSAL_TTL = Duration.ofMinutes(30);
 
+    /** Most proposals held at once, so repeated searches cannot grow the in-memory store without bound. */
+    static final int MAX_PROPOSALS = 100;
+
+    /** A topic is a short phrase; this bounds what one search sends to the model. */
+    static final int MAX_TOPIC_CHARS = 500;
+
     /**
      * Below this many sub-skills the structure call is skipped. Two or three outcomes from a short
      * page range come back as one skill holding all of them, which structuring dissolves anyway.
@@ -264,6 +270,12 @@ public class TopicSearchService {
     public ProposalResponse search(Long courseId, String topicText, List<PageRange> ranges, String modelOverride) {
         Course course = course(courseId);
         String topic = requireTopic(topicText);
+        // Checked before reading any pages, so a full store does not cost a search's model calls.
+        sweep();
+        if (proposals.size() >= MAX_PROPOSALS) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Too many open topic searches. Try again in a few minutes.");
+        }
         List<Document> courseDocuments = documentRepository.findByCourseId(courseId);
         Map<Long, Document> documentsById = courseDocuments.stream()
                 .collect(Collectors.toMap(Document::getId, document -> document));
@@ -747,6 +759,10 @@ public class TopicSearchService {
         String topic = text == null ? "" : text.strip();
         if (topic.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
+        }
+        if (topic.length() > MAX_TOPIC_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Topic text must be at most " + MAX_TOPIC_CHARS + " characters");
         }
         return topic;
     }

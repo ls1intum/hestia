@@ -12,7 +12,8 @@ sibling thesis projects that integrate against this service.
   `https://hestia-test.aet.cit.tum.de/learninggoalhub/api/courses`.
 - The machine-readable contract lives at `<base>/v3/api-docs` (OpenAPI 3, also browsable via
   `<base>/swagger-ui.html`); a checked-in snapshot is at `client/openapi/openapi.json`.
-- No authentication yet — the API is currently consumed inside the trusted dev/university setup.
+- Authentication: a consuming server sends its key in an `X-Api-Key` header (see
+  [Service keys](#service-keys)). The other endpoints have no authentication yet.
 - All endpoints speak JSON unless noted. Breaking changes are treated as expensive
   (see `AGENTS.md`); additions are favoured over shape changes.
 
@@ -133,9 +134,9 @@ goals created for it, in the same `LearningGoalResponse` shape as the other endp
 ]
 ```
 
-An optional `model` query param overrides the chat model for the generation calls.
-Validation errors (no blocks, no task block, blank task description) return `400` in the
-standard error shape below.
+Validation errors (no blocks, a `null` block, no task block, a blank task description, a
+repeated task `blockId`, more than 100 blocks, or a description over 20,000 characters) return
+`400` in the standard error shape below.
 
 Exam goals also show up in the read endpoints above: in the flat list, and in `by-session` as
 a group whose `level` is `EXAM` and whose `label` is `Exam`.
@@ -193,6 +194,33 @@ human-readable `message`:
 - `code` is the HTTP status name (e.g. `NOT_FOUND`, `BAD_REQUEST`, `INTERNAL_SERVER_ERROR`); branch
   on it rather than parsing `message`.
 - The HTTP status line carries the same status, so consumers can also key on that.
+
+- `401 UNAUTHORIZED` — a service-only endpoint was called without a valid key (once enforced).
+- `429 TOO_MANY_REQUESTS` — too many requests that start model calls from one client address
+  (default 60 per 10 minutes). The `Retry-After` header gives the seconds to wait. Requests with a
+  valid service key are not counted.
+
+## Service keys
+
+Each consuming server gets its own key, set as a deployment secret on both sides (see
+`DEPLOY.md`), and sends it on every request:
+
+```http
+X-Api-Key: <key>
+```
+
+The server logs each keyed request with the caller's name. These endpoints are for consuming
+servers only and will require the key:
+
+- `POST /api/courses/{courseId}/exam-tasks/learning-goals` (ExamLens)
+- `GET /api/courses/{courseId}/learning-goals/by-session` (Workshopper)
+- `POST /api/courses/{courseId}/learning-goals/skill-suggestions`,
+  `POST /api/courses/{courseId}/learning-goals/{goalId}/subtree`
+
+Until `hestia.security.enforce-service-keys` is switched on, a request to them without a key still
+succeeds and is logged as `Would reject ...`. Send the key now; once every consumer does, the
+switch makes them return `401` without one. A key is a server-side secret: never put it in a
+browser bundle.
 
 ## Consuming from Java (Spring Boot)
 
@@ -262,7 +290,8 @@ under your control.
 `POST /api/courses/{courseId}/learning-goals/terminal/generated` and
 `POST /api/courses/{courseId}/learning-goals/{goalId}/subtree` and
 `POST /api/courses/{courseId}/learning-goals/{goalId}/children` (instructor review),
-`POST /api/courses/{courseId}/documents` (upload) and `POST /api/courses/{courseId}/extract`
+`POST /api/courses/{courseId}/documents` (upload; PDF only, `415` for other files, `413` above
+2,000 pages or 3,000,000 characters of text) and `POST /api/courses/{courseId}/extract`
 (asynchronous pipeline trigger; returns `202 Accepted` with `{courseId, status}`, or `409 Conflict`
 when another extraction is already running) back the LearningGoalHub UI. They are not
 access-restricted yet, but consumer projects should treat them as off-limits.

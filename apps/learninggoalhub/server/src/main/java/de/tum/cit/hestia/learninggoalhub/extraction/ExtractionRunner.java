@@ -208,16 +208,16 @@ public class ExtractionRunner {
         } catch (RuntimeException ex) {
             ExtractionStageSummary stage = persistedStage[0];
             String error = stage == null
-                    ? errorMessage(ex)
+                    ? ExtractionErrors.describe(ex)
                     : "The learning goals were saved, but the competency tree could not be built. "
-                            + "Retry only the competency tree. Details: " + errorMessage(ex);
+                            + "Retry only the competency tree. Details: " + ExtractionErrors.describe(ex);
             if (auditRunId.get() != null) {
                 extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.FAILED, error,
                         stage == null ? null : stage.goalsCreated(), run.failedSessions(),
                         stage == null ? SessionExtractionService.PROMPT_VERSION : stage.promptVersion());
             }
             if (stage != null) {
-                throw new IllegalStateException(error, ex);
+                throw new ExtractionErrors.PublicFailure(error, ex);
             }
             throw ex;
         } finally {
@@ -584,12 +584,11 @@ public class ExtractionRunner {
             plan = planFullCompetencyTree(course, modelOverride,
                     LanguageUtils.englishName(courseLanguage));
         } catch (RuntimeException ex) {
-            String detail = errorMessage(ex);
             log.warn("Could not synthesise a replacement competency tree for course {}: {}",
-                    courseId, detail, ex);
+                    courseId, errorMessage(ex), ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Could not synthesise a new competency tree; the existing one was left untouched. "
-                            + "Details: " + detail, ex);
+                            + "Details: " + ExtractionErrors.describe(ex), ex);
         }
         if (plan == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,

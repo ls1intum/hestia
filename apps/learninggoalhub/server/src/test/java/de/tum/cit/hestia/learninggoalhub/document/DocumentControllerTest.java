@@ -290,4 +290,23 @@ class DocumentControllerTest {
         mockMvc.perform(multipart("/api/courses/{id}/documents", 999999L).file(file))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void rejectsNonPdfUploadsWithoutStoringAnyFile() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .file(new MockMultipartFile("files", "notes.txt", MediaType.TEXT_PLAIN_VALUE, "notes".getBytes())))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("Only PDF files can be uploaded: notes.txt"));
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "renamed.pdf", MediaType.APPLICATION_PDF_VALUE,
+                                "PK\u0003\u0004 not a pdf".getBytes())))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("Not a valid PDF file: renamed.pdf"));
+
+        assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
 }

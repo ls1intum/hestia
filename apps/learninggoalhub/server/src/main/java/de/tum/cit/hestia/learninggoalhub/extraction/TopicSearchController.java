@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,17 +31,15 @@ public class TopicSearchController {
     /** Proposes page runs that mention the topic. */
     @PostMapping("/pages")
     public PagePlan pages(@PathVariable Long courseId,
-                          @RequestParam(required = false) String model,
                           @RequestBody TopicRequest request) {
-        return topicSearchService.planPages(courseId, request.text(), model);
+        return topicSearchService.planPages(courseId, request.text(), null);
     }
 
     /** Reads the chosen pages into a proposal held for thirty minutes; nothing is saved. */
     @PostMapping
     public ProposalResponse search(@PathVariable Long courseId,
-                                   @RequestParam(required = false) String model,
                                    @RequestBody SearchRequest request) {
-        return topicSearchService.search(courseId, request.text(), request.ranges(), model);
+        return topicSearchService.search(courseId, request.text(), request.ranges(), null);
     }
 
     /** Creates the topic with the kept sub-skills, their sources and knowledge. */

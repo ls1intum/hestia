@@ -44,10 +44,10 @@ public class LearningGoalCsvWriter {
         try (CSVWriter csv = new CSVWriter(writer)) {
             csv.writeNext(HEADER);
             for (LearningGoal g : goals) {
-                csv.writeNext(toRow(
+                csv.writeNext(neutralizeFormulas(toRow(
                         g,
                         sourcesByGoal.getOrDefault(g.getId(), List.of()),
-                        relationshipsBySource.getOrDefault(g.getId(), List.of())));
+                        relationshipsBySource.getOrDefault(g.getId(), List.of()))));
             }
             csv.flushQuietly();
         }
@@ -102,6 +102,22 @@ public class LearningGoalCsvWriter {
                 .sorted(byTypeThenTarget)
                 .map(r -> r.getType().name() + "→" + r.getTarget().getText())
                 .collect(Collectors.joining("; "));
+    }
+
+    /**
+     * Goal text, hierarchy labels and filenames come from uploads and model output. A spreadsheet
+     * treats a cell that starts with one of these characters as a formula, so such a cell gets a
+     * leading apostrophe and opens as plain text (OWASP's CSV-injection guidance).
+     */
+    static String[] neutralizeFormulas(String[] row) {
+        String[] safe = new String[row.length];
+        for (int i = 0; i < row.length; i++) {
+            String cell = row[i];
+            safe[i] = cell != null && !cell.isEmpty() && "=+-@\t\r".indexOf(cell.charAt(0)) >= 0
+                    ? "'" + cell
+                    : cell;
+        }
+        return safe;
     }
 
     private static String orEmpty(String value) {

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -363,5 +364,48 @@ class ExamGoalControllerTest {
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": " " } ] }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returns400ForNullBlock() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"blocks\": [null] }"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returns400ForRepeatedTaskBlockId() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [
+                                  { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": "A" },
+                                  { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": "B" } ] }
+                                """))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(generator);
+    }
+
+    @Test
+    void returns400ForTooManyBlocksOrTooLongDescription() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        String tooMany = java.util.stream.IntStream.rangeClosed(1, ExamGoalController.MAX_BLOCKS + 1)
+                .mapToObj(i -> "{ \"blockId\": \"" + i + "\", \"blockType\": \"task\", \"description\": \"Q\" }")
+                .collect(java.util.stream.Collectors.joining(",", "{ \"blocks\": [", "] }"));
+        String tooLong = "{ \"blocks\": [ { \"blockId\": \"1\", \"blockType\": \"task\", \"description\": \""
+                + "x".repeat(ExamGoalController.MAX_DESCRIPTION_CHARS + 1) + "\" } ] }";
+
+        for (String body : List.of(tooMany, tooLong)) {
+            mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(generator);
     }
 }

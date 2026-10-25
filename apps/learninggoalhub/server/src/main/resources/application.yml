@@ -112,6 +112,26 @@ hestia:
     # Model for the competency tree: naming the course's topics, assigning skills to them, and
     # structuring each topic into capabilities. All three calls run at assignment-temperature.
     taxonomy-planner-model: openai/gpt-oss-120b
+  security:
+    # Shared keys the other Hestia apps' servers send in X-Api-Key (one per caller). Blank = none.
+    api-key:
+      examlense: ${API_KEY_EXAMLENSE:}
+      workshopper: ${API_KEY_WORKSHOPPER:}
+    # Whether the service-only endpoints (exam tasks, by-session, skill suggestions, subtree)
+    # require a key. Off until the consumers send theirs; until then the server only logs each
+    # request it would reject ("Would reject ...").
+    enforce-service-keys: ${ENFORCE_SERVICE_KEYS:false}
+  rate-limit:
+    # Requests that start model calls, per client address and window; more get a 429. Requests
+    # with a service key are not counted.
+    llm-requests: 60
+    window: 10m
+  upload:
+    # Bounds on one uploaded PDF, checked after parsing. A whole-semester slide collection reaches
+    # about 600 pages and 350,000 characters, so these only stop files that would otherwise tie up
+    # the parser and the extraction for a long time.
+    max-pages: 2000
+    max-text-chars: 3000000
   topic-search:
     # Most pages one "Find in the slides" search may read. Each page range is extracted like a
     # session, so this caps the calls and the wait of a single search.

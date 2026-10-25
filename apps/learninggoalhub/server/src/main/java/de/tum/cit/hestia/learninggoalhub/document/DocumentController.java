@@ -10,6 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -30,22 +31,31 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/courses/{courseId}/documents")
 public class DocumentController {
 
+    private static final byte[] PDF_SIGNATURE = "%PDF-".getBytes(StandardCharsets.US_ASCII);
+    private static final int PDF_SIGNATURE_WINDOW = 1024;
+
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
     private final DocumentContentRepository documentContentRepository;
     private final DocumentStructureService structureService;
     private final DocumentUploadService uploadService;
+    private final int maxPages;
+    private final int maxTextChars;
 
     public DocumentController(CourseRepository courseRepository,
                               DocumentRepository documentRepository,
                               DocumentContentRepository documentContentRepository,
                               DocumentStructureService structureService,
-                              DocumentUploadService uploadService) {
+                              DocumentUploadService uploadService,
+                              @Value("${hestia.upload.max-pages:2000}") int maxPages,
+                              @Value("${hestia.upload.max-text-chars:3000000}") int maxTextChars) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.structureService = structureService;
         this.uploadService = uploadService;
+        this.maxPages = maxPages;
+        this.maxTextChars = maxTextChars;
     }
 
     @GetMapping
@@ -69,21 +79,81 @@ public class DocumentController {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
 
-        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
+        // upload instead of leaving the files before it saved.
+        List<byte[]> contents = new ArrayList<>(files.length);
         for (MultipartFile file : files) {
-            byte[] bytes;
+            contents.add(requirePdf(file));
+        }
+
+        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        for (int i = 0; i < files.length; i++) {
+            MultipartFile file = files[i];
+            byte[] bytes = contents.get(i);
             DocumentStructureService.ParsedDocument parsed;
             try {
-                bytes = file.getBytes();
                 parsed = structureService.parse(bytes, file.getContentType(), file.getOriginalFilename());
-            } catch (IOException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file: " + file.getOriginalFilename(), e);
+            } catch (DocumentParser.DocumentParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Could not read uploaded file: " + file.getOriginalFilename(), e);
             }
+            requireWithinLimits(file.getOriginalFilename(), parsed);
             Document saved = uploadService.persist(
                     course, file.getOriginalFilename(), file.getContentType(), kind, parsed, bytes);
             responses.add(DocumentResponse.from(saved));
         }
         return responses;
+    }
+
+    /**
+     * Only PDFs are accepted: the source viewer, quote highlights, bookmark sessions, figure
+     * descriptions and page search all read the PDF itself. Checks the extension and the {@code %PDF-}
+     * header, so a renamed file of another type is rejected too.
+     */
+    private static byte[] requirePdf(MultipartFile file) {
+        String name = file.getOriginalFilename();
+        if (name == null || !name.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Only PDF files can be uploaded: " + name);
+        }
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file: " + name, e);
+        }
+        if (!hasPdfSignature(bytes)) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Not a valid PDF file: " + name);
+        }
+        return bytes;
+    }
+
+    private void requireWithinLimits(String name, DocumentStructureService.ParsedDocument parsed) {
+        int pages = parsed.pageOffsets() == null ? 0 : parsed.pageOffsets().length - 1;
+        if (pages > maxPages) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    name + " has " + pages + " pages; at most " + maxPages + " are supported");
+        }
+        if (parsed.rawText().length() > maxTextChars) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    name + " contains more text than one document may (" + maxTextChars + " characters)");
+        }
+    }
+
+    /** Readers accept the header anywhere in the first kilobyte, after stray leading bytes. */
+    private static boolean hasPdfSignature(byte[] bytes) {
+        int last = Math.min(bytes.length, PDF_SIGNATURE_WINDOW) - PDF_SIGNATURE.length;
+        outer:
+        for (int start = 0; start <= last; start++) {
+            for (int i = 0; i < PDF_SIGNATURE.length; i++) {
+                if (bytes[start + i] != PDF_SIGNATURE[i]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     @GetMapping("/{documentId}/content")
