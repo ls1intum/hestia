@@ -2,6 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContent;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
@@ -212,7 +213,7 @@ public class ExtractionRunner {
             ExtractionSummary summary = new ExtractionSummary(stage.documentsProcessed(), stage.goalsCreated(),
                     competencyTree.competencies(), stage.textSources(), stage.figureSources(),
                     stage.unsupportedSources());
-            extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.SUCCEEDED, null,
+            extractionRunAuditService.finish(auditRunId.get(), ExtractionStatus.SUCCEEDED, null,
                     summary.goalsCreated(), run.failedSessions(), run.droppedOutcomes(), stage.promptVersion());
             return summary;
         } catch (RuntimeException ex) {
@@ -222,7 +223,7 @@ public class ExtractionRunner {
                     : "The learning goals were saved, but the competency tree could not be built. "
                             + "Retry only the competency tree. Details: " + ExtractionErrors.describe(ex);
             if (auditRunId.get() != null) {
-                extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.FAILED, error,
+                extractionRunAuditService.finish(auditRunId.get(), ExtractionStatus.FAILED, error,
                         stage == null ? null : stage.goalsCreated(), run.failedSessions(), run.droppedOutcomes(),
                         stage == null ? SessionExtractionService.PROMPT_VERSION : stage.promptVersion());
             }

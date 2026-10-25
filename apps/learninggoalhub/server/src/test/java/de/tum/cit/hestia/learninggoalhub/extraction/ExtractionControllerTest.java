@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -434,7 +435,7 @@ class ExtractionControllerTest {
         ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
                 .findFirst()
                 .orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getPromptVersion()).isEqualTo(SessionExtractionService.PROMPT_VERSION);
         assertThat(run.getGoalsCreated()).isEqualTo(3);
         assertThat(run.getFinishedAt()).isNotNull();
@@ -474,12 +475,12 @@ class ExtractionControllerTest {
         Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
                 "{\"unit-max-chars\":12000,\"skill-target-chars\":3000,\"parallelism\":16}");
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
-                .isEqualTo(ExtractionRun.Status.RUNNING);
+                .isEqualTo(ExtractionStatus.RUNNING);
 
-        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, 3, "direct-v1");
+        extractionRunAuditService.finish(runId, ExtractionStatus.SUCCEEDED, null, 4, 1, 3, "direct-v1");
 
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getGoalsCreated()).isEqualTo(4);
         assertThat(run.getFailedSessions()).isEqualTo(1);
         assertThat(run.getDroppedOutcomes()).isEqualTo(3);
@@ -1155,7 +1156,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("Topic tree synthesis failed");
                     assertThat(run.getGoalsCreated()).isEqualTo(1);
                 });
@@ -1188,7 +1189,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("failed.pdf");
                     assertThat(run.getFinishedAt()).isNotNull();
                     assertThat(run.getGoalsCreated()).isNull();

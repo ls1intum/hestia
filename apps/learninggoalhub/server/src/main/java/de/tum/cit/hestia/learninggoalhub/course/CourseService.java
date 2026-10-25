@@ -1,7 +1,5 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,11 +17,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class CourseService {
 
     private final CourseRepository courseRepository;
-    private final ExtractionRunRepository extractionRunRepository;
+    private final ExtractionStatusLookup extractionStatuses;
 
-    public CourseService(CourseRepository courseRepository, ExtractionRunRepository extractionRunRepository) {
+    public CourseService(CourseRepository courseRepository, ExtractionStatusLookup extractionStatuses) {
         this.courseRepository = courseRepository;
-        this.extractionRunRepository = extractionRunRepository;
+        this.extractionStatuses = extractionStatuses;
     }
 
     @Transactional
@@ -104,7 +102,7 @@ public class CourseService {
         Map<Long, Long> topicCounts = toCountMap(courseRepository.countTopicsByCourseIds(ids));
         Map<Long, Long> skillCounts = toCountMap(courseRepository.countSkillsByCourseIds(ids));
         Map<Long, Long> documentCounts = toCountMap(courseRepository.countDocumentsByCourseIds(ids));
-        Map<Long, ExtractionRun.Status> extractionStatuses = latestExtractionStatuses(ids);
+        Map<Long, ExtractionStatus> latestStatuses = extractionStatuses.latestByCourse(ids);
         for (Course course : courses) {
             summaries.put(course.getId(), new CourseSummaryResponse(
                     course.getId(),
@@ -117,7 +115,7 @@ public class CourseService {
                     topicCounts.getOrDefault(course.getId(), 0L),
                     skillCounts.getOrDefault(course.getId(), 0L),
                     course.getSkillsReviewedAt(),
-                    extractionStatuses.get(course.getId())));
+                    latestStatuses.get(course.getId())));
         }
         return summaries;
     }
@@ -134,13 +132,5 @@ public class CourseService {
         return counts.stream().collect(Collectors.toMap(
                 CourseRepository.CourseCount::getCourseId,
                 CourseRepository.CourseCount::getCount));
-    }
-
-    private Map<Long, ExtractionRun.Status> latestExtractionStatuses(List<Long> courseIds) {
-        Map<Long, ExtractionRun.Status> statuses = new LinkedHashMap<>();
-        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
-            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
-        }
-        return statuses;
     }
 }

@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
@@ -68,7 +69,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
                 org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), eq(0), anyString());
     }
 
@@ -89,7 +90,7 @@ class ExtractionRunnerSessionIsolationTest {
         assertThatThrownBy(() -> runner.runForCourse(1L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no learning goals");
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
                 org.mockito.ArgumentMatchers.contains("no learning goals"), isNull(), eq(0), eq(0), anyString());
     }
 

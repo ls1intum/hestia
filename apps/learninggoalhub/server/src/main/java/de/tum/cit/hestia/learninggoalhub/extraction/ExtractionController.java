@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -141,12 +142,12 @@ public class ExtractionController {
     }
 
     private static ExtractionProgressTracker.Snapshot durableSnapshot(ExtractionRun extractionRun) {
-        boolean succeeded = extractionRun.getStatus() == ExtractionRun.Status.SUCCEEDED;
+        boolean succeeded = extractionRun.getStatus() == ExtractionStatus.SUCCEEDED;
         ExtractionProgressTracker.Status status = succeeded
                 ? ExtractionProgressTracker.Status.SUCCEEDED
                 : ExtractionProgressTracker.Status.FAILED;
         String error = extractionRun.getError();
-        if (extractionRun.getStatus() == ExtractionRun.Status.RUNNING) {
+        if (extractionRun.getStatus() == ExtractionStatus.RUNNING) {
             error = "The extraction was interrupted before it finished. Retry the extraction.";
         }
         ExtractionRunner.ExtractionSummary summary = extractionRun.getGoalsCreated() == null
