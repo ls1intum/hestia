@@ -42,23 +42,6 @@ export default function CoursePage() {
   const course = courseQuery.data;
   const extractionProblem = course?.extractionStatus === "FAILED"
     || course?.extractionStatus === "RUNNING";
-  const extractionStatusQuery = useQuery<ExtractionStatus | null>({
-    queryKey: ["extract-status", courseId],
-    queryFn: async () => {
-      const result = await api.GET("/api/courses/{courseId}/extract/status", {
-        params: { path: { courseId } },
-      });
-      return result.data ?? null;
-    },
-    enabled: extractionModalOpen,
-    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
-  });
-  useEffect(() => {
-    if (extractionStatusQuery.data?.status !== "SUCCEEDED") return;
-    queryClient.invalidateQueries({ queryKey: ["course", courseId] });
-    queryClient.invalidateQueries({ queryKey: ["courses"] });
-    queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
-  }, [courseId, extractionStatusQuery.data?.status, queryClient]);
   const reviewDue = course != null
     && (course.topicCount ?? 0) > 0
     && course.skillsReviewedAt == null;
@@ -66,14 +49,40 @@ export default function CoursePage() {
   // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
   // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
   const showReview = reviewOpen || (reviewDue && !reviewDismissed);
+  const extractionStatusQuery = useQuery<ExtractionStatus | null>({
+    queryKey: ["extract-status", courseId],
+    queryFn: async () => {
+      const result = await api.GET("/api/courses/{courseId}/extract/status", {
+        params: { path: { courseId } },
+      });
+      if (result.error) throw new Error("Could not load the extraction status.");
+      return result.data ?? null;
+    },
+    // Also read for the review, which reports what the run that built the tree left out.
+    enabled: extractionModalOpen || showReview,
+    // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
+    // progress nor passes for "no run".
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 3000 : query.state.data?.status === "RUNNING" ? 1000 : false,
+  });
+  useEffect(() => {
+    if (extractionStatusQuery.data?.status !== "SUCCEEDED") return;
+    queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["courses"] });
+    queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
+  }, [courseId, extractionStatusQuery.data?.status, queryClient]);
 
   const markReviewed = useMutation({
     mutationFn: async () => {
-      await api.POST("/api/courses/{id}/skills-reviewed", {
+      const { error } = await api.POST("/api/courses/{id}/skills-reviewed", {
         params: { path: { id: courseId } },
       });
+      if (error) throw new Error("Could not record the skill review as done. It will be offered again.");
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["course", courseId] }),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -138,7 +147,11 @@ export default function CoursePage() {
       bloomLevel?: LearningGoal["bloomLevel"];
       soloLevel?: LearningGoal["soloLevel"];
     },
-  ) => updateGoalMutation.mutate({ goalId, ...changes });
+    onFailed: () => void,
+  ) => {
+    // Per call: mutate()'s own onError fires only for the latest of several quick edits.
+    updateGoalMutation.mutateAsync({ goalId, ...changes }).catch(onFailed);
+  };
 
   // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
   // the pipeline still synthesises and stores them, only the client filters.
@@ -160,6 +173,11 @@ export default function CoursePage() {
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
+        {markReviewed.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(markReviewed.error as Error).message}
+          </p>
+        )}
         {deleteMutation.isError && (
           <p className="text-sm text-hestia-danger">
             {(deleteMutation.error as Error).message}
@@ -180,6 +198,7 @@ export default function CoursePage() {
           <ExtractionProgressModal
             open
             status={extractionStatusQuery.data ?? undefined}
+            statusUnavailable={extractionStatusQuery.isError}
             error={
               extractionStatusQuery.data?.status === "FAILED"
                 ? extractionStatusQuery.data.error ?? "Extraction failed."
@@ -264,6 +283,8 @@ export default function CoursePage() {
         <ExtractionProgressModal
           open
           reviewOnly
+          // Only a successful run built the tree under review; a later failed run stored nothing.
+          status={extractionStatusQuery.data?.status === "SUCCEEDED" ? extractionStatusQuery.data : undefined}
           courseId={courseId}
           onClose={() => {
             setReviewOpen(false);

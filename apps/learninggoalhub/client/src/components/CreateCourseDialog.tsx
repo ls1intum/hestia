@@ -590,6 +590,13 @@ async function uploadDocuments(
   }
 }
 
+/**
+ * Gives up on an upload request after this long. The proxy already answers 504 when the server
+ * stays silent for ten minutes after the last byte; this also ends a transfer that stalls, which
+ * would otherwise leave the dialog busy forever. A retry skips the files the server did store.
+ */
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
 function uploadBatch(
   courseId: number,
   kind: DocumentKind,
@@ -603,6 +610,7 @@ function uploadBatch(
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents?kind=${kind}`);
+    request.timeout = UPLOAD_TIMEOUT_MS;
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onFraction(event.loaded / event.total);
     };
@@ -613,6 +621,8 @@ function uploadBatch(
     };
     request.onerror = () =>
       reject(new Error("Course created, but the upload failed. Please check your connection."));
+    request.ontimeout = () =>
+      reject(new Error("Course created, but the upload timed out. Please try again."));
     request.send(formData);
   });
 }

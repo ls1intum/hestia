@@ -418,12 +418,13 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
                 .isEqualTo(ExtractionRun.Status.RUNNING);
 
-        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, "direct-v1");
+        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, 3, "direct-v1");
 
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
         assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
         assertThat(run.getGoalsCreated()).isEqualTo(4);
         assertThat(run.getFailedSessions()).isEqualTo(1);
+        assertThat(run.getDroppedOutcomes()).isEqualTo(3);
         assertThat(run.getFinishedAt()).isNotNull();
     }
 

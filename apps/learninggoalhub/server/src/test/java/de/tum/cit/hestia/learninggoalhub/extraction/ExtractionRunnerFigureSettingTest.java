@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -46,7 +47,7 @@ class ExtractionRunnerFigureSettingTest {
     void disabledFiguresSkipDescriptionAndKeepEvidenceOutOfExtractionPrompt() {
         Fixture fixture = fixture(false);
 
-        fixture.runner().runForCourse(1L);
+        runUntilTheEmptyReplyFails(fixture);
 
         verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString(), any());
         verify(fixture.pageDescriptionRepository(), never()).findByDocumentId(any());
@@ -58,7 +59,7 @@ class ExtractionRunnerFigureSettingTest {
     void enabledFiguresDescribePagesAndPassEvidenceToExtractionPrompt() {
         Fixture fixture = fixture(true);
 
-        fixture.runner().runForCourse(1L);
+        runUntilTheEmptyReplyFails(fixture);
 
         verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"), any());
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
@@ -67,6 +68,12 @@ class ExtractionRunnerFigureSettingTest {
                 .contains("Figure descriptions")
                 .contains("A process diagram.");
         verifyRunParams(fixture.auditService(), true);
+    }
+
+    /** The stubbed model names no outcome, so the run fails after the prompt this test inspects. */
+    private static void runUntilTheEmptyReplyFails(Fixture fixture) {
+        assertThatThrownBy(() -> fixture.runner().runForCourse(1L))
+                .hasMessageContaining("no learning goals");
     }
 
     private static void verifyPromptDoesNotContainFigures(ChatClient chatClient) {
@@ -135,7 +142,7 @@ class ExtractionRunnerFigureSettingTest {
                 .thenReturn(List.of());
         clearInvocations(spec);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), 0.2);
+                chatClientBuilder, mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);

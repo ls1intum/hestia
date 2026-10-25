@@ -186,6 +186,12 @@ public class ExtractionRunner {
             // one would otherwise hold the row locks of the goals it replaces for all of that time.
             ExtractedCourse extracted = extract(input.course(), input.documents(), modelOverride,
                     input.dominantLanguage(), run);
+            // Checked before anything is stored: an empty result would otherwise succeed with nothing to
+            // show, and a forced run would already have replaced the previous extraction with it.
+            if (extracted.classified().isEmpty()) {
+                throw new IllegalStateException("The extraction found no learning goals in the uploaded material. "
+                        + "Check that the documents contain readable text, then retry the extraction.");
+            }
             // The old artefacts are replaced in the same transaction that stores the new ones, so a
             // failed run still leaves the previous extraction in place.
             ExtractionStageSummary stage = extractionTransactions.execute(status -> {
@@ -217,7 +223,7 @@ public class ExtractionRunner {
                     competencyTree.competencies(), stage.textSources(), stage.figureSources(),
                     stage.unsupportedSources());
             extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.SUCCEEDED, null,
-                    summary.goalsCreated(), run.failedSessions(), stage.promptVersion());
+                    summary.goalsCreated(), run.failedSessions(), run.droppedOutcomes(), stage.promptVersion());
             return summary;
         } catch (RuntimeException ex) {
             ExtractionStageSummary stage = persistedStage[0];
@@ -227,7 +233,7 @@ public class ExtractionRunner {
                             + "Retry only the competency tree. Details: " + ExtractionErrors.describe(ex);
             if (auditRunId.get() != null) {
                 extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.FAILED, error,
-                        stage == null ? null : stage.goalsCreated(), run.failedSessions(),
+                        stage == null ? null : stage.goalsCreated(), run.failedSessions(), run.droppedOutcomes(),
                         stage == null ? SessionExtractionService.PROMPT_VERSION : stage.promptVersion());
             }
             if (stage != null) {

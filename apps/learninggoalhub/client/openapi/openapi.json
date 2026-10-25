@@ -2034,6 +2034,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "droppedOutcomes": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

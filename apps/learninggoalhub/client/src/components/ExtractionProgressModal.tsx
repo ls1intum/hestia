@@ -24,9 +24,12 @@ type Props = {
   status?: ExtractionStatus;
   /** Set when the run failed. */
   error?: string | null;
+  /** Set while the status cannot be loaded; the last known progress stays on screen meanwhile. */
+  statusUnavailable?: boolean;
   courseId?: number | null;
   /**
-   * Opens straight into the skill review, ignoring run status entirely. The review reads the
+   * Opens straight into the skill review whatever the run status; `status` then only reports what
+   * the run left out. The review reads the
    * course's goals from its own query, so it stays reachable long after the run — and after a
    * restart, when the in-memory progress tracker no longer remembers the run at all.
    */
@@ -42,6 +45,7 @@ export default function ExtractionProgressModal({
   open,
   status,
   error,
+  statusUnavailable = false,
   courseId,
   reviewOnly = false,
   onClose,
@@ -231,10 +235,10 @@ export default function ExtractionProgressModal({
   const total = status?.total ?? 0;
   const completed = status?.completed ?? 0;
   const percent = status?.percent ?? 0;
-  // Sessions the run dropped. Zero when reopened via reviewOnly: the tracker is in-memory, so the
-  // durable record of a thinned-out run is the extraction_run audit row, not this screen.
+  // What the run left out. A review opened later reads it from the durable run record.
   const failedSessions = status?.failedSessions ?? 0;
   const failedSessionNames = status?.failedSessionNames ?? [];
+  const droppedOutcomes = status?.droppedOutcomes ?? 0;
   // Index of the phase the backend currently reports; -1 until the first poll lands ("Starting…").
   const activeIndex = status?.phase
     ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
@@ -354,13 +358,18 @@ export default function ExtractionProgressModal({
                   );
                 })}
               </ol>
+              {statusUnavailable && (
+                <p className="text-sm text-hestia-danger">
+                  Cannot reach the server for the progress. Still trying…
+                </p>
+              )}
             </div>
           )}
 
           {done && (
             <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-stretch">
               <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
-                {failedSessions > 0 && (
+                {(failedSessions > 0 || droppedOutcomes > 0) && (
                   // The table's warning tint: the warning hue is too light for text, so the text
                   // stays in the text colour and only the icon carries the hue.
                   <p className="flex items-start gap-2.5 rounded-xl bg-[color-mix(in_srgb,var(--hestia-warning)_22%,var(--hestia-surface))] px-4 py-3 text-sm text-hestia-text">
@@ -379,8 +388,15 @@ export default function ExtractionProgressModal({
                     </svg>
                     <span>
                     {failedSessions === 1
-                      ? "One session could not be analysed and contributed no skills."
-                      : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
+                      ? "One session could not be analysed and contributed no skills. "
+                      : failedSessions > 1
+                        ? `${failedSessions} sessions could not be analysed and contributed no skills. `
+                        : null}
+                    {droppedOutcomes === 1
+                      ? "One extracted skill or knowledge item failed validation and was left out. "
+                      : droppedOutcomes > 1
+                        ? `${droppedOutcomes} extracted skills or knowledge items failed validation and were left out. `
+                        : null}
                     You can add anything that is missing afterwards in the table.
                     </span>
                   </p>

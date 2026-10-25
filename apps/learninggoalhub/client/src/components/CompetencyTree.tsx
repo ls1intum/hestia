@@ -516,6 +516,8 @@ export default function CompetencyTree({
       bloomLevel?: LearningGoal["bloomLevel"];
       soloLevel?: LearningGoal["soloLevel"];
     },
+    /** Called when the save fails, so the edit shown ahead of it can be taken back. */
+    onFailed: () => void,
   ) => void;
   onDelete: (goal: LearningGoal) => void;
 }) {
@@ -601,7 +603,20 @@ export default function CompetencyTree({
       next.set(goalId, { ...next.get(goalId), ...changes });
       return { base: goals, changes: next };
     });
-    onUpdate(goalId, changes);
+    // A failed save leaves the list unchanged, so the edit would otherwise stay on screen as if saved.
+    const rollback = () =>
+      setPending((prev) => {
+        const current = prev.changes.get(goalId);
+        if (!current) return prev;
+        const kept = Object.fromEntries(
+          Object.entries(current).filter(([key]) => !(key in changes)),
+        ) as GoalChanges;
+        const next = new Map(prev.changes);
+        if (Object.keys(kept).length === 0) next.delete(goalId);
+        else next.set(goalId, kept);
+        return { ...prev, changes: next };
+      });
+    onUpdate(goalId, changes, rollback);
   };
 
   const forest = useMemo(

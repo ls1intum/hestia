@@ -123,10 +123,14 @@ export default function CoursesPage() {
       const result = await api.GET("/api/courses/{courseId}/extract/status", {
         params: { path: { courseId: reviewCourseId as number } },
       });
+      if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
     },
     enabled: reviewCourseId != null,
-    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+    // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
+    // progress nor passes for "no run".
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 3000 : query.state.data?.status === "RUNNING" ? 1000 : false,
   });
 
   // Watching a run to the finish hands straight over to the course itself, where the one-time skill
@@ -439,6 +443,7 @@ export default function CoursesPage() {
         <ExtractionProgressModal
           open
           status={extractionStatusQuery.data ?? undefined}
+          statusUnavailable={extractionStatusQuery.isError}
           error={
             extractionStatusQuery.data?.status === "FAILED"
               ? extractionStatusQuery.data.error ?? "Extraction failed."

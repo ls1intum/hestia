@@ -27,9 +27,9 @@ public class ExtractionRunAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void finish(Long runId, ExtractionRun.Status status, String error, Integer goalsCreated,
-                       Integer failedSessions, String promptVersion) {
+                       Integer failedSessions, Integer droppedOutcomes, String promptVersion) {
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        run.finish(status, error, goalsCreated, failedSessions, promptVersion);
+        run.finish(status, error, goalsCreated, failedSessions, droppedOutcomes, promptVersion);
         extractionRunRepository.saveAndFlush(run);
     }
 
@@ -41,7 +41,7 @@ public class ExtractionRunAuditService {
                 .filter(run -> run.getGoalsCreated() != null)
                 .ifPresent(run -> {
                     run.finish(ExtractionRun.Status.SUCCEEDED, null, run.getGoalsCreated(),
-                            run.getFailedSessions(), run.getPromptVersion());
+                            run.getFailedSessions(), run.getDroppedOutcomes(), run.getPromptVersion());
                     extractionRunRepository.saveAndFlush(run);
                 });
     }

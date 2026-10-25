@@ -46,6 +46,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -71,6 +73,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/courses/{courseId}/learning-goals")
 public class LearningGoalController {
+
+    private static final Logger log = LoggerFactory.getLogger(LearningGoalController.class);
 
     private final CourseRepository courseRepository;
     private final LearningGoalRepository goalRepository;
@@ -570,6 +574,8 @@ public class LearningGoalController {
         try {
             List<TaxonomyClassification> classifications = taxonomyService.classifyBatch(texts, null);
             if (classifications == null || classifications.size() != nodes.size()) {
+                log.warn("Taxonomy batch returned {} results for {} generated goals; storing them without levels",
+                        classifications == null ? 0 : classifications.size(), nodes.size());
                 return;
             }
             for (int i = 0; i < nodes.size(); i++) {
@@ -579,8 +585,10 @@ public class LearningGoalController {
                     nodes.get(i).setSoloLevel(classification.solo());
                 }
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
             // Classification is best-effort; the generated subtree must still be persisted.
+            log.warn("Taxonomy classification failed for {} generated goals; storing them without levels: {}",
+                    nodes.size(), ex.getMessage());
         }
     }
 
