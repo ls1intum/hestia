@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,55 +39,49 @@ public class ExtractionProgressTracker {
     }
 
     private final Map<Long, Run> runs = new ConcurrentHashMap<>();
-    private final AtomicReference<Long> runningCourseId = new AtomicReference<>();
+    /**
+     * The run holding the one global slot. Held by handle, not by course id, so a finished run can
+     * never release the slot of a newer run of the same course.
+     */
+    private final AtomicReference<Run> activeRun = new AtomicReference<>();
 
     /** Claims the one global extraction slot and begins tracking the run. */
     public Optional<Run> tryStart(Long courseId, String model) {
-        if (!runningCourseId.compareAndSet(null, courseId)) {
+        Run run = new Run(courseId, model, this::release);
+        if (!activeRun.compareAndSet(null, run)) {
             return Optional.empty();
         }
         // Releasing the slot as the run turns terminal — rather than only in the caller's finally —
         // means anyone who can observe SUCCEEDED/FAILED can already claim the slot. Otherwise the
         // next extraction is rejected with a spurious 409 in the window between the two.
-        Run run = new Run(model, () -> finish(courseId));
         runs.put(courseId, run);
         return Optional.of(run);
     }
 
-    /** Releases the global slot only when it still belongs to {@code courseId}. */
-    public void finish(Long courseId) {
-        for (;;) {
-            Long current = runningCourseId.get();
-            if (!Objects.equals(current, courseId)
-                    || runningCourseId.compareAndSet(current, null)) {
-                return;
-            }
-        }
+    /** Releases the global slot only when {@code run} still holds it. */
+    public void release(Run run) {
+        activeRun.compareAndSet(run, null);
     }
 
     public Optional<Current> current() {
-        Long courseId = runningCourseId.get();
-        if (courseId == null) {
-            return Optional.empty();
-        }
-        Run run = runs.get(courseId);
-        return run == null ? Optional.empty() : Optional.of(new Current(courseId, run.snapshot()));
+        Run run = activeRun.get();
+        return run == null ? Optional.empty() : Optional.of(new Current(run.courseId, run.snapshot()));
     }
 
     /** The handle of the run holding the global slot, for work that must be booked to it. */
     public Optional<Run> activeRun() {
-        Long courseId = runningCourseId.get();
-        return courseId == null ? Optional.empty() : Optional.ofNullable(runs.get(courseId));
+        return Optional.ofNullable(activeRun.get());
     }
 
     /** Begins (or replaces) tracking for a course and returns the handle the runner updates. */
     public Run start(Long courseId, String model) {
         // The controller claims the slot before submitting the job. Reuse that handle so the
         // background runner cannot replace the snapshot that the controller already exposed.
-        if (Objects.equals(runningCourseId.get(), courseId)) {
-            return runs.computeIfAbsent(courseId, ignored -> new Run(model, () -> finish(courseId)));
+        Run active = activeRun.get();
+        if (active != null && Objects.equals(active.courseId, courseId)) {
+            return active;
         }
-        Run run = new Run(model, () -> finish(courseId));
+        Run run = new Run(courseId, model, this::release);
         runs.put(courseId, run);
         return run;
     }
@@ -98,6 +93,7 @@ public class ExtractionProgressTracker {
     /** Mutable, thread-safe handle for one in-flight run. Counters are bumped from worker threads. */
     public static final class Run {
 
+        private final Long courseId;
         private final String model;
         private volatile Phase phase = Phase.DESCRIBING_FIGURES;
         private final AtomicInteger completed = new AtomicInteger();
@@ -112,9 +108,10 @@ public class ExtractionProgressTracker {
         /** Token counts per "phase / model", in the order the phases first called a model. */
         private final Map<String, TokenTally> usage = Collections.synchronizedMap(new LinkedHashMap<>());
         /** Frees the global slot; run before the terminal status becomes visible. */
-        private final Runnable releaseSlot;
+        private final Consumer<Run> releaseSlot;
 
-        private Run(String model, Runnable releaseSlot) {
+        private Run(Long courseId, String model, Consumer<Run> releaseSlot) {
+            this.courseId = courseId;
             this.model = model;
             this.releaseSlot = releaseSlot;
         }
@@ -172,13 +169,13 @@ public class ExtractionProgressTracker {
 
         public void succeed(ExtractionRunner.ExtractionSummary summary) {
             this.summary = summary;
-            releaseSlot.run();
+            releaseSlot.accept(this);
             this.status = Status.SUCCEEDED;
         }
 
         public void fail(String message) {
             this.error = message;
-            releaseSlot.run();
+            releaseSlot.accept(this);
             this.status = Status.FAILED;
         }
 

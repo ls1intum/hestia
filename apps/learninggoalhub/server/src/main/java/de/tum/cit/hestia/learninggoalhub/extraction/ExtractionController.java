@@ -79,12 +79,12 @@ public class ExtractionController {
                     log.warn("Extraction of course {} failed", courseId, ex);
                     run.fail(ExtractionErrors.describe(ex));
                 } finally {
-                    progressTracker.finish(courseId);
+                    progressTracker.release(run);
                 }
             });
         } catch (RuntimeException ex) {
             run.fail(ExtractionErrors.describe(ex));
-            progressTracker.finish(courseId);
+            progressTracker.release(run);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Could not queue the extraction.", ex);
         }
@@ -122,7 +122,7 @@ public class ExtractionController {
             run.fail(ExtractionErrors.describe(ex));
             throw ex;
         } finally {
-            progressTracker.finish(courseId);
+            progressTracker.release(run);
         }
     }
 
