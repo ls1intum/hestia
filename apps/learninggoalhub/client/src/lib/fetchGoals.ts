@@ -23,7 +23,10 @@ export async function fetchAllGoals(courseId: number): Promise<LearningGoal[]> {
     const next = await api.GET("/api/courses/{courseId}/learning-goals", {
       params: { path: { courseId }, query: { size: PAGE_SIZE, page } },
     });
-    if (next.error || !next.data?.content?.length) break;
+    // A failed page must not pass for the whole course: the tree would silently lose its terminals.
+    if (next.error || !next.data) throw new Error("Could not load learning goals.");
+    // Goals deleted while paging shrink the list; stop rather than ask for pages past its end.
+    if (!next.data.content?.length) break;
     goals.push(...next.data.content);
   }
   return goals;
