@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.config;
+package de.tum.cit.hestia.learninggoalhub.llm;
 
 import java.time.Duration;
 import org.springframework.boot.web.client.RestClientCustomizer;
@@ -22,6 +22,9 @@ import org.springframework.beans.factory.annotation.Value;
  * slide text against a large model, sometimes minutes when the provider is loaded. It exists to turn
  * a hang into a failure, not to police latency: past the deadline the call raises an IOException,
  * the session fails on its own terms, and the run reaches a terminal state a person can act on.
+ *
+ * <p>The customizer applies to every {@code RestClient} Spring Boot builds. The chat model's is the
+ * only one in the application; a client added for anything else needs its own timeouts.
  */
 @Configuration
 public class LlmHttpTimeoutConfig {

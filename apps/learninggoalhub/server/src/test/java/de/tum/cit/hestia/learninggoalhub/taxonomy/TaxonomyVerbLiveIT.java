@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.taxonomy;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -72,7 +73,7 @@ class TaxonomyVerbLiveIT {
                         .build())
                 .defaultOptions(OpenAiChatOptions.builder().model(model).build())
                 .build());
-        TaxonomyService service = new TaxonomyService(builder, 0.0);
+        TaxonomyService service = new TaxonomyService(new LlmClient(builder), 0.0);
 
         int checked = 0;
         int disagreed = 0;

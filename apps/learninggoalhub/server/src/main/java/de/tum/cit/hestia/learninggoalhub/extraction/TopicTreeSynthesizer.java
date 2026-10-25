@@ -1,7 +1,8 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -16,8 +17,6 @@ import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -326,15 +325,15 @@ public class TopicTreeSynthesizer {
 
     record ShortLabels(List<ShortLabel> labels) {}
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final String model;
     private final double temperature;
 
     public TopicTreeSynthesizer(
-            ChatClient.Builder chatClientBuilder,
+            LlmClient llm,
             @Value("${hestia.extraction.taxonomy-planner-model:openai-gpt-oss-120b}") String model,
             @Value("${hestia.extraction.assignment-temperature:0.0}") double temperature) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.model = model;
         this.temperature = temperature;
     }
@@ -663,15 +662,7 @@ public class TopicTreeSynthesizer {
     }
 
     private <T> T call(String prompt, String model, ParameterizedTypeReference<T> type) {
-        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
-        if (model != null && !model.isBlank()) {
-            options.model(model);
-        }
-        return chatClient.prompt()
-                .options(options.build())
-                .user(prompt)
-                .call()
-                .entity(LenientJson.converter(type));
+        return llm.entity(LlmRequest.of(prompt).withModel(model).withTemperature(temperature), type);
     }
 
     private static <T> CompletableFuture<T> async(ExecutorService executor, Supplier<T> task) {

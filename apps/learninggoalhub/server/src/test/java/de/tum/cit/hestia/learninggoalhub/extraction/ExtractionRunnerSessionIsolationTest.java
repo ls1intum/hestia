@@ -29,6 +29,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
@@ -124,7 +125,7 @@ class ExtractionRunnerSessionIsolationTest {
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), progressTracker, 0.2);
+                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
                 courseRepository,

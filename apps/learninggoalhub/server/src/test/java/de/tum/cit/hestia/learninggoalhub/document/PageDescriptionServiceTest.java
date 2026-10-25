@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -240,7 +241,7 @@ class PageDescriptionServiceTest {
     private static PageDescriptionService service(ChatClient chatClient, PageDescriptionRepository repository) {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
-        return new PageDescriptionService(builder, repository, "vision-test-model");
+        return new PageDescriptionService(new LlmClient(builder), repository, "vision-test-model");
     }
 
     private static Document document(Long id, String rawText, int[] offsets) {

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -36,7 +37,7 @@ class ExamGoalGeneratorTest {
         when(spec.options(any(ChatOptions.class))).thenReturn(spec);
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(response);
-        generator = new ExamGoalGenerator(builder, 0.2);
+        generator = new ExamGoalGenerator(new LlmClient(builder), 0.2);
     }
 
     @Test

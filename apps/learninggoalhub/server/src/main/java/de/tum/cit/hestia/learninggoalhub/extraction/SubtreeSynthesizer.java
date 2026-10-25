@@ -1,13 +1,12 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -92,12 +91,12 @@ public class SubtreeSynthesizer {
             ---
             """;
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final double temperature;
 
-    public SubtreeSynthesizer(ChatClient.Builder chatClientBuilder,
+    public SubtreeSynthesizer(LlmClient llm,
                               @Value("${hestia.extraction.temperature:0.2}") double temperature) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.temperature = temperature;
     }
 
@@ -113,18 +112,11 @@ public class SubtreeSynthesizer {
     }
 
     private GeneratedSubtree call(String prompt, String languageName, String modelOverride, double callTemperature) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
-                .system(LanguagePrompt.systemInstruction(languageName));
-        ChatOptions.Builder options = ChatOptions.builder().temperature(callTemperature);
-        if (modelOverride != null && !modelOverride.isBlank()) {
-            options.model(modelOverride);
-        }
-        GeneratedSubtree generated = spec
-                .options(options.build())
-                .user(prompt)
-                .call()
-                .entity(LenientJson.converter(new ParameterizedTypeReference<GeneratedSubtree>() {}));
-        return generated;
+        return llm.entity(LlmRequest.of(prompt)
+                        .withSystem(LanguagePrompt.systemInstruction(languageName))
+                        .withModel(modelOverride)
+                        .withTemperature(callTemperature),
+                new ParameterizedTypeReference<GeneratedSubtree>() {});
     }
 
     /** Validates a model response before any database node is created. */

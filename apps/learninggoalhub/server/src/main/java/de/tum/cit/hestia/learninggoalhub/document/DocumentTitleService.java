@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,8 +13,6 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
@@ -53,14 +53,14 @@ public class DocumentTitleService {
             Write the title in the language used on the slides, and do not translate it. \
             Reply with ONLY the title, nothing else.""";
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final String visionModel;
     private final boolean enabled;
 
-    public DocumentTitleService(ChatClient.Builder chatClientBuilder,
+    public DocumentTitleService(LlmClient llm,
                                 @Value("${hestia.title.vision-model:qwen3.6-35b-a3b}") String visionModel,
                                 @Value("${hestia.title.enabled:true}") boolean enabled) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.visionModel = visionModel;
         this.enabled = enabled;
     }
@@ -79,11 +79,7 @@ public class DocumentTitleService {
             if (pages.isEmpty()) {
                 return null;
             }
-            String reply = chatClient.prompt()
-                    .options(ChatOptions.builder().model(visionModel).build())
-                    .user(u -> u.text(PROMPT).media(pages.toArray(Media[]::new)))
-                    .call()
-                    .content();
+            String reply = llm.text(LlmRequest.of(PROMPT).withMedia(pages).withModel(visionModel));
             return clean(reply);
         } catch (IOException | RuntimeException e) {
             log.warn("VLM title derivation failed for {}, falling back to filename: {}",

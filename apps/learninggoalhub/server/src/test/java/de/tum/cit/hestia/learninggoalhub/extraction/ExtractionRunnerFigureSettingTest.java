@@ -32,6 +32,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
@@ -142,7 +143,7 @@ class ExtractionRunnerFigureSettingTest {
                 .thenReturn(List.of());
         clearInvocations(spec);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);

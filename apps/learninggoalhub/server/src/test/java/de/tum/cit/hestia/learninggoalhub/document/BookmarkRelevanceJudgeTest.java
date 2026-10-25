@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ class BookmarkRelevanceJudgeTest {
     private static BookmarkRelevanceJudge mechanicalJudge() {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(mock(ChatClient.class));
-        return new BookmarkRelevanceJudge(builder, "test-model");
+        return new BookmarkRelevanceJudge(new LlmClient(builder), "test-model");
     }
 
     @Test

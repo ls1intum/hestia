@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -156,7 +157,7 @@ class TopicTreeSynthesizerTest {
         List<String> outcomes = List.of("Train trees on bootstrap samples.", "Explain variance.",
                 "Sample features per split.");
 
-        TopicTreeSynthesizer.PlannedTopic topic = new TopicTreeSynthesizer(builder, "planner", 0.0)
+        TopicTreeSynthesizer.PlannedTopic topic = new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
                 .structure("Random forests", outcomes, "English", null);
 
         verify(spec).user(TopicTreeSynthesizer.STRUCTURE_PROMPT.formatted("Random forests", "English",
@@ -184,7 +185,7 @@ class TopicTreeSynthesizerTest {
         List<String> outcomes = List.of("Derive the cost of merge sort", "Explain collisions",
                 "Design a compiler", "Invented index");
 
-        Map<Integer, TopicTreeSynthesizer.Placement> placements = new TopicTreeSynthesizer(builder, "planner", 0.0)
+        Map<Integer, TopicTreeSynthesizer.Placement> placements = new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
                 .place(menu, outcomes, null);
 
         verify(spec).user(TopicTreeSynthesizer.PLACEMENT_PROMPT.formatted(
@@ -206,7 +207,7 @@ class TopicTreeSynthesizerTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(chatClient);
 
-        assertThat(new TopicTreeSynthesizer(builder, "planner", 0.0)
+        assertThat(new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
                 .shortLabels(List.of("Build a random forest", "Tune a forest"), "English", null))
                 .containsExactly(null, null);
     }
