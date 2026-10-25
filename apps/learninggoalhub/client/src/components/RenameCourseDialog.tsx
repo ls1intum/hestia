@@ -78,6 +78,7 @@ export default function RenameCourseDialog({
           id="rename-course-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={255}
           autoFocus
           className="mt-2 w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-2 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
         />

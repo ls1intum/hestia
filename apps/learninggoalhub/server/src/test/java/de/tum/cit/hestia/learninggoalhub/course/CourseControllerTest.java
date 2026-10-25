@@ -246,6 +246,30 @@ class CourseControllerTest {
     }
 
     @Test
+    void rejectsACourseNameLongerThanTheColumn() throws Exception {
+        String tooLong = "x".repeat(256);
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void rejectsSortingByAnUnknownProperty() throws Exception {
+        mockMvc.perform(get("/api/courses").param("sort", "nope,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void rejectsUnknownOutputLanguage() throws Exception {
         Course course = courseRepository.save(new Course("Language Course"));
 

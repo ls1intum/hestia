@@ -4,6 +4,7 @@ import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
 import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -39,6 +40,9 @@ public class CourseController {
         this.courseRepository = courseRepository;
         this.extractionRunRepository = extractionRunRepository;
     }
+
+    /** The width of the {@code course.name} column. */
+    static final int MAX_NAME_LENGTH = 255;
 
     @PostMapping
     public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
@@ -144,6 +148,10 @@ public class CourseController {
             if (name.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name must not be blank");
             }
+            if (name.length() > MAX_NAME_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "name must be at most " + MAX_NAME_LENGTH + " characters");
+            }
             course.setName(name);
         }
         course.setOutputLanguage(request.outputLanguage());
@@ -192,7 +200,8 @@ public class CourseController {
         return statuses;
     }
 
-    public record CreateCourseRequest(@NotBlank String name, String outputLanguage, Boolean figuresEnabled) {
+    public record CreateCourseRequest(@NotBlank @Size(max = MAX_NAME_LENGTH) String name, String outputLanguage,
+                                      Boolean figuresEnabled) {
     }
 
     public record CourseResponse(Long id, String name, String outputLanguage, boolean figuresEnabled) {

@@ -222,6 +222,7 @@ export default function CreateCourseDialog({
                   placeholder="e.g. Introduction to Data Science"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  maxLength={255}
                   autoFocus
                 />
               </div>
