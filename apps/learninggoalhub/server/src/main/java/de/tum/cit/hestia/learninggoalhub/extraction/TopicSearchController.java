@@ -3,7 +3,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.PagePlan;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.PageRange;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.ProposalResponse;
-import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalController.LearningGoalResponse;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalResponse;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;

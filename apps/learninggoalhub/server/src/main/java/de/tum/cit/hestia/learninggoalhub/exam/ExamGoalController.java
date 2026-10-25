@@ -2,7 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.exam;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalController.LearningGoalResponse;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import java.util.HashSet;
 import java.util.List;
