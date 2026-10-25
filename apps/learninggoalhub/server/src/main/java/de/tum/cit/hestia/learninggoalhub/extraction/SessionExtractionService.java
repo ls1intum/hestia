@@ -5,6 +5,8 @@ import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
+import de.tum.cit.hestia.learninggoalhub.llm.LanguagePrompt;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;

@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatNoException;

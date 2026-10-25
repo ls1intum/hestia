@@ -1,4 +1,6 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.llm;
+
+import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
 
 /** Shared system instruction for calls that generate learner-facing text. */
 public final class LanguagePrompt {

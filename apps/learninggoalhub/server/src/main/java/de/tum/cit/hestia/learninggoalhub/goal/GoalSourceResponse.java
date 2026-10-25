@@ -2,7 +2,6 @@ package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
-import de.tum.cit.hestia.learninggoalhub.extraction.SourceMatchQuality;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 

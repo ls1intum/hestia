@@ -13,6 +13,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import java.io.IOException;
 import java.util.ArrayList;

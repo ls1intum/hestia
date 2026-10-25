@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 import java.util.Locale;
 
@@ -25,11 +25,11 @@ public final class OutcomeWording {
     }
 
     /** A generated short label or text, stripped, or null when the model left it blank. */
-    static String stripToNull(String value) {
+    public static String stripToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
     }
 
-    static void validate(String text, String shortLabel, String languageName, String subject) {
+    public static void validate(String text, String shortLabel, String languageName, String subject) {
         validateTextAndLabelPresence(text, shortLabel, subject);
         validateLabelReadsAsALabel(text, shortLabel, subject);
         validateTextGrammar(text, languageName, subject);
@@ -47,7 +47,7 @@ public final class OutcomeWording {
      * pair "as a presentation fallback instead of losing the complete source partition". This is the
      * same judgement, reached the same way.
      */
-    static void validateOutcomeText(String text, String shortLabel, String languageName, String subject) {
+    public static void validateOutcomeText(String text, String shortLabel, String languageName, String subject) {
         validateTextAndLabelPresence(text, shortLabel, subject);
         validateTextGrammar(text, languageName, subject);
     }
@@ -68,7 +68,7 @@ public final class OutcomeWording {
      * collapses a pair back to the same learner-facing wording, keep it as a presentation fallback
      * instead of losing the complete source partition. All other wording rules still apply.
      */
-    static void validateAudited(String text, String shortLabel, String languageName, String subject) {
+    public static void validateAudited(String text, String shortLabel, String languageName, String subject) {
         validateTextAndLabelPresence(text, shortLabel, subject);
         if (!normalized(text).equals(normalized(shortLabel))
                 && normalized(text).length() < normalized(shortLabel).length() + 5) {

@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 /** Strength of the match between an extracted source snippet and document text. */
 public enum SourceMatchQuality {

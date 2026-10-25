@@ -1,12 +1,12 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.goal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedKnowledge;
-import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSkill;
-import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubSkill;
-import de.tum.cit.hestia.learninggoalhub.extraction.SubtreeSynthesizer.GeneratedSubtree;
+import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedKnowledge;
+import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSkill;
+import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSubSkill;
+import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSubtree;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

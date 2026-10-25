@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
