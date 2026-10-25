@@ -79,6 +79,12 @@ spring.ai.retry:
 llm:
   secondary-model: ${LLM_SECONDARY_MODEL:}
 
+# LearningGoalHub, read for the goal import. The server calls it with LGH's service key for
+# Workshopper (X-Api-Key), so the key never reaches the browser.
+learninggoalhub:
+  base-url: ${LGH_BASE_URL:http://localhost:8080}
+  api-key: ${LGH_API_KEY:}
+
 logging:
   level:
     com.workshopper: INFO

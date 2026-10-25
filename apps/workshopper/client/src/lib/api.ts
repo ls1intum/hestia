@@ -79,6 +79,8 @@ const get = <T>(path: string) => send(path).then(res => parseJson<T>(res));
 const post = <T>(path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => parseJson<T>(res));
 const put = <T>(path: string, body: unknown) => send(path, jsonBody("PUT", body)).then(res => parseJson<T>(res));
 const del = <T>(path: string) => send(path, { method: "DELETE" }).then(res => parseJson<T>(res));
+/** LearningGoalHub reads, forwarded by the Workshopper server (it holds LGH's service key). */
+export const getFromLearningGoalHub = <T>(path: string) => get<T>(`/workshop/lgh${path}`);
 /** POSTs JSON and returns the answer as a file (exports). */
 const postForBlob = (path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => res.blob());
 const postForm = (path: string, form: FormData) => send(path, { method: "POST", body: form });
