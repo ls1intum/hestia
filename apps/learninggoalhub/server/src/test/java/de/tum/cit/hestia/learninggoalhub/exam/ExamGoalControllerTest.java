@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,6 +46,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @Import(TestcontainersConfiguration.class)
@@ -74,8 +76,11 @@ class ExamGoalControllerTest {
     @MockitoBean
     private TopicTreeSynthesizer topicTreeSynthesizer;
 
-    @Autowired
+    @MockitoSpyBean
     private GoalRelationshipRepository relationshipRepository;
+
+    @Autowired
+    private ExamSubmissionRepository submissionRepository;
 
     private static final String HARRY_PAYLOAD = """
             {
@@ -277,6 +282,36 @@ class ExamGoalControllerTest {
                 .andExpect(jsonPath("$[0].goals", Matchers.hasSize(1)));
 
         assertThat(relationshipRepository.findByTargetId(topic.getId())).isEmpty();
+    }
+
+    @Test
+    void persistsNothingWhenStoringThePlacementFails() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        goalRepository.save(topic);
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
+                .thenReturn(List.of(new GeneratedExamGoal("Recall what a stable sort is.")));
+        when(taxonomyService.classifyBatch(anyList(), isNull()))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.REMEMBER, null)));
+        when(topicTreeSynthesizer.place(anyList(), anyList(), isNull()))
+                .thenReturn(Map.of(0, new TopicTreeSynthesizer.Placement(0, null)));
+        doThrow(new IllegalStateException("database down")).when(relationshipRepository).save(any());
+        doThrow(new IllegalStateException("database down")).when(relationshipRepository).saveAll(anyList());
+        long submissionsBefore = submissionRepository.count();
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                                """))
+                .andExpect(status().isInternalServerError());
+
+        // One request is one unit: no submission, exam root, or goals of a request that failed.
+        assertThat(goalRepository.findByCourseId(course.getId())).extracting(LearningGoal::getOrigin)
+                .containsExactly(GoalOrigin.TERMINAL);
+        assertThat(hierarchyNodeRepository.findByCourseId(course.getId())).isEmpty();
+        assertThat(submissionRepository.count()).isEqualTo(submissionsBefore);
     }
 
     @Test

@@ -44,24 +44,29 @@ public class ExamGoalPlacer {
     /** A topic of the stored tree and the skills beneath it, in menu order. */
     private record StoredTopic(LearningGoal topic, List<LearningGoal> skills) {}
 
+    /** The synthesis edges a placement draws, not yet stored, and how many exam goals it placed. */
+    public record PlannedPlacement(List<GoalRelationship> edges, int placed) {
+
+        static final PlannedPlacement NONE = new PlannedPlacement(List.of(), 0);
+    }
+
     /**
-     * Places the persisted {@code examGoals} into the course's tree and links each placed goal to
-     * its topic or skill with a synthesis edge, the kind a rebuild clears and redraws. A goal no
-     * topic covers stays under the EXAM root. Best effort: without a tree, or when a call fails,
-     * nothing is linked and the exam goals are still kept.
-     *
-     * @return how many exam goals were placed in the tree.
+     * Places the {@code examGoals} into the course's tree: each placed goal gets a synthesis edge to
+     * its topic or skill, the kind a rebuild clears and redraws. The goals need not be stored yet;
+     * the edges are stored with them by {@link #link}. A goal no topic covers stays under the EXAM
+     * root. Best effort: without a tree, or when a call fails, nothing is placed and the exam goals
+     * are still kept.
      */
-    public int place(Course course, List<LearningGoal> examGoals, String modelOverride) {
+    public PlannedPlacement plan(Course course, List<LearningGoal> examGoals, String modelOverride) {
         if (examGoals.isEmpty()) {
-            return 0;
+            return PlannedPlacement.NONE;
         }
         List<StoredTopic> tree;
         TreePlacement placement;
         try {
             tree = storedTree(course);
             if (tree.isEmpty()) {
-                return 0;
+                return PlannedPlacement.NONE;
             }
             List<TopicTreeSynthesizer.MenuTopic> menu = tree.stream()
                     .map(t -> new TopicTreeSynthesizer.MenuTopic(t.topic().getText(),
@@ -71,18 +76,24 @@ public class ExamGoalPlacer {
         } catch (RuntimeException ex) {
             log.warn("Exam goal placement failed for course {}, leaving {} exam goal(s) under the exam root: {}",
                     course.getId(), examGoals.size(), ex.getMessage());
-            return 0;
+            return PlannedPlacement.NONE;
         }
+        List<GoalRelationship> edges = new ArrayList<>();
         for (int topic = 0; topic < tree.size(); topic++) {
-            link(placement.underTopic().get(topic), tree.get(topic).topic());
+            edges(placement.underTopic().get(topic), tree.get(topic).topic(), edges);
             for (int skill = 0; skill < tree.get(topic).skills().size(); skill++) {
-                link(placement.underSkill().get(topic).get(skill), tree.get(topic).skills().get(skill));
+                edges(placement.underSkill().get(topic).get(skill), tree.get(topic).skills().get(skill), edges);
             }
         }
         int placed = placement.placedCount();
         log.info("Placed {} of {} exam goal(s) in the competency tree of course {}",
                 placed, examGoals.size(), course.getId());
-        return placed;
+        return new PlannedPlacement(edges, placed);
+    }
+
+    /** Stores a placement's edges; call it in the transaction that stores their exam goals. */
+    public void link(PlannedPlacement placement) {
+        relationshipRepository.saveAll(placement.edges());
     }
 
     /**
@@ -121,9 +132,9 @@ public class ExamGoalPlacer {
                     || goal.getCreationProvenance() == GoalCreationProvenance.USER_CREATED);
     }
 
-    private void link(List<LearningGoal> goals, LearningGoal target) {
+    private static void edges(List<LearningGoal> goals, LearningGoal target, List<GoalRelationship> edges) {
         for (LearningGoal goal : goals) {
-            relationshipRepository.save(new GoalRelationship(goal, target,
+            edges.add(new GoalRelationship(goal, target,
                     RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
         }
     }
