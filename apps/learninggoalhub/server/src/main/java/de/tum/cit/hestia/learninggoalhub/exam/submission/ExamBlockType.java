@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.exam;
+package de.tum.cit.hestia.learninggoalhub.exam.submission;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import java.util.Locale;

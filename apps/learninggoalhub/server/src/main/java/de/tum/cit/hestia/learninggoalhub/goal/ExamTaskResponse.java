@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
-import de.tum.cit.hestia.learninggoalhub.exam.SubmittedExamBlock;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.SubmittedExamBlock;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
 

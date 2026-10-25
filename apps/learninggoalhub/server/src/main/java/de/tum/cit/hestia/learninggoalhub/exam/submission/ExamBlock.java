@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.exam;
+package de.tum.cit.hestia.learninggoalhub.exam.submission;
 
 /**
  * One block of an exam as submitted by an API consumer (ExamLens). Blocks arrive in exam order:

@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.exam;
+package de.tum.cit.hestia.learninggoalhub.exam.submission;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 

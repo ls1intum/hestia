@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.exam;
+package de.tum.cit.hestia.learninggoalhub.exam.submission;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import jakarta.persistence.CascadeType;
