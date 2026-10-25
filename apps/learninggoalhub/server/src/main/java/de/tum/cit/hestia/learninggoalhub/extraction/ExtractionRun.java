@@ -62,6 +62,10 @@ public class ExtractionRun {
     @Column(name = "failed_sessions")
     private Integer failedSessions;
 
+    /** Extracted outcomes left out because they failed validation; the run still succeeds. */
+    @Column(name = "dropped_outcomes")
+    private Integer droppedOutcomes;
+
     protected ExtractionRun() {
     }
 
@@ -118,12 +122,17 @@ public class ExtractionRun {
         return failedSessions;
     }
 
+    public Integer getDroppedOutcomes() {
+        return droppedOutcomes;
+    }
+
     public void finish(Status status, String error, Integer goalsCreated, Integer failedSessions,
-                       String promptVersion) {
+                       Integer droppedOutcomes, String promptVersion) {
         this.status = status;
         this.error = error;
         this.goalsCreated = goalsCreated;
         this.failedSessions = failedSessions;
+        this.droppedOutcomes = droppedOutcomes;
         this.promptVersion = promptVersion;
         this.finishedAt = OffsetDateTime.now();
     }

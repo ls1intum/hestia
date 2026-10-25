@@ -100,6 +100,8 @@ public class ExtractionProgressTracker {
         /** Sessions the pipeline could not analyse. Any entry makes the run fail atomically. */
         private final AtomicInteger failedSessions = new AtomicInteger();
         private final ConcurrentLinkedQueue<String> failedSessionNames = new ConcurrentLinkedQueue<>();
+        /** Skills and knowledge items a session returned but validation discarded; the run still succeeds. */
+        private final AtomicInteger droppedOutcomes = new AtomicInteger();
         private volatile int total;
         private volatile Status status = Status.RUNNING;
         private volatile String error;
@@ -148,6 +150,15 @@ public class ExtractionProgressTracker {
             return List.copyOf(failedSessionNames);
         }
 
+        /** Records outcomes a session returned that failed validation and were left out. */
+        public void outcomesDropped(int count) {
+            droppedOutcomes.addAndGet(count);
+        }
+
+        public int droppedOutcomes() {
+            return droppedOutcomes.get();
+        }
+
         /** Books one answered LLM call to the phase the run is in. */
         public void recordUsage(String model, int prompt, int completion, int reasoning) {
             usage.computeIfAbsent(phase + " / " + model, ignored -> new TokenTally())
@@ -191,7 +202,7 @@ public class ExtractionProgressTracker {
                     : Math.min(99, weightedPercent(phase, completed.get(), total));
             percent = lastPercent.accumulateAndGet(percent, Math::max);
             return new Snapshot(currentStatus, phase, completed.get(), total, model, summary, error, percent,
-                    failedSessions.get(), List.copyOf(failedSessionNames));
+                    failedSessions.get(), List.copyOf(failedSessionNames), droppedOutcomes.get());
         }
     }
 
@@ -240,10 +251,11 @@ public class ExtractionProgressTracker {
      *
      * @param failedSessions sessions the run could not analyse.
      * @param failedSessionNames their visible lecture/session names, in completion order.
+     * @param droppedOutcomes extracted skills and knowledge items left out because they failed validation.
      */
     public record Snapshot(Status status, Phase phase, int completed, int total, String model,
                            ExtractionRunner.ExtractionSummary summary, String error, int percent,
-                           int failedSessions, List<String> failedSessionNames) {
+                           int failedSessions, List<String> failedSessionNames, int droppedOutcomes) {
     }
 
     /** The globally active run and its latest immutable snapshot. */

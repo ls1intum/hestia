@@ -217,7 +217,7 @@ public class ExtractionRunner {
                     competencyTree.competencies(), stage.textSources(), stage.figureSources(),
                     stage.unsupportedSources());
             extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.SUCCEEDED, null,
-                    summary.goalsCreated(), run.failedSessions(), stage.promptVersion());
+                    summary.goalsCreated(), run.failedSessions(), run.droppedOutcomes(), stage.promptVersion());
             return summary;
         } catch (RuntimeException ex) {
             ExtractionStageSummary stage = persistedStage[0];
@@ -227,7 +227,7 @@ public class ExtractionRunner {
                             + "Retry only the competency tree. Details: " + ExtractionErrors.describe(ex);
             if (auditRunId.get() != null) {
                 extractionRunAuditService.finish(auditRunId.get(), ExtractionRun.Status.FAILED, error,
-                        stage == null ? null : stage.goalsCreated(), run.failedSessions(),
+                        stage == null ? null : stage.goalsCreated(), run.failedSessions(), run.droppedOutcomes(),
                         stage == null ? SessionExtractionService.PROMPT_VERSION : stage.promptVersion());
             }
             if (stage != null) {

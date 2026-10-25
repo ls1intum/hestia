@@ -235,6 +235,7 @@ export default function ExtractionProgressModal({
   // durable record of a thinned-out run is the extraction_run audit row, not this screen.
   const failedSessions = status?.failedSessions ?? 0;
   const failedSessionNames = status?.failedSessionNames ?? [];
+  const droppedOutcomes = status?.droppedOutcomes ?? 0;
   // Index of the phase the backend currently reports; -1 until the first poll lands ("Starting…").
   const activeIndex = status?.phase
     ? EXTRACTION_PHASES.findIndex((p) => p.key === status.phase)
@@ -360,7 +361,7 @@ export default function ExtractionProgressModal({
           {done && (
             <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-stretch">
               <div className="flex w-full min-w-0 flex-1 flex-col gap-4">
-                {failedSessions > 0 && (
+                {(failedSessions > 0 || droppedOutcomes > 0) && (
                   // The table's warning tint: the warning hue is too light for text, so the text
                   // stays in the text colour and only the icon carries the hue.
                   <p className="flex items-start gap-2.5 rounded-xl bg-[color-mix(in_srgb,var(--hestia-warning)_22%,var(--hestia-surface))] px-4 py-3 text-sm text-hestia-text">
@@ -379,8 +380,15 @@ export default function ExtractionProgressModal({
                     </svg>
                     <span>
                     {failedSessions === 1
-                      ? "One session could not be analysed and contributed no skills."
-                      : `${failedSessions} sessions could not be analysed and contributed no skills.`}{" "}
+                      ? "One session could not be analysed and contributed no skills. "
+                      : failedSessions > 1
+                        ? `${failedSessions} sessions could not be analysed and contributed no skills. `
+                        : null}
+                    {droppedOutcomes === 1
+                      ? "One extracted skill or knowledge item failed validation and was left out. "
+                      : droppedOutcomes > 1
+                        ? `${droppedOutcomes} extracted skills or knowledge items failed validation and were left out. `
+                        : null}
                     You can add anything that is missing afterwards in the table.
                     </span>
                   </p>

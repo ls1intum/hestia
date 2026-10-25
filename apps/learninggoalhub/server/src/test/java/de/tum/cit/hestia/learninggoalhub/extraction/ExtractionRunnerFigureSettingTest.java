@@ -135,7 +135,7 @@ class ExtractionRunnerFigureSettingTest {
                 .thenReturn(List.of());
         clearInvocations(spec);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), 0.2);
+                chatClientBuilder, mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);

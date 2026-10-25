@@ -164,7 +164,8 @@ public class ExtractionController {
                 error,
                 succeeded ? 100 : 99,
                 extractionRun.getFailedSessions() == null ? 0 : extractionRun.getFailedSessions(),
-                List.of());
+                List.of(),
+                extractionRun.getDroppedOutcomes() == null ? 0 : extractionRun.getDroppedOutcomes());
     }
 
     public record ExtractionStartResponse(Long courseId, ExtractionProgressTracker.Status status) {

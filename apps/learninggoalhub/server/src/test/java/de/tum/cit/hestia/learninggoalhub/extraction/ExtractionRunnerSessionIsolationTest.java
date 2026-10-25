@@ -69,7 +69,7 @@ class ExtractionRunnerSessionIsolationTest {
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
         verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
-                org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), anyString());
+                org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), eq(0), anyString());
     }
 
     private static ExtractionRunner runner(ChatClient chatClient, ExtractionRunAuditService auditService,
@@ -104,7 +104,7 @@ class ExtractionRunnerSessionIsolationTest {
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), 0.2);
+                chatClientBuilder, mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
                 courseRepository,

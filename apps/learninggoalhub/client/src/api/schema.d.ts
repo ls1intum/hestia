@@ -660,6 +660,8 @@ export interface components {
             /** Format: int32 */
             failedSessions?: number;
             failedSessionNames?: string[];
+            /** Format: int32 */
+            droppedOutcomes?: number;
         };
         AcceptRequest: {
             subSkillKeys?: string[];
