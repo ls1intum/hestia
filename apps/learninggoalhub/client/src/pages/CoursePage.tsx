@@ -73,11 +73,15 @@ export default function CoursePage() {
 
   const markReviewed = useMutation({
     mutationFn: async () => {
-      await api.POST("/api/courses/{id}/skills-reviewed", {
+      const { error } = await api.POST("/api/courses/{id}/skills-reviewed", {
         params: { path: { id: courseId } },
       });
+      if (error) throw new Error("Could not record the skill review as done. It will be offered again.");
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["course", courseId] }),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -164,6 +168,11 @@ export default function CoursePage() {
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
+        {markReviewed.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(markReviewed.error as Error).message}
+          </p>
+        )}
         {deleteMutation.isError && (
           <p className="text-sm text-hestia-danger">
             {(deleteMutation.error as Error).message}
