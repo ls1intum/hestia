@@ -1,23 +1,14 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
-import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import org.springdoc.core.annotations.ParameterObject;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.PagedModel;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,19 +18,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/courses")
 public class CourseController {
 
-    private final CourseRepository courseRepository;
-    private final ExtractionRunRepository extractionRunRepository;
+    private final CourseService courseService;
 
-    public CourseController(CourseRepository courseRepository,
-                            ExtractionRunRepository extractionRunRepository) {
-        this.courseRepository = courseRepository;
-        this.extractionRunRepository = extractionRunRepository;
+    public CourseController(CourseService courseService) {
+        this.courseService = courseService;
     }
 
     /** The width of the {@code course.name} column. */
@@ -47,14 +34,7 @@ public class CourseController {
 
     @PostMapping
     public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
-        // The extraction runs straight after the materials upload that follows this call, so the
-        // instructor's language override has to be settable here — afterwards is too late for the
-        // first run. Null means "detect the language from the uploaded documents".
-        validateOutputLanguage(request.outputLanguage());
-        Course course = new Course(request.name());
-        course.setOutputLanguage(request.outputLanguage());
-        course.setFiguresEnabled(Boolean.TRUE.equals(request.figuresEnabled()));
-        Course saved = courseRepository.save(course);
+        Course saved = courseService.create(request.name(), request.outputLanguage(), request.figuresEnabled());
         return ResponseEntity
                 .created(URI.create("/api/courses/" + saved.getId()))
                 .body(CourseResponse.from(saved));
@@ -64,53 +44,14 @@ public class CourseController {
     public PagedModel<CourseSummaryResponse> listCourses(
             @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
-        Page<Course> page = courseRepository.findAll(pageable);
-        List<Long> ids = page.getContent().stream().map(Course::getId).toList();
-        Map<Long, Long> goalCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countGoalsByCourseIds(ids));
-        Map<Long, Long> topicCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countTopicsByCourseIds(ids));
-        Map<Long, Long> skillCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countSkillsByCourseIds(ids));
-        Map<Long, Long> documentCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countDocumentsByCourseIds(ids));
-        Map<Long, ExtractionRun.Status> extractionStatuses = latestExtractionStatuses(ids);
         // PagedModel serializes a stable {content, page} JSON shape, unlike PageImpl whose format
         // is an implementation detail that has changed across Spring Data versions.
-        return new PagedModel<>(page.map(course -> new CourseSummaryResponse(
-                course.getId(),
-                course.getName(),
-                course.getOutputLanguage(),
-                course.isFiguresEnabled(),
-                course.getCreatedAt(),
-                documentCounts.getOrDefault(course.getId(), 0L),
-                goalCounts.getOrDefault(course.getId(), 0L),
-                topicCounts.getOrDefault(course.getId(), 0L),
-                skillCounts.getOrDefault(course.getId(), 0L),
-                course.getSkillsReviewedAt(),
-                extractionStatuses.get(course.getId()))));
+        return new PagedModel<>(courseService.summaries(pageable));
     }
 
     @GetMapping("/{id}")
     public CourseSummaryResponse getCourse(@PathVariable Long id) {
-        Course course = courseRepository.findOrThrow(id);
-        List<Long> ids = List.of(course.getId());
-        long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
-        long topicCount = toCountMap(courseRepository.countTopicsByCourseIds(ids)).getOrDefault(id, 0L);
-        long skillCount = toCountMap(courseRepository.countSkillsByCourseIds(ids)).getOrDefault(id, 0L);
-        long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
-        ExtractionRun.Status extractionStatus = extractionRunRepository
-                .findFirstByCourseIdOrderByStartedAtDesc(id)
-                .map(ExtractionRun::getStatus)
-                .orElse(null);
-        return new CourseSummaryResponse(
-                course.getId(), course.getName(), course.getOutputLanguage(), course.isFiguresEnabled(),
-                course.getCreatedAt(),
-                documentCount, goalCount, topicCount, skillCount, course.getSkillsReviewedAt(), extractionStatus);
+        return courseService.summary(id);
     }
 
     /**
@@ -121,11 +62,7 @@ public class CourseController {
      */
     @PostMapping("/{id}/skills-reviewed")
     public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
-        Course course = courseRepository.findOrThrow(id);
-        if (course.getSkillsReviewedAt() == null) {
-            course.setSkillsReviewedAt(OffsetDateTime.now());
-            courseRepository.save(course);
-        }
+        courseService.markSkillsReviewed(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -135,29 +72,7 @@ public class CourseController {
      */
     @PatchMapping("/{id}")
     public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
-        Course course = courseRepository.findOrThrow(id);
-        if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
-        }
-        validateOutputLanguage(request.getOutputLanguage());
-        if (request.getName() != null) {
-            String name = request.getName().trim();
-            if (name.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name must not be blank");
-            }
-            if (name.length() > MAX_NAME_LENGTH) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "name must be at most " + MAX_NAME_LENGTH + " characters");
-            }
-            course.setName(name);
-        }
-        if (request.hasOutputLanguage()) {
-            course.setOutputLanguage(request.getOutputLanguage());
-        }
-        if (request.getFiguresEnabled() != null) {
-            course.setFiguresEnabled(request.getFiguresEnabled());
-        }
-        return CourseResponse.from(courseRepository.save(course));
+        return CourseResponse.from(courseService.update(id, request));
     }
 
     /**
@@ -167,34 +82,8 @@ public class CourseController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        courseRepository.requireExists(id);
-        courseRepository.deleteById(id);
+        courseService.delete(id);
         return ResponseEntity.noContent().build();
-    }
-
-    /** Null means auto-detect; otherwise only the languages the pipeline is validated for. */
-    private static void validateOutputLanguage(String outputLanguage) {
-        if (outputLanguage != null && !outputLanguage.equals("de") && !outputLanguage.equals("en")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "outputLanguage must be null, \"de\", or \"en\"");
-        }
-    }
-
-    private static Map<Long, Long> toCountMap(List<CourseRepository.CourseCount> counts) {
-        return counts.stream().collect(Collectors.toMap(
-                CourseRepository.CourseCount::getCourseId,
-                CourseRepository.CourseCount::getCount));
-    }
-
-    private Map<Long, ExtractionRun.Status> latestExtractionStatuses(List<Long> courseIds) {
-        Map<Long, ExtractionRun.Status> statuses = new java.util.LinkedHashMap<>();
-        if (courseIds.isEmpty()) {
-            return statuses;
-        }
-        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
-            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
-        }
-        return statuses;
     }
 
     public record CreateCourseRequest(@NotBlank @Size(max = MAX_NAME_LENGTH) String name, String outputLanguage,
@@ -208,52 +97,4 @@ public class CourseController {
         }
     }
 
-    public record CourseSummaryResponse(
-            Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
-            long documentCount, long goalCount, long topicCount, long skillCount,
-            OffsetDateTime skillsReviewedAt,
-            ExtractionRun.Status extractionStatus) {
-    }
-
-    /**
-     * A partial update. {@code outputLanguage} needs to tell "left out" from "null": null switches
-     * back to auto-detection, while a body that only renames the course must not.
-     */
-    public static class UpdateCourseRequest {
-
-        private String name;
-        private String outputLanguage;
-        private boolean outputLanguageSet;
-        private Boolean figuresEnabled;
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        @Schema(nullable = true)
-        public String getOutputLanguage() {
-            return outputLanguage;
-        }
-
-        public void setOutputLanguage(String outputLanguage) {
-            this.outputLanguage = outputLanguage;
-            this.outputLanguageSet = true;
-        }
-
-        public Boolean getFiguresEnabled() {
-            return figuresEnabled;
-        }
-
-        public void setFiguresEnabled(Boolean figuresEnabled) {
-            this.figuresEnabled = figuresEnabled;
-        }
-
-        boolean hasOutputLanguage() {
-            return outputLanguageSet;
-        }
-    }
 }
