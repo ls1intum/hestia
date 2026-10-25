@@ -72,6 +72,27 @@ class ExtractionRunnerSessionIsolationTest {
                 org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), eq(0), anyString());
     }
 
+    @Test
+    void aRunThatFindsNoGoalsFailsInsteadOfReportingSuccess() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.system(anyString())).thenReturn(spec);
+        when(spec.options(any())).thenReturn(spec);
+        // Every session answers, but none of them names an outcome.
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of());
+
+        ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
+        ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
+        ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
+
+        assertThatThrownBy(() -> runner.runForCourse(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no learning goals");
+        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+                org.mockito.ArgumentMatchers.contains("no learning goals"), isNull(), eq(0), eq(0), anyString());
+    }
+
     private static ExtractionRunner runner(ChatClient chatClient, ExtractionRunAuditService auditService,
                                            ExtractionProgressTracker progressTracker) {
         CourseRepository courseRepository = mock(CourseRepository.class);
