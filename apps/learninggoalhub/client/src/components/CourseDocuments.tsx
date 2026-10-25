@@ -45,7 +45,11 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
       if (error) throw new Error("Could not rename the document.");
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["documents", courseId] });
+      // Goal sources carry the document's name, so the goal views would keep showing the old one.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+      ]);
       setEditingId(null);
     },
   });
@@ -62,7 +66,12 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
       );
       if (error) throw new Error("Could not change the document's kind.");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
+    // Goal sources carry the document's kind, which decides each goal's coverage.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+      ]),
   });
 
   const documents = documentsQuery.data ?? [];
