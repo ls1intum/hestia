@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.competency;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,9 +16,9 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
-import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.MenuTopic;
-import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.Placement;
-import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.PlannedTopic;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.MenuTopic;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.Placement;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.PlannedTopic;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;

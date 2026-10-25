@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
@@ -36,6 +38,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
+import de.tum.cit.hestia.learninggoalhub.web.ExtractionErrors;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;

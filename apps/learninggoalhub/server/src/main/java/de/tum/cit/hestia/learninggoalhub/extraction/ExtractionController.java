@@ -1,7 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
+import de.tum.cit.hestia.learninggoalhub.web.ExtractionErrors;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;

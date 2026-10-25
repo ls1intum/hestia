@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.competency;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;

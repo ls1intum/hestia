@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.web;
 
 import java.io.IOException;
 import java.util.concurrent.CompletionException;
@@ -13,19 +13,19 @@ import org.springframework.web.server.ResponseStatusException;
  * who polls the status, so provider, network and database errors are replaced by a fixed
  * description; the exception itself goes to the log where it is caught.
  */
-final class ExtractionErrors {
+public final class ExtractionErrors {
 
     private ExtractionErrors() {
     }
 
     /** A failure whose message is already written for the instructor and is shown as it is. */
-    static final class PublicFailure extends IllegalStateException {
-        PublicFailure(String message, Throwable cause) {
+    public static final class PublicFailure extends IllegalStateException {
+        public PublicFailure(String message, Throwable cause) {
             super(message, cause);
         }
     }
 
-    static String describe(Throwable error) {
+    public static String describe(Throwable error) {
         if (error instanceof PublicFailure) {
             return error.getMessage();
         }

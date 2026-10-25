@@ -1,7 +1,7 @@
-package de.tum.cit.hestia.learninggoalhub.extraction;
+package de.tum.cit.hestia.learninggoalhub.competency;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.MenuTopic;
-import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.Placement;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.MenuTopic;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.Placement;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import java.util.ArrayList;
 import java.util.List;
