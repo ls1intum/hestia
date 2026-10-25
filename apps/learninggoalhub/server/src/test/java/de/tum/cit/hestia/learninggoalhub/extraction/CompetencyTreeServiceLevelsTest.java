@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test;
  * A capability's levels are classified from its generated name, which reads as a summary of the
  * outcomes beneath it. These cases pin the correction: the members decide the floor.
  */
-class ExtractionRunnerCapabilityLevelsTest {
+class CompetencyTreeServiceLevelsTest {
 
     @Test
     void raisesACapabilityToTheHighestBloomLevelAmongItsMembers() {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL);
 
-        TaxonomyClassification raised = ExtractionRunner.atLeastChildLevels(classified,
+        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.UNDERSTAND, BloomLevel.ANALYZE, BloomLevel.APPLY), List.of());
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.ANALYZE);
@@ -31,7 +31,7 @@ class ExtractionRunnerCapabilityLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL);
 
-        TaxonomyClassification raised = ExtractionRunner.atLeastChildLevels(classified,
+        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.RELATIONAL));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
@@ -44,14 +44,14 @@ class ExtractionRunnerCapabilityLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.RELATIONAL);
 
-        assertThat(ExtractionRunner.atLeastChildLevels(classified,
+        assertThat(CompetencyTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.MULTISTRUCTURAL)))
                 .isSameAs(classified);
     }
 
     @Test
     void fallsBackToTheMemberFloorWhenClassificationIsMissing() {
-        TaxonomyClassification raised = ExtractionRunner.atLeastChildLevels(null,
+        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(null,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.MULTISTRUCTURAL, SoloLevel.UNISTRUCTURAL));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
@@ -64,7 +64,7 @@ class ExtractionRunnerCapabilityLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.MULTISTRUCTURAL);
 
-        assertThat(ExtractionRunner.atLeastChildLevels(classified, List.of(), List.of())).isSameAs(classified);
-        assertThat(ExtractionRunner.atLeastChildLevels(null, List.of(), List.of())).isNull();
+        assertThat(CompetencyTreeService.atLeastChildLevels(classified, List.of(), List.of())).isSameAs(classified);
+        assertThat(CompetencyTreeService.atLeastChildLevels(null, List.of(), List.of())).isNull();
     }
 }

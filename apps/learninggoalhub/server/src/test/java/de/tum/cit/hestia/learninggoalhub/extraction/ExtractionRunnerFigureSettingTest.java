@@ -34,7 +34,6 @@ import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
-import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -104,7 +103,6 @@ class ExtractionRunnerFigureSettingTest {
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
-        TaxonomyService taxonomyService = mock(TaxonomyService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
 
@@ -169,9 +167,8 @@ class ExtractionRunnerFigureSettingTest {
                 new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(TopicTreeSynthesizer.class),
+                mock(CompetencyTreeService.class),
                 hierarchyNodeRepository,
-                taxonomyService,
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,

@@ -666,7 +666,7 @@ public class TopicSearchService {
             skill.setRole(GoalRole.SKILL);
             skill.setShortLabel(plan.shortLabel());
             skill.setLectureOrder(median(members));
-            TaxonomyClassification levels = ExtractionRunner.atLeastChildLevels(plan.classification(),
+            TaxonomyClassification levels = CompetencyTreeService.atLeastChildLevels(plan.classification(),
                     members.stream().map(LearningGoal::getBloomLevel).filter(Objects::nonNull).toList(),
                     members.stream().map(LearningGoal::getSoloLevel).filter(Objects::nonNull).toList());
             if (levels != null) {
@@ -877,7 +877,7 @@ public class TopicSearchService {
                 solos.add(levels.solo());
             }
         }
-        return ExtractionRunner.atLeastChildLevels(classified, blooms, solos);
+        return CompetencyTreeService.atLeastChildLevels(classified, blooms, solos);
     }
 
     private static String blankToNull(String value) {

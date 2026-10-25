@@ -60,8 +60,8 @@ class ExtractionRunnerLanguageTest {
         LearningGoal legacySkill = new LearningGoal(course, "Apply the method.", GoalKind.IMPLICIT);
         legacySkill.setBloomLevel(BloomLevel.APPLY);
 
-        assertThat(ExtractionRunner.isSkillTier(taggedKnowledge)).isFalse();
-        assertThat(ExtractionRunner.isSkillTier(taggedSkill)).isTrue();
-        assertThat(ExtractionRunner.isSkillTier(legacySkill)).isTrue();
+        assertThat(CompetencyTreeService.isSkillTier(taggedKnowledge)).isFalse();
+        assertThat(CompetencyTreeService.isSkillTier(taggedSkill)).isTrue();
+        assertThat(CompetencyTreeService.isSkillTier(legacySkill)).isTrue();
     }
 }

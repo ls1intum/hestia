@@ -28,8 +28,8 @@ record TreePlacement(List<List<LearningGoal>> underTopic,
     static TreePlacement place(TopicTreeSynthesizer synthesizer, List<MenuTopic> menu,
                                List<LearningGoal> goals, String modelOverride) {
         TreePlacement result = empty(menu);
-        List<LearningGoal> skills = goals.stream().filter(ExtractionRunner::isSkillTier).toList();
-        List<LearningGoal> knowledge = goals.stream().filter(g -> !ExtractionRunner.isSkillTier(g)).toList();
+        List<LearningGoal> skills = goals.stream().filter(CompetencyTreeService::isSkillTier).toList();
+        List<LearningGoal> knowledge = goals.stream().filter(g -> !CompetencyTreeService.isSkillTier(g)).toList();
         List<MenuTopic> topicsOnly = menu.stream().map(topic -> new MenuTopic(topic.label(), List.of())).toList();
         result.add(skills, call(synthesizer, menu, skills, modelOverride));
         result.add(knowledge, call(synthesizer, topicsOnly, knowledge, modelOverride));

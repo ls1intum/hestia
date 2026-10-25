@@ -32,7 +32,6 @@ import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
-import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -140,9 +139,8 @@ class ExtractionRunnerSessionIsolationTest {
                 new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(TopicTreeSynthesizer.class),
+                mock(CompetencyTreeService.class),
                 hierarchyNodeRepository,
-                mock(TaxonomyService.class),
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 // Single-threaded, so the failing session is deterministically the first one.

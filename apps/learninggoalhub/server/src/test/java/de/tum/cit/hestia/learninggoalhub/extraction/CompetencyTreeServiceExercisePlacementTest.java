@@ -14,13 +14,8 @@ import static org.mockito.Mockito.when;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
-import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
-import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
-import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
-import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunner.CompetencyTreeResult;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.MenuTopic;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.Placement;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicTreeSynthesizer.PlannedTopic;
@@ -28,7 +23,6 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
-import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
@@ -47,7 +41,7 @@ import org.springframework.transaction.support.TransactionOperations;
  * assigned or get structured with the lecture outcomes, and are placed onto the finished topics
  * afterwards.
  */
-class ExtractionRunnerExercisePlacementTest {
+class CompetencyTreeServiceExercisePlacementTest {
 
     private final CourseRepository courseRepository = mock(CourseRepository.class);
     private final LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
@@ -68,7 +62,7 @@ class ExtractionRunnerExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
-        runner().rebuildCompetencyTree(1L, null, false);
+        trees().rebuildCompetencyTree(1L, null, false);
 
         verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
         verify(synthesizer).place(eq(TOPICS),
@@ -81,7 +75,7 @@ class ExtractionRunnerExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
-        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
 
         assertThat(result.competencies()).isEqualTo(2);
         assertThat(result.unmatchedGoals()).isEqualTo(1);
@@ -108,7 +102,7 @@ class ExtractionRunnerExercisePlacementTest {
             return saved;
         });
 
-        runner().rebuildCompetencyTree(1L, null, false);
+        trees().rebuildCompetencyTree(1L, null, false);
 
         verify(synthesizer).place(eq(List.of(new MenuTopic("Sorting", List.of("Apply sorting and hashing")))),
                 eq(List.of("Implementing merge sort")), isNull());
@@ -124,7 +118,7 @@ class ExtractionRunnerExercisePlacementTest {
         stubCourse(List.of(lecture, kindless));
         stubLecturePlan();
 
-        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
 
         assertThat(result.unmatchedGoals()).isZero();
         verify(synthesizer, never()).place(anyList(), anyList(), any());
@@ -144,7 +138,7 @@ class ExtractionRunnerExercisePlacementTest {
         when(synthesizer.place(any(), eq(List.of("Recall what a hash collision is")), isNull()))
                 .thenReturn(Map.of(0, new Placement(1, null)));
 
-        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
 
         verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
         verify(synthesizer).place(eq(TOPICS), eq(List.of("Recall what a hash collision is")), isNull());
@@ -164,7 +158,7 @@ class ExtractionRunnerExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenThrow(new IllegalStateException("model down"));
 
-        CompetencyTreeResult result = runner().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
 
         assertThat(result.competencies()).isEqualTo(2);
     }
@@ -192,14 +186,10 @@ class ExtractionRunnerExercisePlacementTest {
         when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(goals);
     }
 
-    private ExtractionRunner runner() {
-        return new ExtractionRunner(courseRepository, mock(DocumentRepository.class),
-                mock(DocumentContentRepository.class), mock(PageDescriptionService.class),
-                mock(PageDescriptionRepository.class), goalRepository, mock(GoalSourceRepository.class),
-                relationshipRepository, mock(UnitExtractor.class), mock(ExtractionRunAuditService.class),
-                mock(DocumentSectionRepository.class), synthesizer, mock(HierarchyNodeRepository.class),
-                mock(TaxonomyService.class), new ExtractionProgressTracker(),
-                TransactionOperations.withoutTransaction(), 1, 1, false, null);
+    private CompetencyTreeService trees() {
+        return new CompetencyTreeService(courseRepository, mock(DocumentRepository.class), goalRepository,
+                relationshipRepository, mock(HierarchyNodeRepository.class), synthesizer, mock(TaxonomyService.class),
+                TransactionOperations.withoutTransaction());
     }
 
     /** An exam goal as the exam endpoint stores it: on the EXAM root, no document. */

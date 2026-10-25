@@ -32,6 +32,7 @@ public class ExtractionController {
     private static final Logger log = LoggerFactory.getLogger(ExtractionController.class);
 
     private final ExtractionRunner runner;
+    private final CompetencyTreeService competencyTrees;
     private final ExtractionProgressTracker progressTracker;
     private final ExtractionRunRepository extractionRunRepository;
     private final ExtractionRunAuditService extractionRunAuditService;
@@ -39,12 +40,14 @@ public class ExtractionController {
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
+                                CompetencyTreeService competencyTrees,
                                 ExtractionProgressTracker progressTracker,
                                 ExtractionRunRepository extractionRunRepository,
                                 ExtractionRunAuditService extractionRunAuditService,
                                 CourseRepository courseRepository,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
+        this.competencyTrees = competencyTrees;
         this.progressTracker = progressTracker;
         this.extractionRunRepository = extractionRunRepository;
         this.extractionRunAuditService = extractionRunAuditService;
@@ -101,7 +104,7 @@ public class ExtractionController {
      * discards them deliberately.
      */
     @PostMapping("/competency-tree")
-    public ExtractionRunner.CompetencyTreeResult rebuildCompetencyTree(
+    public CompetencyTreeResult rebuildCompetencyTree(
             @PathVariable Long courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
@@ -112,7 +115,7 @@ public class ExtractionController {
         ExtractionProgressTracker.Run run = claimed.get();
         run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
         try {
-            ExtractionRunner.CompetencyTreeResult result = runner.rebuildCompetencyTree(courseId, null, force);
+            CompetencyTreeResult result = competencyTrees.rebuildCompetencyTree(courseId, null, force);
             run.increment();
             extractionRunAuditService.finishTreeRetry(courseId);
             run.succeed(new ExtractionRunner.ExtractionSummary(0, 0, result.competencies()));
