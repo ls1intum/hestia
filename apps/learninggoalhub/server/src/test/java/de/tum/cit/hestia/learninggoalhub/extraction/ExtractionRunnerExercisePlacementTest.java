@@ -189,6 +189,7 @@ class ExtractionRunnerExercisePlacementTest {
         Course course = mock(Course.class);
         when(course.getId()).thenReturn(1L);
         when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.lockById(1L)).thenReturn(Optional.of(course));
         when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(goals);
     }
 

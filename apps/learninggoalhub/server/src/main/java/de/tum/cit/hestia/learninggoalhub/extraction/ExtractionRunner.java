@@ -52,6 +52,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -64,7 +65,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -209,15 +209,8 @@ public class ExtractionRunner {
                     stage.textSources(), stage.figureSources(), stage.unsupportedSources()));
 
             run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
-            CompetencyTreeResult competencyTree = extractionTransactions.execute(status -> {
-                Course course = courseRepository.findById(courseId)
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND, "Course not found: " + courseId));
-                return buildCompetencyTree(course, modelOverride, stage.courseLanguageName());
-            });
-            if (competencyTree == null) {
-                throw new IllegalStateException("Competency tree transaction completed without a result.");
-            }
+            CompetencyTreeResult competencyTree = buildCompetencyTree(courseId, modelOverride,
+                    stage.courseLanguageName());
             run.increment();
             ExtractionSummary summary = new ExtractionSummary(stage.documentsProcessed(), stage.goalsCreated(),
                     competencyTree.competencies(), stage.textSources(), stage.figureSources(),
@@ -603,27 +596,24 @@ public class ExtractionRunner {
      *
      * @return the freshly built tree; synthesis failures leave the existing tree untouched.
      */
-    @Transactional
     public CompetencyTreeResult rebuildCompetencyTree(Long courseId, String modelOverride, boolean force) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
-
-        List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL));
-        List<LearningGoal> manual = manualTreeGoals(courseId, terminals);
-        if (!manual.isEmpty() && !force) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "The competency tree contains " + manual.size() + " hand-made or approved node(s). "
-                            + "Rebuilding replaces them; pass force=true to discard them.");
+        RebuildInput input = extractionTransactions.execute(status -> {
+            Course course = courseRepository.findById(courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            rejectManualWorkUnlessForced(courseId, force);
+            List<Document> documents = documentRepository.findByCourseId(courseId);
+            String courseLanguage = resolveLanguage(course, null, dominantLanguage(documents));
+            return new RebuildInput(course, LanguageUtils.englishName(courseLanguage), loadTreeSeeds(course));
+        });
+        if (input == null) {
+            throw new IllegalStateException("Competency tree setup completed without a result.");
         }
-        // Synthesise the replacement BEFORE destroying the old tree. Synthesis failures are swallowed
-        // into an empty plan, so clearing first would let a transient model outage delete a course's
-        // tree and leave nothing in its place.
-        List<Document> documents = documentRepository.findByCourseId(courseId);
-        String courseLanguage = resolveLanguage(course, null, dominantLanguage(documents));
+        // Synthesise the replacement BEFORE destroying the old tree, and with no transaction open:
+        // the planning calls take minutes. Clearing first would let a transient model outage delete
+        // a course's tree and leave nothing in its place.
         CompetencyTreePlan plan;
         try {
-            plan = planFullCompetencyTree(course, modelOverride,
-                    LanguageUtils.englishName(courseLanguage));
+            plan = planFullCompetencyTree(input.course(), input.seeds(), modelOverride, input.languageName());
         } catch (RuntimeException ex) {
             log.warn("Could not synthesise a replacement competency tree for course {}: {}",
                     courseId, errorMessage(ex), ex);
@@ -636,11 +626,39 @@ public class ExtractionRunner {
                     "Could not synthesise a new competency tree; the existing one was left untouched.");
         }
 
-        clearCompetencyTree(course, terminals, manual);
-        persistCompetencyTree(course, plan);
+        CompetencyTreeResult result = extractionTransactions.execute(status -> {
+            Course course = courseRepository.lockById(courseId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            // Checked again under the course lock: an instructor may have added to the tree while
+            // the replacement was being planned.
+            List<LearningGoal> terminals = rejectManualWorkUnlessForced(courseId, force);
+            clearCompetencyTree(course, terminals, manualTreeGoals(courseId, terminals));
+            persistCompetencyTree(course, plan);
+            return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+        });
         log.info("Rebuilt competency tree for course {}: {} competencies, {} unmatched goal(s)",
                 courseId, plan.competencies().size(), plan.unmatchedGoals());
-        return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+        return result;
+    }
+
+    /** What the rebuild's read transaction hands to the planning calls. */
+    private record RebuildInput(Course course, String languageName, TreeSeeds seeds) {
+    }
+
+    /**
+     * Refuses a rebuild that would destroy instructor work unless it is forced.
+     *
+     * @return the course's terminals, which the rebuild replaces.
+     */
+    private List<LearningGoal> rejectManualWorkUnlessForced(Long courseId, boolean force) {
+        List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL));
+        List<LearningGoal> manual = manualTreeGoals(courseId, terminals);
+        if (!manual.isEmpty() && !force) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The competency tree contains " + manual.size() + " hand-made or approved node(s). "
+                            + "Rebuilding replaces them; pass force=true to discard them.");
+        }
+        return terminals;
     }
 
     /**
@@ -790,40 +808,68 @@ public class ExtractionRunner {
      * <p>Topics are named, skills assigned and topics structured before anything is written. A failed
      * call therefore leaves the source-backed outcomes untouched and available for a tree-only retry.
      *
-     * <p>This method runs in a transaction separate from extraction persistence.
+     * <p>The goals are read in one transaction, planned with none open, and the tree is written in
+     * a second one, separate from extraction persistence.
      */
-    private CompetencyTreeResult buildCompetencyTree(Course course, String modelOverride,
+    private CompetencyTreeResult buildCompetencyTree(Long courseId, String modelOverride,
                                                      String languageName) {
-        if (hierarchyNodeRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)) {
+        Optional<TreeInput> input = extractionTransactions.execute(status -> {
+            Course course = courseRepository.findById(courseId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
+                return Optional.empty();
+            }
+            return Optional.of(new TreeInput(course, loadTreeSeeds(course)));
+        });
+        if (input == null) {
+            throw new IllegalStateException("Competency tree setup completed without a result.");
+        }
+        if (input.isEmpty()) {
             return CompetencyTreeResult.NONE;
         }
-        CompetencyTreePlan plan = planFullCompetencyTree(course, modelOverride, languageName);
+        CompetencyTreePlan plan = planFullCompetencyTree(
+                input.get().course(), input.get().seeds(), modelOverride, languageName);
         if (plan == null) {
             return CompetencyTreeResult.NONE;
         }
-        persistCompetencyTree(course, plan);
+        CompetencyTreeResult result = extractionTransactions.execute(status -> {
+            Course course = courseRepository.lockById(courseId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+            if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
+                return CompetencyTreeResult.NONE;
+            }
+            persistCompetencyTree(course, plan);
+            return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+        });
+        if (result == null) {
+            throw new IllegalStateException("Competency tree transaction completed without a result.");
+        }
         log.info("Built topic competency tree for course {}: {} topics, {} unmatched goal(s)",
-                course.getId(), plan.competencies().size(), plan.unmatchedGoals());
-        return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+                courseId, result.competencies(), result.unmatchedGoals());
+        return result;
+    }
+
+    private record TreeInput(Course course, TreeSeeds seeds) {
     }
 
     /**
-     * Runs all synthesis for a course's competency tree and returns the finished plan, or
-     * {@code null} when there are no lecture skill seeds. Touches nothing in the database, so the
-     * caller decides when — and whether — to write. Synthesis failures are propagated to the caller.
+     * The goals a competency tree is planned from, read while the hierarchy they hang off is still
+     * loadable. Planning itself only reads their own columns, so it runs with no transaction open.
      *
-     * <p>Topics are named, assigned and structured from lecture outcomes only; outcomes of documents
-     * without a kind count as lecture outcomes, so existing courses build as before. Exercise
-     * material is evidence, not a topic namer: once topics and capabilities stand, exercise outcomes
-     * and exam goals are placed into them, under a capability or directly under a topic, so the
-     * validated structuring prompt only ever groups lecture outcomes. An exercise outcome no topic
-     * covers is practised but not introduced; it is counted and left out, not forced in.
+     * @param candidates lecture skill-tier outcomes in lecture order; they name the topics.
+     * @param exercises  exercise skill-tier outcomes, placed into the finished topics.
+     * @param examGoals  exam goals, placed the same way.
      */
-    private CompetencyTreePlan planFullCompetencyTree(Course course, String modelOverride,
-                                                      String languageName) {
+    private record TreeSeeds(List<LearningGoal> candidates, List<LearningGoal> exercises,
+                             List<LearningGoal> examGoals) {
+    }
+
+    private TreeSeeds loadTreeSeeds(Course course) {
         // Only skill-tier session/exercise goals are tree candidates. Role is structural for V24+
         // data, while role-null legacy goals retain the Bloom fallback. Exam goals are role-null
-        // too, so the level check keeps them out: they are assigned onto the finished topics below.
+        // too, so the level check keeps them out: they are assigned onto the finished topics later.
         List<LearningGoal> skillTier = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
                 .filter(g -> g.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
                         || g.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE)
@@ -833,8 +879,29 @@ public class ExtractionRunner {
                                 Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(LearningGoal::getId))
                 .toList();
-        List<LearningGoal> exercises = skillTier.stream().filter(ExtractionRunner::isExerciseOutcome).toList();
-        List<LearningGoal> candidates = skillTier.stream().filter(g -> !isExerciseOutcome(g)).toList();
+        return new TreeSeeds(
+                skillTier.stream().filter(g -> !isExerciseOutcome(g)).toList(),
+                skillTier.stream().filter(ExtractionRunner::isExerciseOutcome).toList(),
+                goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXAM)));
+    }
+
+    /**
+     * Runs all synthesis for a course's competency tree and returns the finished plan, or
+     * {@code null} when there are no lecture skill seeds. Touches nothing in the database, so it runs
+     * with no transaction open and the caller decides when — and whether — to write. Synthesis
+     * failures are propagated to the caller.
+     *
+     * <p>Topics are named, assigned and structured from lecture outcomes only; outcomes of documents
+     * without a kind count as lecture outcomes, so existing courses build as before. Exercise
+     * material is evidence, not a topic namer: once topics and capabilities stand, exercise outcomes
+     * and exam goals are placed into them, under a capability or directly under a topic, so the
+     * validated structuring prompt only ever groups lecture outcomes. An exercise outcome no topic
+     * covers is practised but not introduced; it is counted and left out, not forced in.
+     */
+    private CompetencyTreePlan planFullCompetencyTree(Course course, TreeSeeds seeds, String modelOverride,
+                                                      String languageName) {
+        List<LearningGoal> exercises = seeds.exercises();
+        List<LearningGoal> candidates = seeds.candidates();
         // The skill tier IS the seed set. Bloom must not narrow it any further: extraction now
         // decides the tier, and the session prompt deliberately keeps verbs low ("when in doubt,
         // prefer understand/know"), so a course whose skills all classify as UNDERSTAND would
@@ -881,8 +948,7 @@ public class ExtractionRunner {
             throw new IllegalStateException("Exercise outcome assignment failed: " + errorMessage(ex), ex);
         }
         List<LearningGoal> notIntroduced = practised.unplaced();
-        TreePlacement examined = placeExamGoals(course, menu,
-                goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXAM)), modelOverride);
+        TreePlacement examined = placeExamGoals(course, menu, seeds.examGoals(), modelOverride);
         List<PlannedCompetency> planned = new ArrayList<>();
         int capabilityIndex = 0;
         int topicIndex = 0;

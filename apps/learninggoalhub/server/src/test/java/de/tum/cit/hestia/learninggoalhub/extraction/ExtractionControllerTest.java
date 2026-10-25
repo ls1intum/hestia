@@ -56,6 +56,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -284,6 +285,62 @@ class ExtractionControllerTest {
                 .findFirst().orElseThrow().getId()))
                 .singleElement()
                 .satisfies(source -> assertThat(source.getDocument().getId()).isEqualTo(document.getId()));
+    }
+
+    /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
+    @Test
+    void competencyTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Tree stage without a held transaction"));
+        documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Tree Label");
+
+        startExtraction(course.getId());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Tree Label");
+    }
+
+    @Test
+    void rebuildHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild without a held transaction"));
+        documentRepository.save(new Document(course, "rebuild.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("rebuild.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        stubTopicPlan("First Label", List.of(List.of(0)));
+        startExtraction(course.getId());
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Rebuilt Label");
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Rebuilt Label");
+    }
+
+    /**
+     * Plans one topic over the first outcome and records whether the planning call ran inside a
+     * transaction. The call runs on the caller's thread, so the thread's own state is what counts.
+     */
+    private AtomicLong stubTopicPlanCountingOpenTransactions(String topicLabel) {
+        AtomicLong openTransactions = new AtomicLong(-1);
+        when(topicTreeSynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
+            openTransactions.set(TransactionSynchronizationManager.isActualTransactionActive() ? 1 : 0);
+            return new TopicTreeSynthesizer.Plan(List.of(
+                    new TopicTreeSynthesizer.PlannedTopic(topicLabel, List.of(), List.of(0))), List.of());
+        });
+        return openTransactions;
     }
 
     @Test
