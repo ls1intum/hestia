@@ -45,12 +45,14 @@ import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
@@ -96,6 +98,9 @@ class ExtractionControllerTest {
 
     @Autowired
     private ExtractionRunAuditService extractionRunAuditService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     private SessionExtractionService sessionExtractionService;
@@ -246,6 +251,62 @@ class ExtractionControllerTest {
                 .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
                 .extracting(LearningGoal::getText)
                 .containsExactly("New goal");
+    }
+
+    @Test
+    void extractionHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Forced extraction without a held transaction"));
+        Document document = documentRepository.save(
+                new Document(course, "unlocked.pdf", "application/pdf", "new outcome"));
+        LearningGoal oldGoal = goalRepository.saveAndFlush(new LearningGoal(course, "Old goal", GoalKind.EXPLICIT));
+        AtomicLong openTransactions = new AtomicLong(-1);
+        when(sessionExtractionService.extract(eq("unlocked.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any())).thenAnswer(inv -> {
+                    // Another connection that sits in an open transaction is the runner's: with a
+                    // forced run it would hold the old goals' row locks until every call returned.
+                    openTransactions.set(jdbcTemplate.queryForObject("""
+                            select count(*) from pg_stat_activity
+                            where datname = current_database() and pid <> pg_backend_pid()
+                              and state like 'idle in transaction%'""", Long.class));
+                    return List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome")));
+                });
+
+        startForcedExtraction(course.getId());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .extracting(LearningGoal::getText)
+                .containsExactly("New goal");
+        assertThat(goalSourceRepository.findByGoalId(goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .findFirst().orElseThrow().getId()))
+                .singleElement()
+                .satisfies(source -> assertThat(source.getDocument().getId()).isEqualTo(document.getId()));
+    }
+
+    @Test
+    void aFailedForcedExtractionKeepsThePreviousOne() throws Exception {
+        Course course = courseRepository.save(new Course("Failed forced extraction"));
+        Document document = documentRepository.save(
+                new Document(course, "failing.pdf", "application/pdf", "new outcome"));
+        HierarchyNode oldModule = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
+        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
+        oldGoal.setHierarchyNode(hierarchyRepository.save(
+                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document)));
+        oldGoal = goalRepository.saveAndFlush(oldGoal);
+        when(sessionExtractionService.extract(eq("failing.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any())).thenThrow(new IllegalStateException("HTTP 503"));
+
+        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
+                .andExpect(status().isAccepted());
+        assertThat(awaitExtraction(course.getId())).contains("\"status\":\"FAILED\"");
+
+        assertThat(goalRepository.findById(oldGoal.getId())).isPresent();
+        assertThat(hierarchyRepository.findByCourseId(course.getId())).extracting(HierarchyNode::getLabel)
+                .containsExactlyInAnyOrder("Old module", "Old session");
     }
 
     @Test

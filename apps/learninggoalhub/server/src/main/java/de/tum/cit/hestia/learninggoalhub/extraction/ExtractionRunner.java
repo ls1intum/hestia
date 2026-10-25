@@ -47,6 +47,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -148,7 +149,7 @@ public class ExtractionRunner {
         AtomicReference<Long> auditRunId = new AtomicReference<>();
         ExtractionStageSummary[] persistedStage = new ExtractionStageSummary[1];
         try {
-            ExtractionStageSummary stage = extractionTransactions.execute(status -> {
+            ExtractionInput input = extractionTransactions.execute(status -> {
                 Course course = courseRepository.findById(courseId)
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND, "Course not found: " + courseId));
@@ -160,9 +161,6 @@ public class ExtractionRunner {
                 if ((hasExtractedGoals || hasExtractionHierarchy) && !force) {
                     throw new ResponseStatusException(HttpStatus.CONFLICT,
                             "A re-extraction replaces the existing extraction artefacts; pass force=true to discard them.");
-                }
-                if (force) {
-                    clearExtractionArtifacts(course);
                 }
 
                 List<Document> documents = documentRepository.findByCourseId(courseId).stream()
@@ -178,8 +176,24 @@ public class ExtractionRunner {
                 }
                 auditRunId.set(extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
                         runParams(courseLanguage, course.isFiguresEnabled())));
-                return extractAndPersist(course, documents, modelOverride,
-                        LanguageUtils.englishName(courseLanguage), dominantLanguage, promptVersion, run);
+                return new ExtractionInput(course, documents, dominantLanguage,
+                        LanguageUtils.englishName(courseLanguage), promptVersion);
+            });
+            if (input == null) {
+                throw new IllegalStateException("Extraction setup completed without a result.");
+            }
+            // Every model call runs with no transaction open. A run can take many minutes, and a forced
+            // one would otherwise hold the row locks of the goals it replaces for all of that time.
+            ExtractedCourse extracted = extract(input.course(), input.documents(), modelOverride,
+                    input.dominantLanguage(), run);
+            // The old artefacts are replaced in the same transaction that stores the new ones, so a
+            // failed run still leaves the previous extraction in place.
+            ExtractionStageSummary stage = extractionTransactions.execute(status -> {
+                if (force) {
+                    clearExtractionArtifacts(input.course());
+                }
+                return persist(input.course(), input.documents(), extracted, input.courseLanguageName(),
+                        input.promptVersion(), run);
             });
             if (stage == null) {
                 throw new IllegalStateException("Extraction transaction completed without a result.");
@@ -225,10 +239,22 @@ public class ExtractionRunner {
         }
     }
 
-    private ExtractionStageSummary extractAndPersist(Course course, List<Document> documents,
-                                                     String modelOverride, String courseLanguageName,
-                                                     String dominantLanguage, String promptVersion,
-                                                     ExtractionProgressTracker.Run run) {
+    /** What the setup transaction read: the course, its documents in order, and the run's language. */
+    private record ExtractionInput(Course course, List<Document> documents, String dominantLanguage,
+                                   String courseLanguageName, String promptVersion) {
+    }
+
+    /** The extracted goals and the not yet stored hierarchy nodes they belong to, module root first. */
+    private record ExtractedCourse(List<HierarchyNode> nodes, List<ClassifiedGoal> classified) {
+    }
+
+    /**
+     * Describes figures, cuts the documents into units, and runs the extraction calls. Stores only
+     * the figure descriptions, each document in a transaction of its own; the hierarchy nodes are
+     * built but left for {@link #persist} to store.
+     */
+    private ExtractedCourse extract(Course course, List<Document> documents, String modelOverride,
+                                    String dominantLanguage, ExtractionProgressTracker.Run run) {
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
         if (course.isFiguresEnabled()) {
             // The width is spent on batches, not documents: a document is taken at a time so it keeps
@@ -272,14 +298,16 @@ public class ExtractionRunner {
             figuresByDocument = Map.of();
         }
 
-        // Structural pass: turn each document into its sessions, materialized as hierarchy nodes under
-        // one module root. Sessions come from the document's persisted structural sections (PDF
+        // Structural pass: turn each document into its sessions, built as hierarchy nodes under one
+        // module root and stored with the goals. Sessions come from the document's persisted structural sections (PDF
         // bookmarks, detected deterministically at upload); a document with none is one session.
-        HierarchyNode moduleRoot = hierarchyNodeRepository.save(
-                new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName()));
+        HierarchyNode moduleRoot = new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName());
         Map<Long, List<Unit>> unitsByDocument = new HashMap<>();
+        Set<HierarchyNode> nodes = new LinkedHashSet<>(List.of(moduleRoot));
         for (Document d : documents) {
-            unitsByDocument.put(d.getId(), buildUnits(course, moduleRoot, d));
+            List<Unit> units = buildUnits(course, moduleRoot, d);
+            unitsByDocument.put(d.getId(), units);
+            units.forEach(unit -> nodes.add(unit.node()));
         }
 
         // Each session gets the complete text range of its structural node.
@@ -307,8 +335,15 @@ public class ExtractionRunner {
         }
         List<UnitExtraction<HierarchyNode>> assembled = unitExtractor.assemble(extractedSessions);
 
-        List<ClassifiedGoal> classified = classifyInParallel(assembled, modelOverride, run);
+        return new ExtractedCourse(List.copyOf(nodes), classifyInParallel(assembled, modelOverride, run));
+    }
 
+    /** Stores the hierarchy nodes, goals, sources and knowledge edges of an extracted course. */
+    private ExtractionStageSummary persist(Course course, List<Document> documents, ExtractedCourse extracted,
+                                           String courseLanguageName, String promptVersion,
+                                           ExtractionProgressTracker.Run run) {
+        hierarchyNodeRepository.saveAll(extracted.nodes());
+        List<ClassifiedGoal> classified = extracted.classified();
         run.phase(ExtractionProgressTracker.Phase.PERSISTING, classified.size());
         int goalsCreated = 0;
         int textSources = 0;
@@ -1108,14 +1143,14 @@ public class ExtractionRunner {
         for (DocumentSection s : documentSectionRepository.findByDocumentIdOrderByOrdinal(document.getId())) {
             int start = Math.max(0, Math.min(s.getStartOffset(), text.length()));
             int end = Math.max(start, Math.min(s.getEndOffset(), text.length()));
-            HierarchyNode node = hierarchyNodeRepository.save(
-                    new HierarchyNode(course, moduleRoot, levelFor(document, s.getTitle()), s.getTitle(), document));
+            HierarchyNode node =
+                    new HierarchyNode(course, moduleRoot, levelFor(document, s.getTitle()), s.getTitle(), document);
             unitExtractor.windows(node.getLabel(), document, text, start, end, s.getStartPage(), s.getEndPage())
                     .forEach(window -> units.add(new Unit(node, window)));
         }
         if (units.isEmpty()) {
-            HierarchyNode node = hierarchyNodeRepository.save(new HierarchyNode(
-                    course, moduleRoot, levelFor(document, document.getFilename()), document.getFilename(), document));
+            HierarchyNode node = new HierarchyNode(
+                    course, moduleRoot, levelFor(document, document.getFilename()), document.getFilename(), document);
             int pageCount = document.getPageOffsets() == null ? 0 : document.getPageOffsets().length - 1;
             unitExtractor.windows(node.getLabel(), document, text, 0, text.length(), pageCount > 0 ? 1 : null,
                             pageCount > 0 ? pageCount : null)
