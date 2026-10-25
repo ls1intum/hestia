@@ -28,7 +28,8 @@ type Props = {
   statusUnavailable?: boolean;
   courseId?: number | null;
   /**
-   * Opens straight into the skill review, ignoring run status entirely. The review reads the
+   * Opens straight into the skill review whatever the run status; `status` then only reports what
+   * the run left out. The review reads the
    * course's goals from its own query, so it stays reachable long after the run — and after a
    * restart, when the in-memory progress tracker no longer remembers the run at all.
    */
@@ -234,8 +235,7 @@ export default function ExtractionProgressModal({
   const total = status?.total ?? 0;
   const completed = status?.completed ?? 0;
   const percent = status?.percent ?? 0;
-  // Sessions the run dropped. Zero when reopened via reviewOnly: the tracker is in-memory, so the
-  // durable record of a thinned-out run is the extraction_run audit row, not this screen.
+  // What the run left out. A review opened later reads it from the durable run record.
   const failedSessions = status?.failedSessions ?? 0;
   const failedSessionNames = status?.failedSessionNames ?? [];
   const droppedOutcomes = status?.droppedOutcomes ?? 0;

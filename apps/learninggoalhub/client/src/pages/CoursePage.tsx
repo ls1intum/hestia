@@ -42,6 +42,13 @@ export default function CoursePage() {
   const course = courseQuery.data;
   const extractionProblem = course?.extractionStatus === "FAILED"
     || course?.extractionStatus === "RUNNING";
+  const reviewDue = course != null
+    && (course.topicCount ?? 0) > 0
+    && course.skillsReviewedAt == null;
+  const [reviewDismissed, setReviewDismissed] = useState(false);
+  // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
+  // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
+  const showReview = reviewOpen || (reviewDue && !reviewDismissed);
   const extractionStatusQuery = useQuery<ExtractionStatus | null>({
     queryKey: ["extract-status", courseId],
     queryFn: async () => {
@@ -51,7 +58,8 @@ export default function CoursePage() {
       if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
     },
-    enabled: extractionModalOpen,
+    // Also read for the review, which reports what the run that built the tree left out.
+    enabled: extractionModalOpen || showReview,
     // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
     // progress nor passes for "no run".
     refetchInterval: (query) =>
@@ -63,13 +71,6 @@ export default function CoursePage() {
     queryClient.invalidateQueries({ queryKey: ["courses"] });
     queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
   }, [courseId, extractionStatusQuery.data?.status, queryClient]);
-  const reviewDue = course != null
-    && (course.topicCount ?? 0) > 0
-    && course.skillsReviewedAt == null;
-  const [reviewDismissed, setReviewDismissed] = useState(false);
-  // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
-  // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
-  const showReview = reviewOpen || (reviewDue && !reviewDismissed);
 
   const markReviewed = useMutation({
     mutationFn: async () => {
@@ -278,6 +279,8 @@ export default function CoursePage() {
         <ExtractionProgressModal
           open
           reviewOnly
+          // Only a successful run built the tree under review; a later failed run stored nothing.
+          status={extractionStatusQuery.data?.status === "SUCCEEDED" ? extractionStatusQuery.data : undefined}
           courseId={courseId}
           onClose={() => {
             setReviewOpen(false);
