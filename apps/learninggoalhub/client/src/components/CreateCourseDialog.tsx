@@ -49,6 +49,9 @@ export default function CreateCourseDialog({
   const [figuresEnabled, setFiguresEnabled] = useState(false);
   const [step, setStep] = useState<Step | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
+  // Set once the course exists, so retrying after a failed upload or start carries on with that
+  // course instead of creating a second one. Its settings are fixed from then on.
+  const [createdCourseId, setCreatedCourseId] = useState<number | null>(null);
 
   // Accumulate across drops/picks, skipping files already staged in either box (name + size).
   const addFiles = (kind: DocumentKind, incoming: FileList | null) => {
@@ -93,24 +96,33 @@ export default function CreateCourseDialog({
     setError(null);
     try {
       setStep("creating");
-      const { data, error } = await api.POST("/api/courses", {
-        body: {
-          name: name.trim(),
-          outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
-          figuresEnabled,
-        },
-      });
-      if (error || !data?.id) throw new Error("Could not create the course.");
-      // The row shows up straight away, so closing the dialog mid-upload still leaves the course
-      // in the list.
-      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      let courseId = createdCourseId;
+      if (courseId == null) {
+        const { data, error } = await api.POST("/api/courses", {
+          body: {
+            name: name.trim(),
+            outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
+            figuresEnabled,
+          },
+        });
+        if (error || !data?.id) throw new Error("Could not create the course.");
+        courseId = data.id;
+        setCreatedCourseId(courseId);
+        // The row shows up straight away, so closing the dialog mid-upload still leaves the course
+        // in the list.
+        queryClient.invalidateQueries({ queryKey: ["courses"] });
+      }
 
       if (files.length > 0) {
         setUploadPercent(0);
         setStep("uploading");
-        await uploadDocuments(data.id, staged, setUploadPercent, () => setStep("processing"));
+        // On a retry, files an earlier attempt already stored are not sent again.
+        const remaining = await notYetUploaded(courseId, staged);
+        if (remaining.LECTURE.length + remaining.EXERCISE.length > 0) {
+          await uploadDocuments(courseId, remaining, setUploadPercent, () => setStep("processing"));
+        }
         setStep("starting");
-        await startExtraction(data.id);
+        await startExtraction(courseId);
         // The list picks the run up from its own polling and shows progress on the course's row.
         queryClient.invalidateQueries({ queryKey: ["courses"] });
         queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
@@ -222,6 +234,8 @@ export default function CreateCourseDialog({
                   placeholder="e.g. Introduction to Data Science"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  maxLength={255}
+                  disabled={createdCourseId != null}
                   autoFocus
                 />
               </div>
@@ -237,6 +251,7 @@ export default function CreateCourseDialog({
                   id="output-language"
                   value={outputLanguage}
                   onChange={(e) => setOutputLanguage(e.target.value as "" | "de" | "en")}
+                  disabled={createdCourseId != null}
                   className="h-9 w-full rounded-md border border-hestia-border bg-hestia-surface px-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none cursor-pointer px-2.5"
                 >
                   <option value="">Same as the materials</option>
@@ -258,6 +273,7 @@ export default function CreateCourseDialog({
                     type="checkbox"
                     checked={figuresEnabled}
                     onChange={(e) => setFiguresEnabled(e.target.checked)}
+                    disabled={createdCourseId != null}
                     className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-hestia-primary"
                   />
                   <span className="flex flex-col gap-0.5">
@@ -507,6 +523,22 @@ function MaterialsBox({
       )}
     </div>
   );
+}
+
+/** The staged files the course does not hold yet, matched by file name. */
+async function notYetUploaded(
+  courseId: number,
+  staged: Record<DocumentKind, File[]>,
+): Promise<Record<DocumentKind, File[]>> {
+  const { data, error } = await api.GET("/api/courses/{courseId}/documents", {
+    params: { path: { courseId } },
+  });
+  if (error || !data) throw new Error("Course created, but its materials could not be checked.");
+  const stored = new Set(data.map((document) => document.filename));
+  return {
+    LECTURE: staged.LECTURE.filter((file) => !stored.has(file.name)),
+    EXERCISE: staged.EXERCISE.filter((file) => !stored.has(file.name)),
+  };
 }
 
 async function startExtraction(courseId: number): Promise<void> {

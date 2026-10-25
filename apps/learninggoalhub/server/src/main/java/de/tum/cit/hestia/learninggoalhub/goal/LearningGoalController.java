@@ -55,6 +55,7 @@ import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -83,6 +84,7 @@ public class LearningGoalController {
     private final SkillSuggestionSynthesizer skillSuggestionSynthesizer;
     private final SubtreeSynthesizer subtreeSynthesizer;
     private final LearningGoalCsvWriter csvWriter;
+    private final TransactionOperations transactions;
 
     public LearningGoalController(CourseRepository courseRepository,
                                   LearningGoalRepository goalRepository,
@@ -95,7 +97,8 @@ public class LearningGoalController {
                                   TaxonomyService taxonomyService,
                                   SkillSuggestionSynthesizer skillSuggestionSynthesizer,
                                   SubtreeSynthesizer subtreeSynthesizer,
-                                  LearningGoalCsvWriter csvWriter) {
+                                  LearningGoalCsvWriter csvWriter,
+                                  TransactionOperations transactions) {
         this.courseRepository = courseRepository;
         this.goalRepository = goalRepository;
         this.goalSourceRepository = goalSourceRepository;
@@ -108,6 +111,7 @@ public class LearningGoalController {
         this.skillSuggestionSynthesizer = skillSuggestionSynthesizer;
         this.subtreeSynthesizer = subtreeSynthesizer;
         this.csvWriter = csvWriter;
+        this.transactions = transactions;
     }
 
     /** Label of the COMPETENCY hierarchy root; mirrors the one the extraction pipeline creates. */
@@ -271,17 +275,12 @@ public class LearningGoalController {
     @Transactional
     public LearningGoalResponse createTerminalSkill(@PathVariable Long courseId,
                                                     @RequestBody CreateTerminalSkillRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = lockCourse(courseId);
         String text = request.text() == null ? "" : request.text().strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
         }
-        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
-                .anyMatch(g -> g.getText() != null && g.getText().strip().equalsIgnoreCase(text));
-        if (duplicate) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
+        rejectDuplicateTopic(courseId, text);
 
         LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
         goal.setOrigin(GoalOrigin.TERMINAL);
@@ -333,11 +332,11 @@ public class LearningGoalController {
 
     /**
      * Generates and atomically persists a topic with a complete skill → sub-skill → knowledge subtree,
-     * written from the topic's name alone, so no generated node has a source.
+     * written from the topic's name alone, so no generated node has a source. The model calls run
+     * before the transaction that stores the result.
      */
     @PostMapping("/terminal/generated")
     @ResponseStatus(HttpStatus.CREATED)
-    @Transactional
     public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
                                                              @RequestBody CreateGeneratedTerminalSkillRequest request) {
         Course course = courseRepository.findById(courseId)
@@ -351,24 +350,25 @@ public class LearningGoalController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Skill text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
         }
-        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
-                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
-        if (duplicate) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
+        rejectDuplicateTopic(courseId, text);
 
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
                 subtreeSynthesizer.generateSubtree(text, courseLanguageName(course), null));
-        LearningGoal terminal = newGeneratedGoal(course, text, GoalOrigin.TERMINAL);
-        terminal.setShortLabel(trimToNull(request.shortLabel()));
-        terminal.setHierarchyNode(competencyRoot(course));
-
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         // The terminal is a topic, a noun phrase with no level of its own; only the nodes beneath it
         // state a performance.
         applyClassifications(generatedNodes.nodes());
-        persistGeneratedNodes(terminal, generatedNodes);
-        return LearningGoalResponse.from(terminal, List.of(), List.of());
+
+        return transactions.execute(status -> {
+            Course locked = lockCourse(courseId);
+            // Checked again under the lock: the same topic may have been added during generation.
+            rejectDuplicateTopic(courseId, text);
+            LearningGoal created = newGeneratedGoal(locked, text, GoalOrigin.TERMINAL);
+            created.setShortLabel(trimToNull(request.shortLabel()));
+            created.setHierarchyNode(competencyRoot(locked));
+            persistGeneratedNodes(created, generatedNodes);
+            return LearningGoalResponse.from(created, List.of(), List.of());
+        });
     }
 
     /**
@@ -381,7 +381,6 @@ public class LearningGoalController {
      * the way; those survive regeneration untouched, which is the intended mix.
      */
     @PostMapping("/{goalId}/subtree")
-    @Transactional
     public LearningGoalResponse generateSubtree(@PathVariable Long courseId,
                                                 @PathVariable Long goalId) {
         LearningGoal terminal = findGoal(courseId, goalId);
@@ -394,17 +393,23 @@ public class LearningGoalController {
                     "A skill extracted from the course material cannot be regenerated");
         }
 
-        Course course = terminal.getCourse();
+        // Read outside a transaction, the terminal's lazy course cannot be followed.
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
                 subtreeSynthesizer.generateSubtree(terminal.getText(), courseLanguageName(course), null));
         GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
         applyClassifications(generatedNodes.nodes());
 
-        deleteWizardGeneratedDescendants(terminal);
-        goalRepository.flush();
-        persistGeneratedNodes(terminal, generatedNodes);
-        // The terminal was still created by hand; its provenance describes the node, not its children.
-        return LearningGoalResponse.from(terminal, List.of(), List.of());
+        return transactions.execute(status -> {
+            lockCourse(courseId);
+            LearningGoal current = findGoal(courseId, goalId);
+            deleteWizardGeneratedDescendants(current);
+            goalRepository.flush();
+            persistGeneratedNodes(current, generatedNodes);
+            // The terminal was still created by hand; its provenance describes the node, not its children.
+            return LearningGoalResponse.from(current, List.of(), List.of());
+        });
     }
 
     /**
@@ -429,7 +434,7 @@ public class LearningGoalController {
         }
         rejectIfKnowledgeTier(parent);
 
-        Course course = parent.getCourse();
+        Course course = lockCourse(courseId);
         LearningGoal child = newUserCreatedChild(course, text);
         child.setShortLabel(trimToNull(request.shortLabel()));
         child.setRole(request.role());
@@ -632,6 +637,24 @@ public class LearningGoalController {
             return null;
         }
         return value.strip();
+    }
+
+    /**
+     * Locks the course row until the transaction ends. Writes that check before they insert (the
+     * duplicate-topic check, the next lecture order) take it first, so two concurrent requests for
+     * one course cannot both pass the check.
+     */
+    private Course lockCourse(Long courseId) {
+        return courseRepository.lockById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+    }
+
+    private void rejectDuplicateTopic(Long courseId, String text) {
+        boolean duplicate = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
+                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
+        if (duplicate) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
+        }
     }
 
     /** All terminal skills of a course share one COMPETENCY root node, created on first use. */

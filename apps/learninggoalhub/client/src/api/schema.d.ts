@@ -567,7 +567,7 @@ export interface components {
         };
         UpdateCourseRequest: {
             name?: string;
-            outputLanguage?: string;
+            outputLanguage?: string | null;
             figuresEnabled?: boolean;
         };
         UpdateLearningGoalRequest: {

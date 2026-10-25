@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 class TopicSearchServiceTest {
@@ -71,7 +72,8 @@ class TopicSearchServiceTest {
         return new TopicSearchService(courseRepository, documentRepository, sectionRepository,
                 mock(PageDescriptionRepository.class), goalRepository, goalSourceRepository,
                 mock(GoalRelationshipRepository.class), mock(HierarchyNodeRepository.class), unitExtractor,
-                searchSynthesizer, treeSynthesizer, mock(TaxonomyService.class), 1, maxPages, clock);
+                searchSynthesizer, treeSynthesizer, mock(TaxonomyService.class),
+                TransactionOperations.withoutTransaction(), 1, maxPages, clock);
     }
 
     /** A document whose pages are the given texts, each ending in a line break. */

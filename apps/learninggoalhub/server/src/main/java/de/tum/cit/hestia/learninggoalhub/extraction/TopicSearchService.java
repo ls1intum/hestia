@@ -72,6 +72,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -115,10 +118,13 @@ public class TopicSearchService {
     private final TopicSearchSynthesizer topicSearchSynthesizer;
     private final TopicTreeSynthesizer topicTreeSynthesizer;
     private final TaxonomyService taxonomyService;
+    private final TransactionOperations transactions;
     private final int parallelism;
     private final int maxPages;
     private final Clock clock;
     private final Map<UUID, Proposal> proposals = new ConcurrentHashMap<>();
+    /** Proposals an accept is storing right now; a second accept of one of them is refused. */
+    private final Set<UUID> accepting = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public TopicSearchService(CourseRepository courseRepository,
@@ -133,12 +139,13 @@ public class TopicSearchService {
                               TopicSearchSynthesizer topicSearchSynthesizer,
                               TopicTreeSynthesizer topicTreeSynthesizer,
                               TaxonomyService taxonomyService,
+                              TransactionOperations transactions,
                               @Value("${hestia.extraction.parallelism:8}") int parallelism,
                               @Value("${hestia.topic-search.max-pages:80}") int maxPages) {
         this(courseRepository, documentRepository, documentSectionRepository, pageDescriptionRepository,
                 goalRepository, goalSourceRepository, goalRelationshipRepository, hierarchyNodeRepository,
-                unitExtractor, topicSearchSynthesizer, topicTreeSynthesizer, taxonomyService, parallelism,
-                maxPages, Clock.systemUTC());
+                unitExtractor, topicSearchSynthesizer, topicTreeSynthesizer, taxonomyService, transactions,
+                parallelism, maxPages, Clock.systemUTC());
     }
 
     TopicSearchService(CourseRepository courseRepository,
@@ -153,6 +160,7 @@ public class TopicSearchService {
                        TopicSearchSynthesizer topicSearchSynthesizer,
                        TopicTreeSynthesizer topicTreeSynthesizer,
                        TaxonomyService taxonomyService,
+                       TransactionOperations transactions,
                        int parallelism,
                        int maxPages,
                        Clock clock) {
@@ -168,6 +176,7 @@ public class TopicSearchService {
         this.topicSearchSynthesizer = topicSearchSynthesizer;
         this.topicTreeSynthesizer = topicTreeSynthesizer;
         this.taxonomyService = taxonomyService;
+        this.transactions = transactions;
         this.parallelism = parallelism;
         this.maxPages = maxPages;
         this.clock = clock;
@@ -177,8 +186,10 @@ public class TopicSearchService {
     // Page picker
     // ---------------------------------------------------------------------------------------------
 
-    /** Proposes the page runs that mention the topic, labelled by bookmark or file name. */
-    @Transactional(readOnly = true)
+    /**
+     * Proposes the page runs that mention the topic, labelled by bookmark or file name. Not
+     * transactional: the search-terms call must not hold a database connection.
+     */
     public PagePlan planPages(Long courseId, String topicText, String modelOverride) {
         Course course = course(courseId);
         String topic = requireTopic(topicText);
@@ -265,8 +276,10 @@ public class TopicSearchService {
     // Search
     // ---------------------------------------------------------------------------------------------
 
-    /** Reads the chosen pages and holds the resulting proposal; nothing is persisted. */
-    @Transactional(readOnly = true)
+    /**
+     * Reads the chosen pages and holds the resulting proposal; nothing is persisted. Not
+     * transactional: the model calls must not hold a database connection.
+     */
     public ProposalResponse search(Long courseId, String topicText, List<PageRange> ranges, String modelOverride) {
         Course course = course(courseId);
         String topic = requireTopic(topicText);
@@ -412,24 +425,9 @@ public class TopicSearchService {
         if (candidates.isEmpty()) {
             return Map.of();
         }
-        List<LearningGoal> skills = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED))
-                .stream()
-                .filter(goal -> goal.getRole() == GoalRole.SKILL)
-                .toList();
-        if (skills.isEmpty()) {
-            return Map.of();
-        }
-        Set<Long> onPages = goalSourceRepository.findByGoalIdIn(skills.stream().map(LearningGoal::getId).toList())
-                .stream()
-                .filter(source -> source.getPage() != null && ranges.stream().anyMatch(range ->
-                        range.documentId().equals(source.getDocument().getId())
-                                && source.getPage() >= range.startPage() && source.getPage() <= range.endPage()))
-                .map(source -> source.getGoal().getId())
-                .collect(Collectors.toSet());
-        List<LearningGoal> existing = skills.stream()
-                .filter(goal -> onPages.contains(goal.getId()))
-                .sorted(Comparator.comparing(LearningGoal::getId))
-                .toList();
+        // Read in a transaction of its own, so the topic lookup can follow lazy edges, and closed
+        // before the model call.
+        List<DuplicateOf> existing = transactions.execute(status -> existingOnPages(courseId, ranges));
         if (existing.isEmpty()) {
             return Map.of();
         }
@@ -437,7 +435,7 @@ public class TopicSearchService {
         try {
             answer = topicSearchSynthesizer.duplicates(
                     candidates.stream().map(candidate -> candidate.goal().extracted().text()).toList(),
-                    existing.stream().map(LearningGoal::getText).toList(), modelOverride);
+                    existing.stream().map(DuplicateOf::text).toList(), modelOverride);
         } catch (RuntimeException ex) {
             log.warn("Duplicate check against {} existing sub-skills failed, marking none: {}",
                     existing.size(), ex.getMessage());
@@ -446,11 +444,33 @@ public class TopicSearchService {
         Map<Integer, DuplicateOf> result = new LinkedHashMap<>();
         for (int index = 0; index < answer.size(); index++) {
             if (answer.get(index) >= 0) {
-                LearningGoal match = existing.get(answer.get(index));
-                result.put(index, new DuplicateOf(match.getId(), match.getText(), topicTextOf(match)));
+                result.put(index, existing.get(answer.get(index)));
             }
         }
         return result;
+    }
+
+    /** The course's extracted sub-skills quoted on the chosen pages, with the topic each sits under. */
+    private List<DuplicateOf> existingOnPages(Long courseId, List<PageRange> ranges) {
+        List<LearningGoal> skills = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED))
+                .stream()
+                .filter(goal -> goal.getRole() == GoalRole.SKILL)
+                .toList();
+        if (skills.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> onPages = goalSourceRepository.findByGoalIdIn(skills.stream().map(LearningGoal::getId).toList())
+                .stream()
+                .filter(source -> source.getPage() != null && ranges.stream().anyMatch(range ->
+                        range.documentId().equals(source.getDocument().getId())
+                                && source.getPage() >= range.startPage() && source.getPage() <= range.endPage()))
+                .map(source -> source.getGoal().getId())
+                .collect(Collectors.toSet());
+        return skills.stream()
+                .filter(goal -> onPages.contains(goal.getId()))
+                .sorted(Comparator.comparing(LearningGoal::getId))
+                .map(goal -> new DuplicateOf(goal.getId(), goal.getText(), topicTextOf(goal)))
+                .toList();
     }
 
     /** The text of the nearest topic above a goal in the competency tree, or null outside the tree. */
@@ -574,7 +594,23 @@ public class TopicSearchService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "This search has expired or does not exist. Search the slides again.");
         }
-        Course course = course(courseId);
+        if (!accepting.add(proposalId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This search is already being added.");
+        }
+        // The proposal leaves the store only once its topic is committed, so a failed accept can be
+        // retried; the claim ends with the transaction either way.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    proposals.remove(proposalId);
+                }
+                accepting.remove(proposalId);
+            }
+        });
+        // Locked so a concurrent request cannot add the same topic between the check and the insert.
+        Course course = courseRepository.lockById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
         Set<Integer> ticked = new HashSet<>();
         for (String key : subSkillKeys == null ? List.<String>of() : subSkillKeys) {
             Integer index = subSkillIndex(key, proposal.candidates().size());
@@ -652,7 +688,6 @@ public class TopicSearchService {
 
         topic.setLectureOrder(median(new ArrayList<>(subSkills.values())));
         goalRepository.save(topic);
-        proposals.remove(proposalId);
         log.info("Created topic '{}' in course {} from a slide search with {} sub-skills",
                 proposal.topic(), courseId, subSkills.size());
         return topic;

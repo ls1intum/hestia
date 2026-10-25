@@ -1,12 +1,20 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
+
+    /** The course, its row locked until the surrounding transaction ends. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Course c where c.id = :id")
+    Optional<Course> lockById(@Param("id") Long id);
 
     /** Goal count per course for the given ids — one row per course that has at least one goal. */
     @Query("select g.course.id as courseId, count(g.id) as count "

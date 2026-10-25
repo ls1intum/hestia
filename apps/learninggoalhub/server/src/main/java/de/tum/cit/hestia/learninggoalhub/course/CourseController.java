@@ -2,8 +2,10 @@ package de.tum.cit.hestia.learninggoalhub.course;
 
 import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
 import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -39,6 +41,9 @@ public class CourseController {
         this.courseRepository = courseRepository;
         this.extractionRunRepository = extractionRunRepository;
     }
+
+    /** The width of the {@code course.name} column. */
+    static final int MAX_NAME_LENGTH = 255;
 
     @PostMapping
     public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
@@ -112,8 +117,8 @@ public class CourseController {
     /**
      * Marks the course's one-time skill review as done. The client shows that review the first time
      * a course is opened after its extraction produced skills; this records the dismissal so it does
-     * not reappear. Deliberately its own endpoint rather than a field on {@code PATCH}, whose body
-     * clears {@code outputLanguage} when the field is omitted.
+     * not reappear. Its own endpoint rather than a field on {@code PATCH}: it records a moment
+     * the server sets, not a value the client chooses.
      */
     @PostMapping("/{id}/skills-reviewed")
     public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
@@ -127,9 +132,8 @@ public class CourseController {
     }
 
     /**
-     * Updates a course. {@code name} is left alone when omitted — a rename must not have to know
-     * about the course's other settings — whereas {@code outputLanguage} is replaced by whatever the
-     * body carries, so an omitted language still means "back to auto-detect".
+     * Updates a course. Every field is left alone when omitted, so a rename need not know the
+     * course's other settings; an explicit {@code outputLanguage: null} means "back to auto-detect".
      */
     @PatchMapping("/{id}")
     public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
@@ -138,17 +142,23 @@ public class CourseController {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
         }
-        validateOutputLanguage(request.outputLanguage());
-        if (request.name() != null) {
-            String name = request.name().trim();
+        validateOutputLanguage(request.getOutputLanguage());
+        if (request.getName() != null) {
+            String name = request.getName().trim();
             if (name.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name must not be blank");
             }
+            if (name.length() > MAX_NAME_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "name must be at most " + MAX_NAME_LENGTH + " characters");
+            }
             course.setName(name);
         }
-        course.setOutputLanguage(request.outputLanguage());
-        if (request.figuresEnabled() != null) {
-            course.setFiguresEnabled(request.figuresEnabled());
+        if (request.hasOutputLanguage()) {
+            course.setOutputLanguage(request.getOutputLanguage());
+        }
+        if (request.getFiguresEnabled() != null) {
+            course.setFiguresEnabled(request.getFiguresEnabled());
         }
         return CourseResponse.from(courseRepository.save(course));
     }
@@ -192,7 +202,8 @@ public class CourseController {
         return statuses;
     }
 
-    public record CreateCourseRequest(@NotBlank String name, String outputLanguage, Boolean figuresEnabled) {
+    public record CreateCourseRequest(@NotBlank @Size(max = MAX_NAME_LENGTH) String name, String outputLanguage,
+                                      Boolean figuresEnabled) {
     }
 
     public record CourseResponse(Long id, String name, String outputLanguage, boolean figuresEnabled) {
@@ -209,6 +220,45 @@ public class CourseController {
             ExtractionRun.Status extractionStatus) {
     }
 
-    public record UpdateCourseRequest(String name, String outputLanguage, Boolean figuresEnabled) {
+    /**
+     * A partial update. {@code outputLanguage} needs to tell "left out" from "null": null switches
+     * back to auto-detection, while a body that only renames the course must not.
+     */
+    public static class UpdateCourseRequest {
+
+        private String name;
+        private String outputLanguage;
+        private boolean outputLanguageSet;
+        private Boolean figuresEnabled;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        @Schema(nullable = true)
+        public String getOutputLanguage() {
+            return outputLanguage;
+        }
+
+        public void setOutputLanguage(String outputLanguage) {
+            this.outputLanguage = outputLanguage;
+            this.outputLanguageSet = true;
+        }
+
+        public Boolean getFiguresEnabled() {
+            return figuresEnabled;
+        }
+
+        public void setFiguresEnabled(Boolean figuresEnabled) {
+            this.figuresEnabled = figuresEnabled;
+        }
+
+        boolean hasOutputLanguage() {
+            return outputLanguageSet;
+        }
     }
 }

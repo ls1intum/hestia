@@ -42,6 +42,13 @@ import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.hamcrest.Matchers;
@@ -53,6 +60,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -696,6 +704,85 @@ class LearningGoalControllerTest {
         mockMvc.perform(post("/api/courses/{id}/learning-goals/skill-suggestions", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(0)));
+    }
+
+    @Test
+    void generatingATopicCallsTheModelsWithoutHoldingATransaction() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return subtree("Automate the release process", "Configure deployment pipelines.",
+                    "Explain pipeline stages.");
+        });
+        when(taxonomyService.classifyBatch(anyList(), any())).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return List.of();
+        });
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"Automate secure deployments.\"}"))
+                .andExpect(status().isCreated());
+
+        // A model call can take minutes; it must not pin a database connection meanwhile.
+        assertThat(inTransaction).containsExactly(false, false);
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(4);
+    }
+
+    @Test
+    void twoRequestsGeneratingTheSameTopicAtOnceCreateItOnce() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        CountDownLatch bothGenerating = new CountDownLatch(2);
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
+            // Both requests pass the duplicate check before either stores its topic.
+            bothGenerating.countDown();
+            assertThat(bothGenerating.await(10, TimeUnit.SECONDS)).isTrue();
+            return subtree("Automate the release process", "Configure deployment pipelines.",
+                    "Explain pipeline stages.");
+        });
+        when(taxonomyService.classifyBatch(anyList(), any())).thenReturn(List.of());
+        Callable<Integer> request = () -> mockMvc.perform(
+                        post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"text\": \"Automate secure deployments.\"}"))
+                .andReturn().getResponse().getStatus();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = pool.submit(request);
+            Future<Integer> second = pool.submit(request);
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 409);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.TERMINAL)))
+                .hasSize(1);
+    }
+
+    @Test
+    void regeneratingASubtreeCallsTheModelsWithoutHoldingATransaction() throws Exception {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(course, "Automate secure deployments.",
+                GoalCreationProvenance.USER_CREATED));
+        List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
+        when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return subtree("Automate the release process", "Configure deployment pipelines.",
+                    "Explain pipeline stages.");
+        });
+        when(taxonomyService.classifyBatch(anyList(), any())).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return List.of();
+        });
+
+        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/subtree",
+                        course.getId(), terminal.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(inTransaction).containsExactly(false, false);
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(4);
     }
 
     @Test

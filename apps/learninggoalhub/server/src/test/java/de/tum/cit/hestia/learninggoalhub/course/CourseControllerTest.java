@@ -181,6 +181,21 @@ class CourseControllerTest {
     }
 
     @Test
+    void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
+        Course course = new Course("Language Course");
+        course.setOutputLanguage("de");
+        course = courseRepository.save(course);
+
+        // Like the document PATCH: an omitted field is left alone, an explicit null clears it.
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed"))
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+    }
+
+    @Test
     void createsPatchesAndReadsFiguresSetting() throws Exception {
         mockMvc.perform(post("/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -243,6 +258,30 @@ class CourseControllerTest {
         mockMvc.perform(get("/api/courses/{id}", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Keeps Its Name"));
+    }
+
+    @Test
+    void rejectsACourseNameLongerThanTheColumn() throws Exception {
+        String tooLong = "x".repeat(256);
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void rejectsSortingByAnUnknownProperty() throws Exception {
+        mockMvc.perform(get("/api/courses").param("sort", "nope,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test
