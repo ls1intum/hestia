@@ -48,10 +48,14 @@ export default function CoursePage() {
       const result = await api.GET("/api/courses/{courseId}/extract/status", {
         params: { path: { courseId } },
       });
+      if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
     },
     enabled: extractionModalOpen,
-    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+    // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
+    // progress nor passes for "no run".
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 3000 : query.state.data?.status === "RUNNING" ? 1000 : false,
   });
   useEffect(() => {
     if (extractionStatusQuery.data?.status !== "SUCCEEDED") return;
@@ -180,6 +184,7 @@ export default function CoursePage() {
           <ExtractionProgressModal
             open
             status={extractionStatusQuery.data ?? undefined}
+            statusUnavailable={extractionStatusQuery.isError}
             error={
               extractionStatusQuery.data?.status === "FAILED"
                 ? extractionStatusQuery.data.error ?? "Extraction failed."

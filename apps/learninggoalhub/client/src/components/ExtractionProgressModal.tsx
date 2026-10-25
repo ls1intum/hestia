@@ -24,6 +24,8 @@ type Props = {
   status?: ExtractionStatus;
   /** Set when the run failed. */
   error?: string | null;
+  /** Set while the status cannot be loaded; the last known progress stays on screen meanwhile. */
+  statusUnavailable?: boolean;
   courseId?: number | null;
   /**
    * Opens straight into the skill review, ignoring run status entirely. The review reads the
@@ -42,6 +44,7 @@ export default function ExtractionProgressModal({
   open,
   status,
   error,
+  statusUnavailable = false,
   courseId,
   reviewOnly = false,
   onClose,
@@ -355,6 +358,11 @@ export default function ExtractionProgressModal({
                   );
                 })}
               </ol>
+              {statusUnavailable && (
+                <p className="text-sm text-hestia-danger">
+                  Cannot reach the server for the progress. Still trying…
+                </p>
+              )}
             </div>
           )}
 
