@@ -1,10 +1,11 @@
 # Deployment
 
-The app is deployed as three containers via `compose.prod.yaml`:
+The app is deployed as four containers via `compose.prod.yaml`:
 
 - **postgres** — pgvector database (private to this app)
 - **server** — Spring Boot server (private, heap sized from `mem_limit`)
 - **web** — nginx serving the client build and proxying `/api` to the server
+- **backup** — daily `pg_dump` of the database into a host directory (see [Backups](#backups))
 
 None of these publish a host port. TLS and host ports 80/443 are owned by the **shared
 Traefik proxy** (`infra/traefik/`, see its README), which routes `https://<host>/learninggoalhub/*`
@@ -45,10 +46,18 @@ by the shared ls1intum reusable workflows (`.github/workflows/learninggoalhub-ci
 
 | Trigger | Images built | Deploy |
 | --- | --- | --- |
-| Pull request | `…/learninggoalhub-{server,client}:pr-<N>` | — (build only, validation) |
+| Pull request | `…/learninggoalhub/{server,client}:pr-<N>` | — (build only, validation) |
 | Push to `main` | `…:latest` | → **Staging** (automatic) |
 | GitHub Release `vX.Y.Z` | `…:vX.Y.Z` | → **Production** (waits for approval) |
 | Manual (`workflow_dispatch`) | per branch | → chosen environment/tag |
+
+Every run first runs the checks: the server and `shared-llm` test suites (Testcontainers, on the
+runner's Docker) and the client's lint, typecheck and tests. The images are built only when all of
+them pass, so a red test never deploys. After a deploy, a smoke-test job SSHes to the VM, waits for
+the server container's healthcheck (`/actuator/health`, which includes the database) and requests
+the client, `/api/courses` through nginx, and the public route through Traefik. A failing check
+fails the workflow run; the new containers stay up, so roll back by deploying the previous tag
+(`workflow_dispatch` with `image-tag`).
 
 Build and deploy both run on GitHub-hosted runners via the shared ls1intum reusable
 workflows, like the other chair apps (e.g. Hephaestus). The VMs sit behind the LRZ VPN, so the
@@ -57,7 +66,7 @@ deploy workflow reaches them over SSH **through the chair's shared deployment ga
 `secrets: inherit`). The reusable workflow writes `.env` on the VM from the repository's
 Actions secrets/variables (plus the injected `IMAGE_TAG`), then runs `docker compose pull && up -d`.
 
-Images are `ghcr.io/ls1intum/hestia/learninggoalhub-{server,client}:<tag>`. The server image
+Images are `ghcr.io/ls1intum/hestia/learninggoalhub/{server,client}:<tag>`. The server image
 is built from the repo root (multi-module Gradle build); the client from its own directory.
 
 ### GitHub setup (one-time, per repo — needs repo admin)
@@ -94,6 +103,19 @@ sudo mkdir -p /opt/hestia/learninggoalhub && sudo chown -R github_deployment /op
 # github_deployment and VM_HOST to this VM's address (as reachable from the gateway).
 ```
 
+The server also needs the SAML service-provider key pair, which is not part of the image or the
+repository. `compose.prod.yaml` mounts it read-only from `/opt/hestia/secrets/saml`:
+
+```bash
+sudo mkdir -p /opt/hestia/secrets/saml
+# copy the key pair registered with TUM's IdP as exactly these two files:
+#   /opt/hestia/secrets/saml/private-key.pem
+#   /opt/hestia/secrets/saml/certificate.crt
+sudo chmod 600 /opt/hestia/secrets/saml/private-key.pem
+```
+
+Without the files the server fails at startup; the healthcheck and the CI smoke test then report it.
+
 ### Manual deploy / fallback
 
 If CI is unavailable, deploy by hand from a checkout of the repo on the VM (images must
@@ -113,6 +135,41 @@ The app is then served at `https://<APP_HOST>/learninggoalhub/`.
 
 - The API keys and the Postgres password live only in the repository's Actions secrets (and the
   generated `.env` on the VM) — never committed.
-- `APP_HOST` must match the TLS cert SAN; `APP_PATH_PREFIX` (default `/learninggoalhub`) is the
-  URL path this app is routed under — both drive the Traefik labels in `compose.prod.yaml`.
+- `APP_HOST` must match the TLS cert SAN and drives the Traefik labels in `compose.prod.yaml`. The
+  path prefix `/learninggoalhub` is fixed: it is written into those labels and into the client's
+  Vite `base`, so changing it means editing both.
 - On the small (~4 GB) shared VM the server is capped to `mem_limit: 1500m` (heap = 70%).
+
+## Backups
+
+The `backup` container writes a `pg_dump` custom-format dump of the database once a day (and once
+whenever the container is recreated) to `BACKUP_DIR` on the host, default
+`/opt/hestia/backups/learninggoalhub`, named `learninggoalhub-<YYYYMMDD-HHMMSS>.dump`. Dumps older
+than `BACKUP_KEEP_DAYS` (default 14) are deleted. A failed dump leaves no file and logs
+`backup FAILED`:
+
+```bash
+sudo docker logs learninggoalhub-backup      # one line per dump
+ls -lh /opt/hestia/backups/learninggoalhub
+```
+
+The dumps live on the same VM as the database. They cover a removed volume, a bad migration or a
+destructive request, not the loss of the VM itself; copy them off the VM for that.
+
+### Restore
+
+Stop the server so nothing writes during the restore, restore the chosen dump into the running
+postgres container, then start the server again (from the deployment directory,
+`/opt/hestia/learninggoalhub` for CI deploys):
+
+```bash
+sudo docker compose -f compose.prod.yaml --env-file .env stop server
+sudo docker compose -f compose.prod.yaml --env-file .env exec -T postgres \
+  pg_restore -U learninggoalhub -d learninggoalhub --clean --if-exists --no-owner \
+  < /opt/hestia/backups/learninggoalhub/learninggoalhub-<timestamp>.dump
+sudo docker compose -f compose.prod.yaml --env-file .env start server
+```
+
+`--clean --if-exists` drops and recreates every object in the dump, so the tables and the Flyway
+history return to the dump's state; objects created after the dump are left in place. To start
+from an empty database instead, restore after `docker compose down -v` and `up -d postgres`.

@@ -1,0 +1,7 @@
+# Overlay on the main application.yml (Spring Boot loads classpath:/config/ after classpath:/),
+# so tests run with the production settings (open-in-view off, ddl-auto validate, hestia.*)
+# and only override what a test context needs.
+spring:
+  ai:
+    openai:
+      api-key: test-key

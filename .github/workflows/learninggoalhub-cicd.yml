@@ -4,10 +4,13 @@ name: learninggoalhub CI/CD
 # reusable workflows. Scoped to learninggoalhub via paths so other apps in the monorepo
 # are unaffected.
 #
-#   PR               -> build images (pr-<N> tags), no deploy   [validation]
-#   push to main     -> build (latest) + deploy to Staging
-#   release published -> build (<tag>)  + deploy to Production (approval gate via the env)
-#   workflow_dispatch -> build + deploy to the chosen environment/tag (manual)
+#   PR               -> test + build images (pr-<N> tags), no deploy   [validation]
+#   push to main     -> test + build (latest) + deploy to Staging + smoke check
+#   release published -> test + build (<tag>)  + deploy to Production (approval gate via the env)
+#                        + smoke check
+#   workflow_dispatch -> test + build + deploy to the chosen environment/tag (manual) + smoke check
+#
+# Images are only built once the server and client checks pass, so a red test never deploys.
 #
 # Everything runs on GitHub-hosted runners. The VMs sit behind the LRZ VPN, so the deploy
 # reusable reaches them over SSH through the chair's shared deployment gateway/bastion
@@ -59,7 +62,38 @@ permissions:
   packages: write
 
 jobs:
+  # Server + shared-llm test suites (unit + Testcontainers-Postgres integration). GitHub-hosted
+  # runners provide the Docker daemon Testcontainers needs.
+  test-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Run server and shared-llm tests
+        run: ./gradlew --no-daemon :apps:learninggoalhub:server:test :libs:shared-llm:test
+
+  test-client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/learninggoalhub/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/learninggoalhub/client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
   build-server:
+    needs: [test-server, test-client]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/learninggoalhub/server
@@ -69,6 +103,7 @@ jobs:
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
   build-client:
+    needs: [test-server, test-client]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/learninggoalhub/client
@@ -91,7 +126,43 @@ jobs:
       image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
       deployment-base-path: /opt/hestia/learninggoalhub
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
-    # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars (POSTGRES_PASSWORD,
-    # LOGOS_API_KEY, APP_HOST, APP_PATH_PREFIX, ...). The reusable workflow writes them into
-    # .env on the VM next to IMAGE_TAG, then runs docker compose pull && up -d.
+    # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars
+    # (LEARNINGGOALHUB_POSTGRES_PASSWORD, LEARNINGGOALHUB_LOGOS_API_KEY, APP_HOST, ...). The
+    # reusable workflow writes them into .env on the VM next to IMAGE_TAG, then runs
+    # docker compose pull && up -d.
     secrets: inherit
+
+  # `up -d` returns before the new containers are serving. Check on the VM that the server turns
+  # healthy and that the core path answers: nginx serves the client, proxies /api to the server,
+  # and the server reaches the database; then the public route through Traefik.
+  smoke-test:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the deployed app over SSH
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ vars.VM_HOST }}
+          username: ${{ vars.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          proxy_host: ${{ vars.DEPLOYMENT_GATEWAY_HOST }}
+          proxy_username: ${{ vars.DEPLOYMENT_GATEWAY_USER }}
+          proxy_key: ${{ secrets.DEPLOYMENT_GATEWAY_SSH_KEY }}
+          proxy_port: ${{ vars.DEPLOYMENT_GATEWAY_PORT }}
+          script: |
+            set -eu
+            for i in $(seq 1 60); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' learninggoalhub-server)
+              [ "$status" = healthy ] && break
+              sleep 5
+            done
+            if [ "$status" != healthy ]; then
+              echo "learninggoalhub-server is $status after 5 minutes"
+              docker logs --tail 100 learninggoalhub-server
+              exit 1
+            fi
+            docker exec learninggoalhub-web curl -fsS -o /dev/null http://localhost/
+            docker exec learninggoalhub-web curl -fsS -o /dev/null "http://localhost/api/courses?size=1"
+            curl -fsS -o /dev/null --resolve "${{ vars.APP_HOST }}:443:127.0.0.1" \
+              "https://${{ vars.APP_HOST }}/learninggoalhub/"
+            echo "learninggoalhub is up"
