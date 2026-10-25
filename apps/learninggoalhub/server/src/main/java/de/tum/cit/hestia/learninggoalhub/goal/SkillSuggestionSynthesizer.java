@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
-import de.tum.cit.hestia.learninggoalhub.llm.LanguagePrompt;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.List;

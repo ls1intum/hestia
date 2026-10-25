@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
-import de.tum.cit.hestia.learninggoalhub.llm.LanguagePrompt;
+import de.tum.cit.hestia.learninggoalhub.goal.LanguagePrompt;
 import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
