@@ -28,7 +28,7 @@ export default function CoverageBadge({
         <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
           <InfoTooltip
             content={<p className="text-xs text-hestia-text">{flag}</p>}
-            className="inline-flex text-hestia-warning"
+            className="inline-flex text-hestia-warning-text"
           >
             <svg
               viewBox="0 0 20 20"
