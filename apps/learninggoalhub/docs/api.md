@@ -177,7 +177,7 @@ Field semantics:
   `text` (the task statement) and `context` (the preceding context blocks, joined). `null` for
   every other goal and for exam goals created before the blocks were stored.
 - `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (a goal feeds the goal
-  above it in the competency tree). `SUPPORTS`, `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy
+  above it in the Topic tree). `SUPPORTS`, `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy
   types that may still appear on courses extracted before mid-2026; new extractions no longer
   produce them. `origin` says how the edge was found (`HIERARCHY`: extraction or an instructor;
   `SYNTHESIS`: the competency tree; `EMBEDDING` and `LLM`: legacy, only on those older edges);
