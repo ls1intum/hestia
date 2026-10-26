@@ -8,10 +8,16 @@ import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
+import NotFoundPage from "./NotFoundPage.tsx";
 
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
-  const courseId = Number(courseIdParam);
+  // Only a plain positive id reaches the server; "/courses/abc" would otherwise request course NaN.
+  if (!/^[1-9]\d*$/.test(courseIdParam ?? "")) return <NotFoundPage message="There is no such course." />;
+  return <CourseView key={courseIdParam} courseId={Number(courseIdParam)} />;
+}
+
+function CourseView({ courseId }: { courseId: number }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -23,9 +29,11 @@ export default function CoursePage() {
   const courseQuery = useQuery({
     queryKey: ["course", courseId],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/courses/{id}", {
+      const { data, error, response } = await api.GET("/api/courses/{id}", {
         params: { path: { id: courseId } },
       });
+      // null, not an error: a missing course is an answer, so it is neither retried nor shown as a failure.
+      if (response.status === 404) return null;
       if (error || !data) throw new Error("Could not load the course.");
       return data;
     },
@@ -155,6 +163,10 @@ export default function CoursePage() {
 
   const goals: LearningGoal[] = useMemo(() => goalsQuery.data ?? [], [goalsQuery.data]);
 
+  if (courseQuery.data === null) {
+    return <NotFoundPage message="This course does not exist or was deleted." />;
+  }
+
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (
     <div className="flex flex-col gap-4">
@@ -168,6 +180,11 @@ export default function CoursePage() {
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
+        {courseQuery.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(courseQuery.error as Error).message}
+          </p>
+        )}
         {markReviewed.isError && (
           <p className="text-sm text-hestia-danger">
             {(markReviewed.error as Error).message}
