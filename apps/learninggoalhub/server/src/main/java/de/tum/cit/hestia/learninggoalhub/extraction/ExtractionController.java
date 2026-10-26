@@ -113,7 +113,7 @@ public class ExtractionController {
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Another extraction or competency-tree rebuild is already running.");
+                    "Another extraction or Topic tree rebuild is already running.");
         }
         ExtractionProgressTracker.Run run = claimed.get();
         run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);

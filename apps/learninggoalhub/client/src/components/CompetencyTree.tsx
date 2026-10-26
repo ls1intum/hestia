@@ -384,8 +384,8 @@ export default function CompetencyTree({
     return (
       <p className="mx-auto w-full max-w-5xl rounded-xl border border-dashed border-hestia-border p-8 text-center text-sm text-hestia-text-muted">
         {exercisesOnly
-          ? "No competency tree was created: this course has only exercises. Topics are named from lecture material, and none was uploaded."
-          : "No competency tree was created during extraction for this course."}
+          ? "No Topic tree was created: this course has only exercises. Topics are named from lecture material, and none was uploaded."
+          : "No Topic tree was created during extraction for this course."}
       </p>
     );
   }
@@ -742,7 +742,7 @@ export default function CompetencyTree({
         >
           <div
             role="table"
-            aria-label="Competency tree"
+            aria-label="Topic tree"
             style={{ minWidth: columns.tableMinWidth }}
           >
             <div

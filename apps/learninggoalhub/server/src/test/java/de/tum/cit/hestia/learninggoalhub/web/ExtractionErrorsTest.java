@@ -15,7 +15,7 @@ class ExtractionErrorsTest {
 
     @Test
     void replacesProviderNetworkAndDatabaseErrorsWithAFixedText() {
-        assertThat(ExtractionErrors.describe(new IllegalStateException("Competency tree synthesis failed",
+        assertThat(ExtractionErrors.describe(new IllegalStateException("Topic tree synthesis failed",
                 new TransientAiException("HTTP 429 - {\"error\":\"quota for key sk-123\"}"))))
                 .isEqualTo("The language model is unavailable or rate-limited right now. Try again in a few minutes.");
         assertThat(ExtractionErrors.describe(new NonTransientAiException("HTTP 400 - model x not found")))

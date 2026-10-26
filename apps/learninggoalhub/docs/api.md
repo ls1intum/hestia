@@ -116,7 +116,7 @@ exam as an ordered list of blocks; each block is either shared `CONTEXT` or a `T
   `KNOWLEDGE` below, `null` when classification failed.
 - The blocks themselves are stored too, and every goal carries the task it came from in
   `examTask` (see below). Each request counts as one exam, told apart by when it was submitted.
-- When the course already has a competency tree, the new goals are placed into it (a
+- When the course already has a Topic tree, the new goals are placed into it (a
   `CONTRIBUTES_TO` relationship with origin `SYNTHESIS`): a `SKILL` goal as a sub-skill under the
   skill it belongs to, or directly under its topic when it fits none of the topic's skills; a
   `KNOWLEDGE` goal directly under its topic. A goal no topic covers stays unlinked. Rebuilding the tree assigns every exam goal
@@ -177,16 +177,17 @@ Field semantics:
   `text` (the task statement) and `context` (the preceding context blocks, joined). `null` for
   every other goal and for exam goals created before the blocks were stored.
 - `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (a goal feeds the goal
-  above it in the competency tree). `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy types
+  above it in the Topic tree). `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy types
   that may still appear on courses extracted before mid-2026; new extractions no longer
   produce them. `origin` says how the edge was found (`HIERARCHY`, `EMBEDDING`, `LLM`);
   `confidence` is in `[0, 1]`.
 
-## Competency tree
+## Topic tree
 
-The UI shows a course's goals as a competency tree of four tiers: **Topic → Skill → Sub-skill →
+The UI shows a course's goals as a Topic tree of four tiers: **Topic → Skill → Sub-skill →
 Knowledge**. A sub-skill without a skill hangs directly under its topic. The API predates these
-names, so its values differ from the labels:
+names, so its values differ from the labels, and endpoints and code still call the tree the
+competency tree (`POST /api/courses/{courseId}/competency-tree` rebuilds it):
 
 | Tier | How the API marks it |
 |---|---|

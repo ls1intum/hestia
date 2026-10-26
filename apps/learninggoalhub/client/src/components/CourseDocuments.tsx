@@ -248,7 +248,7 @@ function DocumentRow({
             disabled={kindBusy}
             onChange={(e) => onKindChange(e.target.value as DocumentKind)}
             aria-label={`Kind of ${shown}`}
-            title="Takes effect on the next extraction or competency tree rebuild"
+            title="Takes effect on the next extraction or Topic tree rebuild"
             className="h-[22px] cursor-pointer rounded-md border border-hestia-border bg-hestia-surface px-1.5 text-xs font-medium text-hestia-text-muted transition hover:border-hestia-primary focus:border-hestia-primary focus:outline-none disabled:opacity-50"
           >
             {!document.kind && <option value="">No kind</option>}
