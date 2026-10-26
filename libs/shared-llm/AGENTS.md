@@ -3,17 +3,17 @@
 Instructions for AI coding agents working on `libs/shared-llm`. The repository-wide rules in the
 root `AGENTS.md` apply too.
 
-## Ownership and consumers
+## Consumers
 
-This library is maintained by the LearningGoalHub thesis. Two apps depend on it:
+Two apps depend on this library:
 
 | App | Relies on |
 | --- | --- |
 | `apps/learninggoalhub` | base URL and vision model; sets model and temperature per call |
 | `apps/workshopper` | base URL, default model `openai/gpt-oss-120b` and temperature `0.0`; sets only its API key |
 
-A change here ships to both apps on their next deploy. Treat Workshopper as another team's code:
-do not edit `apps/workshopper` to adapt it, and announce any change to a default before merging.
+A change here ships to both apps on their next deploy. Do not edit a consuming app to adapt it to
+a change here; tell its author before merging a changed default.
 
 ## What belongs here
 
