@@ -300,12 +300,25 @@ under your control.
 
 ## Endpoints not meant for consumers
 
-`PATCH`/`DELETE /api/courses/{courseId}/learning-goals/{goalId}`,
-`POST /api/courses/{courseId}/learning-goals/terminal`,
-`POST /api/courses/{courseId}/learning-goals/terminal/generated` and
-`POST /api/courses/{courseId}/learning-goals/{goalId}/children` (instructor review),
-`POST /api/courses/{courseId}/documents` (upload; PDF only, `415` for other files, `413` above
-2,000 pages or 3,000,000 characters of text) and `POST /api/courses/{courseId}/extract`
-(asynchronous pipeline trigger; returns `202 Accepted` with `{courseId, status}`, or `409 Conflict`
-when another extraction is already running) back the LearningGoalHub UI. They are not
-access-restricted yet, but consumer projects should treat them as off-limits.
+The endpoints below back the LearningGoalHub UI. They are not access-restricted yet, but consumer
+projects should treat them as off-limits: their shapes change with the UI. The OpenAPI document
+describes each of them.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/courses`, `GET /api/courses/{courseId}` | create a course, read one |
+| `PATCH /api/courses/{courseId}` | rename a course or change its settings; omitted fields stay unchanged, an explicit `outputLanguage: null` returns to auto-detection |
+| `DELETE /api/courses/{courseId}` | delete a course and everything under it |
+| `POST /api/courses/{courseId}/skills-reviewed` | record that the one-time skill review was dismissed |
+| `GET`/`POST /api/courses/{courseId}/documents` | list documents; upload PDFs (`415` for other files, `413` above 2,000 pages or 3,000,000 characters of text) |
+| `PATCH /api/courses/{courseId}/documents/{documentId}` | rename a document or change its kind |
+| `GET /api/courses/{courseId}/documents/{documentId}/content` | the stored PDF, for the source panel |
+| `PATCH /api/courses/{courseId}/hierarchy-nodes/{nodeId}` | rename a hierarchy node |
+| `POST /api/courses/{courseId}/extract` | start the asynchronous extraction; `202 Accepted` with `{courseId, status}`, `409 Conflict` when another extraction is running. Without `force=true`, a course that already has results fails the run, which `/extract/status` reports |
+| `GET /api/courses/{courseId}/extract/status` | progress of the current or last extraction; `204` when none has run |
+| `GET /api/extractions/current` | the extraction running anywhere on the server, if any |
+| `POST /api/courses/{courseId}/competency-tree` | rebuild the Topic tree from the extracted goals; `409` when it holds instructor work and `force=true` is missing |
+| `POST /api/courses/{courseId}/learning-goals/topic-search/pages`, `.../topic-search`, `.../topic-search/{proposalId}` | "Find in the slides": find pages on a topic, read them into a proposal, create the topic from it |
+| `PATCH`/`DELETE /api/courses/{courseId}/learning-goals/{goalId}` | edit or delete a goal |
+| `POST /api/courses/{courseId}/learning-goals/terminal`, `.../terminal/generated` | add a topic by hand or have one generated |
+| `POST /api/courses/{courseId}/learning-goals/{goalId}/children` | add a goal under another one |

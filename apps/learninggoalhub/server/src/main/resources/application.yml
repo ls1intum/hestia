@@ -117,7 +117,7 @@ hestia:
     api-key:
       examlense: ${API_KEY_EXAMLENSE:}
       workshopper: ${API_KEY_WORKSHOPPER:}
-    # Whether the service-only endpoints (exam tasks, by-session, skill suggestions, subtree)
+    # Whether the service-only endpoints (exam tasks, by-session)
     # require a key. Off until the consumers send theirs; until then the server only logs each
     # request it would reject ("Would reject ...").
     enforce-service-keys: ${ENFORCE_SERVICE_KEYS:false}
