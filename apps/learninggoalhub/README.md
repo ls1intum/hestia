@@ -11,7 +11,6 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
 | `client/` | React 18 + TypeScript + Tailwind CSS, built with Vite | [client/README.md](client/README.md) |
 | `docs/api.md` | API contract for the consuming apps | [docs/api.md](docs/api.md) |
 | `DEPLOY.md` | containers, CI/CD, VM setup, backups | [DEPLOY.md](DEPLOY.md) |
-| `figures/` | component diagram and goal model (the component diagram still shows the retired SAIA provider) | |
 | `AGENTS.md` | instructions for AI coding agents | [AGENTS.md](AGENTS.md) |
 
 ## How it works
