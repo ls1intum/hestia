@@ -116,10 +116,10 @@ exam as an ordered list of blocks; each block is either shared `CONTEXT` or a `T
   `KNOWLEDGE` below, `null` when classification failed.
 - The blocks themselves are stored too, and every goal carries the task it came from in
   `examTask` (see below). Each request counts as one exam, told apart by when it was submitted.
-- When the course already has a competency tree, the new goals are placed into it (a
-  `CONTRIBUTES_TO` relationship with origin `SYNTHESIS`): a `SKILL` goal under the skill it
-  belongs to, or directly under its topic when it fits none of the topic's skills; a `KNOWLEDGE`
-  goal directly under its topic. A goal no topic covers stays unlinked. Rebuilding the tree assigns every exam goal
+- When the course already has a Topic tree, the new goals are placed into it (a
+  `CONTRIBUTES_TO` relationship with origin `SYNTHESIS`): a `SKILL` goal as a sub-skill under the
+  skill it belongs to, or directly under its topic when it fits none of the topic's skills; a
+  `KNOWLEDGE` goal directly under its topic. A goal no topic covers stays unlinked. Rebuilding the tree assigns every exam goal
   again. The assignment is best effort and never fails the request.
 
 The response echoes each **task** block's `blockId` (context blocks yield no entry) with the
@@ -177,11 +177,28 @@ Field semantics:
   `text` (the task statement) and `context` (the preceding context blocks, joined). `null` for
   every other goal and for exam goals created before the blocks were stored.
 - `relationships` — outgoing edges to other goals: `CONTRIBUTES_TO` (a goal feeds the goal
-  above it in the competency tree). `SUPPORTS`, `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy
+  above it in the Topic tree). `SUPPORTS`, `PREREQUISITE_OF` and `OVERLAPS_WITH` are legacy
   types that may still appear on courses extracted before mid-2026; new extractions no longer
   produce them. `origin` says how the edge was found (`HIERARCHY`: extraction or an instructor;
-  `SYNTHESIS`: the competency tree; `EMBEDDING` and `LLM`: legacy, only on those older edges);
+  `SYNTHESIS`: the Topic tree; `EMBEDDING` and `LLM`: legacy, only on those older edges);
   `confidence` is in `[0, 1]`.
+
+## Topic tree
+
+The UI shows a course's goals as a Topic tree of four tiers: **Topic → Skill → Sub-skill →
+Knowledge**. A sub-skill without a skill hangs directly under its topic. The API predates these
+names, so its values differ from the labels, and endpoints and code still call the tree the
+competency tree (`POST /api/courses/{courseId}/competency-tree` rebuilds it):
+
+| Tier | How the API marks it |
+|---|---|
+| Topic | `origin: TERMINAL`, no `role`; the root of the tree (`/learning-goals/terminal` creates one) |
+| Skill | `role: SKILL`, directly under a topic, with sub-skills beneath it |
+| Sub-skill | `role: SKILL`, under a skill or directly under a topic |
+| Knowledge | `role: KNOWLEDGE` |
+
+Skill and sub-skill share `role: SKILL`; the tree position tells them apart. The edges are
+`CONTRIBUTES_TO` relationships, pointing from a goal to the goal above it.
 
 ## Errors
 

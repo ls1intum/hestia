@@ -89,7 +89,7 @@ public class LearningGoalEditService {
         Course course = courseRepository.lockOrThrow(courseId);
         String text = requestedText == null ? "" : requestedText.strip();
         if (text.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
         }
         goalRepository.rejectDuplicateTopic(courseId, text);
 
@@ -112,12 +112,12 @@ public class LearningGoalEditService {
         Course course = courseRepository.findOrThrow(courseId);
         String text = requestedText == null ? "" : requestedText.strip();
         if (text.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Skill text must not be blank");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
         }
         // The text is the whole prompt input of the generation call.
         if (text.length() > MAX_GENERATED_TOPIC_CHARS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Skill text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
+                    "Topic text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
         }
         goalRepository.rejectDuplicateTopic(courseId, text);
 

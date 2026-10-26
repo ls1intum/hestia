@@ -10,7 +10,7 @@ export const EXTRACTION_PHASES: { key: ExtractionPhase; label: string; short: st
   { key: "DESCRIBING_FIGURES", label: "Understanding figures", short: "Figures" },
   { key: "EXTRACTING", label: "Extracting learning goals", short: "Extracting" },
   { key: "PERSISTING", label: "Saving learning goals", short: "Saving" },
-  { key: "SYNTHESIZING", label: "Building competency tree", short: "Tree" },
+  { key: "SYNTHESIZING", label: "Building Topic tree", short: "Tree" },
 ];
 
 export function extractionPhaseLabel(phase?: ExtractionPhase): string {

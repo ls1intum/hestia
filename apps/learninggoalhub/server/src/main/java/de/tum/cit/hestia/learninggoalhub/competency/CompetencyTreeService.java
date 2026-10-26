@@ -125,12 +125,12 @@ public class CompetencyTreeService {
             log.warn("Could not synthesise a replacement competency tree for course {}: {}",
                     courseId, errorMessage(ex), ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not synthesise a new competency tree; the existing one was left untouched. "
+                    "Could not synthesise a new Topic tree; the existing one was left untouched. "
                             + "Details: " + ExtractionErrors.describe(ex), ex);
         }
         if (plan == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not synthesise a new competency tree; the existing one was left untouched.");
+                    "Could not synthesise a new Topic tree; the existing one was left untouched.");
         }
 
         CompetencyTreeResult result = transactions.execute(status -> {
@@ -161,7 +161,7 @@ public class CompetencyTreeService {
         List<LearningGoal> manual = manualTreeGoals(courseId, terminals);
         if (!manual.isEmpty() && !force) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "The competency tree contains " + manual.size() + " hand-made or approved node(s). "
+                    "The Topic tree contains " + manual.size() + " hand-made or approved node(s). "
                             + "Rebuilding replaces them; pass force=true to discard them.");
         }
         return terminals;
@@ -400,7 +400,7 @@ public class CompetencyTreeService {
         }
         if (plan.topics().isEmpty()) {
             throw new IllegalStateException("Topic tree synthesis placed none of the " + candidates.size()
-                    + " source outcomes under a topic. Retry the competency tree.");
+                    + " source outcomes under a topic. Retry the Topic tree.");
         }
         // Topics are noun phrases and carry no level of their own; only capability names state a
         // performance, so only they are classified. Every placed outcome keeps its extracted levels.

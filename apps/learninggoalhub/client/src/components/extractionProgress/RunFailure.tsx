@@ -38,7 +38,7 @@ export function RunFailure({
           result.response.status === 409
             ? "Another extraction or tree rebuild is already running. Please wait."
             : treeOnlyRetry
-              ? "Could not rebuild the competency tree. The extracted goals are still saved."
+              ? "Could not rebuild the Topic tree. The extracted goals are still saved."
               : "Could not restart the extraction.",
       );
     }
@@ -60,8 +60,8 @@ export function RunFailure({
         <p className="font-medium">
           {failedSessions > 0
             ? failedSessions === 1
-              ? "One session could not be analysed. No partial skill tree was saved."
-              : `${failedSessions} sessions could not be analysed. No partial skill tree was saved.`
+              ? "One session could not be analysed. No partial Topic tree was saved."
+              : `${failedSessions} sessions could not be analysed. No partial Topic tree was saved.`
             : error ?? "Extraction failed."}
         </p>
         {failedSessionNames.length > 0 && (
@@ -86,7 +86,7 @@ export function RunFailure({
         >
           {retryMutation.isPending
             ? treeOnlyRetry ? "Rebuilding tree…" : "Retrying…"
-            : treeOnlyRetry ? "Retry competency tree" : "Retry extraction"}
+            : treeOnlyRetry ? "Retry Topic tree" : "Retry extraction"}
         </Button>
       </div>
     </div>

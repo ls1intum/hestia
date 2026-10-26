@@ -203,8 +203,8 @@ public class ExtractionRunner {
             ExtractionStageSummary stage = persistedStage[0];
             String error = stage == null
                     ? ExtractionErrors.describe(ex)
-                    : "The learning goals were saved, but the competency tree could not be built. "
-                            + "Retry only the competency tree. Details: " + ExtractionErrors.describe(ex);
+                    : "The learning goals were saved, but the Topic tree could not be built. "
+                            + "Retry only the Topic tree. Details: " + ExtractionErrors.describe(ex);
             if (auditRunId.get() != null) {
                 extractionRunAuditService.finish(auditRunId.get(), ExtractionStatus.FAILED, error,
                         stage == null ? null : stage.goalsCreated(), run.failedSessions(), run.droppedOutcomes(),

@@ -181,7 +181,7 @@ export default function CoursePage() {
         {extractionProblem && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-danger/40 bg-hestia-danger/10 px-4 py-3 text-sm text-hestia-text">
             <span>
-              The latest extraction did not finish, so this course may not contain a complete skill tree.
+              The latest extraction did not finish, so this course may not contain a complete Topic tree.
             </span>
             <Button size="sm" onClick={() => setExtractionModalOpen(true)}>
               View error and retry
@@ -227,7 +227,7 @@ export default function CoursePage() {
         {goalToDelete && (
           <ConfirmDialog
             title="Delete learning goal?"
-            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the competency tree, together with their sources and relationships. This cannot be undone.`}
+            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the Topic tree, together with their sources and relationships. This cannot be undone.`}
             confirmLabel={
               deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
             }
