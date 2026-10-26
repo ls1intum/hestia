@@ -39,8 +39,3 @@ apps tune them differently. LearningGoalHub keeps them in its `llm` package.
 Any change under `libs/**` triggers both apps' pipelines (`learninggoalhub-cicd.yml` and
 `workshopper-cicd.yml`), and merging it to `main` redeploys both apps to staging. The LearningGoalHub
 pipeline also runs `:libs:shared-llm:test`.
-
-## Commits
-
-Use the `learninggoalhub` scope, since that thesis owns the module, for example
-`fix(learninggoalhub): ...` with `shared-llm` named in the subject.
