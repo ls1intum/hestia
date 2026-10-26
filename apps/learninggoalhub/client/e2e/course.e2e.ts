@@ -29,7 +29,7 @@ test("a new course is extracted, reviewed once, and keeps the review after a rel
   await expect(review).toBeHidden();
 
   await page.reload();
-  const tree = page.getByRole("table", { name: "Topic tree" });
+  const tree = page.getByRole("treegrid", { name: "Topic tree" });
   await expect(tree.getByRole("row").filter({ hasText: "Search methods" })).toHaveCount(1);
   await expect(tree).toContainText("Sorting algorithms");
   // The review is offered once per extraction, not on every visit.

@@ -1,4 +1,4 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { LearningGoal } from "../../api/client.ts";
 import { RenameField, RowAction } from "../GoalInlineEditing.tsx";
 import { RoleBadge, AiInferredBadge, ManualBadge } from "../GoalBadges.tsx";
@@ -73,21 +73,9 @@ export function Box({
     childCounts.set(child.role, (childCounts.get(child.role) ?? 0) + 1);
   return (
     <div
-      {...(onClick
-        ? {
-            role: "button",
-            tabIndex: 0,
-            "aria-expanded": active,
-            onClick,
-            onKeyDown: (e: ReactKeyboardEvent) => {
-              if (e.target !== e.currentTarget) return;
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick();
-              }
-            },
-          }
-        : {})}
+      // The whole box is a mouse target; keyboard and screen readers use the count line's button,
+      // since a button may not contain the box's own action buttons.
+      onClick={onClick}
       data-goal-id={node.goal.id}
       className={`group relative flex ${onClick ? "cursor-pointer" : ""} flex-col gap-1.5 rounded-lg border-[1.5px] ${group ? "border-dashed" : ""} p-3 text-left transition ${
         leaf ? "w-60 shrink-0" : compact ? "w-40 shrink-0" : "w-56 shrink-0"
@@ -161,28 +149,62 @@ export function Box({
       )}
       {!dimmed && attributes}
       {childCounts.size > 0 && (
-        <div className="mt-auto flex items-center gap-1 pt-1 text-xs text-hestia-text-muted">
-          <span className="tabular-nums">
-            {[...childCounts]
-              .map(([role, count]) => `${count} ${tierNoun(role, count)}`)
-              .join(" · ")}
-          </span>
-          {expandable && (
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-3.5 w-3.5 transition-transform ${active ? "rotate-90" : ""}`}
-            >
-              <path d="M7 5l6 5-6 5" />
-            </svg>
-          )}
-        </div>
+        <CountLine
+          counts={[...childCounts]
+            .map(([role, count]) => `${count} ${tierNoun(role, count)}`)
+            .join(" · ")}
+          expanded={active}
+          onToggle={expandable ? onClick : undefined}
+        />
       )}
     </div>
+  );
+}
+
+/**
+ * The box's child counts. In an expandable box it is the button that unfolds the box: the box itself
+ * cannot be a button, because it holds the rename and delete buttons.
+ */
+function CountLine({
+  counts,
+  expanded,
+  onToggle,
+}: {
+  counts: string;
+  expanded: boolean;
+  onToggle?: () => void;
+}) {
+  const line = "mt-auto flex items-center gap-1 pt-1 text-xs text-hestia-text-muted";
+  if (!onToggle) {
+    return (
+      <div className={line}>
+        <span className="tabular-nums">{counts}</span>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`${line} rounded text-left hover:text-hestia-text`}
+    >
+      <span className="tabular-nums">{counts}</span>
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-90" : ""}`}
+      >
+        <path d="M7 5l6 5-6 5" />
+      </svg>
+    </button>
   );
 }
 

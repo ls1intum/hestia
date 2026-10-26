@@ -583,35 +583,38 @@ export default function TopicTree({
           depth === 0 || parentRole === "topic";
         if (append && (appendActive || resting)) {
           bodyRows.push(
-            <AppendKnob
-              key={`append-${appendKey}`}
-              depth={depth}
-              label={append.label}
-              placeholder={append.placeholder}
-              color={append.color}
-              last={last}
-              active={appendActive}
-              value={create.creation?.text ?? ""}
-              pending={create.pending}
-              error={
-                appendActive ? create.error : undefined
-              }
-              onStart={() => create.begin(append.tier, parentGoalId)}
-              onChange={create.updateText}
-              onSubmit={() => create.submit()}
-              onCancel={create.cancel}
-              // Only a topic can be generated; the tiers below it are added by hand.
-              onGenerate={append.tier === 1 ? () => create.submit(true) : undefined}
-              generating={create.generating}
-              onFind={
-                append.tier === 1
-                  ? () => {
-                      const text = create.creation?.text.trim() ?? "";
-                      if (text !== "") setFinding(text);
-                    }
-                  : undefined
-              }
-            />,
+            <div key={`append-${appendKey}`} role="row">
+              <div role="gridcell" aria-colspan={columns.visibleColumns.length}>
+                <AppendKnob
+                  depth={depth}
+                  label={append.label}
+                  placeholder={append.placeholder}
+                  color={append.color}
+                  last={last}
+                  active={appendActive}
+                  value={create.creation?.text ?? ""}
+                  pending={create.pending}
+                  error={
+                    appendActive ? create.error : undefined
+                  }
+                  onStart={() => create.begin(append.tier, parentGoalId)}
+                  onChange={create.updateText}
+                  onSubmit={() => create.submit()}
+                  onCancel={create.cancel}
+                  // Only a topic can be generated; the tiers below it are added by hand.
+                  onGenerate={append.tier === 1 ? () => create.submit(true) : undefined}
+                  generating={create.generating}
+                  onFind={
+                    append.tier === 1
+                      ? () => {
+                          const text = create.creation?.text.trim() ?? "";
+                          if (text !== "") setFinding(text);
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>,
           );
         }
       }
@@ -748,7 +751,8 @@ export default function TopicTree({
           style={{ maxHeight: scrollerHeight }}
         >
           <div
-            role="table"
+            // A treegrid, not a table: rows fold and take the focus.
+            role="treegrid"
             aria-label="Topic tree"
             style={{ minWidth: columns.tableMinWidth }}
           >
@@ -826,8 +830,14 @@ export default function TopicTree({
               {bodyRows.length > 0 ? (
                 bodyRows
               ) : (
-                <div className="p-8 text-center text-sm text-hestia-text-muted">
-                  No goals match the current filters.
+                <div role="row">
+                  <div
+                    role="gridcell"
+                    aria-colspan={columns.visibleColumns.length}
+                    className="p-8 text-center text-sm text-hestia-text-muted"
+                  >
+                    No goals match the current filters.
+                  </div>
                 </div>
               )}
             </div>
