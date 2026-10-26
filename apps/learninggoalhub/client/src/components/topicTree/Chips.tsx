@@ -178,7 +178,7 @@ export function SourceChip({
           )}
         </span>
         {sessionLabel && (
-          <span className="max-w-full truncate opacity-75">
+          <span className="max-w-full truncate">
             Session: {sessionLabel}
           </span>
         )}
@@ -237,7 +237,7 @@ export function ExamTaskChip({ task }: { task: ExamTask }) {
         className="flex max-w-full min-w-0 flex-col items-start rounded-md border border-hestia-border/60 bg-hestia-text/3 px-1.5 py-0.5 text-left outline-none"
       >
         <span className="max-w-full truncate">{exam}</span>
-        <span className="max-w-full truncate opacity-75">{taskLabel}</span>
+        <span className="max-w-full truncate">{taskLabel}</span>
       </span>
     </InfoTooltip>
   );
@@ -263,7 +263,7 @@ export function GeneratedChip({ members, inline = false }: { members?: Row[]; in
         Generated
       </span>
       {members != null && members.length > 0 && (
-        <span className="min-w-0 truncate opacity-75">
+        <span className="min-w-0 truncate">
           from {members.length} {tierNoun("subSkill", members.length)}
         </span>
       )}
