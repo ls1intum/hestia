@@ -200,7 +200,7 @@ export function GridRow({
   // A context row still folds, so a filtered list can be tidied from its dimmed parents too.
   const clickable = activate != null && (interactive || canToggle);
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
-  // branch tiers (topic / capability / skill) and gaps stand out.
+  // branch tiers (topic / skill / sub-skill) and gaps stand out.
   const railColor = tierRailColor(row.role);
   // The attribute cells by column, so they render in the reader's column order.
   const cells = {

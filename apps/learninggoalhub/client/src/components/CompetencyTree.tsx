@@ -49,13 +49,13 @@ import { useTierGuide } from "./competencyTree/useTierGuide.ts";
  * The competency tree as an Excel-like grid. Every goal attribute is a proper column with a funnel
  * filter (multi-select checkboxes). Rows keep lecture order. The grid browses the tree in one of two layouts, switched in its toolbar:
  *
- * - `table`: the Topic → Capability → Skill hierarchy lives in the first column with
+ * - `table`: the Topic → Skill → Sub-skill hierarchy lives in the first column with
  *   expand/collapse carets, and branches unfold as rows in place.
  * - `map`: the grid lists topics only, and clicking a topic row opens that topic's map inline
  *   beneath it (see `TopicMap`). The open row stays pinned while the map is read.
  *
  * Filter semantics: while a filter or search is active the grid becomes a list of matches. The
- * matching capabilities, skills and knowledge appear as rows in their tree position, and ancestors
+ * matching skills, sub-skills and knowledge appear as rows in their tree position, and ancestors
  * of a match that don't match themselves are shown dimmed as context-only rows. Rows in that list
  * fold as table rows do, in both layouts; clearing the filters brings back the chosen layout.
  *
@@ -208,7 +208,7 @@ export default function CompetencyTree({
   // The goals under a topic that sit in no skill, gathered under one "Additional sub-skills"
   // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
   const looseOf = (topicId: number) =>
-    (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "capability");
+    (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "skill");
   const looseGroupId = (topicId: number) => -topicId;
   const isVisible = (row: Row) =>
     !filtering || matchIds!.has(row.id) || contextIds.has(row.id);
@@ -394,7 +394,7 @@ export default function CompetencyTree({
   // is inside.
   // A filtered list previews only the children it would show.
   const previewOf = (row: Row, mapOpen: boolean): Row[] | undefined => {
-    if (row.role !== "topic" && row.role !== "capability" && row.role !== "skill") return undefined;
+    if (row.role !== "topic" && row.role !== "skill" && row.role !== "subSkill") return undefined;
     const open = layout === "diagram" && !filtering ? mapOpen : isOpen(row.id);
     if (open) return undefined;
     const children = (childrenOf.get(row.id) ?? []).filter(
@@ -427,7 +427,7 @@ export default function CompetencyTree({
     const mapOpen = layout === "diagram" && !filtering && openTopicId === row.id;
     // A goal hanging directly under a topic sits in the "Additional sub-skills" group, one
     // step further in, level with the sub-skills under a skill. Its knowledge follows it in.
-    const rowDepth = row.role !== "capability" && parentRole === "topic" ? depth + 1 : depth;
+    const rowDepth = row.role !== "skill" && parentRole === "topic" ? depth + 1 : depth;
     // The "+" lives in the table only: the map adds in the map, and a filtered list has no place
     // for the new row to appear.
     const childAppend = CHILD_APPEND[row.role];
@@ -459,8 +459,8 @@ export default function CompetencyTree({
         sourceOpen={sourceGoalId === row.id}
         onOpenSource={showSource}
         members={
-          row.role === "capability"
-            ? (childrenOf.get(row.id) ?? []).filter((child) => child.role === "skill")
+          row.role === "skill"
+            ? (childrenOf.get(row.id) ?? []).filter((child) => child.role === "subSkill")
             : undefined
         }
         openLevel={openLevel?.id === row.id ? openLevel.scale : null}
@@ -525,8 +525,8 @@ export default function CompetencyTree({
                     sourceOpen={sourceGoalId === nodeRow.id}
                     onOpenSource={showSource}
                     members={
-                      nodeRow.role === "capability"
-                        ? (childrenOf.get(nodeRow.id) ?? []).filter((child) => child.role === "skill")
+                      nodeRow.role === "skill"
+                        ? (childrenOf.get(nodeRow.id) ?? []).filter((child) => child.role === "subSkill")
                         : undefined
                     }
                   />
@@ -618,8 +618,8 @@ export default function CompetencyTree({
     if (parentRole === "topic" && parentGoalId != null) {
       // Skills first; the goals in no skill follow under one foldable group row, after the knob that
       // adds a skill, so they never read as part of the skill above them.
-      const skills = siblings.filter((row) => row.role === "capability");
-      const loose = siblings.filter((row) => row.role !== "capability" && isVisible(row));
+      const skills = siblings.filter((row) => row.role === "skill");
+      const loose = siblings.filter((row) => row.role !== "skill" && isVisible(row));
       skills.forEach((row, i) => emitRow(row, trailing && loose.length === 0 && i === skills.length - 1));
       emitKnob(trailing && loose.length === 0);
       if (loose.length > 0) {

@@ -51,7 +51,7 @@ export function TierGuideMenu({
               tiers={[
                 ["topic", "A theme of the course. It has no quote and no Bloom or SOLO level."],
                 [
-                  "capability",
+                  "skill",
                   "Names what a group of sub-skills adds up to, at least at their level. Hover its source to see which.",
                 ],
               ]}
@@ -60,7 +60,7 @@ export function TierGuideMenu({
               icon={<DocumentIcon />}
               heading="From your course material"
               tiers={[
-                ["skill", "Something students should be able to do, with the passage it was read from."],
+                ["subSkill", "Something students should be able to do, with the passage it was read from."],
                 ["knowledge", "A fact, term or concept a sub-skill relies on, also with its passage."],
               ]}
             />

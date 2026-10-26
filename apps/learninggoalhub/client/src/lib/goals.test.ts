@@ -52,12 +52,12 @@ describe("coverageOf", () => {
 describe("coverageCounts", () => {
   it("rolls sub-skills up to their skill and topic, ignoring knowledge, source-less and exam nodes", () => {
     const root = topic();
-    const capability = goal({ origin: "SYNTHESIZED", parent: root });
+    const skillGoal = goal({ origin: "SYNTHESIZED", parent: root });
     const goals = [
       root,
-      capability,
-      goal({ kinds: ["LECTURE"], parent: capability }),
-      goal({ kinds: ["LECTURE", "EXERCISE"], parent: capability }),
+      skillGoal,
+      goal({ kinds: ["LECTURE"], parent: skillGoal }),
+      goal({ kinds: ["LECTURE", "EXERCISE"], parent: skillGoal }),
       goal({ kinds: ["EXERCISE"], parent: root }),
       goal({ kinds: [undefined], parent: root }),
       goal({ origin: "EXAM", role: undefined, bloomLevel: "APPLY", parent: root }),
@@ -76,7 +76,7 @@ describe("coverageCounts", () => {
       total: 4,
       practised: 2,
     });
-    const skill = tree.children.find((child) => child.role === "capability")!;
+    const skill = tree.children.find((child) => child.role === "skill")!;
     expect(coverageCounts(skill)).toMatchObject({ total: 2, practised: 1, lecture: 1, both: 1 });
   });
 });
@@ -91,7 +91,7 @@ describe("buildCompetencyForest", () => {
 
     const [tree] = buildCompetencyForest([root, apply, recall, legacy]);
 
-    expect(tree.children.map((child) => child.role)).toEqual(["skill", "knowledge", "knowledge"]);
+    expect(tree.children.map((child) => child.role)).toEqual(["subSkill", "knowledge", "knowledge"]);
   });
 });
 

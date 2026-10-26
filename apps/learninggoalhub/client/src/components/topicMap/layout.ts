@@ -62,7 +62,7 @@ export function isLooseGroup(node: CompetencyNode) {
 
 /** Skills and sub-skills that hold goals unfold into a row of their own; knowledge and gaps don't. */
 export function canDrill(node: CompetencyNode) {
-  return (node.role === "capability" || node.role === "skill") && node.children.length > 0;
+  return (node.role === "skill" || node.role === "subSkill") && node.children.length > 0;
 }
 
 /** How many children a closed box names as mini boxes before summing up the rest. */

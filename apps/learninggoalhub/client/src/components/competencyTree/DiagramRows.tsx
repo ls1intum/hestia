@@ -72,7 +72,7 @@ export function LooseGroupRow({
           <span
             aria-hidden="true"
             className="mr-1 shrink-0 self-stretch border-l-[3px] border-dotted"
-            style={{ borderColor: COMPETENCY_ROLE_META.skill.color }}
+            style={{ borderColor: COMPETENCY_ROLE_META.subSkill.color }}
           />
           <button
             type="button"
@@ -98,7 +98,7 @@ export function LooseGroupRow({
           </button>
           <span className="min-w-0 pt-px text-sm leading-relaxed text-hestia-text-muted">
             <span className="italic">Additional sub-skills</span>
-            {!open && <ChildPreview role="capability" items={items} fullWording={false} />}
+            {!open && <ChildPreview role="skill" items={items} fullWording={false} />}
           </span>
         </div>
       </div>

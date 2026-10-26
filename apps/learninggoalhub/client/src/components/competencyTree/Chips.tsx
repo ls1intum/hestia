@@ -253,7 +253,7 @@ export function GeneratedChip({ members, inline = false }: { members?: Row[]; in
       </span>
       {members != null && members.length > 0 && (
         <span className="min-w-0 truncate opacity-75">
-          from {members.length} {tierNoun("skill", members.length)}
+          from {members.length} {tierNoun("subSkill", members.length)}
         </span>
       )}
     </span>
@@ -315,12 +315,12 @@ export const CHIP_TONES = {
     backgroundColor: "color-mix(in srgb, var(--hestia-primary) 14%, var(--hestia-surface))",
     borderColor: "transparent",
   },
-  capability: {
+  skill: {
     color: "var(--hestia-accent)",
     backgroundColor: "color-mix(in srgb, var(--hestia-accent) 15%, var(--hestia-surface))",
     borderColor: "transparent",
   },
-  skill: {
+  subSkill: {
     color: "var(--hestia-accent)",
     backgroundColor: "transparent",
     borderColor: "color-mix(in srgb, var(--hestia-accent) 50%, var(--hestia-surface))",

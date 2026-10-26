@@ -77,20 +77,20 @@ export default function TopicMap({
   // As in the table, the skills come first and the goals hanging directly off the topic follow in
   // one "Additional sub-skills" box. That box is no goal: it takes the negated topic id, which
   // no goal id collides with, and opens its goals as a skill opens its sub-skills.
-  const skills = topic.children.filter((node) => node.role === "capability");
-  const loose = topic.children.filter((node) => node.role !== "capability");
+  const skills = topic.children.filter((node) => node.role === "skill");
+  const loose = topic.children.filter((node) => node.role !== "skill");
   const firstRow: CompetencyNode[] =
     loose.length > 0
       ? [
           ...skills,
-          { goal: { id: -topic.goal.id!, text: LOOSE_GROUP_LABEL }, role: "capability", children: loose },
+          { goal: { id: -topic.goal.id!, text: LOOSE_GROUP_LABEL }, role: "skill", children: loose },
         ]
       : skills;
   const focused =
     firstRow.find((node) => node.goal.id === focusedId && canDrill(node)) ?? null;
   const focusedIsGroup = focused != null && isLooseGroup(focused);
   const subFocused =
-    focused?.role === "capability"
+    focused?.role === "skill"
       ? (focused.children.find((node) => node.goal.id === subFocusedId && canDrill(node)) ??
         null)
       : null;
@@ -269,7 +269,7 @@ export default function TopicMap({
       : 0;
 
   // A skill's children are sub-skills; a sub-skill hanging directly off the topic holds knowledge.
-  const secondTier = focused?.role === "capability" ? 3 : 4;
+  const secondTier = focused?.role === "skill" ? 3 : 4;
   const secondKey = focused ? `${secondTier}:${focused.goal.id}` : "";
   // A sub-skill added straight under the topic would be read back as a skill, so the group offers
   // no "New sub-skill"; a note in its place points to where sub-skills are added instead.
@@ -362,7 +362,7 @@ export default function TopicMap({
             />
             <CreationRow
               reserve={firstReserve}
-              ghost={ghost("New skill", COMPETENCY_ROLE_META.capability.color, 2, firstKey, topic.goal.id!)}
+              ghost={ghost("New skill", COMPETENCY_ROLE_META.skill.color, 2, firstKey, topic.goal.id!)}
             >
               {firstRow.map((child, i) => {
                 const isFocused = focused != null && child.goal.id === focused.goal.id;
@@ -437,7 +437,7 @@ export default function TopicMap({
                           </p>
                         )
                       : secondTier === 3
-                      ? ghost("New sub-skill", COMPETENCY_ROLE_META.skill.color, 3, secondKey, focused.goal.id!)
+                      ? ghost("New sub-skill", COMPETENCY_ROLE_META.subSkill.color, 3, secondKey, focused.goal.id!)
                       : ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
                   }
                 >
@@ -485,7 +485,7 @@ export default function TopicMap({
                   <div className="relative flex flex-col items-center" style={{ left: thirdOffset }}>
                     <Connector
                       childWidths={thirdWidths}
-                      color={COMPETENCY_ROLE_META.skill.color}
+                      color={COMPETENCY_ROLE_META.subSkill.color}
                     />
                     <CreationRow
                       reserve={thirdReserve}

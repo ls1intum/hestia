@@ -220,7 +220,7 @@ export function SkillReview({
                 {topics.map((topic, topicIndex) => {
                   const topicId = topic.goal.id;
                   const topicSkills = topic.children.filter(
-                    (child) => child.role === "capability",
+                    (child) => child.role === "skill",
                   );
                   const reviewItems = reviewItemsOf(topic);
                   const pendingSkillIds = reviewItems

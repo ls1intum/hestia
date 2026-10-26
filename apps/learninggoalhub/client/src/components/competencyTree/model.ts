@@ -74,15 +74,15 @@ export const CHILD_APPEND: Partial<
     tier: 2,
     label: "Add skill",
     placeholder: "Describe a skill…",
-    color: COMPETENCY_ROLE_META.capability.color,
-  },
-  capability: {
-    tier: 3,
-    label: "Add sub-skill",
-    placeholder: "Describe a sub-skill…",
     color: COMPETENCY_ROLE_META.skill.color,
   },
   skill: {
+    tier: 3,
+    label: "Add sub-skill",
+    placeholder: "Describe a sub-skill…",
+    color: COMPETENCY_ROLE_META.subSkill.color,
+  },
+  subSkill: {
     tier: 4,
     label: "Add knowledge",
     placeholder: "Describe what students should know…",
@@ -113,8 +113,8 @@ export const COVERAGE_VALUE: Partial<Record<Coverage, string>> = {
 };
 export const ROLE_ORDER: CompetencyRole[] = [
   "topic",
-  "capability",
   "skill",
+  "subSkill",
   "knowledge",
 ];
 
@@ -122,10 +122,10 @@ export const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Topics and capabilities are generated to group what extraction found, so explicit vs implicit
+ * Topics and skills are generated to group what extraction found, so explicit vs implicit
  * says nothing about them: every one is stored as IMPLICIT.
  */
-export const isGrouping = (role: CompetencyRole) => role === "topic" || role === "capability";
+export const isGrouping = (role: CompetencyRole) => role === "topic" || role === "skill";
 
 /** The filterable values of a row in one column. */
 export function valuesOf(row: Row, key: FilterKey): string[] {
@@ -214,8 +214,8 @@ export function flattenForest(forest: CompetencyNode[]): Row[] {
     const children =
       node.role === "topic"
         ? [
-            ...node.children.filter((child) => child.role === "capability"),
-            ...node.children.filter((child) => child.role !== "capability"),
+            ...node.children.filter((child) => child.role === "skill"),
+            ...node.children.filter((child) => child.role !== "skill"),
           ]
         : node.children;
     for (let index = 0; index < children.length; index++) {

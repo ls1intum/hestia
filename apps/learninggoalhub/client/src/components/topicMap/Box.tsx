@@ -18,7 +18,7 @@ export type GoalActions = {
   onDelete: (goal: LearningGoal) => void;
 };
 
-/** A readable capability/skill/knowledge rectangle. Beneath its wording it shows the attributes the
+/** A readable skill/sub-skill/knowledge rectangle. Beneath its wording it shows the attributes the
  * table currently shows as columns, then what it holds by tier ("3 sub-skills"), with an unfold
  * chevron on branch boxes. Rename and delete float top-right on hover, as on a table row.
  * Clicking the body folds or unfolds a box that holds goals. A dimmed sibling keeps only its

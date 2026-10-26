@@ -224,7 +224,7 @@ export function SkillRow({
       {/* Indented like the table: 20px per tier below the topic, the tier rail, then the chevron's
           empty slot. A sub-skill standing in for a missing skill still sits a tier deeper. */}
       <span
-        className={`${skill.role === "skill" ? "w-10" : "w-5"} shrink-0`}
+        className={`${skill.role === "subSkill" ? "w-10" : "w-5"} shrink-0`}
         aria-hidden="true"
       />
       <span
