@@ -83,25 +83,11 @@ public class LearningGoalController {
         return edits.createTerminalSkill(courseId, request.text());
     }
 
-    /** Returns transient AI suggestions grounded in the already extracted course goals. */
-    @PostMapping("/skill-suggestions")
-    public List<SkillSuggestionResponse> suggestTerminalSkills(@PathVariable Long courseId) {
-        return edits.suggestTerminalSkills(courseId).stream()
-                .map(suggestion -> new SkillSuggestionResponse(suggestion.text(), suggestion.shortLabel()))
-                .toList();
-    }
-
     @PostMapping("/terminal/generated")
     @ResponseStatus(HttpStatus.CREATED)
     public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
                                                              @RequestBody CreateGeneratedTerminalSkillRequest request) {
         return edits.createGeneratedTerminalSkill(courseId, request.text(), request.shortLabel());
-    }
-
-    @PostMapping("/{goalId}/subtree")
-    public LearningGoalResponse generateSubtree(@PathVariable Long courseId,
-                                                @PathVariable Long goalId) {
-        return edits.generateSubtree(courseId, goalId);
     }
 
     @PostMapping("/{goalId}/children")
@@ -139,9 +125,6 @@ public class LearningGoalController {
 
     /** Body of the "add a terminal skill" review action: just the instructor-typed skill text. */
     public record CreateTerminalSkillRequest(String text) {
-    }
-
-    public record SkillSuggestionResponse(String text, String shortLabel) {
     }
 
     public record CreateGeneratedTerminalSkillRequest(String text, String shortLabel) {

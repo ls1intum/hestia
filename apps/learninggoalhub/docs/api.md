@@ -214,8 +214,6 @@ servers only and will require the key:
 
 - `POST /api/courses/{courseId}/exam-tasks/learning-goals` (ExamLens)
 - `GET /api/courses/{courseId}/learning-goals/by-session` (Workshopper)
-- `POST /api/courses/{courseId}/learning-goals/skill-suggestions`,
-  `POST /api/courses/{courseId}/learning-goals/{goalId}/subtree`
 
 Until `hestia.security.enforce-service-keys` is switched on, a request to them without a key still
 succeeds and is logged as `Would reject ...`. Send the key now; once every consumer does, the
@@ -286,9 +284,7 @@ under your control.
 
 `PATCH`/`DELETE /api/courses/{courseId}/learning-goals/{goalId}`,
 `POST /api/courses/{courseId}/learning-goals/terminal`,
-`POST /api/courses/{courseId}/learning-goals/skill-suggestions` and
 `POST /api/courses/{courseId}/learning-goals/terminal/generated` and
-`POST /api/courses/{courseId}/learning-goals/{goalId}/subtree` and
 `POST /api/courses/{courseId}/learning-goals/{goalId}/children` (instructor review),
 `POST /api/courses/{courseId}/documents` (upload; PDF only, `415` for other files, `413` above
 2,000 pages or 3,000,000 characters of text) and `POST /api/courses/{courseId}/extract`

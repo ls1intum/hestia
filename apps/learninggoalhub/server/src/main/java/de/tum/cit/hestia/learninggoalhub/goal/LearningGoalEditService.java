@@ -8,7 +8,6 @@ import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedKnowle
 import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSkill;
 import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSubSkill;
 import de.tum.cit.hestia.learninggoalhub.goal.SubtreeSynthesizer.GeneratedSubtree;
-import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
@@ -24,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -35,7 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Changes a course's learning goals and its competency tree: topics typed or generated, children
- * added by hand, subtrees regenerated, goals edited and deleted.
+ * added by hand, goals edited and deleted.
  *
  * <p>Generation calls the model before any transaction opens and stores the result in one
  * transaction under the course lock, so a slow or failed call holds no locks and writes nothing.
@@ -49,35 +47,29 @@ public class LearningGoalEditService {
 
     private final CourseRepository courseRepository;
     private final LearningGoalRepository goalRepository;
-    private final GoalSourceRepository goalSourceRepository;
     private final DocumentRepository documentRepository;
     private final GoalRelationshipRepository goalRelationshipRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
-    private final SkillSuggestionSynthesizer skillSuggestionSynthesizer;
     private final SubtreeSynthesizer subtreeSynthesizer;
     private final LearningGoalQueryService queries;
     private final TransactionOperations transactions;
 
     public LearningGoalEditService(CourseRepository courseRepository,
                                    LearningGoalRepository goalRepository,
-                                   GoalSourceRepository goalSourceRepository,
                                    DocumentRepository documentRepository,
                                    GoalRelationshipRepository goalRelationshipRepository,
                                    HierarchyNodeRepository hierarchyNodeRepository,
                                    TaxonomyService taxonomyService,
-                                   SkillSuggestionSynthesizer skillSuggestionSynthesizer,
                                    SubtreeSynthesizer subtreeSynthesizer,
                                    LearningGoalQueryService queries,
                                    TransactionOperations transactions) {
         this.courseRepository = courseRepository;
         this.goalRepository = goalRepository;
-        this.goalSourceRepository = goalSourceRepository;
         this.documentRepository = documentRepository;
         this.goalRelationshipRepository = goalRelationshipRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
-        this.skillSuggestionSynthesizer = skillSuggestionSynthesizer;
         this.subtreeSynthesizer = subtreeSynthesizer;
         this.queries = queries;
         this.transactions = transactions;
@@ -110,41 +102,6 @@ public class LearningGoalEditService {
         goal.setLectureOrder(nextLectureOrder(course));
         goalRepository.save(goal);
         return LearningGoalResponse.from(goal, List.of(), List.of());
-    }
-
-    /** Returns transient AI suggestions grounded in the already extracted course goals. */
-    @Transactional(readOnly = true)
-    public List<SkillSuggestionSynthesizer.Suggestion> suggestTerminalSkills(Long courseId) {
-        Course course = courseRepository.findOrThrow(courseId);
-        List<LearningGoal> extractedGoals = goalRepository
-                .findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED)).stream()
-                .filter(goal -> goal.getHierarchyNode() != null
-                        && (goal.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
-                        || goal.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE))
-                .toList();
-        if (extractedGoals.isEmpty()) {
-            return List.of();
-        }
-
-        List<Long> goalIds = extractedGoals.stream().map(LearningGoal::getId).toList();
-        Map<Long, List<GoalSource>> sourcesByGoal = goalSourceRepository.findByGoalIdIn(goalIds).stream()
-                .collect(Collectors.groupingBy(source -> source.getGoal().getId()));
-        List<String> existingTerminals = goalRepository
-                .findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
-                .map(LearningGoal::getText)
-                .toList();
-        List<SkillSuggestionSynthesizer.Evidence> evidence = extractedGoals.stream()
-                .map(goal -> new SkillSuggestionSynthesizer.Evidence(
-                        goal.getText(),
-                        goal.getBloomLevel() == null ? null : goal.getBloomLevel().name(),
-                        sourceSnippet(sourcesByGoal.getOrDefault(goal.getId(), List.of()))))
-                .toList();
-
-        List<SkillSuggestionSynthesizer.Suggestion> suggestions = skillSuggestionSynthesizer.suggest(
-                existingTerminals, evidence, LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null);
-        return suggestions == null ? List.of() : suggestions.stream()
-                .filter(suggestion -> suggestion != null && suggestion.text() != null && !suggestion.text().isBlank())
-                .toList();
     }
 
     /**
@@ -181,44 +138,6 @@ public class LearningGoalEditService {
             created.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(locked));
             persistGeneratedNodes(created, generatedNodes);
             return LearningGoalResponse.from(created, List.of(), List.of());
-        });
-    }
-
-    /**
-     * Generates a new subtree for an existing terminal, replacing only its owned AI descendants.
-     *
-     * <p>Refused for a terminal the pipeline clustered (no creation provenance): its structure was
-     * extracted alongside it, so there is nothing owned to replace and the generated nodes would
-     * simply hang next to goals that carry source quotes — an ungrounded branch in a grounded tree.
-     * A hand-typed or wizard-generated terminal may well have picked up extracted contributors along
-     * the way; those survive regeneration untouched, which is the intended mix.
-     */
-    public LearningGoalResponse generateSubtree(Long courseId, Long goalId) {
-        LearningGoal terminal = findGoal(courseId, goalId);
-        if (terminal.getOrigin() != GoalOrigin.TERMINAL) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only terminal skills can generate a subtree");
-        }
-        if (terminal.getCreationProvenance() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A skill extracted from the course material cannot be regenerated");
-        }
-
-        // Read outside a transaction, the terminal's lazy course cannot be followed.
-        Course course = courseRepository.findOrThrow(courseId);
-        GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(terminal.getText(), LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null));
-        GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
-        applyClassifications(generatedNodes.nodes());
-
-        return transactions.execute(status -> {
-            courseRepository.lockOrThrow(courseId);
-            LearningGoal current = findGoal(courseId, goalId);
-            deleteWizardGeneratedDescendants(current);
-            goalRepository.flush();
-            persistGeneratedNodes(current, generatedNodes);
-            // The terminal was still created by hand; its provenance describes the node, not its children.
-            return LearningGoalResponse.from(current, List.of(), List.of());
         });
     }
 
@@ -412,14 +331,6 @@ public class LearningGoalEditService {
         return created;
     }
 
-    private String sourceSnippet(List<GoalSource> sources) {
-        return sources.stream()
-                .map(GoalSource::getSnippet)
-                .filter(snippet -> snippet != null && !snippet.isBlank())
-                .map(String::strip)
-                .collect(Collectors.joining(" | "));
-    }
-
     private String trimToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -465,11 +376,6 @@ public class LearningGoalEditService {
         LearningGoal goal = findGoal(courseId, goalId);
         deleteSubtree(goal);
         goalRepository.delete(goal);
-    }
-
-    /** Regeneration owns only the descendants created by the AI subtree wizard; the root survives. */
-    private void deleteWizardGeneratedDescendants(LearningGoal root) {
-        deleteDescendants(root, Set.of(GoalCreationProvenance.WIZARD_AI_SUBTREE));
     }
 
     /**
@@ -536,52 +442,6 @@ public class LearningGoalEditService {
             if (doomed.contains(descendants.get(i).getId())) {
                 goalRepository.delete(descendants.get(i));
             }
-        }
-    }
-
-    /**
-     * Collects and removes the descendants of {@code root} whose creation provenance marks them as
-     * owned, together with every edge from them. The root survives, and manual or extracted
-     * contributors stay attached to it.
-     */
-    private void deleteDescendants(LearningGoal root, Set<GoalCreationProvenance> ownedProvenances) {
-        List<LearningGoal> descendants = new ArrayList<>();
-        List<GoalRelationship> loadedEdges = new ArrayList<>();
-        Set<Long> visited = new HashSet<>();
-        Deque<LearningGoal> pending = new ArrayDeque<>();
-        pending.add(root);
-        while (!pending.isEmpty()) {
-            LearningGoal target = pending.removeFirst();
-            boolean targetDeleted = !target.getId().equals(root.getId());
-            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
-                // A null provenance marks a pipeline or extracted goal, which regeneration never owns.
-                // Test it explicitly: ownedProvenances is a Set.of(...), and those throw on contains(null).
-                GoalCreationProvenance provenance = relationship.getSource().getCreationProvenance();
-                boolean owned = relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                        && provenance != null && ownedProvenances.contains(provenance);
-                // An edge dies with either endpoint: its source is an owned goal we delete, or its
-                // target is going away. Anything else stays and keeps its surviving goal attached.
-                if (owned || targetDeleted) {
-                    loadedEdges.add(relationship);
-                }
-                if (!owned) {
-                    continue;
-                }
-                LearningGoal source = relationship.getSource();
-                if (visited.add(source.getId())) {
-                    descendants.add(source);
-                    pending.addLast(source);
-                }
-            }
-        }
-        // Delete the loaded edge entities first: they are managed in the persistence context, so
-        // deleting the goals they reference while they linger would fail the flush with a
-        // TransientObjectException. Leaving a skipped edge to the DB cascade is not enough — once
-        // loaded, Hibernate still holds it.
-        goalRelationshipRepository.deleteAll(loadedEdges);
-        goalRelationshipRepository.flush();
-        for (int i = descendants.size() - 1; i >= 0; i--) {
-            goalRepository.delete(descendants.get(i));
         }
     }
 

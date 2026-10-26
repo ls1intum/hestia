@@ -98,46 +98,6 @@
         }
       }
     },
-    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "generateSubtree",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/courses/{courseId}/learning-goals/{goalId}/children": {
       "post": {
         "tags": [
@@ -263,40 +223,6 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "suggestTerminalSkills",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SkillSuggestionResponse"
-                  }
                 }
               }
             }
@@ -1554,17 +1480,6 @@
         }
       },
       "CreateGeneratedTerminalSkillRequest": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
-            "type": "string"
-          }
-        }
-      },
-      "SkillSuggestionResponse": {
         "type": "object",
         "properties": {
           "text": {
