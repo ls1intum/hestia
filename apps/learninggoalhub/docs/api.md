@@ -82,7 +82,22 @@ The `nodeId` values come from this same endpoint: call it **without** `nodeId` f
 
 ### `GET /api/courses/{courseId}/learning-goals/export.csv`
 
-The same data as a CSV download (one row per goal), for spreadsheet workflows.
+The course's goals as a CSV download (one row per goal), for spreadsheet workflows. The file
+starts with a UTF-8 byte order mark so Excel opens non-ASCII text intact.
+
+- Rows follow the Topic tree: each topic, then its subtree depth-first, then the goals outside
+  the tree. Legacy GAP goals are left out.
+- `parent_ids` lists the goals a row's `CONTRIBUTES_TO` edges point to (`; `-separated);
+  `tree_depth` is 0 for a topic, 1 below it and so on, and empty outside the tree. A goal with
+  two parents appears once, under the first.
+- `tier` is `TOPIC`, `SKILL`, `SUB_SKILL` or `KNOWLEDGE`, decided by tree position as in the
+  client (`role` alone does not tell a skill from a sub-skill). Like the client, the tree stops
+  below knowledge and after four tiers; goals hanging lower count as outside the tree.
+- Other columns: `id`, `role`, `origin`, `created_by` (creation provenance), `learning_goal`,
+  `short_label`, `kind`, `bloom`, `solo`, `status`, `hierarchy_module`, `hierarchy_session`,
+  `hierarchy_exercise`, `sources` (`file p.N; …`), `quotes` (the source quotes, separated by a
+  `---` line) and `grounded` (`true` when every source quote was found in its document, empty
+  without sources).
 
 ### `POST /api/courses/{courseId}/exam-tasks/learning-goals`
 
