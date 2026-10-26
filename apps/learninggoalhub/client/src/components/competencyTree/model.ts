@@ -116,7 +116,6 @@ export const ROLE_ORDER: CompetencyRole[] = [
   "capability",
   "skill",
   "knowledge",
-  "gap",
 ];
 
 export const prefersReducedMotion = () =>

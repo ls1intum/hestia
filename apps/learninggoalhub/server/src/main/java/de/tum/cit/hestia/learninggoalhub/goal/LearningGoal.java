@@ -19,6 +19,12 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 
+/**
+ * One learning goal of a course: a topic, skill, sub-skill or knowledge item of its competency tree.
+ *
+ * <p>The table still has the {@code embedding} column of an earlier prototype (V6). Nothing reads or
+ * writes it and the entity does not map it; it stays because older courses still hold vectors.
+ */
 @Entity
 @Table(name = "learning_goal")
 public class LearningGoal {

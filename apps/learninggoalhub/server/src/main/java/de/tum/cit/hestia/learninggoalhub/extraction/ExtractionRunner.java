@@ -127,14 +127,6 @@ public class ExtractionRunner {
         this.configuredDefaultModel = configuredDefaultModel;
     }
 
-    public ExtractionSummary runForCourse(Long courseId) {
-        return runForCourse(courseId, null, false);
-    }
-
-    public ExtractionSummary runForCourse(Long courseId, String modelOverride) {
-        return runForCourse(courseId, modelOverride, false);
-    }
-
     public ExtractionSummary runForCourse(Long courseId, String modelOverride, boolean force) {
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         AtomicReference<Long> auditRunId = new AtomicReference<>();
@@ -468,29 +460,19 @@ public class ExtractionRunner {
         return empty.size();
     }
 
-    /** Materializes the extraction's own knowledge to skill edges. */
-    private int linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
-        return linkRelationships(supporters, targetGoal, RelationshipType.CONTRIBUTES_TO,
-                RelationshipOrigin.HIERARCHY);
-    }
-
-    /** Materializes idempotent edges between goals. */
-    private int linkRelationships(Collection<LearningGoal> supporters, LearningGoal targetGoal,
-                                  RelationshipType type, RelationshipOrigin origin) {
-        int created = 0;
+    /** Materializes the extraction's own knowledge to skill edges, skipping edges that already exist. */
+    private void linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
         for (LearningGoal source : supporters) {
             if (source.getId().equals(targetGoal.getId())) {
                 continue;
             }
             if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
-                    source.getId(), targetGoal.getId(), type)) {
+                    source.getId(), targetGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
                 continue;
             }
             goalRelationshipRepository.save(new GoalRelationship(
-                    source, targetGoal, type, 1.0, origin));
-            created++;
+                    source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
         }
-        return created;
     }
 
     /**

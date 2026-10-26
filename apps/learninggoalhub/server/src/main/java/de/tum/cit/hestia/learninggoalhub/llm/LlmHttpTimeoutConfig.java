@@ -1,9 +1,9 @@
 package de.tum.cit.hestia.learninggoalhub.llm;
 
 import java.time.Duration;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.client.RestClientCustomizer;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,8 +41,8 @@ public class LlmHttpTimeoutConfig {
 
     @Bean
     RestClientCustomizer llmRestClientTimeouts() {
-        return builder -> builder.requestFactory(ClientHttpRequestFactories.get(
-                ClientHttpRequestFactorySettings.DEFAULTS
+        return builder -> builder.requestFactory(ClientHttpRequestFactoryBuilder.detect().build(
+                ClientHttpRequestFactorySettings.defaults()
                         .withConnectTimeout(connectTimeout)
                         .withReadTimeout(readTimeout)));
     }

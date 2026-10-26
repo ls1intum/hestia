@@ -325,11 +325,6 @@ export const CHIP_TONES = {
     backgroundColor: "transparent",
     borderColor: "color-mix(in srgb, var(--hestia-accent) 50%, var(--hestia-surface))",
   },
-  gap: {
-    color: "var(--hestia-danger)",
-    backgroundColor: "color-mix(in srgb, var(--hestia-danger) 12%, var(--hestia-surface))",
-    borderColor: "transparent",
-  },
   neutral: {
     color: "var(--hestia-text-muted)",
     backgroundColor: "transparent",
