@@ -60,8 +60,8 @@ export function RunFailure({
         <p className="font-medium">
           {failedSessions > 0
             ? failedSessions === 1
-              ? "One session could not be analysed. No partial skill tree was saved."
-              : `${failedSessions} sessions could not be analysed. No partial skill tree was saved.`
+              ? "One session could not be analysed. No partial competency tree was saved."
+              : `${failedSessions} sessions could not be analysed. No partial competency tree was saved.`
             : error ?? "Extraction failed."}
         </p>
         {failedSessionNames.length > 0 && (

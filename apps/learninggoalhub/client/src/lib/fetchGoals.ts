@@ -6,7 +6,7 @@ const PAGE_SIZE = 500;
 /**
  * Fetches every learning goal of a course, following pagination.
  *
- * Terminal skills are written last by tree synthesis, so they sit at the very end of the list. A
+ * Topics are written last by tree synthesis, so they sit at the very end of the list. A
  * single fixed-size request silently drops them once a course grows past that size, which makes the
  * competency tree look like it was never built and leaves the skill review empty. Shared by every
  * caller of the `["goals", courseId]` query so they cannot disagree about what "all goals" means.

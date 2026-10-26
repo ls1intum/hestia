@@ -186,7 +186,7 @@ export default function CoursePage() {
         {extractionProblem && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-danger/40 bg-hestia-danger/10 px-4 py-3 text-sm text-hestia-text">
             <span>
-              The latest extraction did not finish, so this course may not contain a complete skill tree.
+              The latest extraction did not finish, so this course may not contain a complete competency tree.
             </span>
             <Button size="sm" onClick={() => setExtractionModalOpen(true)}>
               View error and retry

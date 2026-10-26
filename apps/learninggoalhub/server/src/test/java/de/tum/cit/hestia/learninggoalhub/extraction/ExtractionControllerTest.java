@@ -1111,7 +1111,7 @@ class ExtractionControllerTest {
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
                 .contains("The learning goals were saved")
-                .contains("Topic tree synthesis failed")
+                .contains("Competency tree synthesis failed")
                 .contains("HTTP 500");
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
@@ -1147,7 +1147,7 @@ class ExtractionControllerTest {
         String status = awaitExtraction(course.getId());
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
-                .contains("Topic tree synthesis failed")
+                .contains("Competency tree synthesis failed")
                 .contains("assignment call failed");
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .singleElement()
@@ -1158,7 +1158,7 @@ class ExtractionControllerTest {
                 .singleElement()
                 .satisfies(run -> {
                     assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
-                    assertThat(run.getError()).contains("Topic tree synthesis failed");
+                    assertThat(run.getError()).contains("Competency tree synthesis failed");
                     assertThat(run.getGoalsCreated()).isEqualTo(1);
                 });
     }

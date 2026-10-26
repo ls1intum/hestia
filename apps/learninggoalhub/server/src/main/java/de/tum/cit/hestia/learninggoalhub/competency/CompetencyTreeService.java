@@ -396,10 +396,10 @@ public class CompetencyTreeService {
             plan = topicTreeSynthesizer.synthesize(
                     candidates.stream().map(LearningGoal::getText).toList(), languageName, modelOverride);
         } catch (RuntimeException ex) {
-            throw new IllegalStateException("Topic tree synthesis failed: " + errorMessage(ex), ex);
+            throw new IllegalStateException("Competency tree synthesis failed: " + errorMessage(ex), ex);
         }
         if (plan.topics().isEmpty()) {
-            throw new IllegalStateException("Topic tree synthesis placed none of the " + candidates.size()
+            throw new IllegalStateException("Competency tree synthesis placed none of the " + candidates.size()
                     + " source outcomes under a topic. Retry the competency tree.");
         }
         // Topics are noun phrases and carry no level of their own; only capability names state a
