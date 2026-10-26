@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client.ts";
 import { createTopic } from "../../lib/createTopic.ts";
-import type { MapCreation } from "../TopicMap.tsx";
+import type { MapCreation } from "../topicMap/layout.ts";
 import type { CreationState, CreationTier } from "./model.ts";
 
 /**
