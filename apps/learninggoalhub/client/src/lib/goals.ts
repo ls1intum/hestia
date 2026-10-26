@@ -109,7 +109,8 @@ export function displayedGoalLabel(goal: LearningGoal, full = false): string {
  * depth-1 node is a skill when it was added with the SKILL role, even before it has children,
  * and otherwise a sub-skill whatever its Bloom level: manual goals are
  * deliberately left unclassified, and the instructor added it through an "Add ..." control, which
- * says the tier outright.
+ * says the tier outright. The server's CSV export (LearningGoalCsvWriter) repeats these rules;
+ * change both together.
  */
 export function buildTopicForest(goals: LearningGoal[]): TreeNode[] {
   const byId = new Map<number, LearningGoal>();

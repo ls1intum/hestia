@@ -397,17 +397,19 @@ class LearningGoalControllerTest {
                 .andReturn().getResponse().getContentAsString();
 
         String[] lines = csv.split("\\r?\\n");
-        assertThat(lines[0]).isEqualTo("\uFEFF\"id\",\"parent_ids\",\"tree_depth\",\"role\",\"origin\","
+        assertThat(lines[0]).isEqualTo("\uFEFF\"id\",\"parent_ids\",\"tree_depth\",\"tier\",\"role\",\"origin\","
                 + "\"created_by\",\"learning_goal\",\"short_label\",\"kind\",\"bloom\",\"solo\",\"status\","
-                + "\"hierarchy_module\",\"hierarchy_session\",\"hierarchy_exercise\",\"sources\",\"grounded\"");
-        assertThat(lines[1]).startsWith("\"" + topic.getId() + "\",\"\",\"0\",\"\",\"TERMINAL\"");
-        assertThat(lines[2]).isEqualTo("\"" + sessionGoal.getId() + "\",\"" + topic.getId() + "\",\"1\",\"\","
-                + "\"EXTRACTED\",\"\",\"Apply TDD.\","
+                + "\"hierarchy_module\",\"hierarchy_session\",\"hierarchy_exercise\",\"sources\",\"quotes\",\"grounded\"");
+        assertThat(lines[1]).startsWith("\"" + topic.getId() + "\",\"\",\"0\",\"TOPIC\",\"\",\"TERMINAL\"");
+        assertThat(lines[2]).isEqualTo("\"" + sessionGoal.getId() + "\",\"" + topic.getId() + "\",\"1\",\"KNOWLEDGE\","
+                + "\"\",\"EXTRACTED\",\"\",\"Apply TDD.\","
                 + "\"\",\"EXPLICIT\",\"\",\"\",\"PENDING\",\"Software Engineering\",\"Session 3: Testing\",\"\","
-                + "\"lecture.pdf; exercise.pdf\",\"false\"");
+                + "\"lecture.pdf; exercise.pdf\",\"snippet a");
+        assertThat(lines[3]).isEqualTo("---");
+        assertThat(lines[4]).isEqualTo("snippet b\",\"false\"");
         assertThat(csv).contains("\"Software Engineering\",\"Session 3: Testing\",\"Exercise 3.2: TDD Kata\","
-                + "\"exercise.pdf\",\"false\"");
-        assertThat(csv).contains("\"" + orphan.getId() + "\",\"\",\"\",\"\",\"EXTRACTED\",\"\",\"Unlinked.\"");
+                + "\"exercise.pdf\",\"snippet c\",\"false\"");
+        assertThat(csv).contains("\"" + orphan.getId() + "\",\"\",\"\",\"\",\"\",\"EXTRACTED\",\"\",\"Unlinked.\"");
     }
 
     @Test
