@@ -383,6 +383,11 @@ class LearningGoalControllerTest {
         goalSourceRepository.save(new GoalSource(sessionGoal, lecture, "snippet a"));
         goalSourceRepository.save(new GoalSource(sessionGoal, exercise, "snippet b"));
         goalSourceRepository.save(new GoalSource(exerciseGoal, exercise, "snippet c"));
+        LearningGoal topic = new LearningGoal(course, "Testing", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        topic = goalRepository.save(topic);
+        goalRelationshipRepository.save(new GoalRelationship(sessionGoal, topic, RelationshipType.CONTRIBUTES_TO,
+                1.0, RelationshipOrigin.SYNTHESIS));
 
         String csv = mockMvc.perform(get("/api/courses/{id}/learning-goals/export.csv", course.getId()))
                 .andExpect(status().isOk())
@@ -392,13 +397,17 @@ class LearningGoalControllerTest {
                 .andReturn().getResponse().getContentAsString();
 
         String[] lines = csv.split("\\r?\\n");
-        assertThat(lines[0]).isEqualTo(
-                "\"hierarchy_module\",\"hierarchy_session\",\"hierarchy_exercise\",\"learning_goal\",\"kind\",\"sources\",\"taxonomy\",\"relationships\",\"status\"");
-        assertThat(csv).contains(
-                "\"Software Engineering\",\"Session 3: Testing\",\"\",\"Apply TDD.\",\"EXPLICIT\",\"lecture.pdf; exercise.pdf\",\"\",\"\",\"PENDING\"");
-        assertThat(csv).contains(
-                "\"Software Engineering\",\"Session 3: Testing\",\"Exercise 3.2: TDD Kata\",\"Practise the kata.\",\"EXPLICIT\",\"exercise.pdf\",\"\",\"\",\"PENDING\"");
-        assertThat(csv).contains("\"\",\"\",\"\",\"Unlinked.\",\"IMPLICIT\",\"\",\"\",\"\",\"PENDING\"");
+        assertThat(lines[0]).isEqualTo("\uFEFF\"id\",\"parent_ids\",\"tree_depth\",\"role\",\"origin\","
+                + "\"created_by\",\"learning_goal\",\"short_label\",\"kind\",\"bloom\",\"solo\",\"status\","
+                + "\"hierarchy_module\",\"hierarchy_session\",\"hierarchy_exercise\",\"sources\",\"grounded\"");
+        assertThat(lines[1]).startsWith("\"" + topic.getId() + "\",\"\",\"0\",\"\",\"TERMINAL\"");
+        assertThat(lines[2]).isEqualTo("\"" + sessionGoal.getId() + "\",\"" + topic.getId() + "\",\"1\",\"\","
+                + "\"EXTRACTED\",\"\",\"Apply TDD.\","
+                + "\"\",\"EXPLICIT\",\"\",\"\",\"PENDING\",\"Software Engineering\",\"Session 3: Testing\",\"\","
+                + "\"lecture.pdf; exercise.pdf\",\"false\"");
+        assertThat(csv).contains("\"Software Engineering\",\"Session 3: Testing\",\"Exercise 3.2: TDD Kata\","
+                + "\"exercise.pdf\",\"false\"");
+        assertThat(csv).contains("\"" + orphan.getId() + "\",\"\",\"\",\"\",\"EXTRACTED\",\"\",\"Unlinked.\"");
     }
 
     @Test
