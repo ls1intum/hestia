@@ -92,7 +92,8 @@ of a row group is a row, and a diagram box unfolds through its count line rather
 button around buttons. The axe test that came with it also found that the PDF pane could not be
 scrolled from the keyboard; fixed too. F4: the secondary chip lines no longer dim muted text
 twice (5.4:1). `client/e2e/accessibility.e2e.ts` scans these screens in both themes on every pull
-request.
+request. F8: the dialog counts "1 page". F9: the dev server redirects the prefix without
+its slash to the app.
 
 ### Backup restore
 
