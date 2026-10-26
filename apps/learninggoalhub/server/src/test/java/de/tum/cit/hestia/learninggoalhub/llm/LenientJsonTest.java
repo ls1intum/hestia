@@ -39,6 +39,19 @@ class LenientJsonTest {
         assertThat(outcome.text()).isEqualTo("Ergebnis");
     }
 
+    /**
+     * Real failure mode: asked to describe a batch of one page as a JSON array, the vision model
+     * answered with the bare object. Binding to a list rejected it, so the page never got a
+     * description.
+     */
+    @Test
+    void readsABareObjectWhereAListWasAskedFor() {
+        List<Outcome> outcomes = LenientJson.converter(new ParameterizedTypeReference<List<Outcome>>() {})
+                .convert("{\"text\": \"Einziges Ergebnis\"}");
+
+        assertThat(outcomes).extracting(Outcome::text).containsExactly("Einziges Ergebnis");
+    }
+
     record Cited(String text, Integer sourceFigure) {
     }
 
