@@ -16,6 +16,14 @@ describe("fetchAllGoals", () => {
     await expect(fetchAllGoals(7)).resolves.toEqual([{ id: 1 }, { id: 2 }]);
   });
 
+  it("leaves out the legacy gap-analysis goals of earlier prototypes", async () => {
+    get.mockResolvedValueOnce({
+      data: { content: [{ id: 1, origin: "EXTRACTED" }, { id: 2, origin: "GAP" }], page: { totalElements: 2 } },
+    });
+
+    await expect(fetchAllGoals(7)).resolves.toEqual([{ id: 1, origin: "EXTRACTED" }]);
+  });
+
   it("fails instead of returning a partial list when a later page fails", async () => {
     get
       .mockResolvedValueOnce({ data: { content: [{ id: 1 }], page: { totalElements: 2 } } })

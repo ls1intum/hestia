@@ -28,9 +28,7 @@ public class SecurityConfig {
     /** Endpoints only the other apps' servers call; the client never does. */
     static final RequestMatcher SERVICE_ONLY = new OrRequestMatcher(
             PATHS.matcher(HttpMethod.POST, "/api/courses/*/exam-tasks/learning-goals"),
-            PATHS.matcher(HttpMethod.GET, "/api/courses/*/learning-goals/by-session"),
-            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/skill-suggestions"),
-            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/*/subtree"));
+            PATHS.matcher(HttpMethod.GET, "/api/courses/*/learning-goals/by-session"));
 
     /** Requests that start model calls (upload included: the bookmark judge reads the outline). */
     static final RequestMatcher LLM_REQUESTS = new OrRequestMatcher(
@@ -39,9 +37,7 @@ public class SecurityConfig {
             PATHS.matcher(HttpMethod.POST, "/api/courses/*/documents"),
             PATHS.matcher(HttpMethod.POST, "/api/courses/*/exam-tasks/learning-goals"),
             PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/topic-search/**"),
-            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/terminal/generated"),
-            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/skill-suggestions"),
-            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/*/subtree"));
+            PATHS.matcher(HttpMethod.POST, "/api/courses/*/learning-goals/terminal/generated"));
 
     @Bean
     public SecurityFilterChain filterChain(

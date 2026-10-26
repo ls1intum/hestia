@@ -42,10 +42,6 @@ final class NumberedLines {
                 .collect(Collectors.joining("\n"));
     }
 
-    int lineCount() {
-        return lines.size();
-    }
-
     Optional<Span> span(int firstLine, int lastLine) {
         if (firstLine < 0 || firstLine > lastLine || lastLine >= lines.size()
                 || lastLine - firstLine > MAX_LINE_DISTANCE) {

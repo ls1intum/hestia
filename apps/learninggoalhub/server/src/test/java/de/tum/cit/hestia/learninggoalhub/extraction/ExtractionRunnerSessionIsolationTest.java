@@ -60,7 +60,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
 
-        assertThatThrownBy(() -> runner.runForCourse(1L))
+        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("41.pdf")
                 .hasMessageContaining("Retry the extraction");
@@ -87,7 +87,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
 
-        assertThatThrownBy(() -> runner.runForCourse(1L))
+        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no learning goals");
         verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),

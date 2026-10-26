@@ -458,7 +458,7 @@ public class SessionExtractionService {
         return first;
     }
 
-    /** Rejects malformed structured output before taxonomy, embedding, or database persistence. */
+    /** Rejects malformed structured output before taxonomy classification or database persistence. */
     static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName) {
         return validate(extracted, languageName, null, 0, MAX_SKILLS_PER_SESSION);
     }

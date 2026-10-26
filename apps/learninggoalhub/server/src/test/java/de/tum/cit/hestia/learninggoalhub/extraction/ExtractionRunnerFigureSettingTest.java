@@ -73,7 +73,7 @@ class ExtractionRunnerFigureSettingTest {
 
     /** The stubbed model names no outcome, so the run fails after the prompt this test inspects. */
     private static void runUntilTheEmptyReplyFails(Fixture fixture) {
-        assertThatThrownBy(() -> fixture.runner().runForCourse(1L))
+        assertThatThrownBy(() -> fixture.runner().runForCourse(1L, null, false))
                 .hasMessageContaining("no learning goals");
     }
 

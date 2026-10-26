@@ -20,7 +20,7 @@ export function ChildHint({
   onPick: (child: CompetencyNode) => void;
   onMore: () => void;
 }) {
-  if (node.children.length === 0 || node.role === "knowledge" || node.role === "gap") return null;
+  if (node.children.length === 0 || node.role === "knowledge") return null;
   if (dimmed) return <LeafStub count={node.children.length} />;
   const shown = node.children.slice(0, MINI_LIMIT);
   const rest = node.children.length - shown.length;

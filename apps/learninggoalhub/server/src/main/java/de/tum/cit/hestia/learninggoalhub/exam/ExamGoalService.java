@@ -149,7 +149,7 @@ public class ExamGoalService {
                 String languageName = course.getOutputLanguage() != null
                         ? LanguageUtils.englishName(course.getOutputLanguage())
                         : LanguageUtils.englishName(languageDetectionService.detect(
-                                (context == null ? "" : context + "\n\n")
+                                (context.isEmpty() ? "" : context + "\n\n")
                                         + (block.description() == null ? "" : block.description())));
                 List<GeneratedExamGoal> generated = generator
                         .generate(context.toString(), block.taskType(), block.description(),
