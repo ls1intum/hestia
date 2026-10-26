@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LearningGoal } from "../api/client.ts";
-import { COMPETENCY_ROLE_META, type CompetencyNode } from "../lib/goals.ts";
+import { TREE_ROLE_META, type TreeNode } from "../lib/goals.ts";
 import {
   BOX_W,
   COMPACT_W,
@@ -45,7 +45,7 @@ export default function TopicMap({
   fullWording,
   attributesOf,
 }: {
-  topic: CompetencyNode;
+  topic: TreeNode;
   /** The topic's lecture-order number in the table, e.g. "3". */
   sequence: string;
   /** The goal whose wording is being renamed in place, anywhere in the grid. */
@@ -61,7 +61,7 @@ export default function TopicMap({
   /** Show every goal's full wording rather than its short label, as the table does. */
   fullWording: boolean;
   /** The goal's attributes in the table's visible columns, shown beneath a box's wording. */
-  attributesOf: (node: CompetencyNode) => ReactNode;
+  attributesOf: (node: TreeNode) => ReactNode;
 }) {
   const actions = { editingId, onStartEdit, onEndEdit, onDelete };
   // The focus path: a box in the first row, then one of its sub-skills.
@@ -79,7 +79,7 @@ export default function TopicMap({
   // no goal id collides with, and opens its goals as a skill opens its sub-skills.
   const skills = topic.children.filter((node) => node.role === "skill");
   const loose = topic.children.filter((node) => node.role !== "skill");
-  const firstRow: CompetencyNode[] =
+  const firstRow: TreeNode[] =
     loose.length > 0
       ? [
           ...skills,
@@ -357,12 +357,12 @@ export default function TopicMap({
             {/* Rises to the topic row above; in a drilled-in state it leads to the focused box. */}
             <Connector
               childWidths={firstWidths}
-              color={COMPETENCY_ROLE_META.topic.color}
+              color={TREE_ROLE_META.topic.color}
               focusedIndex={focused ? focusedIndex : undefined}
             />
             <CreationRow
               reserve={firstReserve}
-              ghost={ghost("New skill", COMPETENCY_ROLE_META.skill.color, 2, firstKey, topic.goal.id!)}
+              ghost={ghost("New skill", TREE_ROLE_META.skill.color, 2, firstKey, topic.goal.id!)}
             >
               {firstRow.map((child, i) => {
                 const isFocused = focused != null && child.goal.id === focused.goal.id;
@@ -410,7 +410,7 @@ export default function TopicMap({
               <div className="relative flex flex-col items-center" style={{ left: secondOffset }}>
                 <Connector
                   childWidths={secondWidths}
-                  color={COMPETENCY_ROLE_META[focused.role].color}
+                  color={TREE_ROLE_META[focused.role].color}
                   focusedIndex={subFocused ? subFocusedIndex : undefined}
                 />
                 <CreationRow
@@ -437,8 +437,8 @@ export default function TopicMap({
                           </p>
                         )
                       : secondTier === 3
-                      ? ghost("New sub-skill", COMPETENCY_ROLE_META.subSkill.color, 3, secondKey, focused.goal.id!)
-                      : ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
+                      ? ghost("New sub-skill", TREE_ROLE_META.subSkill.color, 3, secondKey, focused.goal.id!)
+                      : ghost("New knowledge", TREE_ROLE_META.knowledge.color, 4, secondKey, focused.goal.id!)
                   }
                 >
                   {focused.children.map((child, i) => {
@@ -485,11 +485,11 @@ export default function TopicMap({
                   <div className="relative flex flex-col items-center" style={{ left: thirdOffset }}>
                     <Connector
                       childWidths={thirdWidths}
-                      color={COMPETENCY_ROLE_META.subSkill.color}
+                      color={TREE_ROLE_META.subSkill.color}
                     />
                     <CreationRow
                       reserve={thirdReserve}
-                      ghost={ghost("New knowledge", COMPETENCY_ROLE_META.knowledge.color, 4, thirdKey, subFocused.goal.id!)}
+                      ghost={ghost("New knowledge", TREE_ROLE_META.knowledge.color, 4, thirdKey, subFocused.goal.id!)}
                     >
                       {subFocused.children.map((leaf, i) => (
                         <div

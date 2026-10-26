@@ -1,11 +1,11 @@
 import type { LearningGoal } from "../../api/client.ts";
 import CoverageBadge from "../CoverageBadge.tsx";
 import {
-  COMPETENCY_ROLE_META,
+  TREE_ROLE_META,
   coverageOf,
   displayedGoalLabel,
   tierNoun,
-  type CompetencyRole,
+  type TreeRole,
 } from "../../lib/goals.ts";
 import {
   LEVEL_SCALES,
@@ -72,7 +72,7 @@ export function LooseGroupRow({
           <span
             aria-hidden="true"
             className="mr-1 shrink-0 self-stretch border-l-[3px] border-dotted"
-            style={{ borderColor: COMPETENCY_ROLE_META.subSkill.color }}
+            style={{ borderColor: TREE_ROLE_META.subSkill.color }}
           />
           <button
             type="button"
@@ -119,12 +119,12 @@ export function ChildPreview({
   items,
   fullWording,
 }: {
-  role: CompetencyRole;
+  role: TreeRole;
   items: Row[];
   fullWording: boolean;
 }) {
   if (role !== "topic") {
-    const counts = new Map<CompetencyRole, number>();
+    const counts = new Map<TreeRole, number>();
     for (const item of items) counts.set(item.role, (counts.get(item.role) ?? 0) + 1);
     return (
       <span className="flex flex-wrap gap-x-2.5 text-xs font-normal text-hestia-text-muted">

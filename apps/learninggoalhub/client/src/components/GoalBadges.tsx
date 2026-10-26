@@ -1,8 +1,8 @@
-import { COMPETENCY_ROLE_META, type CompetencyRole } from "../lib/goals.ts";
+import { TREE_ROLE_META, type TreeRole } from "../lib/goals.ts";
 
-/** Pill naming a node's role in the competency tree, tinted in the role's colour. */
-export function RoleBadge({ role }: { role: CompetencyRole }) {
-  const meta = COMPETENCY_ROLE_META[role];
+/** Pill naming a node's role in the Topic tree, tinted in the role's colour. */
+export function RoleBadge({ role }: { role: TreeRole }) {
+  const meta = TREE_ROLE_META[role];
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"

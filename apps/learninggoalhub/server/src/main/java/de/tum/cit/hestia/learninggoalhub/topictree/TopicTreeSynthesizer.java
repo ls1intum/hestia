@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
@@ -22,7 +22,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
 /**
- * Builds the competency tree top-down from a course's extracted skills in three steps.
+ * Builds the Topic tree top-down from a course's extracted skills in three steps.
  *
  * <ol>
  *   <li>Name the course's topics: short noun phrases, one call over every skill, no examples and no

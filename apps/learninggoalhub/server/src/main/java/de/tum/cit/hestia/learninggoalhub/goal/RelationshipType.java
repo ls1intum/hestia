@@ -6,10 +6,10 @@ package de.tum.cit.hestia.learninggoalhub.goal;
  */
 public enum RelationshipType {
     CONTRIBUTES_TO,
-    /** Legacy: a tree edge of the competency trees built before edges carried {@code SYNTHESIS}. */
+    /** Legacy: a tree edge of the Topic trees built before edges carried {@code SYNTHESIS}. */
     SUPPORTS,
-    /** Legacy: written by the prerequisite linker, which left with the competency tree. */
+    /** Legacy: written by the prerequisite linker, which left with the Topic tree. */
     PREREQUISITE_OF,
-    /** Legacy: written by the embedding-based overlap linker, which left with the competency tree. */
+    /** Legacy: written by the embedding-based overlap linker, which left with the Topic tree. */
     OVERLAPS_WITH
 }

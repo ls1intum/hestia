@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Language-code helpers shared by extraction, the competency tree and exam prompt orchestration. */
+/** Language-code helpers shared by extraction, the Topic tree and exam prompt orchestration. */
 public final class LanguageUtils {
 
     private LanguageUtils() {

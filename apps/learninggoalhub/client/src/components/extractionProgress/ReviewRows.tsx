@@ -1,4 +1,4 @@
-import { COMPETENCY_ROLE_META, type CompetencyNode } from "../../lib/goals.ts";
+import { TREE_ROLE_META, type TreeNode } from "../../lib/goals.ts";
 import Button from "../Button.tsx";
 import { RenameField, RowAction } from "../GoalInlineEditing.tsx";
 import { CheckIcon } from "./PhaseTick.tsx";
@@ -29,7 +29,7 @@ export function TopicHeader({
   onStartRename,
   onRename,
 }: {
-  topic: CompetencyNode;
+  topic: TreeNode;
   /** The topic's lecture-order number, as the table shows it: "3". */
   number: string;
   /** Items up for review in this topic: its skills, or its sub-skills when it has no skills. */
@@ -63,7 +63,7 @@ export function TopicHeader({
       <span
         aria-hidden="true"
         className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
-        style={{ backgroundColor: COMPETENCY_ROLE_META.topic.color }}
+        style={{ backgroundColor: TREE_ROLE_META.topic.color }}
       />
       <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
         <svg
@@ -100,7 +100,7 @@ export function TopicHeader({
   );
 
   return (
-    // The competency table's topic row: the same tint, chevron and coloured rail.
+    // The Topic tree table's topic row: the same tint, chevron and coloured rail.
     <div className="group flex flex-wrap items-center gap-x-3 gap-y-2 bg-[color-mix(in_srgb,var(--hestia-text)_3%,var(--hestia-surface))] px-4 py-2.5">
       {/* A field can't sit inside a button, so the row stops folding while it is renamed. */}
       {renaming ? (
@@ -187,7 +187,7 @@ export function SkillRow({
   onStartRename,
   onRename,
 }: {
-  skill: CompetencyNode;
+  skill: TreeNode;
   /**
    * Lecture-order number as the table shows it, "3.2": counted over every child of the topic, so a
    * skill keeps the number it has in the table.
@@ -207,7 +207,7 @@ export function SkillRow({
   onRename: (text: string | null) => void;
 }) {
   const approved = skill.goal.status === "APPROVED";
-  const noun = COMPETENCY_ROLE_META[skill.role].label.toLowerCase();
+  const noun = TREE_ROLE_META[skill.role].label.toLowerCase();
   // Extraction leaves this null, so a tag here means the skill did not come out of the materials.
   const provenance = skill.goal.creationProvenance;
   const provenanceLabel = provenance === "USER_CREATED"
@@ -230,7 +230,7 @@ export function SkillRow({
       <span
         aria-hidden="true"
         className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
-        style={{ backgroundColor: COMPETENCY_ROLE_META[skill.role].color }}
+        style={{ backgroundColor: TREE_ROLE_META[skill.role].color }}
       />
       <span className="h-5 w-5 shrink-0" aria-hidden="true" />
       {/* No wrapping here: the number keeps its own column and a long name wraps beside it. */}

@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -475,7 +475,7 @@ public class TopicSearchService {
                 .toList();
     }
 
-    /** The text of the nearest topic above a goal in the competency tree, or null outside the tree. */
+    /** The text of the nearest topic above a goal in the Topic tree, or null outside the tree. */
     private String topicTextOf(LearningGoal goal) {
         Deque<LearningGoal> pending = new ArrayDeque<>(List.of(goal));
         Set<Long> visited = new HashSet<>();
@@ -668,7 +668,7 @@ public class TopicSearchService {
             skill.setRole(GoalRole.SKILL);
             skill.setShortLabel(plan.shortLabel());
             skill.setLectureOrder(median(members));
-            TaxonomyClassification levels = CompetencyTreeService.atLeastChildLevels(plan.classification(),
+            TaxonomyClassification levels = TopicTreeService.atLeastChildLevels(plan.classification(),
                     members.stream().map(LearningGoal::getBloomLevel).filter(Objects::nonNull).toList(),
                     members.stream().map(LearningGoal::getSoloLevel).filter(Objects::nonNull).toList());
             if (levels != null) {
@@ -879,7 +879,7 @@ public class TopicSearchService {
                 solos.add(levels.solo());
             }
         }
-        return CompetencyTreeService.atLeastChildLevels(classified, blooms, solos);
+        return TopicTreeService.atLeastChildLevels(classified, blooms, solos);
     }
 
     private static String blankToNull(String value) {

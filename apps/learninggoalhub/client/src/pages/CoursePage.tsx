@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
-import CompetencyTree from "../components/CompetencyTree.tsx";
+import TopicTree from "../components/TopicTree.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
@@ -261,11 +261,11 @@ export default function CoursePage() {
         )}
       </div>
 
-      {/* The competency grid: topics as a filterable Excel-style list, each opening its map
+      {/* The Topic tree grid: topics as a filterable Excel-style list, each opening its map
           inline beneath its row. */}
       {goals.length > 0 && (
         <div className="w-full">
-          <CompetencyTree
+          <TopicTree
             courseId={courseId}
             goals={goals}
             onUpdate={updateGoal}

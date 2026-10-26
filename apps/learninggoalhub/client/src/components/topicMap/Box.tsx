@@ -3,11 +3,11 @@ import type { LearningGoal } from "../../api/client.ts";
 import { RenameField, RowAction } from "../GoalInlineEditing.tsx";
 import { RoleBadge, AiInferredBadge, ManualBadge } from "../GoalBadges.tsx";
 import {
-  COMPETENCY_ROLE_META,
+  TREE_ROLE_META,
   displayedGoalLabel,
   tierNoun,
-  type CompetencyNode,
-  type CompetencyRole,
+  type TreeNode,
+  type TreeRole,
 } from "../../lib/goals.ts";
 
 /** The rename and delete actions shared by every box, the same as a table row's. */
@@ -40,7 +40,7 @@ export function Box({
   fullWording,
   attributes,
 }: {
-  node: CompetencyNode;
+  node: TreeNode;
   /** The box is the focused, unfolded node. */
   active: boolean;
   expandable: boolean;
@@ -65,10 +65,10 @@ export function Box({
   /** The goal's attributes in the table's visible columns. */
   attributes: ReactNode;
 }) {
-  const meta = COMPETENCY_ROLE_META[node.role];
+  const meta = TREE_ROLE_META[node.role];
   const outline = group ? "var(--hestia-text-muted)" : meta.color;
   const editing = actions.editingId === node.goal.id;
-  const childCounts = new Map<CompetencyRole, number>();
+  const childCounts = new Map<TreeRole, number>();
   for (const child of node.children)
     childCounts.set(child.role, (childCounts.get(child.role) ?? 0) + 1);
   return (
@@ -193,8 +193,8 @@ export function Box({
  */
 export function LeafStub({ count }: { count: number }) {
   const xs = count >= 3 ? [12, 30, 48] : count === 2 ? [21, 39] : [30];
-  const lineColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, transparent)`;
-  const dotColor = `color-mix(in srgb, ${COMPETENCY_ROLE_META.knowledge.color} 55%, var(--hestia-surface))`;
+  const lineColor = `color-mix(in srgb, ${TREE_ROLE_META.knowledge.color} 55%, transparent)`;
+  const dotColor = `color-mix(in srgb, ${TREE_ROLE_META.knowledge.color} 55%, var(--hestia-surface))`;
   return (
     <div className="pointer-events-none" aria-hidden="true">
       <svg width={60} height={12} className="mx-auto block">

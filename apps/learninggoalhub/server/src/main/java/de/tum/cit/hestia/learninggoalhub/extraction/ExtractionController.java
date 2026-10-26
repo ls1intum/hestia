@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeResult;
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.web.ExtractionErrors;
@@ -35,7 +35,7 @@ public class ExtractionController {
     private static final Logger log = LoggerFactory.getLogger(ExtractionController.class);
 
     private final ExtractionRunner runner;
-    private final CompetencyTreeService competencyTrees;
+    private final TopicTreeService topicTrees;
     private final ExtractionProgressTracker progressTracker;
     private final ExtractionRunRepository extractionRunRepository;
     private final ExtractionRunAuditService extractionRunAuditService;
@@ -43,14 +43,14 @@ public class ExtractionController {
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
-                                CompetencyTreeService competencyTrees,
+                                TopicTreeService topicTrees,
                                 ExtractionProgressTracker progressTracker,
                                 ExtractionRunRepository extractionRunRepository,
                                 ExtractionRunAuditService extractionRunAuditService,
                                 CourseRepository courseRepository,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
-        this.competencyTrees = competencyTrees;
+        this.topicTrees = topicTrees;
         this.progressTracker = progressTracker;
         this.extractionRunRepository = extractionRunRepository;
         this.extractionRunAuditService = extractionRunAuditService;
@@ -98,7 +98,7 @@ public class ExtractionController {
     }
 
     /**
-     * Rebuilds only the competency tree from the goals this course already has — no documents are
+     * Rebuilds only the Topic tree from the goals this course already has — no documents are
      * re-read, so this runs only the taxonomy planning, assignment/review, and classification calls
      * instead of a full extraction.
      *
@@ -118,7 +118,7 @@ public class ExtractionController {
         ExtractionProgressTracker.Run run = claimed.get();
         run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
         try {
-            CompetencyTreeResult result = competencyTrees.rebuildCompetencyTree(courseId, null, force);
+            CompetencyTreeResult result = topicTrees.rebuildTopicTree(courseId, null, force);
             run.increment();
             extractionRunAuditService.finishTreeRetry(courseId);
             run.succeed(new ExtractionRunner.ExtractionSummary(0, 0, result.competencies()));

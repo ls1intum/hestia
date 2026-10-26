@@ -16,7 +16,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -168,7 +168,7 @@ class ExtractionRunnerFigureSettingTest {
                 new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(CompetencyTreeService.class),
+                mock(TopicTreeService.class),
                 hierarchyNodeRepository,
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),

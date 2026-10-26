@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import AnchoredPopover from "../AnchoredPopover.tsx";
 import Button from "../Button.tsx";
-import type { CompetencyRole } from "../../lib/goals.ts";
+import type { TreeRole } from "../../lib/goals.ts";
 import { TierChip } from "./Chips.tsx";
 import { InfoIcon, DocumentIcon, GeneratedIcon } from "./icons.tsx";
 
@@ -92,7 +92,7 @@ export function TierGuideGroup({
 }: {
   icon: ReactNode;
   heading: string;
-  tiers: [CompetencyRole, string][];
+  tiers: [TreeRole, string][];
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-hestia-border">

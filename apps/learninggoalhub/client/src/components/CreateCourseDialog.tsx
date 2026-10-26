@@ -142,7 +142,7 @@ export default function CreateCourseDialog({
   const trimmed = name.trim();
   const busy = step != null;
   // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
-  // exercises alone would extract fine and still leave the course without a competency tree.
+  // exercises alone would extract fine and still leave the course without a Topic tree.
   const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
   const progressPercent = step == null
     ? 0

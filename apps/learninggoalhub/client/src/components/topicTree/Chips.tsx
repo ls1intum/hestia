@@ -2,10 +2,10 @@ import type { CSSProperties, ReactNode } from "react";
 import type { ExamTask } from "../../api/client.ts";
 import InfoTooltip from "../InfoTooltip.tsx";
 import {
-  COMPETENCY_ROLE_META,
+  TREE_ROLE_META,
   displayedGoalLabel,
   tierNoun,
-  type CompetencyRole,
+  type TreeRole,
   type CoverageCounts,
 } from "../../lib/goals.ts";
 import { isGrouping, tierRailColor, kindLabel, type Row } from "./model.ts";
@@ -40,7 +40,7 @@ export function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
 }
 
 /** A preview dot in its tier's rail colour, so a collapsed branch previews in the colours it unfolds to. */
-export function TierDot({ role }: { role: CompetencyRole }) {
+export function TierDot({ role }: { role: TreeRole }) {
   return (
     <span
       aria-hidden="true"
@@ -361,8 +361,8 @@ export function Chip({
 }
 
 /** A goal's tier as a chip in its rail's hue; knowledge, the plain leaf tier, is plain text. */
-export function TierChip({ role }: { role: CompetencyRole }) {
-  const label = COMPETENCY_ROLE_META[role].label;
+export function TierChip({ role }: { role: TreeRole }) {
+  const label = TREE_ROLE_META[role].label;
   if (role === "knowledge") return <span className="text-xs text-hestia-text-muted">{label}</span>;
   return <Chip tone={role}>{label}</Chip>;
 }

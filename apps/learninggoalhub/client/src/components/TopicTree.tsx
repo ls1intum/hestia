@@ -12,11 +12,11 @@ import Button from "./Button.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import TopicMap from "./TopicMap.tsx";
 import {
-  buildCompetencyForest,
+  buildTopicForest,
   coverageCounts,
   coverageOf,
   levelFlags,
-  type CompetencyRole,
+  type TreeRole,
 } from "../lib/goals.ts";
 import {
   CHILD_APPEND,
@@ -28,25 +28,25 @@ import {
   type LevelScale,
   type Layout,
   type AttributeKey,
-} from "./competencyTree/model.ts";
-import { MIN_COLUMN_WIDTH, MIN_GOAL_COLUMN_WIDTH } from "./competencyTree/columns.ts";
-import { LooseGroupRow, DiagramAttributes } from "./competencyTree/DiagramRows.tsx";
-import { HeaderCell } from "./competencyTree/HeaderCell.tsx";
-import { DisplayMenu, LayoutSwitch } from "./competencyTree/Toolbar.tsx";
-import { TierGuideMenu, TierGuideStrip } from "./competencyTree/TierGuide.tsx";
-import { FoldIcon } from "./competencyTree/icons.tsx";
-import { AppendKnob, GridRow } from "./competencyTree/GridRow.tsx";
-import { FilterChips } from "./competencyTree/FilterChips.tsx";
-import { SourcePanel } from "./competencyTree/SourcePanel.tsx";
-import { useColumnLayout } from "./competencyTree/useColumnLayout.ts";
-import { useGoalCreation } from "./competencyTree/useGoalCreation.ts";
-import { useGoalFilters } from "./competencyTree/useGoalFilters.ts";
-import { useHeaderHeight, useScrollerHeight } from "./competencyTree/useGridHeights.ts";
-import { usePendingEdits } from "./competencyTree/usePendingEdits.ts";
-import { useTierGuide } from "./competencyTree/useTierGuide.ts";
+} from "./topicTree/model.ts";
+import { MIN_COLUMN_WIDTH, MIN_GOAL_COLUMN_WIDTH } from "./topicTree/columns.ts";
+import { LooseGroupRow, DiagramAttributes } from "./topicTree/DiagramRows.tsx";
+import { HeaderCell } from "./topicTree/HeaderCell.tsx";
+import { DisplayMenu, LayoutSwitch } from "./topicTree/Toolbar.tsx";
+import { TierGuideMenu, TierGuideStrip } from "./topicTree/TierGuide.tsx";
+import { FoldIcon } from "./topicTree/icons.tsx";
+import { AppendKnob, GridRow } from "./topicTree/GridRow.tsx";
+import { FilterChips } from "./topicTree/FilterChips.tsx";
+import { SourcePanel } from "./topicTree/SourcePanel.tsx";
+import { useColumnLayout } from "./topicTree/useColumnLayout.ts";
+import { useGoalCreation } from "./topicTree/useGoalCreation.ts";
+import { useGoalFilters } from "./topicTree/useGoalFilters.ts";
+import { useHeaderHeight, useScrollerHeight } from "./topicTree/useGridHeights.ts";
+import { usePendingEdits } from "./topicTree/usePendingEdits.ts";
+import { useTierGuide } from "./topicTree/useTierGuide.ts";
 
 /**
- * The competency tree as an Excel-like grid. Every goal attribute is a proper column with a funnel
+ * The Topic tree as an Excel-like grid. Every goal attribute is a proper column with a funnel
  * filter (multi-select checkboxes). Rows keep lecture order. The grid browses the tree in one of two layouts, switched in its toolbar:
  *
  * - `table`: the Topic → Skill → Sub-skill hierarchy lives in the first column with
@@ -64,7 +64,7 @@ import { useTierGuide } from "./competencyTree/useTierGuide.ts";
  * collapsing a branch fades its rows out before the survivors slide up, and opening a map or
  * changing a filter lets the surviving rows glide to their new place.
  */
-export default function CompetencyTree({
+export default function TopicTree({
   courseId,
   goals,
   onUpdate,
@@ -90,7 +90,7 @@ export default function CompetencyTree({
   const { effectiveGoals, updateGoal } = usePendingEdits(goals, onUpdate);
 
   const forest = useMemo(
-    () => buildCompetencyForest(effectiveGoals),
+    () => buildTopicForest(effectiveGoals),
     [effectiveGoals],
   );
   const rows = useMemo(() => flattenForest(forest), [forest]);
@@ -412,7 +412,7 @@ export default function CompetencyTree({
     siblings: Row[],
     depth: number,
     parentGoalId: number | null,
-    parentRole: CompetencyRole | null,
+    parentRole: TreeRole | null,
     /**
      * Whether this group's knob lands in the stack of knobs at the very bottom of the grid. Their
      * containers are zero-height, so every trailing knob shares the same row and a tooltip opening

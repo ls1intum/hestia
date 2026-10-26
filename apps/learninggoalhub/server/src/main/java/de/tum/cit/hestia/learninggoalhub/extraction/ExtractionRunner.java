@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeResult;
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
@@ -78,7 +78,7 @@ public class ExtractionRunner {
     private final UnitExtractor unitExtractor;
     private final ExtractionRunAuditService extractionRunAuditService;
     private final DocumentSectionRepository documentSectionRepository;
-    private final CompetencyTreeService competencyTrees;
+    private final TopicTreeService topicTrees;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final boolean keepEmptyUnits;
     private final ExtractionProgressTracker progressTracker;
@@ -98,7 +98,7 @@ public class ExtractionRunner {
                             UnitExtractor unitExtractor,
                             ExtractionRunAuditService extractionRunAuditService,
                             DocumentSectionRepository documentSectionRepository,
-                            CompetencyTreeService competencyTrees,
+                            TopicTreeService topicTrees,
                             HierarchyNodeRepository hierarchyNodeRepository,
                             ExtractionProgressTracker progressTracker,
                             TransactionOperations extractionTransactions,
@@ -117,7 +117,7 @@ public class ExtractionRunner {
         this.unitExtractor = unitExtractor;
         this.extractionRunAuditService = extractionRunAuditService;
         this.documentSectionRepository = documentSectionRepository;
-        this.competencyTrees = competencyTrees;
+        this.topicTrees = topicTrees;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.progressTracker = progressTracker;
         this.extractionTransactions = extractionTransactions;
@@ -190,11 +190,11 @@ public class ExtractionRunner {
                     stage.textSources(), stage.figureSources(), stage.unsupportedSources()));
 
             run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
-            CompetencyTreeResult competencyTree = competencyTrees.buildCompetencyTree(courseId, modelOverride,
+            CompetencyTreeResult topicTree = topicTrees.buildTopicTree(courseId, modelOverride,
                     stage.courseLanguageName());
             run.increment();
             ExtractionSummary summary = new ExtractionSummary(stage.documentsProcessed(), stage.goalsCreated(),
-                    competencyTree.competencies(), stage.textSources(), stage.figureSources(),
+                    topicTree.competencies(), stage.textSources(), stage.figureSources(),
                     stage.unsupportedSources());
             extractionRunAuditService.finish(auditRunId.get(), ExtractionStatus.SUCCEEDED, null,
                     summary.goalsCreated(), run.failedSessions(), run.droppedOutcomes(), stage.promptVersion());
@@ -477,7 +477,7 @@ public class ExtractionRunner {
 
     /**
      * Clears every artefact owned by a previous full extraction while leaving uploaded documents in place.
-     * The competency tree is cleared first through the same path as the standalone tree rebuild; the
+     * The Topic tree is cleared first through the same path as the standalone tree rebuild; the
      * remaining extracted goals then lose their sources, candidates, relationships and module hierarchy.
      */
     private void clearExtractionArtifacts(Course course) {
@@ -488,13 +488,13 @@ public class ExtractionRunner {
                 .toList();
         Set<Long> extractedIds = extracted.stream().map(LearningGoal::getId).collect(Collectors.toSet());
 
-        competencyTrees.clearTree(course);
+        topicTrees.clearTree(course);
 
         if (!extracted.isEmpty()) {
             List<GoalSource> sources = goalSourceRepository.findByGoalIdIn(extractedIds);
             goalSourceRepository.deleteAll(sources);
             goalSourceRepository.flush();
-            competencyTrees.clearRelationshipsForGoals(courseGoalIds, extractedIds, false);
+            topicTrees.clearRelationshipsForGoals(courseGoalIds, extractedIds, false);
             goalRepository.deleteAll(extracted);
             goalRepository.flush();
         }
@@ -600,7 +600,7 @@ public class ExtractionRunner {
                                   TaxonomyClassification classification) {
     }
 
-    /** Counts and language committed before the separately transactional competency-tree stage. */
+    /** Counts and language committed before the separately transactional Topic tree stage. */
     private record ExtractionStageSummary(int documentsProcessed, int goalsCreated, int textSources,
                                           int figureSources, int unsupportedSources,
                                           String courseLanguageName, String promptVersion) {

@@ -15,7 +15,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
@@ -140,7 +140,7 @@ class ExtractionRunnerSessionIsolationTest {
                 new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(CompetencyTreeService.class),
+                mock(TopicTreeService.class),
                 hierarchyNodeRepository,
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),

@@ -40,18 +40,18 @@ export const SOLO_DESC: Record<string, string> = {
 // to render the tree top-down.
 // ────────────────────────────────────────────────────────────────────────────
 
-/** A node's role in the competency tree, which drives its label and styling. */
-export type CompetencyRole =
+/** A node's role in the Topic tree, which drives its label and styling. */
+export type TreeRole =
   | "topic"
   | "skill"
   | "subSkill"
   | "knowledge";
 
-/** A node in the rendered competency tree, with its children resolved top-down. */
-export type CompetencyNode = {
+/** A node in the rendered Topic tree, with its children resolved top-down. */
+export type TreeNode = {
   goal: LearningGoal;
-  role: CompetencyRole;
-  children: CompetencyNode[];
+  role: TreeRole;
+  children: TreeNode[];
 };
 
 /** Lecture order first; legacy/unpositioned goals remain stable by database id and then text. */
@@ -69,9 +69,9 @@ function compareLectureOrder(a: LearningGoal, b: LearningGoal): number {
 // text-muted); warning is deliberately avoided (never a standalone text colour). Topic takes gold (the sparing main accent, few top-level nodes), skill
 // the secondary accent, sub-skill a muted blend of it, knowledge the quiet muted tier.
 // The role keys match the labels instructors read. The server marks skills and sub-skills alike
-// with role SKILL, so the tree position tells them apart (see buildCompetencyForest).
-export const COMPETENCY_ROLE_META: Record<
-  CompetencyRole,
+// with role SKILL, so the tree position tells them apart (see buildTopicForest).
+export const TREE_ROLE_META: Record<
+  TreeRole,
   { label: string; color: string }
 > = {
   topic: { label: "Topic", color: "var(--hestia-primary)" },
@@ -84,8 +84,8 @@ export const COMPETENCY_ROLE_META: Record<
 };
 
 /** "1 sub-skill", "7 sub-skills", "7 knowledge": the tier's label in lower case, counted. */
-export function tierNoun(role: CompetencyRole, count: number): string {
-  const label = COMPETENCY_ROLE_META[role].label.toLowerCase();
+export function tierNoun(role: TreeRole, count: number): string {
+  const label = TREE_ROLE_META[role].label.toLowerCase();
   return count === 1 || role === "knowledge" ? label : `${label}s`;
 }
 
@@ -95,7 +95,7 @@ export function displayedGoalLabel(goal: LearningGoal, full = false): string {
 }
 
 /**
- * Builds the competency forest from a flat goal list: topics are the roots, and each goal's
+ * Builds the Topic tree forest from a flat goal list: topics are the roots, and each goal's
  * CONTRIBUTES_TO edges (which point child → parent) are inverted into a parent → children map
  * that is walked downward.
  *
@@ -111,7 +111,7 @@ export function displayedGoalLabel(goal: LearningGoal, full = false): string {
  * deliberately left unclassified, and the instructor added it through an "Add ..." control, which
  * says the tier outright.
  */
-export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
+export function buildTopicForest(goals: LearningGoal[]): TreeNode[] {
   const byId = new Map<number, LearningGoal>();
   for (const g of goals) if (g.id != null) byId.set(g.id, g);
 
@@ -138,15 +138,15 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
     goal: LearningGoal,
     depth: number,
     onPath: Set<number>,
-    parentRole: CompetencyRole | null,
-  ): CompetencyNode => {
+    parentRole: TreeRole | null,
+  ): TreeNode => {
     const childGoals = (
       depth < MAX_DEPTH && goal.id != null ? (childrenOf.get(goal.id) ?? []) : []
     )
       .filter((c) => c.id != null && !onPath.has(c.id))
       .sort(compareLectureOrder);
 
-    const role: CompetencyRole =
+    const role: TreeRole =
       depth === 0
         ? "topic"
         : depth === 1 &&
@@ -221,9 +221,9 @@ export type CoverageCounts = Record<Coverage, number> & {
   practised: number;
 };
 
-function subSkillsOf(node: CompetencyNode): CompetencyNode[] {
-  const found: CompetencyNode[] = [];
-  const walk = (current: CompetencyNode) => {
+function subSkillsOf(node: TreeNode): TreeNode[] {
+  const found: TreeNode[] = [];
+  const walk = (current: TreeNode) => {
     const coverage = coverageOf(current.goal);
     if (current.role === "subSkill" && coverage != null && coverage !== "exam") found.push(current);
     current.children.forEach(walk);
@@ -233,7 +233,7 @@ function subSkillsOf(node: CompetencyNode): CompetencyNode[] {
 }
 
 /** Counts the source-backed sub-skills beneath a topic or skill by coverage. */
-export function coverageCounts(node: CompetencyNode): CoverageCounts {
+export function coverageCounts(node: TreeNode): CoverageCounts {
   const counts: CoverageCounts = {
     lecture: 0,
     exercise: 0,
@@ -268,7 +268,7 @@ const bloomRank = (goal: LearningGoal) => BLOOM_RANK.indexOf(goal.bloomLevel ?? 
  * APPLY is how teaching is meant to work and is never flagged. A goal without a Bloom level takes
  * part on neither side.
  */
-export function levelFlags(forest: CompetencyNode[]): Map<number, string> {
+export function levelFlags(forest: TreeNode[]): Map<number, string> {
   const flags = new Map<number, string>();
   for (const topic of forest) {
     const subSkills = subSkillsOf(topic);
@@ -302,9 +302,9 @@ export function levelFlags(forest: CompetencyNode[]): Map<number, string> {
 }
 
 /** Every goal beneath a topic whose sources include a lecture. */
-function lectureOutcomesOf(topic: CompetencyNode): LearningGoal[] {
+function lectureOutcomesOf(topic: TreeNode): LearningGoal[] {
   const found: LearningGoal[] = [];
-  const walk = (node: CompetencyNode) => {
+  const walk = (node: TreeNode) => {
     const coverage = coverageOf(node.goal);
     if (coverage === "lecture" || coverage === "both") found.push(node.goal);
     node.children.forEach(walk);

@@ -2,7 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
@@ -61,8 +61,8 @@ class ExtractionRunnerLanguageTest {
         LearningGoal legacySkill = new LearningGoal(course, "Apply the method.", GoalKind.IMPLICIT);
         legacySkill.setBloomLevel(BloomLevel.APPLY);
 
-        assertThat(CompetencyTreeService.isSkillTier(taggedKnowledge)).isFalse();
-        assertThat(CompetencyTreeService.isSkillTier(taggedSkill)).isTrue();
-        assertThat(CompetencyTreeService.isSkillTier(legacySkill)).isTrue();
+        assertThat(TopicTreeService.isSkillTier(taggedKnowledge)).isFalse();
+        assertThat(TopicTreeService.isSkillTier(taggedSkill)).isTrue();
+        assertThat(TopicTreeService.isSkillTier(legacySkill)).isTrue();
     }
 }

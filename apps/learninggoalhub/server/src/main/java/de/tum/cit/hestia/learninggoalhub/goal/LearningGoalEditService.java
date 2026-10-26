@@ -32,7 +32,7 @@ import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Changes a course's learning goals and its competency tree: topics typed or generated, children
+ * Changes a course's learning goals and its Topic tree: topics typed or generated, children
  * added by hand, goals edited and deleted.
  *
  * <p>Generation calls the model before any transaction opens and stores the result in one
@@ -171,11 +171,11 @@ public class LearningGoalEditService {
     }
 
     /**
-     * Rejects a parent that sits on the knowledge tier. The competency forest is capped at four
+     * Rejects a parent that sits on the knowledge tier. The Topic tree is capped at four
      * tiers (topic → skill → sub-skill → knowledge), so a child below knowledge would be persisted
      * but never rendered in any view. A parent is eligible when it is a topic, contributes to one, or
      * is a {@link GoalRole#SKILL} beneath a goal that contributes to one. A knowledge goal, and
-     * anything outside the competency tree altogether, cannot take children.
+     * anything outside the Topic tree altogether, cannot take children.
      */
     private void rejectIfKnowledgeTier(LearningGoal parent) {
         if (parent.getOrigin() == GoalOrigin.TERMINAL) {
@@ -191,7 +191,7 @@ public class LearningGoalEditService {
         }
     }
 
-    /** The goals {@code goal} CONTRIBUTES_TO, one tier up in the competency tree. */
+    /** The goals {@code goal} CONTRIBUTES_TO, one tier up in the Topic tree. */
     private List<LearningGoal> parentsOf(LearningGoal goal) {
         return goalRelationshipRepository.findBySourceId(goal.getId()).stream()
                 .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
@@ -375,7 +375,7 @@ public class LearningGoalEditService {
     }
 
     /**
-     * DELETE removes everything beneath the goal in the competency tree: generated, hand-added and
+     * DELETE removes everything beneath the goal in the Topic tree: generated, hand-added and
      * extracted goals alike. Dismissing a goal rejects it, and a rejected goal is deleted (see
      * {@link GoalStatus}), so nothing beneath a dismissed goal lingers outside the tree, where the
      * instructor can no longer see it but other consumers of the API still would. A descendant that

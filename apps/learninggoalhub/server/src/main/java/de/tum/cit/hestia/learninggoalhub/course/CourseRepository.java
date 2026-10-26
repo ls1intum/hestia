@@ -52,7 +52,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     List<CourseCount> countGoalsByCourseIds(@Param("courseIds") Collection<Long> courseIds);
 
     /**
-     * Topic (terminal-competency) count per course — one row per course that has at least one.
+     * Topic count per course — one row per course that has at least one.
      * Kept separate from the total goal count, which stays the count of every goal regardless of
      * origin because API consumers already depend on that meaning.
      */
@@ -64,7 +64,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     /**
      * Skill count per course (a capability in code terms) — one row per course that has at least one.
-     * Mirrors the client's {@code buildCompetencyForest}: a direct CONTRIBUTES_TO child of a topic
+     * Mirrors the client's {@code buildTopicForest}: a direct CONTRIBUTES_TO child of a topic
      * is a capability when one of its own children has the SKILL role, or when an instructor added
      * it by hand with the SKILL role.
      */

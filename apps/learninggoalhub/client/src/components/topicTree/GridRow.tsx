@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type LearningGoal } from "../../api/client.ts";
-import CompetencyCreationField from "../CompetencyCreationField.tsx";
+import TreeCreationField from "../TreeCreationField.tsx";
 import CoverageBadge from "../CoverageBadge.tsx";
 import { RenameField, RowAction } from "../GoalInlineEditing.tsx";
 import { displayedGoalLabel, type CoverageCounts } from "../../lib/goals.ts";
@@ -56,14 +56,14 @@ export function AppendKnob({
   const left = `calc(0.625rem + ${depth * 20}px + 0.25rem + 1.5px - 1.2rem)`;
   return (
     <div
-      className={`competency-append-container ${
-        active ? "competency-append-container-active" : ""
+      className={`tree-append-container ${
+        active ? "tree-append-container-active" : ""
       }`}
     >
       {active ? (
         // In flow rather than absolutely positioned: the grid scrolls inside a capped-height
         // container, which would clip a floating form opened on the last row.
-        <CompetencyCreationField
+        <TreeCreationField
           value={value}
           placeholder={placeholder}
           error={error}
@@ -74,26 +74,26 @@ export function AppendKnob({
           onGenerate={onGenerate}
           generating={generating}
           onFind={onFind}
-          className="competency-append-form"
+          className="tree-append-form"
           style={{ marginLeft: `calc(0.625rem + ${depth * 20}px)` }}
         />
       ) : (
         <button
           type="button"
           aria-label={label}
-          className="competency-append-button"
+          className="tree-append-button"
           style={{ left, color }}
           disabled={pending}
           onClick={onStart}
         >
           <span
             aria-hidden="true"
-            className="competency-append-dot"
+            className="tree-append-dot"
             style={{ backgroundColor: color }}
           />
           <span
             role="tooltip"
-            className={`competency-append-label ${last ? "competency-append-label-above" : ""}`}
+            className={`tree-append-label ${last ? "tree-append-label-above" : ""}`}
           >
             {label}
           </span>

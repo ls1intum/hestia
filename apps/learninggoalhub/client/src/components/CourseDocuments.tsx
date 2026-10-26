@@ -78,7 +78,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
 
   return (
     // Sub-rows of the course row, indented to its name column, with the same shading the
-    // competency table puts under an opened topic.
+    // Topic tree table puts under an opened topic.
     <div className="border-t border-hestia-border/60 bg-hestia-bg/60 shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]">
       {documentsQuery.isLoading && (
         <p className="py-2.5 pl-11 text-sm text-hestia-text-muted">Loading…</p>

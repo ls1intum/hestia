@@ -113,7 +113,7 @@ class CourseControllerTest {
     }
 
     @Test
-    void countsTopicsAndSkillsFromTheCompetencyTree() throws Exception {
+    void countsTopicsAndSkillsFromTheTopicTree() throws Exception {
         Course course = courseRepository.save(new Course("Tree Course"));
         LearningGoal topicA = goal(course, "Testing", GoalOrigin.TERMINAL, null);
         LearningGoal topicB = goal(course, "Design", GoalOrigin.TERMINAL, null);
