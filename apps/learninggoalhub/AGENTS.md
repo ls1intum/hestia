@@ -14,6 +14,8 @@ The system helps instructors extract, review, edit and manage learning goals fro
 
 Read [README.md](README.md) (setup, run, test) and [server/README.md](server/README.md) (package map, conventions, how to add an endpoint or LLM call) before changing code.
 
+This thesis also maintains `libs/shared-llm`, the Logos defaults that Workshopper uses too. Its rules are in `libs/shared-llm/AGENTS.md`.
+
 ## Required Agent Workflow
 
 For non-trivial changes, follow:

@@ -1,6 +1,12 @@
 # shared-llm
 
-Spring Boot library that wires a [Spring AI](https://docs.spring.io/spring-ai/reference/) `ChatClient` against the TUM AET [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway with sensible defaults. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder`.
+Spring Boot library that points [Spring AI](https://docs.spring.io/spring-ai/reference/)'s OpenAI client at the TUM AET [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway and sets the default models. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder`.
+
+Maintained by LearningGoalHub. Used by `apps/learninggoalhub` and `apps/workshopper`, so a changed default changes both apps. See [AGENTS.md](AGENTS.md) for the change rules.
+
+```bash
+./gradlew :libs:shared-llm:test   # from the repository root; no Docker needed
+```
 
 ## Usage
 

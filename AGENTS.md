@@ -4,7 +4,7 @@ Repository-wide instructions for AI coding agents working anywhere in the hestia
 
 ## Repository Context
 
-Hestia is a public academic monorepo hosting TUM thesis projects under the ls1intum organization. Each app in `apps/` belongs to a different thesis author; touch only the app you are working on unless explicitly asked otherwise.
+Hestia is a public academic monorepo hosting TUM thesis projects under the ls1intum organization. Each app in `apps/` belongs to a different thesis author; touch only the app you are working on unless explicitly asked otherwise. Shared libraries in `libs/` are used by several apps; each has an `AGENTS.md` naming its maintainer and consumers.
 
 ## Never Commit
 

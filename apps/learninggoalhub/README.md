@@ -32,7 +32,9 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
    session. See [docs/api.md](docs/api.md).
 
 All model calls go to the TUM AET Logos gateway (OpenAI-compatible). Defaults are
-`openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for vision, set in `libs/shared-llm`.
+`openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for vision, set in
+[`libs/shared-llm`](../../libs/shared-llm/README.md). This thesis maintains that library, and
+Workshopper uses it too.
 
 ## Prerequisites
 
