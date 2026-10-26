@@ -12,9 +12,26 @@ function prefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+// Storage can throw (blocked site data, some private windows); the theme then simply isn't remembered.
 function readStoredPreference(): ThemePreference {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored === "light" || stored === "dark" ? stored : "system";
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored === "light" || stored === "dark" ? stored : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function storePreference(preference: ThemePreference) {
+  try {
+    if (preference === "system") {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, preference);
+    }
+  } catch {
+    // Not remembered across reloads; the choice still applies now.
+  }
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -44,11 +61,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setPreference = useCallback((next: ThemePreference) => {
     setPreferenceState(next);
-    if (next === "system") {
-      localStorage.removeItem(STORAGE_KEY);
-    } else {
-      localStorage.setItem(STORAGE_KEY, next);
-    }
+    storePreference(next);
   }, []);
 
   const toggle = useCallback(() => {

@@ -39,13 +39,24 @@ export function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
   );
 }
 
+/** Tiers differ by shape as well as colour, so a preview never relies on colour alone. */
+const TIER_DOT_SHAPE: Record<TreeRole, string> = {
+  topic: "rounded-full",
+  skill: "rounded-full",
+  subSkill: "rounded-full border-[1.5px] !bg-transparent",
+  knowledge: "rounded-[1px]",
+};
+
 /** A preview dot in its tier's rail colour, so a collapsed branch previews in the colours it unfolds to. */
 export function TierDot({ role }: { role: TreeRole }) {
+  const color = tierRailColor(role);
   return (
     <span
-      aria-hidden="true"
-      className="h-1.5 w-1.5 shrink-0 rounded-full"
-      style={{ backgroundColor: tierRailColor(role) }}
+      role="img"
+      aria-label={TREE_ROLE_META[role].label}
+      title={TREE_ROLE_META[role].label}
+      className={`h-1.5 w-1.5 shrink-0 ${TIER_DOT_SHAPE[role]}`}
+      style={{ backgroundColor: color, borderColor: color }}
     />
   );
 }

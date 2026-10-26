@@ -22,7 +22,8 @@ export function AiInferredBadge({ compact = false }: { compact?: boolean } = {})
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
-        color: "var(--hestia-danger)",
+        // Pure danger on its own tint stays under AA; a quarter of text colour lifts it to ~5:1.
+        color: "color-mix(in srgb, var(--hestia-danger) 75%, var(--hestia-text))",
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
       }}
     >
@@ -37,7 +38,7 @@ export function ManualBadge() {
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
-        color: "var(--hestia-warning)",
+        color: "var(--hestia-warning-text)",
         backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
       }}
     >

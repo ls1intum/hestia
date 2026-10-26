@@ -8,6 +8,7 @@ import Button from "../Button.tsx";
 import TreeCreationField from "../TreeCreationField.tsx";
 import { TopicHeader, SkillRow } from "./ReviewRows.tsx";
 import { reviewItemsOf } from "./review.ts";
+import { requestError } from "../../lib/requestError.ts";
 
 /**
  * The skill review after a run: every topic with its skills to accept, rename or dismiss, a field to
@@ -61,14 +62,14 @@ export function SkillReview({
   // dismissing has no state of its own, the item is deleted.
   const approveMutation = useMutation({
     mutationFn: async (vars: { goalId: number; approved: boolean }) => {
-      const { error: updateError } = await api.PATCH(
+      const { error: updateError, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
           params: { path: { courseId: courseId as number, goalId: vars.goalId } },
           body: { status: vars.approved ? "APPROVED" : "PENDING" },
         },
     );
-      if (updateError) throw new Error("Could not update the skill.");
+      if (updateError) throw requestError("Could not update the skill.", { error: updateError, response });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
   });
@@ -78,14 +79,14 @@ export function SkillReview({
   // reworded item from one accepted as it stood.
   const renameMutation = useMutation({
     mutationFn: async (vars: { goalId: number; text: string; accept: boolean }) => {
-      const { error: updateError } = await api.PATCH(
+      const { error: updateError, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
           params: { path: { courseId: courseId as number, goalId: vars.goalId } },
           body: vars.accept ? { text: vars.text, status: "APPROVED" } : { text: vars.text },
         },
     );
-      if (updateError) throw new Error("Could not rename it.");
+      if (updateError) throw requestError("Could not rename it.", { error: updateError, response });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
   });
@@ -111,11 +112,11 @@ export function SkillReview({
 
   const deleteGoalMutation = useMutation({
     mutationFn: async (goalId: number) => {
-      const { error: deleteError } = await api.DELETE(
+      const { error: deleteError, response } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         { params: { path: { courseId: courseId as number, goalId } } },
     );
-      if (deleteError) throw new Error("Could not remove it.");
+      if (deleteError) throw requestError("Could not remove it.", { error: deleteError, response });
     },
     onSuccess: async () => {
       setConfirmingGoal(null);

@@ -16,6 +16,7 @@ import {
 import { ChildPreview } from "./DiagramRows.tsx";
 import { TopicCoverage, KindChip, SourceChip, TierChip } from "./Chips.tsx";
 import { LevelCell } from "./LevelCell.tsx";
+import { requestError } from "../../lib/requestError.ts";
 
 export function AppendKnob({
   depth,
@@ -447,11 +448,11 @@ export function SessionName({
   const [draft, setDraft] = useState<string | null>(null);
   const rename = useMutation({
     mutationFn: async (next: string) => {
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/hierarchy-nodes/{nodeId}",
         { params: { path: { courseId, nodeId: sessionId! } }, body: { label: next } },
       );
-      if (error) throw new Error("Could not rename the session.");
+      if (error) throw requestError("Could not rename the session.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });

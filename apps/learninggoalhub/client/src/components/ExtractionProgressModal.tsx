@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ExtractionStatus } from "../api/client.ts";
 import { useTheme } from "../theme/context.ts";
 import iconLight from "../assets/logos/icon-light.svg";
 import iconDark from "../assets/logos/icon-dark.svg";
 import Button from "./Button.tsx";
 import TopicSearchDialog from "./TopicSearchDialog.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
 import { RunFailure } from "./extractionProgress/RunFailure.tsx";
 import { RunProgress } from "./extractionProgress/RunProgress.tsx";
 import { SkillReview } from "./extractionProgress/SkillReview.tsx";
@@ -71,6 +72,9 @@ export default function ExtractionProgressModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, reviewLocked, onClose]);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
+
   if (!open) return null;
 
   const failed = error != null || status?.status === "FAILED";
@@ -104,7 +108,9 @@ export default function ExtractionProgressModal({
 
   return (
     <div
-      className="fixed inset-0 z-50"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="extraction-progress-title"

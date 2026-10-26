@@ -55,3 +55,28 @@ export function useHeaderHeight(headerRef: RefObject<HTMLDivElement>, present: b
   }, [headerRef, present]);
   return headerHeight;
 }
+
+/**
+ * Whether columns lie beyond the grid's right edge. On a narrow window the table scrolls sideways,
+ * and without a cue the cut-off columns look like the end of the table.
+ */
+export function useOverflowsRight(scrollerRef: RefObject<HTMLDivElement>) {
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    // One pixel of slack: fractional widths can leave a sub-pixel scroll range at the very end.
+    const measure = () =>
+      setOverflows(scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    scroller.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", measure);
+    };
+  }, [scrollerRef]);
+  return overflows;
+}

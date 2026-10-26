@@ -50,9 +50,13 @@
 /* Derived values — opacity-based, never new hex (per styleguide). */
 :root {
   --hestia-primary-hover: color-mix(in srgb, var(--hestia-primary) 85%, black);
-  --hestia-primary-muted: color-mix(in srgb, var(--hestia-primary) 20%, var(--hestia-bg));
+  /* Mixed into the surface, not the page bg: primary text on it then clears AA (4.8:1 light). */
+  --hestia-primary-muted: color-mix(in srgb, var(--hestia-primary) 15%, var(--hestia-surface));
   --hestia-border: color-mix(in srgb, var(--hestia-text) 15%, transparent);
-  --hestia-text-muted: color-mix(in srgb, var(--hestia-text) 65%, transparent);
+  /* 70% keeps muted text at AA on the light page bg (5.1:1); 65% fell to 4.4:1. */
+  --hestia-text-muted: color-mix(in srgb, var(--hestia-text) 70%, transparent);
+  /* Warning as text or icon. The amber itself is a fill colour: on white it reaches only 2.9:1. */
+  --hestia-warning-text: color-mix(in srgb, var(--hestia-warning) 45%, var(--hestia-text));
 }
 
 /* Expose the runtime values as Tailwind utilities. `inline` keeps the var() reference
@@ -69,6 +73,7 @@
   --color-hestia-text-muted: var(--hestia-text-muted);
   --color-hestia-accent: var(--hestia-accent);
   --color-hestia-warning: var(--hestia-warning);
+  --color-hestia-warning-text: var(--hestia-warning-text);
   --color-hestia-danger: var(--hestia-danger);
   --color-hestia-border: var(--hestia-border);
 

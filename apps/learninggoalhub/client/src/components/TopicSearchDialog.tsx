@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { LearningGoal } from "../api/client.ts";
@@ -11,6 +11,7 @@ import {
 } from "../lib/topicSearch.ts";
 import { DOCUMENT_KIND_LABEL } from "../lib/documents.ts";
 import Button from "./Button.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
 
 /** One page range in the picker; `manual` ranges were added by hand and can be removed. */
 type PickedRange = {
@@ -147,6 +148,8 @@ export default function TopicSearchDialog({
   });
 
   const busy = readMutation.isPending || createMutation.isPending;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
@@ -277,7 +280,9 @@ export default function TopicSearchDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60]"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[60] focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="topic-search-title"

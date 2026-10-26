@@ -41,7 +41,7 @@ import { SourcePanel } from "./topicTree/SourcePanel.tsx";
 import { useColumnLayout } from "./topicTree/useColumnLayout.ts";
 import { useGoalCreation } from "./topicTree/useGoalCreation.ts";
 import { useGoalFilters } from "./topicTree/useGoalFilters.ts";
-import { useHeaderHeight, useScrollerHeight } from "./topicTree/useGridHeights.ts";
+import { useHeaderHeight, useOverflowsRight, useScrollerHeight } from "./topicTree/useGridHeights.ts";
 import { usePendingEdits } from "./topicTree/usePendingEdits.ts";
 import { useTierGuide } from "./topicTree/useTierGuide.ts";
 
@@ -283,6 +283,7 @@ export default function TopicTree({
   });
 
   const scrollerHeight = useScrollerHeight(scrollerRef);
+  const overflowsRight = useOverflowsRight(scrollerRef);
   const hasTree = forest.length > 0;
   // The open topic row sticks right under the column header, so it needs the header's height.
   const headerHeight = useHeaderHeight(headerRef, hasTree);
@@ -733,7 +734,13 @@ export default function TopicTree({
       )}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-      <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
+      <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
+        {overflowsRight && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 right-0 z-20 w-6 bg-gradient-to-l from-[color-mix(in_srgb,var(--hestia-text)_14%,transparent)] to-transparent"
+          />
+        )}
         {/* pb-4 keeps the trailing append knob inside the scroll area instead of under its edge. */}
         <div
           ref={scrollerRef}
