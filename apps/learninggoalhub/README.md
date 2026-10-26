@@ -88,6 +88,7 @@ your data, start a second Postgres on another port and point the server at it wi
 
 cd apps/learninggoalhub/client
 npm run lint && npm run typecheck && npm test         # client: ESLint, tsc, Vitest
+npm run e2e                                           # browser tests; setup in client/README.md
 ```
 
 CI runs the same checks on every pull request (`.github/workflows/learninggoalhub-cicd.yml`).

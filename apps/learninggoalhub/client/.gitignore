@@ -6,6 +6,10 @@ npm-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Playwright output
+test-results
+playwright-report
 *.local
 *.tsbuildinfo
 
