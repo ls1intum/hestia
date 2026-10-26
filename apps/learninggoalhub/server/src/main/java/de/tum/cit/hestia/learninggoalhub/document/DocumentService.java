@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Lists, stores, serves and updates the documents uploaded to a course. */
@@ -18,19 +19,22 @@ public class DocumentService {
     private final DocumentSectionRepository documentSectionRepository;
     private final DocumentTitleService titleService;
     private final LanguageDetectionService languageDetectionService;
+    private final TransactionOperations transactions;
 
     public DocumentService(CourseRepository courseRepository,
                            DocumentRepository documentRepository,
                            DocumentContentRepository documentContentRepository,
                            DocumentSectionRepository documentSectionRepository,
                            DocumentTitleService titleService,
-                           LanguageDetectionService languageDetectionService) {
+                           LanguageDetectionService languageDetectionService,
+                           TransactionOperations transactions) {
         this.courseRepository = courseRepository;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.documentSectionRepository = documentSectionRepository;
         this.titleService = titleService;
         this.languageDetectionService = languageDetectionService;
+        this.transactions = transactions;
     }
 
     /** The course's documents in course order. */
@@ -85,28 +89,32 @@ public class DocumentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
     }
 
-    @Transactional
+    /**
+     * Stores an uploaded document with its content and sections. A document without bookmark
+     * sections is one session; the vision model names it from its first pages before the write
+     * transaction opens, so no connection is held while the model runs. Without a title the
+     * document stays section-less and the extraction step titles the session by filename.
+     */
     public Document persist(Course course, String filename, String contentType,
                             DocumentKind kind, DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
+        String title = parsed.sections().isEmpty()
+                ? titleService.deriveTitle(bytes, contentType, filename)
+                : null;
         String storedContentType = contentType != null ? contentType : "application/octet-stream";
-        Document document = new Document(course, filename, storedContentType, parsed.rawText());
-        document.setKind(kind);
-        document.setLanguage(languageDetectionService.detect(parsed.rawText()));
-        document = documentRepository.save(document);
-        document.setPageOffsets(parsed.pageOffsets());
-        documentContentRepository.save(new DocumentContent(document, bytes));
-        persistSections(document, parsed, bytes, contentType, filename);
-        return document;
+        return transactions.execute(status -> {
+            Document document = new Document(course, filename, storedContentType, parsed.rawText());
+            document.setKind(kind);
+            document.setLanguage(languageDetectionService.detect(parsed.rawText()));
+            document = documentRepository.save(document);
+            document.setPageOffsets(parsed.pageOffsets());
+            documentContentRepository.save(new DocumentContent(document, bytes));
+            persistSections(document, parsed, title);
+            return document;
+        });
     }
 
-    /**
-     * Persists the document's structural sections. With deterministic bookmark sections we store
-     * them as-is. Otherwise the document is one session; we ask the vision model to name it from its
-     * first pages and store that single section, falling back to leaving it section-less (the
-     * extraction step then titles the session by filename).
-     */
-    private void persistSections(Document document, DocumentStructureService.ParsedDocument parsed,
-                                 byte[] bytes, String contentType, String filename) {
+    /** Stores the bookmark sections as-is, or else the single titled section when there is a title. */
+    private void persistSections(Document document, DocumentStructureService.ParsedDocument parsed, String title) {
         List<DocumentStructureService.SectionSpan> sections = parsed.sections();
         if (!sections.isEmpty()) {
             for (int i = 0; i < sections.size(); i++) {
@@ -117,7 +125,6 @@ public class DocumentService {
             }
             return;
         }
-        String title = titleService.deriveTitle(bytes, contentType, filename);
         if (title != null) {
             int end = parsed.rawText() == null ? 0 : parsed.rawText().length();
             int pageCount = parsed.pageOffsets() == null ? 0 : parsed.pageOffsets().length - 1;

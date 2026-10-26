@@ -43,6 +43,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id);
     }
 
+    // The count queries below name goal and document entities in JPQL strings, which the package
+    // cycle test cannot see; they are the one place course depends on those packages.
+
     /** Goal count per course for the given ids — one row per course that has at least one goal. */
     @Query("select g.course.id as courseId, count(g.id) as count "
             + "from LearningGoal g where g.course.id in :courseIds group by g.course.id")
