@@ -153,12 +153,7 @@ export default function CoursePage() {
     updateGoalMutation.mutateAsync({ goalId, ...changes }).catch(onFailed);
   };
 
-  // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
-  // the pipeline still synthesises and stores them, only the client filters.
-  const goals: LearningGoal[] = useMemo(
-    () => (goalsQuery.data ?? []).filter((g) => g.origin !== "GAP"),
-    [goalsQuery.data],
-  );
+  const goals: LearningGoal[] = useMemo(() => goalsQuery.data ?? [], [goalsQuery.data]);
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (

@@ -67,7 +67,6 @@ export function Box({
 }) {
   const meta = COMPETENCY_ROLE_META[node.role];
   const outline = group ? "var(--hestia-text-muted)" : meta.color;
-  const isGap = node.role === "gap";
   const editing = actions.editingId === node.goal.id;
   const childCounts = new Map<CompetencyRole, number>();
   for (const child of node.children)
@@ -93,17 +92,15 @@ export function Box({
       className={`group relative flex ${onClick ? "cursor-pointer" : ""} flex-col gap-1.5 rounded-lg border-[1.5px] ${group ? "border-dashed" : ""} p-3 text-left transition ${
         leaf ? "w-60 shrink-0" : compact ? "w-40 shrink-0" : "w-56 shrink-0"
       } ${
-        isGap
-          ? "border-hestia-danger/40 bg-[color-mix(in_srgb,var(--hestia-danger)_8%,var(--hestia-surface))] hover:border-hestia-danger"
-          : node.role === "knowledge"
-            ? "border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_2.5%,var(--hestia-surface))] hover:border-hestia-primary hover:bg-hestia-bg"
+        node.role === "knowledge"
+          ? "border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_2.5%,var(--hestia-surface))] hover:border-hestia-primary hover:bg-hestia-bg"
           : "border-hestia-border bg-hestia-surface hover:border-hestia-primary hover:bg-hestia-bg"
       } ${dimmed ? "opacity-60 hover:opacity-100" : ""} ${
         highlighted ? "ring-2 ring-hestia-primary ring-offset-2 ring-offset-hestia-bg" : ""
       }`}
       style={{
         // The whole outline carries the role colour, so the tier reads without a shadow or rail.
-        ...(isGap ? {} : { borderColor: outline }),
+        borderColor: outline,
         // The focused box keeps a quiet role tint while its row siblings remain subdued context.
         ...(active
           ? {
@@ -135,9 +132,9 @@ export function Box({
         </div>
       ) : (
         <p
-          className={`text-sm font-medium leading-snug ${
-            isGap ? "text-hestia-danger" : "text-hestia-text"
-          } ${clampText ? "line-clamp-3" : ""}`}
+          className={`text-sm font-medium leading-snug text-hestia-text ${
+            clampText ? "line-clamp-3" : ""
+          }`}
         >
           {sequenceLabel != null && <span className="tabular-nums">{sequenceLabel} </span>}
           {displayedGoalLabel(node.goal, fullWording)}

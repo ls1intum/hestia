@@ -29,5 +29,6 @@ export async function fetchAllGoals(courseId: number): Promise<LearningGoal[]> {
     if (!next.data.content?.length) break;
     goals.push(...next.data.content);
   }
-  return goals;
+  // Legacy gap-analysis goals of earlier prototypes: nothing produces them any more and no view shows them.
+  return goals.filter((goal) => goal.origin !== "GAP");
 }

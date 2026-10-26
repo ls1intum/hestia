@@ -40,7 +40,7 @@ export const KIND_DESC: Record<string, string> = {
 // extracted goals: topics (origin TERMINAL) → generated capabilities → extracted
 // skills → grounded knowledge leaves. A skill that forms no capability hangs
 // directly under its topic. Older trees are three tiers (topic → skill →
-// knowledge) and may carry gap-analysis leaves (origin GAP). The edges are stored
+// knowledge). The edges are stored
 // as CONTRIBUTES_TO and point UPWARD (child → parent), so the client inverts them
 // to render the tree top-down.
 // ────────────────────────────────────────────────────────────────────────────
@@ -50,8 +50,7 @@ export type CompetencyRole =
   | "topic"
   | "capability"
   | "skill"
-  | "knowledge"
-  | "gap";
+  | "knowledge";
 
 /** A node in the rendered competency tree, with its children resolved top-down. */
 export type CompetencyNode = {
@@ -72,8 +71,7 @@ function compareLectureOrder(a: LearningGoal, b: LearningGoal): number {
 }
 
 // Role colours are drawn from the HESTIA styleguide's text-safe palette (primary / accent /
-// text-muted); warning is deliberately avoided (never a standalone text colour) and danger is
-// reserved for gaps. Topic takes gold (the sparing main accent, few top-level nodes), capability
+// text-muted); warning is deliberately avoided (never a standalone text colour). Topic takes gold (the sparing main accent, few top-level nodes), capability
 // the secondary accent, skill a muted blend of it, knowledge the quiet muted tier.
 // The labels are what instructors read and deliberately differ from the role keys: a capability is
 // shown as "Skill" and a skill as "Sub-skill", so the names alone say which tier sits higher.
@@ -88,7 +86,6 @@ export const COMPETENCY_ROLE_META: Record<
     color: "color-mix(in srgb, var(--hestia-accent) 55%, var(--hestia-text-muted))",
   },
   knowledge: { label: "Knowledge", color: "var(--hestia-text-muted)" },
-  gap: { label: "Gap", color: "var(--hestia-danger)" },
 };
 
 /** "1 sub-skill", "7 sub-skills", "7 knowledge": the tier's label in lower case, counted. */
@@ -113,8 +110,7 @@ export function displayedGoalLabel(goal: LearningGoal, full = false): string {
  * include skills is a capability; otherwise a depth-1 node is a skill when it has children, is
  * explicitly marked as a skill, or carries a doing/judgement Bloom level for legacy role-null
  * data, and knowledge when not. A depth-2 node under a capability is a skill; every other deeper
- * node is knowledge. Knowledge and gap nodes take no children; any GAP-origin goal renders as a
- * gap leaf. A hand-added depth-1 node is a capability when it was added with the SKILL role, even
+ * node is knowledge. Knowledge nodes take no children. A hand-added depth-1 node is a capability when it was added with the SKILL role, even
  * before it has children, and otherwise a skill whatever its Bloom level: manual goals are
  * deliberately left unclassified, and the instructor added it through an "Add ..." control, which
  * says the tier outright.
@@ -155,25 +151,23 @@ export function buildCompetencyForest(goals: LearningGoal[]): CompetencyNode[] {
       .sort(compareLectureOrder);
 
     const role: CompetencyRole =
-      goal.origin === "GAP"
-        ? "gap"
-        : depth === 0
-          ? "topic"
-          : depth === 1 &&
-              (childGoals.some((c) => c.role === "SKILL") ||
-                (goal.creationProvenance === "USER_CREATED" && goal.role === "SKILL"))
-            ? "capability"
-            : (depth === 1 &&
-                  (childGoals.length > 0 ||
-                    isSkillTier(goal) ||
-                    goal.creationProvenance === "USER_CREATED")) ||
-                (depth === 2 && parentRole === "capability" && isSkillTier(goal))
-              ? "skill"
-              : "knowledge";
+      depth === 0
+        ? "topic"
+        : depth === 1 &&
+            (childGoals.some((c) => c.role === "SKILL") ||
+              (goal.creationProvenance === "USER_CREATED" && goal.role === "SKILL"))
+          ? "capability"
+          : (depth === 1 &&
+                (childGoals.length > 0 ||
+                  isSkillTier(goal) ||
+                  goal.creationProvenance === "USER_CREATED")) ||
+              (depth === 2 && parentRole === "capability" && isSkillTier(goal))
+            ? "skill"
+            : "knowledge";
 
     const nextPath = goal.id != null ? new Set(onPath).add(goal.id) : onPath;
     const children =
-      role === "knowledge" || role === "gap"
+      role === "knowledge"
         ? []
         : childGoals.map((c) => build(c, depth + 1, nextPath, role));
     return { goal, role, children };

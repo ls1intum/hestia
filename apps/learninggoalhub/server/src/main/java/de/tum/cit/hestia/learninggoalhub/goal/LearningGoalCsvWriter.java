@@ -27,6 +27,7 @@ public class LearningGoalCsvWriter {
             "status"
     };
 
+    /** The legacy types only appear on courses extracted by earlier prototypes. */
     private static final List<RelationshipType> TYPE_ORDER = List.of(
             RelationshipType.CONTRIBUTES_TO,
             RelationshipType.PREREQUISITE_OF,
