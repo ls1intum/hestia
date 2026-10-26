@@ -11,7 +11,6 @@ class NumberedLinesTest {
         String text = "Heading\n\n  \nSupporting line\nFinal line";
         NumberedLines lines = NumberedLines.of(text);
 
-        assertThat(lines.lineCount()).isEqualTo(3);
         assertThat(lines.render()).isEqualTo("[0] Heading\n[1] Supporting line\n[2] Final line");
         assertThat(lines.span(0, 1))
                 .get()

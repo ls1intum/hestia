@@ -82,7 +82,6 @@ public class LearningGoalEditService {
      * Nothing is generated beneath it and no model is called: adding by hand stays manual, and
      * generating skills is a choice of its own ({@code /terminal/generated}). Bloom/SOLO stay empty,
      * since a topic carries no level.
-     * No embedding is computed, matching the pipeline's terminal competencies.
      * The goal is attached to the course's COMPETENCY root, reusing it or creating it on first use.
      */
     @Transactional
@@ -314,8 +313,7 @@ public class LearningGoalEditService {
         }
     }
 
-    private int linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
-        int created = 0;
+    private void linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
         for (LearningGoal source : supporters) {
             if (source.getId().equals(targetGoal.getId())) {
                 continue;
@@ -326,9 +324,7 @@ public class LearningGoalEditService {
             }
             goalRelationshipRepository.save(new GoalRelationship(
                     source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-            created++;
         }
-        return created;
     }
 
     private String trimToNull(String value) {

@@ -43,7 +43,7 @@ spring:
       api-key: ${LOGOS_API_KEY:}
     # The gateway rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
     # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
-    # so the hundreds of classify/embed/synthesis calls in one run spread out under the limit.
+    # so the hundreds of extraction/classification/synthesis calls in one run spread out under the limit.
     retry:
       # 5xx responses are transient provider failures. Retry them alongside rate limiting; the
       # application supplies randomized exponential backoff so concurrent workers do not retry in lockstep.

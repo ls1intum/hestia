@@ -74,10 +74,6 @@ public class DocumentSection {
         return document;
     }
 
-    public int getOrdinal() {
-        return ordinal;
-    }
-
     public String getTitle() {
         return title;
     }

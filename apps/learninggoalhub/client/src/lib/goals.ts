@@ -28,11 +28,6 @@ export const SOLO_DESC: Record<string, string> = {
   "Extended Abstract": "Generalises beyond to new contexts.",
 };
 
-export const KIND_DESC: Record<string, string> = {
-  Explicit: "Stated directly in the source material.",
-  Implicit: "Inferred by the model from the content.",
-};
-
 // ────────────────────────────────────────────────────────────────────────────
 // Competency tree
 //
