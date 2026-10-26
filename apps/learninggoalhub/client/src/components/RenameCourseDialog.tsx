@@ -4,6 +4,7 @@ import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import Button from "./Button.tsx";
 import { useFocusTrap } from "../lib/useFocusTrap.ts";
+import { requestError } from "../lib/requestError.ts";
 
 /** Renames a course. The course PATCH leaves every field the body omits alone. */
 export default function RenameCourseDialog({
@@ -18,11 +19,11 @@ export default function RenameCourseDialog({
 
   const rename = useMutation({
     mutationFn: async (nextName: string) => {
-      const { error } = await api.PATCH("/api/courses/{id}", {
+      const { error, response } = await api.PATCH("/api/courses/{id}", {
         params: { path: { id: course.id as number } },
         body: { name: nextName },
       });
-      if (error) throw new Error("Could not rename the course.");
+      if (error) throw requestError("Could not rename the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });

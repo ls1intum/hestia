@@ -6,6 +6,7 @@ import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
 import { DOCUMENT_KIND_LABEL } from "../lib/documents.ts";
 import type { DocumentKind } from "../lib/documents.ts";
+import { requestError } from "../lib/requestError.ts";
 
 /**
  * Inline list of a course's uploaded documents with inline rename and kind change. Rendered under
@@ -32,7 +33,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
 
   const renameMutation = useMutation({
     mutationFn: async (vars: { documentId: number; displayName: string | null }) => {
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/documents/{documentId}",
         {
           params: { path: { courseId, documentId: vars.documentId } },
@@ -42,7 +43,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
             JSON.stringify({ displayName: body?.displayName ?? null }),
         },
       );
-      if (error) throw new Error("Could not rename the document.");
+      if (error) throw requestError("Could not rename the document.", { error, response });
     },
     onSuccess: async () => {
       // Goal sources carry the document's name, so the goal views would keep showing the old one.
@@ -56,7 +57,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
 
   const kindMutation = useMutation({
     mutationFn: async (vars: { documentId: number; kind: DocumentKind }) => {
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/documents/{documentId}",
         {
           params: { path: { courseId, documentId: vars.documentId } },
@@ -64,7 +65,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
           body: { kind: vars.kind },
         },
       );
-      if (error) throw new Error("Could not change the document's kind.");
+      if (error) throw requestError("Could not change the document's kind.", { error, response });
     },
     // Goal sources carry the document's kind, which decides each goal's coverage.
     onSuccess: () =>

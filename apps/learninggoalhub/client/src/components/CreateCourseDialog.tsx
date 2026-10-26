@@ -5,6 +5,7 @@ import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
 import { useFocusTrap } from "../lib/useFocusTrap.ts";
+import { requestError } from "../lib/requestError.ts";
 
 // The server accepts PDFs only: the source viewer, quote highlights and bookmark sessions all
 // read the PDF itself. Kept in sync with the hint shown in the drop zone.
@@ -99,14 +100,14 @@ export default function CreateCourseDialog({
       setStep("creating");
       let courseId = createdCourseId;
       if (courseId == null) {
-        const { data, error } = await api.POST("/api/courses", {
+        const { data, error, response } = await api.POST("/api/courses", {
           body: {
             name: name.trim(),
             outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
             figuresEnabled,
           },
         });
-        if (error || !data?.id) throw new Error("Could not create the course.");
+        if (error || !data?.id) throw requestError("Could not create the course.", { error, response });
         courseId = data.id;
         setCreatedCourseId(courseId);
         // The row shows up straight away, so closing the dialog mid-upload still leaves the course

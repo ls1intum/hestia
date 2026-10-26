@@ -9,6 +9,7 @@ import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
 import NotFoundPage from "./NotFoundPage.tsx";
+import { requestError } from "../lib/requestError.ts";
 
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
@@ -95,10 +96,10 @@ function CourseView({ courseId }: { courseId: number }) {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await api.DELETE("/api/courses/{id}", {
+      const { error, response } = await api.DELETE("/api/courses/{id}", {
         params: { path: { id: courseId } },
       });
-      if (error) throw new Error("Could not delete the course.");
+      if (error) throw requestError("Could not delete the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -116,14 +117,14 @@ function CourseView({ courseId }: { courseId: number }) {
       soloLevel?: LearningGoal["soloLevel"];
     }) => {
       const { goalId, ...body } = vars;
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
           params: { path: { courseId, goalId } },
           body,
         },
       );
-      if (error) throw new Error("Could not update the learning goal.");
+      if (error) throw requestError("Could not update the learning goal.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
@@ -132,11 +133,11 @@ function CourseView({ courseId }: { courseId: number }) {
 
   const deleteGoalMutation = useMutation({
     mutationFn: async (goalId: number) => {
-      const { error } = await api.DELETE(
+      const { error, response } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         { params: { path: { courseId, goalId } } },
       );
-      if (error) throw new Error("Could not delete the learning goal.");
+      if (error) throw requestError("Could not delete the learning goal.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });

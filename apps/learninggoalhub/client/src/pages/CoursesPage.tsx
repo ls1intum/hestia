@@ -12,6 +12,7 @@ import Button from "../components/Button.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { RowAction } from "../components/GoalInlineEditing.tsx";
 import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
+import { requestError } from "../lib/requestError.ts";
 
 /**
  * Heights the page size is worked out from: a course row and the column-name row (each with its
@@ -60,10 +61,10 @@ export default function CoursesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const { error } = await api.DELETE("/api/courses/{id}", {
+      const { error, response } = await api.DELETE("/api/courses/{id}", {
         params: { path: { id } },
       });
-      if (error) throw new Error("Could not delete the course.");
+      if (error) throw requestError("Could not delete the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });

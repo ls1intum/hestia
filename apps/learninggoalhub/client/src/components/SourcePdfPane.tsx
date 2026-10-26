@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as pdfjsLib from "pdfjs-dist";
 import { API_PREFIX, api, type GoalSource } from "../api/client.ts";
+import { requestError } from "../lib/requestError.ts";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -503,13 +504,13 @@ function DocumentName({
   const shown = displayName || filename || "Source document";
   const rename = useMutation({
     mutationFn: async (next: string | null) => {
-      const { error } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
+      const { error, response } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
         params: { path: { courseId: Number(courseId), documentId: documentId! } },
         body: { displayName: next ?? undefined },
         // openapi-fetch drops undefined body keys, but clearing needs an explicit null.
         bodySerializer: (body) => JSON.stringify({ displayName: body?.displayName ?? null }),
       });
-      if (error) throw new Error("Could not rename the document.");
+      if (error) throw requestError("Could not rename the document.", { error, response });
     },
     onSuccess: async () => {
       await Promise.all([
