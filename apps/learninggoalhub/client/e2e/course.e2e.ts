@@ -56,7 +56,7 @@ test("the goals export as CSV and a deleted course stays gone", async ({ page })
   await page.getByRole("menuitem", { name: "Delete course" }).click();
   await page.getByRole("dialog").getByRole("button", { name: /^Delete/ }).click();
   await expect(page).toHaveURL(/\/learninggoalhub\/?$/);
-  await page.goto("./");
+  await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Your Courses");
   await expect(courseRow(page, name)).toHaveCount(0);
 });
