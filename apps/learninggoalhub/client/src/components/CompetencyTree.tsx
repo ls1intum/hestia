@@ -1,7 +1,4 @@
 import {
-  lazy,
-  Suspense,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -9,14 +6,11 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, API_PREFIX, type LearningGoal } from "../api/client.ts";
+import type { LearningGoal } from "../api/client.ts";
 import TopicSearchDialog from "./TopicSearchDialog.tsx";
-import { createTopic } from "../lib/createTopic.ts";
 import Button from "./Button.tsx";
-import ErrorBoundary from "./ErrorBoundary.tsx";
 import FilterPopover from "./FilterPopover.tsx";
-import TopicMap, { type MapCreation } from "./TopicMap.tsx";
+import TopicMap from "./TopicMap.tsx";
 import {
   buildCompetencyForest,
   coverageCounts,
@@ -25,55 +19,31 @@ import {
   type CompetencyRole,
 } from "../lib/goals.ts";
 import {
-  BLOOM_ORDER,
   CHILD_APPEND,
-  SOLO_ORDER,
-  NO_IDS,
-  KIND_ORDER,
-  COVERAGE_ORDER,
-  ROLE_ORDER,
   prefersReducedMotion,
-  valuesOf,
   displayValue,
   FILTER_LABELS,
   flattenForest,
   type Row,
-  type FilterKey,
   type LevelScale,
-  type GoalChanges,
   type Layout,
-  type CreationTier,
-  type CreationState,
   type AttributeKey,
-  type ColumnKey,
-  type ColumnPrefs,
 } from "./competencyTree/model.ts";
-import {
-  COLUMN_PREFS_KEY,
-  MIN_COLUMN_WIDTH,
-  MIN_GOAL_COLUMN_WIDTH,
-  COLUMNS,
-  COLUMN_BY_KEY,
-  DEFAULT_COLUMN_PREFS,
-  loadColumnPrefs,
-  gridTemplate,
-} from "./competencyTree/columns.ts";
+import { MIN_COLUMN_WIDTH, MIN_GOAL_COLUMN_WIDTH } from "./competencyTree/columns.ts";
 import { LooseGroupRow, DiagramAttributes } from "./competencyTree/DiagramRows.tsx";
 import { HeaderCell } from "./competencyTree/HeaderCell.tsx";
 import { DisplayMenu, LayoutSwitch } from "./competencyTree/Toolbar.tsx";
 import { TierGuideMenu, TierGuideStrip } from "./competencyTree/TierGuide.tsx";
-import { FoldIcon, CrossIcon } from "./competencyTree/icons.tsx";
-import { AppendKnob, GridRow, SessionName } from "./competencyTree/GridRow.tsx";
-
-// Lazily loaded so the heavy pdf.js bundle only ships once a source is opened, not on first paint.
-const SourcePdfPane = lazy(() => import("./SourcePdfPane.tsx"));
-/** Set once a reader dismissed a course's first-visit hint on how to read the table. */
-const tierGuideSeenKey = (courseId: number) => `learninggoalhub.tierGuide.seen.${courseId}`;
-
-// The grid's scroll area: it reaches the bottom of the window bar this gap, and never shrinks
-// below a few rows on a short window — there the page scrolls instead.
-const SCROLLER_BOTTOM_GAP = 32;
-const MIN_SCROLLER_HEIGHT = 320;
+import { FoldIcon } from "./competencyTree/icons.tsx";
+import { AppendKnob, GridRow } from "./competencyTree/GridRow.tsx";
+import { FilterChips } from "./competencyTree/FilterChips.tsx";
+import { SourcePanel } from "./competencyTree/SourcePanel.tsx";
+import { useColumnLayout } from "./competencyTree/useColumnLayout.ts";
+import { useGoalCreation } from "./competencyTree/useGoalCreation.ts";
+import { useGoalFilters } from "./competencyTree/useGoalFilters.ts";
+import { useHeaderHeight, useScrollerHeight } from "./competencyTree/useGridHeights.ts";
+import { usePendingEdits } from "./competencyTree/usePendingEdits.ts";
+import { useTierGuide } from "./competencyTree/useTierGuide.ts";
 
 /**
  * The competency tree as an Excel-like grid. Every goal attribute is a proper column with a funnel
@@ -114,103 +84,10 @@ export default function CompetencyTree({
   ) => void;
   onDelete: (goal: LearningGoal) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [creation, setCreation] = useState<CreationState | null>(null);
+  const create = useGoalCreation(courseId);
   // The typed topic being looked up in the slides; the creation field stays open behind the dialog.
   const [finding, setFinding] = useState<string | null>(null);
-  const createMutation = useMutation({
-    mutationFn: async (vars: CreationState) => {
-      if (vars.tier === 1) {
-        return createTopic(courseId, vars.text, vars.generate === true);
-      }
-      const result = await api.POST(
-        "/api/courses/{courseId}/learning-goals/{goalId}/children",
-        {
-          params: { path: { courseId, goalId: vars.parentGoalId! } },
-          // The tier of a childless node can't be read off its position, so it is stated.
-          body: { text: vars.text, role: vars.tier === 4 ? "KNOWLEDGE" : "SKILL" },
-        },
-      );
-      if (!result.data) {
-        throw new Error(
-          result.response.status === 409
-            ? "Knowledge nodes cannot have children."
-            : "Could not add the goal.",
-        );
-      }
-      return result.data;
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
-      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
-      await queryClient.invalidateQueries({ queryKey: ["courses"] });
-    },
-  });
-
-  const beginCreation = (tier: CreationTier, parentGoalId: number | null) => {
-    createMutation.reset();
-    setCreation({
-      key: `${tier}:${parentGoalId ?? "root"}`,
-      tier,
-      parentGoalId,
-      text: "",
-    });
-  };
-  const cancelCreation = () => {
-    if (!createMutation.isPending) setCreation(null);
-  };
-  const updateCreationText = (text: string) => {
-    if (createMutation.isError) createMutation.reset();
-    setCreation((current) => (current ? { ...current, text } : current));
-  };
-  const submitCreation = (generate = false) => {
-    if (!creation || creation.text.trim() === "") return;
-    createMutation.mutate(
-      { ...creation, text: creation.text.trim(), generate },
-      { onSuccess: () => setCreation(null) },
-    );
-  };
-
-  // Edits made in the grid show at once: they overlay the goals until the next fetch replaces the
-  // list, which then carries them for real.
-  const [pending, setPending] = useState<{
-    base: LearningGoal[];
-    changes: Map<number, GoalChanges>;
-  }>(() => ({ base: goals, changes: new Map() }));
-  const effectiveGoals = useMemo(() => {
-    if (pending.base !== goals || pending.changes.size === 0) return goals;
-    return goals.map((goal) => {
-      const changes = pending.changes.get(goal.id!);
-      if (!changes) return goal;
-      // A new wording invalidates the short label derived from the old one.
-      return {
-        ...goal,
-        ...changes,
-        ...(changes.text !== undefined ? { shortLabel: undefined } : {}),
-      };
-    });
-  }, [goals, pending]);
-  const updateGoal = (goalId: number, changes: GoalChanges) => {
-    setPending((prev) => {
-      const next = new Map(prev.base === goals ? prev.changes : undefined);
-      next.set(goalId, { ...next.get(goalId), ...changes });
-      return { base: goals, changes: next };
-    });
-    // A failed save leaves the list unchanged, so the edit would otherwise stay on screen as if saved.
-    const rollback = () =>
-      setPending((prev) => {
-        const current = prev.changes.get(goalId);
-        if (!current) return prev;
-        const kept = Object.fromEntries(
-          Object.entries(current).filter(([key]) => !(key in changes)),
-        ) as GoalChanges;
-        const next = new Map(prev.changes);
-        if (Object.keys(kept).length === 0) next.delete(goalId);
-        else next.set(goalId, kept);
-        return { ...prev, changes: next };
-      });
-    onUpdate(goalId, changes, rollback);
-  };
+  const { effectiveGoals, updateGoal } = usePendingEdits(goals, onUpdate);
 
   const forest = useMemo(
     () => buildCompetencyForest(effectiveGoals),
@@ -250,96 +127,11 @@ export default function CompetencyTree({
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   // One map is open at a time.
   const [openTopicId, setOpenTopicId] = useState<number | null>(null);
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
-    role: new Set(),
-    kind: new Set(),
-    bloom: new Set(),
-    solo: new Set(),
-    document: new Set(),
-    session: new Set(),
-    coverage: new Set(),
-  });
   // Rows show short labels by default; the toolbar switch swaps in every goal's full wording.
   const [fullWording, setFullWording] = useState(false);
-  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(loadColumnPrefs);
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(columnPrefs));
-    } catch {
-      // Without storage the layout simply lasts until the page is left.
-    }
-  }, [columnPrefs]);
+  const columns = useColumnLayout();
   const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
-  // The strip explaining the tiers shows on a reader's first visit to a course; once dismissed it
-  // folds into the toolbar's "How to read this" button, which flashes briefly to show where it went.
-  const [tierGuideOpen, setTierGuideOpen] = useState(false);
-  const [tierGuideSeen, setTierGuideSeen] = useState(() => {
-    try {
-      return localStorage.getItem(tierGuideSeenKey(courseId)) != null;
-    } catch {
-      return false;
-    }
-  });
-  const [tierGuideFlash, setTierGuideFlash] = useState(false);
-  const dismissTierGuide = () => {
-    setTierGuideSeen(true);
-    setTierGuideFlash(true);
-    try {
-      localStorage.setItem(tierGuideSeenKey(courseId), "1");
-    } catch {
-      // Without storage the strip simply returns on the next visit.
-    }
-  };
-  useEffect(() => {
-    if (!tierGuideFlash) return;
-    const timer = window.setTimeout(() => setTierGuideFlash(false), 1600);
-    return () => window.clearTimeout(timer);
-  }, [tierGuideFlash]);
-  const visibleAttributes = columnPrefs.order.filter((key) => !columnPrefs.hidden.includes(key));
-  const visibleColumns = (["text", ...visibleAttributes] as ColumnKey[]).map(
-    (key) => COLUMN_BY_KEY.get(key)!,
-  );
-  const gridCols = gridTemplate(
-    visibleColumns.map((column) => column.key),
-    columnPrefs.widths,
-  );
-  const tableMinWidth = visibleColumns.reduce(
-    (sum, column) => sum + (columnPrefs.widths[column.key] ?? column.width),
-    0,
-  );
-  // The header being dragged to a new place, and the edge of the header it would land on.
-  const [draggedColumn, setDraggedColumn] = useState<AttributeKey | null>(null);
-  const [dropTarget, setDropTarget] = useState<{
-    key: ColumnKey;
-    side: "before" | "after";
-  } | null>(null);
-  const endColumnDrag = () => {
-    setDraggedColumn(null);
-    setDropTarget(null);
-  };
-  const moveColumn = (key: AttributeKey, target: ColumnKey, side: "before" | "after") =>
-    setColumnPrefs((prev) => {
-      const order = prev.order.filter((other) => other !== key);
-      // Nothing moves in front of the learning-goal column.
-      const index = target === "text" ? 0 : order.indexOf(target) + (side === "after" ? 1 : 0);
-      order.splice(index, 0, key);
-      return { ...prev, order };
-    });
-  const resizeColumn = (key: ColumnKey, width: number | null) =>
-    setColumnPrefs((prev) => {
-      const widths = { ...prev.widths };
-      if (width == null) delete widths[key];
-      else widths[key] = width;
-      return { ...prev, widths };
-    });
-  const toggleColumnHidden = (key: AttributeKey) =>
-    setColumnPrefs((prev) => ({
-      ...prev,
-      hidden: prev.hidden.includes(key)
-        ? prev.hidden.filter((other) => other !== key)
-        : [...prev.hidden, key],
-    }));
+  const tierGuide = useTierGuide(courseId);
   // The column (by key) whose filter popover is open.
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
@@ -379,9 +171,9 @@ export default function CompetencyTree({
       openFilter != null ||
       openLevel != null ||
       editingId != null ||
-      creation != null ||
+      create.creation != null ||
       displayMenuOpen ||
-      tierGuideOpen
+      tierGuide.open
     )
       return;
     const onKey = (e: KeyboardEvent) => {
@@ -392,84 +184,26 @@ export default function CompetencyTree({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sourceGoalId, openFilter, openLevel, editingId, creation, displayMenuOpen, tierGuideOpen]);
+  }, [sourceGoalId, openFilter, openLevel, editingId, create.creation, displayMenuOpen, tierGuide.open]);
 
-  const filtering =
-    search.trim() !== "" || Object.values(filters).some((s) => s.size > 0);
-
-  // Whether a row survives the search and every filter, optionally ignoring one key: the popover's
-  // per-value counts ask what one column's filter would leave once the others have had their say.
-  const matchesRow = useCallback(
-    (row: Row, ignore: FilterKey | null = null): boolean => {
-      const needle = search.trim().toLowerCase();
-      if (
-        needle &&
-        ![row.goal.shortLabel, row.goal.text].some((value) =>
-          (value ?? "").toLowerCase().includes(needle),
-        )
-      )
-        return false;
-      for (const key of Object.keys(filters) as FilterKey[]) {
-        if (key === ignore) continue;
-        const set = filters[key];
-        if (set.size > 0 && !valuesOf(row, key).some((v) => set.has(v)))
-          return false;
-      }
-      return true;
-    },
-    [search, filters],
-  );
-
-  // Rows surviving the filters, plus their non-matching ancestors as dimmed context.
-  const { matchIds, contextIds } = useMemo(() => {
-    if (!filtering)
-      return {
-        matchIds: null as Set<number> | null,
-        contextIds: new Set<number>(),
-      };
-    const matches = new Set(rows.filter((row) => matchesRow(row)).map((r) => r.id));
-    const context = new Set<number>();
-    for (const id of matches) {
-      let parent = byId.get(id)?.parent ?? null;
-      while (parent != null && !matches.has(parent)) {
-        context.add(parent);
-        parent = byId.get(parent)?.parent ?? null;
-      }
-    }
-    return {
-      matchIds: matches,
-      contextIds: context,
-    };
-  }, [rows, byId, matchesRow, filtering]);
-
-  // A filtered list opens every branch down to its matches, and rows collapsed in it stay collapsed
-  // only while the same filter holds: changing the filter or search starts fully open again. This
-  // is kept apart from `expanded`, so clearing the filter returns to the tree as it was left.
-  const filterSignature = JSON.stringify([
-    search.trim(),
-    Object.entries(filters).map(([key, values]) => [key, [...values].sort()]),
-  ]);
-  const [filterFold, setFilterFold] = useState<{ signature: string; collapsed: Set<number> }>({
-    signature: "",
-    collapsed: new Set(),
-  });
-  const filterCollapsed =
-    filterFold.signature === filterSignature ? filterFold.collapsed : NO_IDS;
-  const setFilterCollapsed = (update: (collapsed: Set<number>) => Set<number>) =>
-    setFilterFold((prev) => ({
-      signature: filterSignature,
-      collapsed: update(prev.signature === filterSignature ? prev.collapsed : new Set()),
-    }));
-  // How many children a row shows in the filtered list, which decides whether it gets a caret.
-  const filteredChildCount = useMemo(() => {
-    const map = new Map<number, number>();
-    if (!matchIds) return map;
-    for (const row of rows) {
-      if (row.parent == null || !(matchIds.has(row.id) || contextIds.has(row.id))) continue;
-      map.set(row.parent, (map.get(row.parent) ?? 0) + 1);
-    }
-    return map;
-  }, [rows, matchIds, contextIds]);
+  const {
+    search,
+    setSearch,
+    filters,
+    filtering,
+    matchIds,
+    contextIds,
+    filterCollapsed,
+    setFilterCollapsed,
+    filteredChildCount,
+    filterOptions,
+    filterCounts,
+    toggleFilterValue,
+    clearFilter,
+    clearAll,
+    matchCount,
+    activeChips,
+  } = useGoalFilters(rows, byId);
   const isOpen = (id: number) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
   // The goals under a topic that sit in no skill, gathered under one "Additional sub-skills"
   // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
@@ -481,39 +215,6 @@ export default function CompetencyTree({
   const childCountOf = (id: number) =>
     (filtering ? filteredChildCount : visibleChildCount).get(id) ?? 0;
 
-  // Only offer filter values that actually occur, so no filter can promise a value that has no row
-  // to land on.
-  const filterOptions = useMemo(() => {
-    const present = (key: FilterKey) =>
-      new Set(rows.flatMap((r) => valuesOf(r, key)).filter((v) => v !== ""));
-    const ordered = (order: string[], values: Set<string>) =>
-      order.filter((v) => values.has(v));
-    return {
-      role: ordered(ROLE_ORDER, present("role")),
-      kind: ordered(KIND_ORDER, present("kind")),
-      bloom: ordered(BLOOM_ORDER, present("bloom")),
-      solo: ordered(SOLO_ORDER, present("solo")),
-      document: [...present("document")].sort((a, b) => a.localeCompare(b)),
-      session: [...present("session")].sort((a, b) => a.localeCompare(b)),
-      coverage: ordered(COVERAGE_ORDER, present("coverage")),
-    };
-  }, [rows]);
-
-  // How many rows each filter value would leave, counted against the search and the other columns'
-  // filters but not its own — so the numbers in one popover stay comparable as you tick values.
-  const filterCounts = useMemo(() => {
-    const counts = {} as Record<FilterKey, Map<string, number>>;
-    for (const key of Object.keys(filters) as FilterKey[]) {
-      const map = new Map<string, number>();
-      for (const row of rows) {
-        if (!matchesRow(row, key)) continue;
-        for (const value of valuesOf(row, key))
-          if (value !== "") map.set(value, (map.get(value) ?? 0) + 1);
-      }
-      counts[key] = map;
-    }
-    return counts;
-  }, [rows, filters, matchesRow]);
 
   // ── Row animation (map language). A single FLIP pass after each render: surviving rows
   // (measured last render) glide to their new position, and rows a table branch just revealed
@@ -581,46 +282,10 @@ export default function CompetencyTree({
     revealOpened.current = false;
   });
 
-  // The grid ends at the bottom of the window, whatever stands above it — page title, toolbar, the
-  // tier strip, a row of filter chips. A fixed slice of the viewport had to leave room for the
-  // tallest of those, so it wasted rows whenever they were absent.
-  const [scrollerHeight, setScrollerHeight] = useState<number>();
-  useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    // Measured against the document, not the viewport, so scrolling the page never resizes the grid.
-    const measure = () =>
-      setScrollerHeight(
-        Math.max(
-          MIN_SCROLLER_HEIGHT,
-          window.innerHeight -
-            (scroller.getBoundingClientRect().top + window.scrollY) -
-            SCROLLER_BOTTOM_GAP,
-        ),
-      );
-    measure();
-    // Anything appearing above the grid moves it down; the body's height change catches all of it.
-    const observer = new ResizeObserver(measure);
-    observer.observe(document.body);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
-
-  // The open topic row sticks right under the column header, so it needs the header's height.
-  const [headerHeight, setHeaderHeight] = useState(0);
+  const scrollerHeight = useScrollerHeight(scrollerRef);
   const hasTree = forest.length > 0;
-  useLayoutEffect(() => {
-    const header = headerRef.current;
-    if (!header) return;
-    const measure = () => setHeaderHeight(header.offsetHeight);
-    const observer = new ResizeObserver(measure);
-    observer.observe(header);
-    measure();
-    return () => observer.disconnect();
-  }, [hasTree]);
+  // The open topic row sticks right under the column header, so it needs the header's height.
+  const headerHeight = useHeaderHeight(headerRef, hasTree);
 
   const toggleMap = (id: number) => {
     if (openTopicId !== id) revealOpened.current = true;
@@ -710,42 +375,6 @@ export default function CompetencyTree({
   );
   const allOpen = parentIds.length > 0 && parentIds.every(isOpen);
 
-  const mapCreation: MapCreation = {
-    activeKey: creation?.key ?? null,
-    value: creation?.text ?? "",
-    pending: createMutation.isPending,
-    error: createMutation.isError
-      ? (createMutation.error as Error).message
-      : undefined,
-    begin: beginCreation,
-    change: updateCreationText,
-    submit: submitCreation,
-    cancel: cancelCreation,
-  };
-
-  const toggleFilterValue = (key: FilterKey, value: string) =>
-    setFilters((prev) => {
-      const next = new Set(prev[key]);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return { ...prev, [key]: next };
-    });
-
-  const clearFilter = (key: FilterKey) =>
-    setFilters((prev) => ({ ...prev, [key]: new Set() }));
-
-  const clearAll = () => {
-    setSearch("");
-    setFilters({
-      role: new Set(),
-      kind: new Set(),
-      bloom: new Set(),
-      solo: new Set(),
-      document: new Set(),
-      session: new Set(),
-      coverage: new Set(),
-    });
-  };
 
   if (!hasTree) {
     // Topics are named from lecture outcomes only, so a course whose sourced goals all come from
@@ -822,8 +451,8 @@ export default function CompetencyTree({
         open={isOpen(row.id)}
         childCount={childCountOf(row.id)}
         mapOpen={mapOpen}
-        gridCols={gridCols}
-        columns={visibleAttributes}
+        gridCols={columns.gridCols}
+        columns={columns.visibleAttributes}
         stickyTop={headerHeight}
         onToggle={onToggle}
         onToggleMap={toggleMap}
@@ -850,7 +479,7 @@ export default function CompetencyTree({
         onAddChild={
           canAddChild
             ? () => {
-                beginCreation(childAppend.tier, row.id);
+                create.begin(childAppend.tier, row.id);
                 // The field opens beneath the row's children, so they have to be showing.
                 if (!expanded.has(row.id)) expand(row.id);
               }
@@ -868,7 +497,7 @@ export default function CompetencyTree({
           role="row"
           className="border-b border-hestia-border bg-hestia-bg shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]"
         >
-          <div role="gridcell" aria-colspan={visibleColumns.length}>
+          <div role="gridcell" aria-colspan={columns.visibleColumns.length}>
             <TopicMap
               topic={topicNode}
               sequence={row.number}
@@ -880,14 +509,14 @@ export default function CompetencyTree({
               }}
               onDelete={onDelete}
               onClose={() => setOpenTopicId(null)}
-              creation={mapCreation}
+              creation={create.mapCreation}
               fullWording={fullWording}
               attributesOf={(node) => {
                 const nodeRow = byId.get(node.goal.id!);
                 return nodeRow ? (
                   <DiagramAttributes
                     row={nodeRow}
-                    columns={visibleAttributes}
+                    columns={columns.visibleAttributes}
                     levelFlag={flags.get(nodeRow.id)}
                     openLevel={openLevel?.id === nodeRow.id ? openLevel.scale : null}
                     onToggleLevel={toggleLevel}
@@ -948,7 +577,7 @@ export default function CompetencyTree({
               ? CHILD_APPEND[parentRole]
               : undefined;
         const appendKey = append ? `${append.tier}:${parentGoalId ?? "root"}` : null;
-        const appendActive = appendKey != null && creation?.key === appendKey;
+        const appendActive = appendKey != null && create.creation?.key === appendKey;
         const resting =
           depth === 0 || parentRole === "topic";
         if (append && (appendActive || resting)) {
@@ -961,24 +590,22 @@ export default function CompetencyTree({
               color={append.color}
               last={last}
               active={appendActive}
-              value={creation?.text ?? ""}
-              pending={createMutation.isPending}
+              value={create.creation?.text ?? ""}
+              pending={create.pending}
               error={
-                appendActive && createMutation.isError
-                  ? (createMutation.error as Error).message
-                  : undefined
+                appendActive ? create.error : undefined
               }
-              onStart={() => beginCreation(append.tier, parentGoalId)}
-              onChange={updateCreationText}
-              onSubmit={() => submitCreation()}
-              onCancel={cancelCreation}
+              onStart={() => create.begin(append.tier, parentGoalId)}
+              onChange={create.updateText}
+              onSubmit={() => create.submit()}
+              onCancel={create.cancel}
               // Only a topic can be generated; the tiers below it are added by hand.
-              onGenerate={append.tier === 1 ? () => submitCreation(true) : undefined}
-              generating={createMutation.variables?.generate === true}
+              onGenerate={append.tier === 1 ? () => create.submit(true) : undefined}
+              generating={create.generating}
               onFind={
                 append.tier === 1
                   ? () => {
-                      const text = creation?.text.trim() ?? "";
+                      const text = create.creation?.text.trim() ?? "";
                       if (text !== "") setFinding(text);
                     }
                   : undefined
@@ -1008,8 +635,8 @@ export default function CompetencyTree({
             // Never a match itself, so a filtered list dims it like any other ancestor.
             context={filtering}
             items={loose}
-            gridCols={gridCols}
-            columns={visibleAttributes}
+            gridCols={columns.gridCols}
+            columns={columns.visibleAttributes}
             onToggle={onToggle}
           />,
         );
@@ -1022,36 +649,6 @@ export default function CompetencyTree({
   };
   walk(childrenOf.get(null) ?? [], 0, null, null, true);
 
-
-  const matchCount = matchIds?.size ?? rows.length;
-  // Each chip carries what it alone leaves, counted the way the popover counts a value: against the
-  // search and every other chip, but not against its own column. The search chip's own count is the
-  // whole result, since nothing else narrows it further.
-  const activeChips: {
-    label: string;
-    value: string;
-    count: number;
-    onRemove: () => void;
-  }[] = [];
-  if (search.trim())
-    activeChips.push({
-      label: "Search",
-      value: `“${search.trim()}”`,
-      count: matchCount,
-      onRemove: () => setSearch(""),
-    });
-  for (const column of COLUMNS) {
-    for (const key of column.filterKeys ?? []) {
-      for (const value of filters[key]) {
-        activeChips.push({
-          label: FILTER_LABELS[key],
-          value: displayValue(key, value),
-          count: filterCounts[key].get(value) ?? 0,
-          onRemove: () => toggleFilterValue(key, value),
-        });
-      }
-    }
-  }
 
   return (
     // The grid keeps the page's reading width, and widens only to make room for the PDF panel.
@@ -1101,72 +698,38 @@ export default function CompetencyTree({
         <DisplayMenu
           fullWording={fullWording}
           onChangeWording={setFullWording}
-          prefs={columnPrefs}
+          prefs={columns.prefs}
           open={displayMenuOpen}
           onToggleOpen={() => setDisplayMenuOpen((prev) => !prev)}
           onClose={() => setDisplayMenuOpen(false)}
-          onToggleHidden={toggleColumnHidden}
-          onReset={() => setColumnPrefs(DEFAULT_COLUMN_PREFS)}
+          onToggleHidden={columns.toggleColumnHidden}
+          onReset={columns.resetPrefs}
         />
         <TierGuideMenu
-          open={tierGuideOpen}
-          flash={tierGuideFlash}
-          onToggleOpen={() => setTierGuideOpen((prev) => !prev)}
-          onClose={() => setTierGuideOpen(false)}
+          open={tierGuide.open}
+          flash={tierGuide.flash}
+          onToggleOpen={() => tierGuide.setOpen((prev) => !prev)}
+          onClose={() => tierGuide.setOpen(false)}
         />
       </div>
 
-      {!tierGuideSeen && (
+      {!tierGuide.seen && (
         <TierGuideStrip
           onOpenGuide={() => {
-            dismissTierGuide();
-            setTierGuideOpen(true);
+            tierGuide.dismiss();
+            tierGuide.setOpen(true);
           }}
-          onDismiss={dismissTierGuide}
+          onDismiss={tierGuide.dismiss}
         />
       )}
 
       {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {activeChips.map((chip, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--hestia-primary)_35%,transparent)] bg-hestia-primary-muted py-0.5 pl-2.5 pr-1.5 text-xs"
-            >
-              <span>
-                <b className="font-semibold">{chip.label}:</b> {chip.value}
-              </span>
-              <span className="border-l border-[color-mix(in_srgb,var(--hestia-primary)_30%,transparent)] pl-1.5 tabular-nums text-hestia-text-muted">
-                {chip.count === 1 ? "1 goal" : `${chip.count} goals`}
-              </span>
-              <button
-                type="button"
-                onClick={chip.onRemove}
-                aria-label={`Remove filter ${chip.label} ${chip.value}`}
-                className="flex rounded-full text-hestia-text-muted transition hover:text-hestia-danger"
-              >
-                <CrossIcon />
-              </button>
-            </span>
-          ))}
-          {/* What the chips leave together, which only says something a single chip's own count
-              does not once a second chip narrows it. */}
-          {activeChips.length > 1 && (
-            <span className="text-xs text-hestia-text-muted" aria-live="polite">
-              {matchCount === 1 ? "1 goal" : `${matchCount} goals`} of{" "}
-              {rows.length}
-            </span>
-          )}
-          {activeChips.length > 1 && (
-            <button
-              type="button"
-              onClick={clearAll}
-              className="text-xs text-hestia-text-muted underline transition hover:text-hestia-text"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
+        <FilterChips
+          chips={activeChips}
+          matchCount={matchCount}
+          total={rows.length}
+          onClearAll={clearAll}
+        />
       )}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
@@ -1180,27 +743,27 @@ export default function CompetencyTree({
           <div
             role="table"
             aria-label="Competency tree"
-            style={{ minWidth: tableMinWidth }}
+            style={{ minWidth: columns.tableMinWidth }}
           >
             <div
               ref={headerRef}
               role="row"
               className="sticky top-0 z-10 grid rounded-t-xl border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))]"
-              style={{ gridTemplateColumns: gridCols }}
+              style={{ gridTemplateColumns: columns.gridCols }}
             >
-              {visibleColumns.map((column) => (
+              {columns.visibleColumns.map((column) => (
                 <HeaderCell
                   key={column.key}
                   column={column}
-                  dragged={draggedColumn === column.key}
-                  dropSide={dropTarget?.key === column.key ? dropTarget.side : null}
+                  dragged={columns.draggedColumn === column.key}
+                  dropSide={columns.dropTarget?.key === column.key ? columns.dropTarget.side : null}
                   onDragStart={
                     column.key === "text"
                       ? undefined
-                      : () => setDraggedColumn(column.key as AttributeKey)
+                      : () => columns.setDraggedColumn(column.key as AttributeKey)
                   }
                   onDragOver={
-                    draggedColumn == null
+                    columns.draggedColumn == null
                       ? undefined
                       : (side) => {
                           const target = {
@@ -1208,18 +771,18 @@ export default function CompetencyTree({
                             // Nothing lands in front of the learning-goal column.
                             side: column.key === "text" ? ("after" as const) : side,
                           };
-                          if (dropTarget?.key !== target.key || dropTarget.side !== target.side)
-                            setDropTarget(target);
+                          if (columns.dropTarget?.key !== target.key || columns.dropTarget.side !== target.side)
+                            columns.setDropTarget(target);
                         }
                   }
                   onDrop={() => {
-                    if (draggedColumn != null && dropTarget != null)
-                      moveColumn(draggedColumn, dropTarget.key, dropTarget.side);
-                    endColumnDrag();
+                    if (columns.draggedColumn != null && columns.dropTarget != null)
+                      columns.moveColumn(columns.draggedColumn, columns.dropTarget.key, columns.dropTarget.side);
+                    columns.endColumnDrag();
                   }}
-                  onDragEnd={endColumnDrag}
+                  onDragEnd={columns.endColumnDrag}
                   minWidth={column.key === "text" ? MIN_GOAL_COLUMN_WIDTH : MIN_COLUMN_WIDTH}
-                  onResize={(width) => resizeColumn(column.key, width)}
+                  onResize={(width) => columns.resizeColumn(column.key, width)}
                   filterActive={(column.filterKeys ?? []).some(
                     (key) => filters[key].size > 0,
                   )}
@@ -1265,54 +828,13 @@ export default function CompetencyTree({
         </div>
       </div>
       {openSource && (
-        <div
-          ref={sourcePaneRef}
-          tabIndex={-1}
-          className="w-full outline-none lg:sticky lg:top-4 lg:w-auto lg:shrink-0"
-        >
-          <ErrorBoundary
-            resetKey={openSource.documentId}
-            fallback={
-              <div className="flex min-h-[32rem] w-full flex-col items-center justify-center gap-2 rounded-lg border border-hestia-border bg-hestia-surface text-center text-xs text-hestia-text-muted lg:w-[min(44vw,42rem)]">
-                <p>Could not load the PDF preview.</p>
-                {openSource.contentAvailable && (
-                  <a
-                    href={`${API_PREFIX}/api/courses/${courseId}/documents/${openSource.documentId}/content${openSource.page ? `#page=${openSource.page}` : ""}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-hestia-primary underline underline-offset-2"
-                  >
-                    Open PDF in a new tab
-                  </a>
-                )}
-              </div>
-            }
-          >
-            <Suspense
-              fallback={
-                <div className="flex min-h-[32rem] w-full items-center justify-center rounded-lg border border-hestia-border bg-hestia-surface text-xs text-hestia-text-muted lg:w-[min(44vw,42rem)]">
-                  Loading preview…
-                </div>
-              }
-            >
-              <SourcePdfPane
-                courseId={courseId}
-                source={openSource}
-                onClose={() => setSourceGoalId(null)}
-                headerExtra={
-                  sourceRow?.session ? (
-                    <SessionName
-                      key={sourceRow.goal.hierarchy?.sessionId ?? sourceRow.session}
-                      courseId={courseId}
-                      sessionId={sourceRow.goal.hierarchy?.sessionId}
-                      label={sourceRow.session}
-                    />
-                  ) : undefined
-                }
-              />
-            </Suspense>
-          </ErrorBoundary>
-        </div>
+        <SourcePanel
+          courseId={courseId}
+          row={sourceRow}
+          source={openSource}
+          paneRef={sourcePaneRef}
+          onClose={() => setSourceGoalId(null)}
+        />
       )}
       </div>
       {finding != null && (
@@ -1322,7 +844,7 @@ export default function CompetencyTree({
           onClose={() => setFinding(null)}
           onCreated={() => {
             setFinding(null);
-            setCreation(null);
+            create.close();
           }}
         />
       )}
