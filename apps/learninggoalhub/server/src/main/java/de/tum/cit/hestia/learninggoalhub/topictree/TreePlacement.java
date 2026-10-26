@@ -1,7 +1,7 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.MenuTopic;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.Placement;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer.MenuTopic;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer.Placement;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,8 +28,8 @@ record TreePlacement(List<List<LearningGoal>> underTopic,
     static TreePlacement place(TopicTreeSynthesizer synthesizer, List<MenuTopic> menu,
                                List<LearningGoal> goals, String modelOverride) {
         TreePlacement result = empty(menu);
-        List<LearningGoal> skills = goals.stream().filter(CompetencyTreeService::isSkillTier).toList();
-        List<LearningGoal> knowledge = goals.stream().filter(g -> !CompetencyTreeService.isSkillTier(g)).toList();
+        List<LearningGoal> skills = goals.stream().filter(TopicTreeService::isSkillTier).toList();
+        List<LearningGoal> knowledge = goals.stream().filter(g -> !TopicTreeService.isSkillTier(g)).toList();
         List<MenuTopic> topicsOnly = menu.stream().map(topic -> new MenuTopic(topic.label(), List.of())).toList();
         result.add(skills, call(synthesizer, menu, skills, modelOverride));
         result.add(knowledge, call(synthesizer, topicsOnly, knowledge, modelOverride));

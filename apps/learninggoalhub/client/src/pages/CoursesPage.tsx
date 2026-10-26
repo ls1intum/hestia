@@ -259,7 +259,7 @@ export default function CoursesPage() {
                 >
                   {/* The hover tint sits on the whole row, not on the link alone: otherwise it
                       stops short of the caret and the ⋮ and reads as a floating band. Same soft
-                      primary wash the competency tree-grid uses for its rows. */}
+                      primary wash the Topic tree grid uses for its rows. */}
                   <div className="group relative flex h-12 items-center px-4 transition-colors hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]">
                     <button
                       type="button"
@@ -343,7 +343,7 @@ export default function CoursesPage() {
                       </span>
                       <span aria-hidden />
                     </Link>
-                    {/* Revealed on hover or keyboard focus, like the competency table's row actions. */}
+                    {/* Revealed on hover or keyboard focus, like the Topic tree table's row actions. */}
                     <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-0.5 opacity-0 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100">
                       <RowAction
                         label="Rename course"
@@ -517,7 +517,7 @@ function StatusBadge({
 }) {
   let label: string;
   let className: string;
-  // Same chip shape and tints as the competency table's tier chips.
+  // Same chip shape and tints as the Topic tree table's tier chips.
   if (extractionStatus === "FAILED" || extractionStatus === "RUNNING") {
     label = extractionStatus === "FAILED" ? "Failed" : "Interrupted";
     className =

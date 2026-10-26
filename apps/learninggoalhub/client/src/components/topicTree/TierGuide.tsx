@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import AnchoredPopover from "../AnchoredPopover.tsx";
 import Button from "../Button.tsx";
-import type { CompetencyRole } from "../../lib/goals.ts";
+import type { TreeRole } from "../../lib/goals.ts";
 import { TierChip } from "./Chips.tsx";
 import { InfoIcon, DocumentIcon, GeneratedIcon } from "./icons.tsx";
 
@@ -51,7 +51,7 @@ export function TierGuideMenu({
               tiers={[
                 ["topic", "A theme of the course. It has no quote and no Bloom or SOLO level."],
                 [
-                  "capability",
+                  "skill",
                   "Names what a group of sub-skills adds up to, at least at their level. Hover its source to see which.",
                 ],
               ]}
@@ -60,7 +60,7 @@ export function TierGuideMenu({
               icon={<DocumentIcon />}
               heading="From your course material"
               tiers={[
-                ["skill", "Something students should be able to do, with the passage it was read from."],
+                ["subSkill", "Something students should be able to do, with the passage it was read from."],
                 ["knowledge", "A fact, term or concept a sub-skill relies on, also with its passage."],
               ]}
             />
@@ -92,7 +92,7 @@ export function TierGuideGroup({
 }: {
   icon: ReactNode;
   heading: string;
-  tiers: [CompetencyRole, string][];
+  tiers: [TreeRole, string][];
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-hestia-border">

@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
@@ -292,7 +292,7 @@ class ExtractionControllerTest {
 
     /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
     @Test
-    void competencyTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
+    void topicTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
         Course course = courseRepository.save(new Course("Tree stage without a held transaction"));
         documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GoalSource, LearningGoal } from "../api/client.ts";
 import {
-  buildCompetencyForest,
+  buildTopicForest,
   coverageCounts,
   coverageOf,
   levelFlags,
@@ -52,12 +52,12 @@ describe("coverageOf", () => {
 describe("coverageCounts", () => {
   it("rolls sub-skills up to their skill and topic, ignoring knowledge, source-less and exam nodes", () => {
     const root = topic();
-    const capability = goal({ origin: "SYNTHESIZED", parent: root });
+    const skillGoal = goal({ origin: "SYNTHESIZED", parent: root });
     const goals = [
       root,
-      capability,
-      goal({ kinds: ["LECTURE"], parent: capability }),
-      goal({ kinds: ["LECTURE", "EXERCISE"], parent: capability }),
+      skillGoal,
+      goal({ kinds: ["LECTURE"], parent: skillGoal }),
+      goal({ kinds: ["LECTURE", "EXERCISE"], parent: skillGoal }),
       goal({ kinds: ["EXERCISE"], parent: root }),
       goal({ kinds: [undefined], parent: root }),
       goal({ origin: "EXAM", role: undefined, bloomLevel: "APPLY", parent: root }),
@@ -65,7 +65,7 @@ describe("coverageCounts", () => {
     const knowledgeParent = goals[2];
     goals.push(goal({ role: "KNOWLEDGE", kinds: ["EXERCISE"], parent: knowledgeParent }));
 
-    const [tree] = buildCompetencyForest(goals);
+    const [tree] = buildTopicForest(goals);
 
     expect(coverageCounts(tree)).toEqual({
       lecture: 1,
@@ -76,12 +76,12 @@ describe("coverageCounts", () => {
       total: 4,
       practised: 2,
     });
-    const skill = tree.children.find((child) => child.role === "capability")!;
+    const skill = tree.children.find((child) => child.role === "skill")!;
     expect(coverageCounts(skill)).toMatchObject({ total: 2, practised: 1, lecture: 1, both: 1 });
   });
 });
 
-describe("buildCompetencyForest", () => {
+describe("buildTopicForest", () => {
   it("gives an exam goal under a topic the tier its role or Bloom level says", () => {
     const root = topic();
     const apply = goal({ origin: "EXAM", role: "SKILL", bloomLevel: "APPLY", parent: root, lectureOrder: 0 });
@@ -89,9 +89,9 @@ describe("buildCompetencyForest", () => {
     // Exam goals created before the tier was stored fall back to Bloom.
     const legacy = goal({ origin: "EXAM", role: undefined, bloomLevel: "UNDERSTAND", parent: root, lectureOrder: 2 });
 
-    const [tree] = buildCompetencyForest([root, apply, recall, legacy]);
+    const [tree] = buildTopicForest([root, apply, recall, legacy]);
 
-    expect(tree.children.map((child) => child.role)).toEqual(["skill", "knowledge", "knowledge"]);
+    expect(tree.children.map((child) => child.role)).toEqual(["subSkill", "knowledge", "knowledge"]);
   });
 });
 
@@ -99,7 +99,7 @@ describe("levelFlags", () => {
   const forestOf = (...children: Partial<LearningGoal & { kinds: Kind[] }>[]) => {
     const root = topic();
     const goals = [root, ...children.map((child) => goal({ ...child, parent: root }))];
-    return { forest: buildCompetencyForest(goals), goals };
+    return { forest: buildTopicForest(goals), goals };
   };
 
   it("does not flag a lecture at UNDERSTAND practised at APPLY", () => {

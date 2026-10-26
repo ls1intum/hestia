@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

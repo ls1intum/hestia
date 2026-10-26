@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamSubmissionRepository;
@@ -216,7 +216,7 @@ class ExamGoalControllerTest {
                 .andExpect(jsonPath("$.content", Matchers.hasSize(2)))
                 .andExpect(jsonPath("$.content[1].examTask.text").value("Task two"))
                 .andExpect(jsonPath("$.content[1].examTask.taskType").value("freeText"));
-        // Without a competency tree there is nothing to place the goals under.
+        // Without a Topic tree there is nothing to place the goals under.
         Mockito.verify(topicTreeSynthesizer, Mockito.never()).place(anyList(), anyList(), any());
     }
 

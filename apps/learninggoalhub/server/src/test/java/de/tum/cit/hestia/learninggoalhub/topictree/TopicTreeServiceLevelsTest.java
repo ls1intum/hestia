@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test;
  * A capability's levels are classified from its generated name, which reads as a summary of the
  * outcomes beneath it. These cases pin the correction: the members decide the floor.
  */
-class CompetencyTreeServiceLevelsTest {
+class TopicTreeServiceLevelsTest {
 
     @Test
     void raisesACapabilityToTheHighestBloomLevelAmongItsMembers() {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL);
 
-        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(classified,
+        TaxonomyClassification raised = TopicTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.UNDERSTAND, BloomLevel.ANALYZE, BloomLevel.APPLY), List.of());
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.ANALYZE);
@@ -31,7 +31,7 @@ class CompetencyTreeServiceLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL);
 
-        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(classified,
+        TaxonomyClassification raised = TopicTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.RELATIONAL));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
@@ -44,14 +44,14 @@ class CompetencyTreeServiceLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.RELATIONAL);
 
-        assertThat(CompetencyTreeService.atLeastChildLevels(classified,
+        assertThat(TopicTreeService.atLeastChildLevels(classified,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.UNISTRUCTURAL, SoloLevel.MULTISTRUCTURAL)))
                 .isSameAs(classified);
     }
 
     @Test
     void fallsBackToTheMemberFloorWhenClassificationIsMissing() {
-        TaxonomyClassification raised = CompetencyTreeService.atLeastChildLevels(null,
+        TaxonomyClassification raised = TopicTreeService.atLeastChildLevels(null,
                 List.of(BloomLevel.APPLY), List.of(SoloLevel.MULTISTRUCTURAL, SoloLevel.UNISTRUCTURAL));
 
         assertThat(raised.bloom()).isEqualTo(BloomLevel.APPLY);
@@ -64,7 +64,7 @@ class CompetencyTreeServiceLevelsTest {
         TaxonomyClassification classified =
                 new TaxonomyClassification(BloomLevel.UNDERSTAND, SoloLevel.MULTISTRUCTURAL);
 
-        assertThat(CompetencyTreeService.atLeastChildLevels(classified, List.of(), List.of())).isSameAs(classified);
-        assertThat(CompetencyTreeService.atLeastChildLevels(null, List.of(), List.of())).isNull();
+        assertThat(TopicTreeService.atLeastChildLevels(classified, List.of(), List.of())).isSameAs(classified);
+        assertThat(TopicTreeService.atLeastChildLevels(null, List.of(), List.of())).isNull();
     }
 }

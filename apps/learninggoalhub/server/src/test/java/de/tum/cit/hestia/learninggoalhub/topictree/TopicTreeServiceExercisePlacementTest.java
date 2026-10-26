@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,9 +16,9 @@ import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.MenuTopic;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.Placement;
-import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer.PlannedTopic;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer.MenuTopic;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer.Placement;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer.PlannedTopic;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
@@ -41,7 +41,7 @@ import org.springframework.transaction.support.TransactionOperations;
  * assigned or get structured with the lecture outcomes, and are placed onto the finished topics
  * afterwards.
  */
-class CompetencyTreeServiceExercisePlacementTest {
+class TopicTreeServiceExercisePlacementTest {
 
     private final CourseRepository courseRepository = mock(CourseRepository.class);
     private final LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
@@ -62,7 +62,7 @@ class CompetencyTreeServiceExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
-        trees().rebuildCompetencyTree(1L, null, false);
+        trees().rebuildTopicTree(1L, null, false);
 
         verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
         verify(synthesizer).place(eq(TOPICS),
@@ -75,7 +75,7 @@ class CompetencyTreeServiceExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenReturn(Map.of(0, new Placement(0, null)));
 
-        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildTopicTree(1L, null, false);
 
         assertThat(result.competencies()).isEqualTo(2);
         assertThat(result.unmatchedGoals()).isEqualTo(1);
@@ -102,7 +102,7 @@ class CompetencyTreeServiceExercisePlacementTest {
             return saved;
         });
 
-        trees().rebuildCompetencyTree(1L, null, false);
+        trees().rebuildTopicTree(1L, null, false);
 
         verify(synthesizer).place(eq(List.of(new MenuTopic("Sorting", List.of("Apply sorting and hashing")))),
                 eq(List.of("Implementing merge sort")), isNull());
@@ -118,7 +118,7 @@ class CompetencyTreeServiceExercisePlacementTest {
         stubCourse(List.of(lecture, kindless));
         stubLecturePlan();
 
-        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildTopicTree(1L, null, false);
 
         assertThat(result.unmatchedGoals()).isZero();
         verify(synthesizer, never()).place(anyList(), anyList(), any());
@@ -138,7 +138,7 @@ class CompetencyTreeServiceExercisePlacementTest {
         when(synthesizer.place(any(), eq(List.of("Recall what a hash collision is")), isNull()))
                 .thenReturn(Map.of(0, new Placement(1, null)));
 
-        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildTopicTree(1L, null, false);
 
         verify(synthesizer).synthesize(eq(List.of("Applying sorting", "Applying hashing")), anyString(), isNull());
         verify(synthesizer).place(eq(TOPICS), eq(List.of("Recall what a hash collision is")), isNull());
@@ -158,7 +158,7 @@ class CompetencyTreeServiceExercisePlacementTest {
         stubLecturePlan();
         when(synthesizer.place(any(), any(), isNull())).thenThrow(new IllegalStateException("model down"));
 
-        CompetencyTreeResult result = trees().rebuildCompetencyTree(1L, null, false);
+        CompetencyTreeResult result = trees().rebuildTopicTree(1L, null, false);
 
         assertThat(result.competencies()).isEqualTo(2);
     }
@@ -186,8 +186,8 @@ class CompetencyTreeServiceExercisePlacementTest {
         when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(goals);
     }
 
-    private CompetencyTreeService trees() {
-        return new CompetencyTreeService(courseRepository, mock(DocumentRepository.class), goalRepository,
+    private TopicTreeService trees() {
+        return new TopicTreeService(courseRepository, mock(DocumentRepository.class), goalRepository,
                 relationshipRepository, mock(HierarchyNodeRepository.class), synthesizer, mock(TaxonomyService.class),
                 TransactionOperations.withoutTransaction());
     }

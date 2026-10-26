@@ -10,7 +10,7 @@ function Spinner() {
   );
 }
 
-export default function CompetencyCreationField({
+export default function TreeCreationField({
   value,
   placeholder,
   error,

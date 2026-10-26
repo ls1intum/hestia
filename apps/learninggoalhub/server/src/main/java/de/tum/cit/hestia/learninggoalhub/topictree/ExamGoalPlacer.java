@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalCreationProvenance;
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Places freshly generated exam goals into a course's existing competency tree, with the call
+ * Places freshly generated exam goals into a course's existing Topic tree, with the call
  * exercise outcomes go through during a tree build: a skill-tier goal under one of a topic's
  * skills or directly under the topic, a knowledge goal directly under a topic. Exam goals usually
  * arrive after the tree exists, and a rebuild places them again itself, so this only covers the
@@ -86,7 +86,7 @@ public class ExamGoalPlacer {
             }
         }
         int placed = placement.placedCount();
-        log.info("Placed {} of {} exam goal(s) in the competency tree of course {}",
+        log.info("Placed {} of {} exam goal(s) in the Topic tree of course {}",
                 placed, examGoals.size(), course.getId());
         return new PlannedPlacement(edges, placed);
     }

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import CompetencyCreationField from "../CompetencyCreationField.tsx";
-import { COMPETENCY_ROLE_META, displayedGoalLabel, type CompetencyNode } from "../../lib/goals.ts";
+import TreeCreationField from "../TreeCreationField.tsx";
+import { TREE_ROLE_META, displayedGoalLabel, type TreeNode } from "../../lib/goals.ts";
 import { GAP, MINI_LIMIT } from "./layout.ts";
 import { LeafStub } from "./Box.tsx";
 
@@ -15,16 +15,16 @@ export function ChildHint({
   onPick,
   onMore,
 }: {
-  node: CompetencyNode;
+  node: TreeNode;
   dimmed: boolean;
-  onPick: (child: CompetencyNode) => void;
+  onPick: (child: TreeNode) => void;
   onMore: () => void;
 }) {
   if (node.children.length === 0 || node.role === "knowledge") return null;
   if (dimmed) return <LeafStub count={node.children.length} />;
   const shown = node.children.slice(0, MINI_LIMIT);
   const rest = node.children.length - shown.length;
-  const lineColor = COMPETENCY_ROLE_META[shown[0].role].color;
+  const lineColor = TREE_ROLE_META[shown[0].role].color;
   return (
     <div className="relative flex flex-col items-center gap-1 pt-3.5">
       <span
@@ -33,7 +33,7 @@ export function ChildHint({
         style={{ backgroundColor: lineColor }}
       />
       {shown.map((child) => {
-        const color = COMPETENCY_ROLE_META[child.role].color;
+        const color = TREE_ROLE_META[child.role].color;
         const label = displayedGoalLabel(child.goal);
         return (
           <button
@@ -150,14 +150,14 @@ export function CreationGhost({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
-  const style = { "--competency-ghost-color": color } as CSSProperties;
+  const style = { "--tree-ghost-color": color } as CSSProperties;
   if (active) {
     return (
       <div
-        className="competency-ghost competency-ghost-active w-56 shrink-0"
+        className="tree-ghost tree-ghost-active w-56 shrink-0"
         style={style}
       >
-        <CompetencyCreationField
+        <TreeCreationField
           value={value}
           placeholder={`Describe a ${label.replace("New ", "").toLowerCase()}…`}
           error={error}
@@ -175,7 +175,7 @@ export function CreationGhost({
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-hestia-border px-2.5 py-1 text-xs font-medium text-hestia-text-muted transition hover:border-[var(--competency-ghost-color)] hover:text-[var(--competency-ghost-color)] focus-visible:border-[var(--competency-ghost-color)] focus-visible:text-[var(--competency-ghost-color)]"
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-hestia-border px-2.5 py-1 text-xs font-medium text-hestia-text-muted transition hover:border-[var(--tree-ghost-color)] hover:text-[var(--tree-ghost-color)] focus-visible:border-[var(--tree-ghost-color)] focus-visible:text-[var(--tree-ghost-color)]"
       style={style}
       disabled={pending}
       onClick={onStart}

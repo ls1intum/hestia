@@ -2,10 +2,10 @@ import type { CSSProperties, ReactNode } from "react";
 import type { ExamTask } from "../../api/client.ts";
 import InfoTooltip from "../InfoTooltip.tsx";
 import {
-  COMPETENCY_ROLE_META,
+  TREE_ROLE_META,
   displayedGoalLabel,
   tierNoun,
-  type CompetencyRole,
+  type TreeRole,
   type CoverageCounts,
 } from "../../lib/goals.ts";
 import { isGrouping, tierRailColor, kindLabel, type Row } from "./model.ts";
@@ -40,7 +40,7 @@ export function TopicCoverage({ coverage }: { coverage: CoverageCounts }) {
 }
 
 /** A preview dot in its tier's rail colour, so a collapsed branch previews in the colours it unfolds to. */
-export function TierDot({ role }: { role: CompetencyRole }) {
+export function TierDot({ role }: { role: TreeRole }) {
   return (
     <span
       aria-hidden="true"
@@ -253,7 +253,7 @@ export function GeneratedChip({ members, inline = false }: { members?: Row[]; in
       </span>
       {members != null && members.length > 0 && (
         <span className="min-w-0 truncate opacity-75">
-          from {members.length} {tierNoun("skill", members.length)}
+          from {members.length} {tierNoun("subSkill", members.length)}
         </span>
       )}
     </span>
@@ -315,12 +315,12 @@ export const CHIP_TONES = {
     backgroundColor: "color-mix(in srgb, var(--hestia-primary) 14%, var(--hestia-surface))",
     borderColor: "transparent",
   },
-  capability: {
+  skill: {
     color: "var(--hestia-accent)",
     backgroundColor: "color-mix(in srgb, var(--hestia-accent) 15%, var(--hestia-surface))",
     borderColor: "transparent",
   },
-  skill: {
+  subSkill: {
     color: "var(--hestia-accent)",
     backgroundColor: "transparent",
     borderColor: "color-mix(in srgb, var(--hestia-accent) 50%, var(--hestia-surface))",
@@ -361,8 +361,8 @@ export function Chip({
 }
 
 /** A goal's tier as a chip in its rail's hue; knowledge, the plain leaf tier, is plain text. */
-export function TierChip({ role }: { role: CompetencyRole }) {
-  const label = COMPETENCY_ROLE_META[role].label;
+export function TierChip({ role }: { role: TreeRole }) {
+  const label = TREE_ROLE_META[role].label;
   if (role === "knowledge") return <span className="text-xs text-hestia-text-muted">{label}</span>;
   return <Chip tone={role}>{label}</Chip>;
 }

@@ -1,12 +1,12 @@
 import type { LearningGoal } from "../../api/client.ts";
 import {
   BLOOM_DESC,
-  COMPETENCY_ROLE_META,
+  TREE_ROLE_META,
   SOLO_DESC,
   coverageOf,
   titleCase,
-  type CompetencyNode,
-  type CompetencyRole,
+  type TreeNode,
+  type TreeRole,
   type Coverage,
 } from "../../lib/goals.ts";
 
@@ -16,7 +16,7 @@ export type Row = {
   parent: number | null;
   number: string;
   goal: LearningGoal;
-  role: CompetencyRole;
+  role: TreeRole;
   /** The session the goal's own source sits in; empty for synthesised and hand-added goals. */
   session: string;
 };
@@ -66,7 +66,7 @@ export const BLOOM_ORDER = Object.keys(BLOOM_DESC).map(toEnum);
 /** What a row's "+" adds beneath it. Knowledge and gaps take no children. */
 export const CHILD_APPEND: Partial<
   Record<
-    CompetencyRole,
+    TreeRole,
     { tier: 2 | 3 | 4; label: string; placeholder: string; color: string }
   >
 > = {
@@ -74,19 +74,19 @@ export const CHILD_APPEND: Partial<
     tier: 2,
     label: "Add skill",
     placeholder: "Describe a skill…",
-    color: COMPETENCY_ROLE_META.capability.color,
+    color: TREE_ROLE_META.skill.color,
   },
-  capability: {
+  skill: {
     tier: 3,
     label: "Add sub-skill",
     placeholder: "Describe a sub-skill…",
-    color: COMPETENCY_ROLE_META.skill.color,
+    color: TREE_ROLE_META.subSkill.color,
   },
-  skill: {
+  subSkill: {
     tier: 4,
     label: "Add knowledge",
     placeholder: "Describe what students should know…",
-    color: COMPETENCY_ROLE_META.knowledge.color,
+    color: TREE_ROLE_META.knowledge.color,
   },
 };
 export const SOLO_ORDER = Object.keys(SOLO_DESC).map(toEnum);
@@ -111,10 +111,10 @@ export const COVERAGE_VALUE: Partial<Record<Coverage, string>> = {
   both: BOTH,
   exam: EXAM,
 };
-export const ROLE_ORDER: CompetencyRole[] = [
+export const ROLE_ORDER: TreeRole[] = [
   "topic",
-  "capability",
   "skill",
+  "subSkill",
   "knowledge",
 ];
 
@@ -122,10 +122,10 @@ export const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Topics and capabilities are generated to group what extraction found, so explicit vs implicit
+ * Topics and skills are generated to group what extraction found, so explicit vs implicit
  * says nothing about them: every one is stored as IMPLICIT.
  */
-export const isGrouping = (role: CompetencyRole) => role === "topic" || role === "capability";
+export const isGrouping = (role: TreeRole) => role === "topic" || role === "skill";
 
 /** The filterable values of a row in one column. */
 export function valuesOf(row: Row, key: FilterKey): string[] {
@@ -165,15 +165,15 @@ export function sessionTitleOf(goal: LearningGoal): string {
 }
 
 /** The tier's colour, faded for knowledge; the rail beside a row and the preview dots share it. */
-export function tierRailColor(role: CompetencyRole): string {
-  const color = COMPETENCY_ROLE_META[role].color;
+export function tierRailColor(role: TreeRole): string {
+  const color = TREE_ROLE_META[role].color;
   return role === "knowledge" ? `color-mix(in srgb, ${color} 55%, transparent)` : color;
 }
 
 /** Human label for a raw column value (role names, title-cased enums). */
 export function displayValue(key: FilterKey, value: string): string {
   if (key === "role")
-    return COMPETENCY_ROLE_META[value as CompetencyRole].label;
+    return TREE_ROLE_META[value as TreeRole].label;
   if (key === "session" || key === "document") return value || "—";
   if (value === LECTURE_ONLY) return "Lecture only";
   if (value === EXERCISE_ONLY) return "Exercise only";
@@ -196,9 +196,9 @@ export const FILTER_LABELS: Record<FilterKey, string> = {
 };
 
 /** Flattens the forest depth-first into rows that keep the structure via parent ids. */
-export function flattenForest(forest: CompetencyNode[]): Row[] {
+export function flattenForest(forest: TreeNode[]): Row[] {
   const rows: Row[] = [];
-  const walk = (node: CompetencyNode, parent: number | null, number: string) => {
+  const walk = (node: TreeNode, parent: number | null, number: string) => {
     if (node.goal.id == null) return;
     rows.push({
       id: node.goal.id,
@@ -214,8 +214,8 @@ export function flattenForest(forest: CompetencyNode[]): Row[] {
     const children =
       node.role === "topic"
         ? [
-            ...node.children.filter((child) => child.role === "capability"),
-            ...node.children.filter((child) => child.role !== "capability"),
+            ...node.children.filter((child) => child.role === "skill"),
+            ...node.children.filter((child) => child.role !== "skill"),
           ]
         : node.children;
     for (let index = 0; index < children.length; index++) {

@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.learninggoalhub.competency;
+package de.tum.cit.hestia.learninggoalhub.topictree;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
@@ -42,7 +42,7 @@ import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Builds, rebuilds and clears a course's competency tree: topic → capability → extracted skill →
+ * Builds, rebuilds and clears a course's Topic tree: topic → capability → extracted skill →
  * knowledge, under the course's {@code COMPETENCY} root.
  *
  * <p>Every build reads the goals in one transaction, plans the tree with the models while no
@@ -50,9 +50,9 @@ import org.springframework.web.server.ResponseStatusException;
  * therefore leaves the existing tree and the extracted goals untouched.
  */
 @Service
-public class CompetencyTreeService {
+public class TopicTreeService {
 
-    private static final Logger log = LoggerFactory.getLogger(CompetencyTreeService.class);
+    private static final Logger log = LoggerFactory.getLogger(TopicTreeService.class);
 
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
@@ -63,7 +63,7 @@ public class CompetencyTreeService {
     private final TaxonomyService taxonomyService;
     private final TransactionOperations transactions;
 
-    public CompetencyTreeService(CourseRepository courseRepository,
+    public TopicTreeService(CourseRepository courseRepository,
                                  DocumentRepository documentRepository,
                                  LearningGoalRepository goalRepository,
                                  GoalRelationshipRepository goalRelationshipRepository,
@@ -91,7 +91,7 @@ public class CompetencyTreeService {
     }
 
     /**
-     * Throws away a course's competency tree and builds a fresh one from the goals it already has,
+     * Throws away a course's Topic tree and builds a fresh one from the goals it already has,
      * without re-reading a single document. Only topic naming, batched assignment, per-topic
      * structuring and classification run, so iterating on the tree costs less than a full extraction.
      *
@@ -104,7 +104,7 @@ public class CompetencyTreeService {
      *
      * @return the freshly built tree; synthesis failures leave the existing tree untouched.
      */
-    public CompetencyTreeResult rebuildCompetencyTree(Long courseId, String modelOverride, boolean force) {
+    public CompetencyTreeResult rebuildTopicTree(Long courseId, String modelOverride, boolean force) {
         RebuildInput input = transactions.execute(status -> {
             Course course = courseRepository.findOrThrow(courseId);
             rejectManualWorkUnlessForced(courseId, force);
@@ -113,16 +113,16 @@ public class CompetencyTreeService {
             return new RebuildInput(course, LanguageUtils.englishName(courseLanguage), loadTreeSeeds(course));
         });
         if (input == null) {
-            throw new IllegalStateException("Competency tree setup completed without a result.");
+            throw new IllegalStateException("Topic tree setup completed without a result.");
         }
         // Synthesise the replacement BEFORE destroying the old tree, and with no transaction open:
         // the planning calls take minutes. Clearing first would let a transient model outage delete
         // a course's tree and leave nothing in its place.
-        CompetencyTreePlan plan;
+        TopicTreePlan plan;
         try {
-            plan = planFullCompetencyTree(input.course(), input.seeds(), modelOverride, input.languageName());
+            plan = planFullTopicTree(input.course(), input.seeds(), modelOverride, input.languageName());
         } catch (RuntimeException ex) {
-            log.warn("Could not synthesise a replacement competency tree for course {}: {}",
+            log.warn("Could not synthesise a replacement Topic tree for course {}: {}",
                     courseId, errorMessage(ex), ex);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Could not synthesise a new Topic tree; the existing one was left untouched. "
@@ -138,12 +138,12 @@ public class CompetencyTreeService {
             // Checked again under the course lock: an instructor may have added to the tree while
             // the replacement was being planned.
             List<LearningGoal> terminals = rejectManualWorkUnlessForced(courseId, force);
-            clearCompetencyTree(course, terminals, manualTreeGoals(courseId, terminals));
-            persistCompetencyTree(course, plan);
-            return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+            clearTopicTree(course, terminals, manualTreeGoals(courseId, terminals));
+            persistTopicTree(course, plan);
+            return new CompetencyTreeResult(plan.topics().size(), plan.unmatchedGoals());
         });
-        log.info("Rebuilt competency tree for course {}: {} competencies, {} unmatched goal(s)",
-                courseId, plan.competencies().size(), plan.unmatchedGoals());
+        log.info("Rebuilt Topic tree for course {}: {} topics, {} unmatched goal(s)",
+                courseId, plan.topics().size(), plan.unmatchedGoals());
         return result;
     }
 
@@ -199,7 +199,7 @@ public class CompetencyTreeService {
      * as today. Do not use "target is a TERMINAL" as the predicate: legacy knowledge → sub-skill
      * edges must not survive.
      */
-    private void clearCompetencyTree(Course course, List<LearningGoal> terminals, List<LearningGoal> manual) {
+    private void clearTopicTree(Course course, List<LearningGoal> terminals, List<LearningGoal> manual) {
         List<LearningGoal> doomed = new ArrayList<>(terminals);
         for (LearningGoal goal : manual) {
             if (doomed.stream().noneMatch(g -> g.getId().equals(goal.getId()))) {
@@ -236,13 +236,13 @@ public class CompetencyTreeService {
     }
 
     /**
-     * Removes the course's whole competency tree, instructor work included. A forced re-extraction
+     * Removes the course's whole Topic tree, instructor work included. A forced re-extraction
      * clears it this way before it replaces the extracted goals.
      */
     public void clearTree(Course course) {
         List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(
                 course.getId(), List.of(GoalOrigin.TERMINAL));
-        clearCompetencyTree(course, terminals, manualTreeGoals(course.getId(), terminals));
+        clearTopicTree(course, terminals, manualTreeGoals(course.getId(), terminals));
     }
 
     /** Deletes loaded relationship entities before deleting any of their goals. */
@@ -281,7 +281,7 @@ public class CompetencyTreeService {
     }
 
     /**
-     * Builds the competency-tree view ALONGSIDE the module goals (not a replacement) under its own
+     * Builds the Topic tree view ALONGSIDE the module goals (not a replacement) under its own
      * {@code COMPETENCY} root: topic → capability → extracted skill → knowledge, with skills that
      * form no capability directly under their topic.
      *
@@ -291,7 +291,7 @@ public class CompetencyTreeService {
      * <p>The goals are read in one transaction, planned with none open, and the tree is written in
      * a second one, separate from extraction persistence.
      */
-    public CompetencyTreeResult buildCompetencyTree(Long courseId, String modelOverride,
+    public CompetencyTreeResult buildTopicTree(Long courseId, String modelOverride,
                                                     String languageName) {
         Optional<TreeInput> input = transactions.execute(status -> {
             Course course = courseRepository.findOrThrow(courseId);
@@ -301,12 +301,12 @@ public class CompetencyTreeService {
             return Optional.of(new TreeInput(course, loadTreeSeeds(course)));
         });
         if (input == null) {
-            throw new IllegalStateException("Competency tree setup completed without a result.");
+            throw new IllegalStateException("Topic tree setup completed without a result.");
         }
         if (input.isEmpty()) {
             return CompetencyTreeResult.NONE;
         }
-        CompetencyTreePlan plan = planFullCompetencyTree(
+        TopicTreePlan plan = planFullTopicTree(
                 input.get().course(), input.get().seeds(), modelOverride, languageName);
         if (plan == null) {
             return CompetencyTreeResult.NONE;
@@ -316,13 +316,13 @@ public class CompetencyTreeService {
             if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
                 return CompetencyTreeResult.NONE;
             }
-            persistCompetencyTree(course, plan);
-            return new CompetencyTreeResult(plan.competencies().size(), plan.unmatchedGoals());
+            persistTopicTree(course, plan);
+            return new CompetencyTreeResult(plan.topics().size(), plan.unmatchedGoals());
         });
         if (result == null) {
-            throw new IllegalStateException("Competency tree transaction completed without a result.");
+            throw new IllegalStateException("Topic tree transaction completed without a result.");
         }
-        log.info("Built topic competency tree for course {}: {} topics, {} unmatched goal(s)",
+        log.info("Built Topic tree for course {}: {} topics, {} unmatched goal(s)",
                 courseId, result.competencies(), result.unmatchedGoals());
         return result;
     }
@@ -331,7 +331,7 @@ public class CompetencyTreeService {
     }
 
     /**
-     * The goals a competency tree is planned from, read while the hierarchy they hang off is still
+     * The goals a Topic tree is planned from, read while the hierarchy they hang off is still
      * loadable. Planning itself only reads their own columns, so it runs with no transaction open.
      *
      * @param candidates lecture skill-tier outcomes in lecture order; they name the topics.
@@ -349,7 +349,7 @@ public class CompetencyTreeService {
         List<LearningGoal> skillTier = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
                 .filter(g -> g.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
                         || g.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE)
-                .filter(CompetencyTreeService::isSkillTier)
+                .filter(TopicTreeService::isSkillTier)
                 .sorted(Comparator.comparing(
                                 LearningGoal::getLectureOrder,
                                 Comparator.nullsLast(Comparator.naturalOrder()))
@@ -357,12 +357,12 @@ public class CompetencyTreeService {
                 .toList();
         return new TreeSeeds(
                 skillTier.stream().filter(g -> !isExerciseOutcome(g)).toList(),
-                skillTier.stream().filter(CompetencyTreeService::isExerciseOutcome).toList(),
+                skillTier.stream().filter(TopicTreeService::isExerciseOutcome).toList(),
                 goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXAM)));
     }
 
     /**
-     * Runs all synthesis for a course's competency tree and returns the finished plan, or
+     * Runs all synthesis for a course's Topic tree and returns the finished plan, or
      * {@code null} when there are no lecture skill seeds. Touches nothing in the database, so it runs
      * with no transaction open and the caller decides when — and whether — to write. Synthesis
      * failures are propagated to the caller.
@@ -374,19 +374,19 @@ public class CompetencyTreeService {
      * validated structuring prompt only ever groups lecture outcomes. An exercise outcome no topic
      * covers is practised but not introduced; it is counted and left out, not forced in.
      */
-    private CompetencyTreePlan planFullCompetencyTree(Course course, TreeSeeds seeds, String modelOverride,
+    private TopicTreePlan planFullTopicTree(Course course, TreeSeeds seeds, String modelOverride,
                                                       String languageName) {
         List<LearningGoal> exercises = seeds.exercises();
         List<LearningGoal> candidates = seeds.candidates();
         // The skill tier IS the seed set. Bloom must not narrow it any further: extraction now
         // decides the tier, and the session prompt deliberately keeps verbs low ("when in doubt,
         // prefer understand/know"), so a course whose skills all classify as UNDERSTAND would
-        // otherwise produce no seeds and silently lose its whole competency tree. For role-null
+        // otherwise produce no seeds and silently lose its whole Topic tree. For role-null
         // legacy goals isSkillTier already means "high Bloom", so their seeds are unchanged.
         if (candidates.isEmpty()) {
             if (!exercises.isEmpty()) {
                 log.info("Course {} has {} exercise outcome(s) but no lecture outcome to name topics from; "
-                        + "no competency tree is built", course.getId(), exercises.size());
+                        + "no Topic tree is built", course.getId(), exercises.size());
             }
             return null;
         }
@@ -425,7 +425,7 @@ public class CompetencyTreeService {
         }
         List<LearningGoal> notIntroduced = practised.unplaced();
         TreePlacement examined = placeExamGoals(course, menu, seeds.examGoals(), modelOverride);
-        List<PlannedCompetency> planned = new ArrayList<>();
+        List<TopicPlan> planned = new ArrayList<>();
         int capabilityIndex = 0;
         int topicIndex = 0;
         for (TopicTreeSynthesizer.PlannedTopic topic : plan.topics()) {
@@ -443,21 +443,21 @@ public class CompetencyTreeService {
             List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
             List<LearningGoal> placed = new ArrayList<>(practised.underTopic().get(topicIndex));
             placed.addAll(examined.underTopic().get(topicIndex++));
-            planned.add(new PlannedCompetency(topic.label(), capabilities, direct, placed));
+            planned.add(new TopicPlan(topic.label(), capabilities, direct, placed));
         }
-        planned.sort(Comparator.comparingInt(CompetencyTreeService::medianLectureOrder));
+        planned.sort(Comparator.comparingInt(TopicTreeService::medianLectureOrder));
         int unmatched = plan.unmatched().size();
         // An outcome no topic covers is left out of the tree rather than forced under the nearest
         // label. The count is reported so a reviewer can tell how much of the course that is.
         if (unmatched > 0) {
-            log.info("Competency tree for course {} leaves {} of {} source outcomes under no topic",
+            log.info("Topic tree for course {} leaves {} of {} source outcomes under no topic",
                     course.getId(), unmatched, candidates.size());
         }
         if (!notIntroduced.isEmpty()) {
-            log.info("Competency tree for course {}: {} of {} exercise outcomes are practised but not introduced "
+            log.info("Topic tree for course {}: {} of {} exercise outcomes are practised but not introduced "
                     + "(no lecture topic covers them)", course.getId(), notIntroduced.size(), exercises.size());
         }
-        return new CompetencyTreePlan(planned, unmatched + notIntroduced.size());
+        return new TopicTreePlan(planned, unmatched + notIntroduced.size());
     }
 
     /**
@@ -477,7 +477,7 @@ public class CompetencyTreeService {
             return TreePlacement.empty(menu);
         }
         if (!placement.unplaced().isEmpty()) {
-            log.info("Competency tree for course {}: {} of {} exam goals are examined but not taught "
+            log.info("Topic tree for course {}: {} of {} exam goals are examined but not taught "
                     + "(no lecture topic covers them)", course.getId(), placement.unplaced().size(), examGoals.size());
         }
         return placement;
@@ -490,18 +490,18 @@ public class CompetencyTreeService {
     }
 
     /**
-     * The finished competency tree, computed entirely in memory so that every LLM call has already
+     * The finished Topic tree, computed entirely in memory so that every LLM call has already
      * succeeded before the first row is written.
      *
-     * @param competencies   one entry per terminal competency, in tree order.
+     * @param topics         one entry per topic, in tree order.
      * @param unmatchedGoals source goals no topic covers, left outside the tree: lecture outcomes the
      *                       assignment placed nowhere and exercise outcomes no topic covers. Reported
      *                       to the caller rather than suppressed.
      */
-    private record CompetencyTreePlan(List<PlannedCompetency> competencies, int unmatchedGoals) {}
+    private record TopicTreePlan(List<TopicPlan> topics, int unmatchedGoals) {}
 
     /**
-     * One terminal competency: a topic with the capabilities and outcomes beneath it.
+     * One topic with the capabilities and outcomes beneath it.
      *
      * A topic is a noun phrase and carries no Bloom or SOLO level.
      *
@@ -511,8 +511,8 @@ public class CompetencyTreeService {
      * @param placed       exercise outcomes and exam goals placed directly under the topic; they do
      *                     not decide where the topic sits in the course.
      */
-    private record PlannedCompetency(String text, List<PlannedCapability> capabilities,
-                                     List<LearningGoal> direct, List<LearningGoal> placed) {}
+    private record TopicPlan(String text, List<PlannedCapability> capabilities,
+                             List<LearningGoal> direct, List<LearningGoal> placed) {}
 
     /**
      * A generated capability: its name, its levels, the lecture outcomes it was built from, and the
@@ -568,9 +568,9 @@ public class CompetencyTreeService {
      * the earliest: a single stray outcome from lecture one would otherwise drag a whole late chapter
      * to the top of the tree.
      */
-    private static int medianLectureOrder(PlannedCompetency competency) {
-        List<LearningGoal> goals = new ArrayList<>(competency.direct());
-        competency.capabilities().forEach(capability -> goals.addAll(capability.members()));
+    private static int medianLectureOrder(TopicPlan topic) {
+        List<LearningGoal> goals = new ArrayList<>(topic.direct());
+        topic.capabilities().forEach(capability -> goals.addAll(capability.members()));
         return medianOrderOf(goals);
     }
 
@@ -589,19 +589,19 @@ public class CompetencyTreeService {
      * capability, exercise or exam goal → capability, and ungrouped, exercise or exam goal → topic. Knowledge → skill edges were created during extraction.
      * All LLM work is already done by the time this runs.
      */
-    private void persistCompetencyTree(Course course, CompetencyTreePlan plan) {
+    private void persistTopicTree(Course course, TopicTreePlan plan) {
         HierarchyNode competencyRoot = hierarchyNodeRepository.findOrCreateCompetencyRoot(course);
 
-        for (PlannedCompetency competency : plan.competencies()) {
-            LearningGoal terminal = new LearningGoal(course, competency.text(), GoalKind.IMPLICIT);
-            terminal.setShortLabel(competency.text());
+        for (TopicPlan topic : plan.topics()) {
+            LearningGoal terminal = new LearningGoal(course, topic.text(), GoalKind.IMPLICIT);
+            terminal.setShortLabel(topic.text());
             terminal.setOrigin(GoalOrigin.TERMINAL);
             terminal.setHierarchyNode(competencyRoot);
-            int medianLectureOrder = medianLectureOrder(competency);
+            int medianLectureOrder = medianLectureOrder(topic);
             terminal.setLectureOrder(medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder);
             goalRepository.saveAndFlush(terminal);
 
-            for (PlannedCapability planned : competency.capabilities()) {
+            for (PlannedCapability planned : topic.capabilities()) {
                 // A generated grouping node without a source of its own. Its members keep their
                 // quotes, pages and levels, and each keeps the knowledge extraction hung beneath it.
                 LearningGoal capability = new LearningGoal(course, planned.text(), GoalKind.IMPLICIT);
@@ -616,8 +616,8 @@ public class CompetencyTreeService {
                 linkSynthesized(planned.members(), capability, RelationshipType.CONTRIBUTES_TO);
                 linkSynthesized(planned.placed(), capability, RelationshipType.CONTRIBUTES_TO);
             }
-            linkSynthesized(competency.direct(), terminal, RelationshipType.CONTRIBUTES_TO);
-            linkSynthesized(competency.placed(), terminal, RelationshipType.CONTRIBUTES_TO);
+            linkSynthesized(topic.direct(), terminal, RelationshipType.CONTRIBUTES_TO);
+            linkSynthesized(topic.placed(), terminal, RelationshipType.CONTRIBUTES_TO);
         }
     }
 

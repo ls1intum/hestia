@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
-import de.tum.cit.hestia.learninggoalhub.competency.ExamGoalPlacer;
+import de.tum.cit.hestia.learninggoalhub.topictree.ExamGoalPlacer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionOperations;
  * goals of origin {@link GoalOrigin#EXAM}, attached to the course's lazily created EXAM hierarchy
  * root. Context blocks accumulate: each task is generated with every CONTEXT block that precedes it
  * in the exam. The submitted blocks are stored as an {@link ExamSubmission}, and every goal points at
- * the task block it came from. When the course already has a competency tree, the new goals are then
+ * the task block it came from. When the course already has a Topic tree, the new goals are then
  * placed under its topics. Bloom/SOLO levels are best-effort (one batch call); their failure does not
  * fail the request, matching the extraction pipeline's behaviour.
  *

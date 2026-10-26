@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ExtractionStatus, type LearningGoal } from "../../api/client.ts";
 import { fetchAllGoals } from "../../lib/fetchGoals.ts";
 import { createTopic } from "../../lib/createTopic.ts";
-import { buildCompetencyForest } from "../../lib/goals.ts";
+import { buildTopicForest } from "../../lib/goals.ts";
 import Button from "../Button.tsx";
-import CompetencyCreationField from "../CompetencyCreationField.tsx";
+import TreeCreationField from "../TreeCreationField.tsx";
 import { TopicHeader, SkillRow } from "./ReviewRows.tsx";
 import { reviewItemsOf } from "./review.ts";
 
@@ -52,7 +52,7 @@ export function SkillReview({
   // is never accepted — it is a noun phrase naming an area of the course, with nothing in it for an
   // instructor to agree or disagree with.
   const topics = useMemo(
-    () => buildCompetencyForest(goals).filter((node) => node.role === "topic"),
+    () => buildTopicForest(goals).filter((node) => node.role === "topic"),
     [goals],
   );
   const skills = useMemo(() => topics.flatMap(reviewItemsOf), [topics]);
@@ -220,7 +220,7 @@ export function SkillReview({
                 {topics.map((topic, topicIndex) => {
                   const topicId = topic.goal.id;
                   const topicSkills = topic.children.filter(
-                    (child) => child.role === "capability",
+                    (child) => child.role === "skill",
                   );
                   const reviewItems = reviewItemsOf(topic);
                   const pendingSkillIds = reviewItems
@@ -341,7 +341,7 @@ export function SkillReview({
                 Name it, then add it as is, generate its skills with AI, or find it in the
                 slides.
               </p>
-              <CompetencyCreationField
+              <TreeCreationField
                 value={newTopic}
                 placeholder="Name a topic that is missing…"
                 autoFocus={false}

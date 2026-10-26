@@ -1,4 +1,4 @@
-import type { CompetencyNode } from "../../lib/goals.ts";
+import type { TreeNode } from "../../lib/goals.ts";
 
 // Box geometry, kept in sync with the boxes' Tailwind classes so the SVG connectors can be drawn
 // from the layout alone (no DOM measuring): w-40 = 10rem, w-56 = 14rem, w-60 = 15rem and
@@ -56,13 +56,13 @@ export type MapCreation = {
 export const LOOSE_GROUP_LABEL = "Additional sub-skills";
 
 /** The first row's box gathering the topic's goals that sit in no skill. */
-export function isLooseGroup(node: CompetencyNode) {
+export function isLooseGroup(node: TreeNode) {
   return node.goal.id! < 0;
 }
 
 /** Skills and sub-skills that hold goals unfold into a row of their own; knowledge and gaps don't. */
-export function canDrill(node: CompetencyNode) {
-  return (node.role === "capability" || node.role === "skill") && node.children.length > 0;
+export function canDrill(node: TreeNode) {
+  return (node.role === "skill" || node.role === "subSkill") && node.children.length > 0;
 }
 
 /** How many children a closed box names as mini boxes before summing up the rest. */
