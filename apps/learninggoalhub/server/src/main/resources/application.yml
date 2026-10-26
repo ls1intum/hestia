@@ -85,6 +85,10 @@ hestia:
     # zone reaches it — PowerPoint per-slide/default-section exports are filtered out mechanically; on
     # any failure the document is split, the original bookmark behaviour.
     judge-model: openai/gpt-oss-120b
+    # The judge runs inside the upload request. A gateway that does not answer would hold the upload
+    # for the whole retry ladder (minutes at "Uploading… 60%"), so the judge gives up after this and
+    # splits. A healthy reply takes a few seconds.
+    judge-timeout: 30s
   extraction:
     # Concurrent session calls. Sixteen once burst the provider badly enough to be cut to four, but
     # that was when a call carried a whole section — up to the old 80,000-character budget. Units are
