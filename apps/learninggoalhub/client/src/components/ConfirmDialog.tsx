@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
 import Button from "./Button.tsx";
 
 /**
@@ -24,27 +25,37 @@ export default function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
+  const titleId = useId();
+  const messageId = useId();
+
+  // While the action runs, the dialog stays: closing it would hide the outcome and any error.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape" && !busy) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [busy, onCancel]);
 
   return (
     <div
-      onClick={onCancel}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      ref={dialogRef}
+      tabIndex={-1}
+      onClick={busy ? undefined : onCancel}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 focus:outline-none"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={messageId}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-xl border border-hestia-border bg-hestia-surface p-6 shadow-lg"
       >
-        <h3 className="text-lg text-hestia-text">{title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-hestia-text-muted">
+        <h3 id={titleId} className="text-lg text-hestia-text">{title}</h3>
+        <p id={messageId} className="mt-2 text-sm leading-relaxed text-hestia-text-muted">
           {message}
         </p>
         {error && <p className="mt-3 text-sm text-hestia-danger">{error}</p>}

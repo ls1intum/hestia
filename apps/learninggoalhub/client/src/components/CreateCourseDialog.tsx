@@ -4,6 +4,7 @@ import { api, API_PREFIX } from "../api/client.ts";
 import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
 
 // The server accepts PDFs only: the source viewer, quote highlights and bookmark sessions all
 // read the PDF itself. Kept in sync with the hint shown in the drop zone.
@@ -154,6 +155,9 @@ export default function CreateCourseDialog({
           ? 85
           : 95;
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
+
   // Escape closes the dialog at any point: a run already under way carries on without it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -165,7 +169,9 @@ export default function CreateCourseDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-label="Create course"

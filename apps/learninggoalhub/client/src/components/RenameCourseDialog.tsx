@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import Button from "./Button.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
 
 /** Renames a course. The course PATCH leaves every field the body omits alone. */
 export default function RenameCourseDialog({
@@ -38,13 +39,18 @@ export default function RenameCourseDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, rename.isPending]);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
+
   const trimmed = name.trim();
   const canSave = trimmed !== "" && trimmed !== course.name && !rename.isPending;
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       onClick={() => !rename.isPending && onClose()}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="rename-course-title"
