@@ -352,6 +352,16 @@ export default function SourcePdfPane({
         {/* The page controls sit beside the close button, so the name and session keep the left. */}
         <div className="flex shrink-0 items-center gap-2">
             <div className="flex items-center gap-1 text-xs text-hestia-text-muted">
+              {/* Left of the arrows, so showing it never moves the arrows from under the cursor. */}
+              {viewedPage !== pageNumber && (
+                <button
+                  type="button"
+                  onClick={() => setViewedPage(pageNumber)}
+                  className="mr-1 whitespace-nowrap font-medium text-hestia-primary underline-offset-2 hover:underline"
+                >
+                  Back to p. {pageNumber}
+                </button>
+              )}
               <PageArrow
                 label="Previous page"
                 disabled={pageCount == null || viewedPage <= 1}
@@ -368,15 +378,6 @@ export default function SourcePdfPane({
                 onClick={() => goToPage(viewedPage + 1)}
                 path="M8 5l5 5-5 5"
               />
-              {viewedPage !== pageNumber && (
-                <button
-                  type="button"
-                  onClick={() => setViewedPage(pageNumber)}
-                  className="ml-1 whitespace-nowrap font-medium text-hestia-primary underline-offset-2 hover:underline"
-                >
-                  Back to p. {pageNumber}
-                </button>
-              )}
             </div>
           <button
             type="button"
