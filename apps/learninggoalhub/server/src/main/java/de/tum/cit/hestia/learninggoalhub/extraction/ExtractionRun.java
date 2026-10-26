@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,12 +19,6 @@ import java.time.OffsetDateTime;
 @Entity
 @Table(name = "extraction_run")
 public class ExtractionRun {
-
-    public enum Status {
-        RUNNING,
-        SUCCEEDED,
-        FAILED
-    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,7 +39,7 @@ public class ExtractionRun {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    private Status status;
+    private ExtractionStatus status;
 
     @Column(columnDefinition = "TEXT")
     private String error;
@@ -74,7 +69,7 @@ public class ExtractionRun {
         this.model = model;
         this.promptVersion = promptVersion;
         this.params = params;
-        this.status = Status.RUNNING;
+        this.status = ExtractionStatus.RUNNING;
         this.startedAt = OffsetDateTime.now();
     }
 
@@ -98,7 +93,7 @@ public class ExtractionRun {
         return params;
     }
 
-    public Status getStatus() {
+    public ExtractionStatus getStatus() {
         return status;
     }
 
@@ -126,7 +121,7 @@ public class ExtractionRun {
         return droppedOutcomes;
     }
 
-    public void finish(Status status, String error, Integer goalsCreated, Integer failedSessions,
+    public void finish(ExtractionStatus status, String error, Integer goalsCreated, Integer failedSessions,
                        Integer droppedOutcomes, String promptVersion) {
         this.status = status;
         this.error = error;

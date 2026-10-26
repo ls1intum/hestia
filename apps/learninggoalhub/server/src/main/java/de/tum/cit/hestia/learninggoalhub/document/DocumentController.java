@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
-import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.IOException;
@@ -34,37 +33,24 @@ public class DocumentController {
     private static final byte[] PDF_SIGNATURE = "%PDF-".getBytes(StandardCharsets.US_ASCII);
     private static final int PDF_SIGNATURE_WINDOW = 1024;
 
-    private final CourseRepository courseRepository;
-    private final DocumentRepository documentRepository;
-    private final DocumentContentRepository documentContentRepository;
+    private final DocumentService documentService;
     private final DocumentStructureService structureService;
-    private final DocumentUploadService uploadService;
     private final int maxPages;
     private final int maxTextChars;
 
-    public DocumentController(CourseRepository courseRepository,
-                              DocumentRepository documentRepository,
-                              DocumentContentRepository documentContentRepository,
+    public DocumentController(DocumentService documentService,
                               DocumentStructureService structureService,
-                              DocumentUploadService uploadService,
                               @Value("${hestia.upload.max-pages:2000}") int maxPages,
                               @Value("${hestia.upload.max-text-chars:3000000}") int maxTextChars) {
-        this.courseRepository = courseRepository;
-        this.documentRepository = documentRepository;
-        this.documentContentRepository = documentContentRepository;
+        this.documentService = documentService;
         this.structureService = structureService;
-        this.uploadService = uploadService;
         this.maxPages = maxPages;
         this.maxTextChars = maxTextChars;
     }
 
     @GetMapping
     public List<DocumentResponse> list(@PathVariable Long courseId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
-        return documentRepository.findByCourseId(courseId).stream()
-                .sorted(DocumentOrder.comparator())
+        return documentService.list(courseId).stream()
                 .map(DocumentResponse::from)
                 .toList();
     }
@@ -76,8 +62,7 @@ public class DocumentController {
                                          @Parameter(description = "Optional kind of every file in this upload: LECTURE or EXERCISE. "
                                                  + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
                                          @RequestParam(required = false) DocumentKind kind) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = documentService.course(courseId);
 
         // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
         // upload instead of leaving the files before it saved.
@@ -98,7 +83,7 @@ public class DocumentController {
                         "Could not read uploaded file: " + file.getOriginalFilename(), e);
             }
             requireWithinLimits(file.getOriginalFilename(), parsed);
-            Document saved = uploadService.persist(
+            Document saved = documentService.persist(
                     course, file.getOriginalFilename(), file.getContentType(), kind, parsed, bytes);
             responses.add(DocumentResponse.from(saved));
         }
@@ -158,15 +143,9 @@ public class DocumentController {
 
     @GetMapping("/{documentId}/content")
     public ResponseEntity<byte[]> content(@PathVariable Long courseId, @PathVariable Long documentId) {
-        Document document = documentRepository.findById(documentId)
-                .filter(d -> d.getCourse().getId().equals(courseId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Document not found: " + documentId));
-        DocumentContent content = documentContentRepository.findById(documentId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Document content not found: " + documentId));
-
-        byte[] bytes = content.getBytes();
+        DocumentService.StoredDocument stored = documentService.content(courseId, documentId);
+        Document document = stored.document();
+        byte[] bytes = stored.bytes();
         boolean pdf = isPdf(document);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentLength(bytes.length);
@@ -178,64 +157,11 @@ public class DocumentController {
         return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
     }
 
-    /**
-     * Renames a document for display and/or changes its kind. The filename is immutable provenance
-     * (goal sources and the CSV export cite it), so only the display name changes; an explicit null
-     * clears it back to the filename. A field left out of the body is left unchanged, and a null kind
-     * is ignored.
-     */
     @PatchMapping("/{documentId}")
     public DocumentResponse update(@PathVariable Long courseId,
                                    @PathVariable Long documentId,
                                    @RequestBody UpdateDocumentRequest request) {
-        Document document = documentRepository.findById(documentId)
-                .filter(d -> d.getCourse().getId().equals(courseId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
-        if (request.hasDisplayName()) {
-            String displayName = request.getDisplayName() == null ? null : request.getDisplayName().trim();
-            if (displayName != null && displayName.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "displayName must not be blank");
-            }
-            document.setDisplayName(displayName);
-        }
-        if (request.getKind() != null) {
-            document.setKind(request.getKind());
-        }
-        return DocumentResponse.from(documentRepository.save(document));
-    }
-
-    /**
-     * A partial update. {@code displayName} needs to tell "left out" from "null": null clears the
-     * display name, while a body that only changes the kind must not.
-     */
-    public static class UpdateDocumentRequest {
-
-        private String displayName;
-        private boolean displayNameSet;
-        private DocumentKind kind;
-
-        @Schema(nullable = true)
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public void setDisplayName(String displayName) {
-            this.displayName = displayName;
-            this.displayNameSet = true;
-        }
-
-        @Schema(nullable = true)
-        public DocumentKind getKind() {
-            return kind;
-        }
-
-        public void setKind(DocumentKind kind) {
-            this.kind = kind;
-        }
-
-        boolean hasDisplayName() {
-            return displayNameSet;
-        }
+        return DocumentResponse.from(documentService.update(courseId, documentId, request));
     }
 
     private static boolean isPdf(Document document) {

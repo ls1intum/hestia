@@ -18,6 +18,9 @@ import jakarta.persistence.Table;
 @Table(name = "hierarchy_node")
 public class HierarchyNode {
 
+    /** Label of the root every terminal competency of a course hangs under. */
+    public static final String COMPETENCY_ROOT_LABEL = "Terminal Competencies";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

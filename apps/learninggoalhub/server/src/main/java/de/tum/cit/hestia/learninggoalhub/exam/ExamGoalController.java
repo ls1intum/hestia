@@ -2,7 +2,9 @@ package de.tum.cit.hestia.learninggoalhub.exam;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalController.LearningGoalResponse;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamBlock;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamBlockType;
+import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import java.util.HashSet;
 import java.util.List;
@@ -44,9 +46,7 @@ public class ExamGoalController {
     @PostMapping("/learning-goals")
     public List<ExamTaskGoalsResponse> generate(@PathVariable Long courseId,
                                                 @RequestBody GenerateExamGoalsRequest request) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Course not found: " + courseId));
+        Course course = courseRepository.findOrThrow(courseId);
         validate(request);
 
         return examGoalService.generateForBlocks(course, request.blocks(), null).stream()

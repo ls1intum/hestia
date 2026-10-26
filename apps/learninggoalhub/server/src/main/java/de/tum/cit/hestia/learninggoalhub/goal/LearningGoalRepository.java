@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 public interface LearningGoalRepository extends JpaRepository<LearningGoal, Long> {
 
@@ -31,4 +33,13 @@ public interface LearningGoalRepository extends JpaRepository<LearningGoal, Long
     List<LearningGoal> findByCourseIdAndStatusAndRole(Long courseId, GoalStatus status, GoalRole role);
 
     List<LearningGoal> findByCourseIdAndHierarchyNodeIsNotNull(Long courseId);
+
+    /** Throws a 409 when the course already has a terminal skill with this text, ignoring case. */
+    default void rejectDuplicateTopic(Long courseId, String text) {
+        boolean duplicate = findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL)).stream()
+                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(text));
+        if (duplicate) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
+        }
+    }
 }

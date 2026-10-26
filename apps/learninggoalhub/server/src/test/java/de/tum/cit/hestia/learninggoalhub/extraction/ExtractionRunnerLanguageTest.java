@@ -2,12 +2,14 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -18,22 +20,22 @@ class ExtractionRunnerLanguageTest {
         Course course = new Course("Course");
         course.setOutputLanguage("de");
 
-        assertThat(ExtractionRunner.resolveLanguage(course, "en", "fr")).isEqualTo("de");
+        assertThat(LanguageUtils.resolveLanguage(course, "en", "fr")).isEqualTo("de");
     }
 
     @Test
     void resolvesDocumentLanguageBeforeDominantAndFallback() {
         Course course = new Course("Course");
 
-        assertThat(ExtractionRunner.resolveLanguage(course, "de", "en")).isEqualTo("de");
+        assertThat(LanguageUtils.resolveLanguage(course, "de", "en")).isEqualTo("de");
     }
 
     @Test
     void resolvesDominantLanguageBeforeEnglishFallback() {
         Course course = new Course("Course");
 
-        assertThat(ExtractionRunner.resolveLanguage(course, null, "de")).isEqualTo("de");
-        assertThat(ExtractionRunner.resolveLanguage(course, null, null)).isEqualTo("en");
+        assertThat(LanguageUtils.resolveLanguage(course, null, "de")).isEqualTo("de");
+        assertThat(LanguageUtils.resolveLanguage(course, null, null)).isEqualTo("en");
     }
 
     @Test
@@ -44,7 +46,7 @@ class ExtractionRunnerLanguageTest {
         Document longEnglish = new Document(course, "en.pdf", "application/pdf", "english ".repeat(10));
         longEnglish.setLanguage("en");
 
-        assertThat(ExtractionRunner.dominantLanguage(List.of(shortGerman, longEnglish))).isEqualTo("en");
+        assertThat(LanguageUtils.dominantLanguage(List.of(shortGerman, longEnglish))).isEqualTo("en");
     }
 
     @Test
@@ -59,8 +61,8 @@ class ExtractionRunnerLanguageTest {
         LearningGoal legacySkill = new LearningGoal(course, "Apply the method.", GoalKind.IMPLICIT);
         legacySkill.setBloomLevel(BloomLevel.APPLY);
 
-        assertThat(ExtractionRunner.isSkillTier(taggedKnowledge)).isFalse();
-        assertThat(ExtractionRunner.isSkillTier(taggedSkill)).isTrue();
-        assertThat(ExtractionRunner.isSkillTier(legacySkill)).isTrue();
+        assertThat(CompetencyTreeService.isSkillTier(taggedKnowledge)).isFalse();
+        assertThat(CompetencyTreeService.isSkillTier(taggedSkill)).isTrue();
+        assertThat(CompetencyTreeService.isSkillTier(legacySkill)).isTrue();
     }
 }

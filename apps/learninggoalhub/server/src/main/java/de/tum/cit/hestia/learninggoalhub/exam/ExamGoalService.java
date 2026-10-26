@@ -1,10 +1,14 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
+import de.tum.cit.hestia.learninggoalhub.competency.ExamGoalPlacer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageUtils;
-import de.tum.cit.hestia.learninggoalhub.extraction.ExamGoalPlacer;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamBlock;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamBlockType;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamSubmission;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamSubmissionRepository;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.SubmittedExamBlock;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
@@ -13,6 +17,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.ArrayList;

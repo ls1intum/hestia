@@ -15,8 +15,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
@@ -25,14 +27,13 @@ import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.StructuredOutputConverter;
@@ -68,7 +69,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
                 org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), eq(0), anyString());
     }
 
@@ -89,7 +90,7 @@ class ExtractionRunnerSessionIsolationTest {
         assertThatThrownBy(() -> runner.runForCourse(1L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no learning goals");
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
                 org.mockito.ArgumentMatchers.contains("no learning goals"), isNull(), eq(0), eq(0), anyString());
     }
 
@@ -105,7 +106,7 @@ class ExtractionRunnerSessionIsolationTest {
         when(course.getId()).thenReturn(1L);
         when(course.getName()).thenReturn("Maths-heavy course");
         when(course.isFiguresEnabled()).thenReturn(false);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
 
         // No sections, so each document is exactly one session. Both documents are stubbed before
         // the call below: nesting mock setup inside a when() argument breaks the outer stubbing.
@@ -125,7 +126,7 @@ class ExtractionRunnerSessionIsolationTest {
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), progressTracker, 0.2);
+                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
                 courseRepository,
@@ -139,9 +140,8 @@ class ExtractionRunnerSessionIsolationTest {
                 new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(TopicTreeSynthesizer.class),
+                mock(CompetencyTreeService.class),
                 hierarchyNodeRepository,
-                mock(TaxonomyService.class),
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 // Single-threaded, so the failing session is deterministically the first one.

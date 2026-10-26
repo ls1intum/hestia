@@ -3,15 +3,16 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
+import de.tum.cit.hestia.learninggoalhub.goal.LanguagePrompt;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.slf4j.Logger;
@@ -319,16 +320,16 @@ public class SessionExtractionService {
             """;
 
     private static final Logger log = LoggerFactory.getLogger(SessionExtractionService.class);
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final LanguageDetectionService languageDetectionService;
     private final ExtractionProgressTracker progressTracker;
     private final double temperature;
 
-    public SessionExtractionService(ChatClient.Builder chatClientBuilder,
+    public SessionExtractionService(LlmClient llm,
                                     LanguageDetectionService languageDetectionService,
                                     ExtractionProgressTracker progressTracker,
                                     @Value("${hestia.extraction.temperature:0.2}") double temperature) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.languageDetectionService = languageDetectionService;
         this.progressTracker = progressTracker;
         this.temperature = temperature;
@@ -503,13 +504,13 @@ public class SessionExtractionService {
                         offeredFigure(knowledge.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every knowledge item");
                 knowledgeItems.add(new ExtractedSkill.Knowledge(
-                        knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                        knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                         knowledge.bloom(), knowledge.solo(),
                         knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                         knowledgeCitation.figure()));
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     knowledgeItems));
@@ -722,7 +723,7 @@ public class SessionExtractionService {
                             offeredFigure(knowledge.sourceFigure(), figureCount),
                             numberedLines, figureCount, "Every knowledge item");
                     validKnowledge.add(new ExtractedSkill.Knowledge(
-                            knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                            knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                             knowledge.bloom(), knowledge.solo(),
                             knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                             knowledgeCitation.figure()));
@@ -732,7 +733,7 @@ public class SessionExtractionService {
                 }
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     validKnowledge));
@@ -770,30 +771,16 @@ public class SessionExtractionService {
         return count;
     }
 
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
-    }
-
     private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,
                                       double callTemperature, boolean retry) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
-                .system(retry
-                        ? LanguagePrompt.retrySystemInstruction(languageName)
-                        : LanguagePrompt.systemInstruction(languageName))
-                .options(options(modelOverride, callTemperature));
-        List<ExtractedSkill> skills = spec
-                .user(prompt)
-                .call()
-                .entity(LenientJson.converter(new ParameterizedTypeReference<List<ExtractedSkill>>() {}));
+        List<ExtractedSkill> skills = llm.entity(LlmRequest.of(prompt)
+                        .withSystem(retry
+                                ? LanguagePrompt.retrySystemInstruction(languageName)
+                                : LanguagePrompt.systemInstruction(languageName))
+                        .withModel(modelOverride)
+                        .withTemperature(callTemperature),
+                new ParameterizedTypeReference<List<ExtractedSkill>>() {});
         return skills == null ? List.of() : skills;
-    }
-
-    private ChatOptions options(String modelOverride, double callTemperature) {
-        ChatOptions.Builder builder = ChatOptions.builder().temperature(callTemperature);
-        if (modelOverride != null && !modelOverride.isBlank()) {
-            builder.model(modelOverride);
-        }
-        return builder.build();
     }
 
     private String detectGeneratedLanguage(List<ExtractedSkill> skills) {

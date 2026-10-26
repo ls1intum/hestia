@@ -3,7 +3,6 @@ package de.tum.cit.hestia.learninggoalhub.goal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.learninggoalhub.document.Document;
-import de.tum.cit.hestia.learninggoalhub.extraction.SourceMatchQuality;
 import org.junit.jupiter.api.Test;
 
 class GoalSourceTest {

@@ -13,6 +13,7 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -160,7 +161,7 @@ public class UnitExtractor {
      */
     public <T> SessionExtraction<T> extract(Course course, SessionUnit<T> session, String dominantLanguage,
                                             String modelOverride) {
-        String languageCode = ExtractionRunner.resolveLanguage(
+        String languageCode = LanguageUtils.resolveLanguage(
                 course, session.document().getLanguage(), dominantLanguage);
         String languageName = LanguageUtils.englishName(languageCode);
         // The allowance follows the unit's own size, so a one-page problem sheet is not asked for as

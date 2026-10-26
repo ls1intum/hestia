@@ -1,11 +1,11 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -59,12 +59,12 @@ public class BookmarkRelevanceJudge {
 
             Reply with exactly one word: SPLIT or SINGLE.""";
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final String judgeModel;
 
-    public BookmarkRelevanceJudge(ChatClient.Builder chatClientBuilder,
+    public BookmarkRelevanceJudge(LlmClient llm,
                                   @Value("${hestia.bookmark.judge-model:openai-gpt-oss-120b}") String judgeModel) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.judgeModel = judgeModel;
     }
 
@@ -106,11 +106,8 @@ public class BookmarkRelevanceJudge {
     private boolean askModel(String filename, int pageCount, List<String> titles) {
         String numbered = numberedList(titles);
         try {
-            String reply = chatClient.prompt()
-                    .options(ChatOptions.builder().model(judgeModel).build())
-                    .user(PROMPT.formatted(filename, pageCount, titles.size(), numbered))
-                    .call()
-                    .content();
+            String reply = llm.text(LlmRequest.of(PROMPT.formatted(filename, pageCount, titles.size(), numbered))
+                    .withModel(judgeModel));
             Boolean verdict = parseVerdict(reply);
             if (verdict == null) {
                 log.warn("Bookmark judge gave an unclear reply for {} ({}), falling back to split: {}",

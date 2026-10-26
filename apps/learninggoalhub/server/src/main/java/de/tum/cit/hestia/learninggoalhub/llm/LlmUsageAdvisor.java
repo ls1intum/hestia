@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.learninggoalhub.llm;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionProgressTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -26,10 +25,10 @@ public class LlmUsageAdvisor implements CallAdvisor, ChatClientCustomizer {
 
     private static final Logger log = LoggerFactory.getLogger(LlmUsageAdvisor.class);
 
-    private final ExtractionProgressTracker progressTracker;
+    private final LlmUsageSink usageSink;
 
-    public LlmUsageAdvisor(ExtractionProgressTracker progressTracker) {
-        this.progressTracker = progressTracker;
+    public LlmUsageAdvisor(LlmUsageSink usageSink) {
+        this.usageSink = usageSink;
     }
 
     /** Applied to every auto-configured {@code ChatClient.Builder}, so each service gets the advisor. */
@@ -54,10 +53,10 @@ public class LlmUsageAdvisor implements CallAdvisor, ChatClientCustomizer {
                 && openAiUsage.completionTokenDetails() != null
                 ? orZero(openAiUsage.completionTokenDetails().reasoningTokens())
                 : 0;
-        progressTracker.activeRun().ifPresentOrElse(
-                run -> run.recordUsage(model, prompt, completion, reasoning),
-                () -> log.info("LLM call outside an extraction: model={} prompt={} completion={} (reasoning {}) tokens",
-                        model, prompt, completion, reasoning));
+        if (!usageSink.record(model, prompt, completion, reasoning)) {
+            log.info("LLM call outside an extraction: model={} prompt={} completion={} (reasoning {}) tokens",
+                    model, prompt, completion, reasoning);
+        }
         return response;
     }
 

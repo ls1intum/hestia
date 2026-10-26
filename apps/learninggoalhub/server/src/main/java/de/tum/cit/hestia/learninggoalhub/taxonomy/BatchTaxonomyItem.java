@@ -1,8 +1,5 @@
 package de.tum.cit.hestia.learninggoalhub.taxonomy;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
-
 /**
  * One entry of the taxonomy LLM's answer when classifying a batch of goals in a single call. The
  * {@code index} is the goal's 1-based position in the numbered list given in the prompt, so the

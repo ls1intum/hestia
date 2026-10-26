@@ -1,8 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
-import de.tum.cit.hestia.learninggoalhub.exam.SubmittedExamBlock;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.SubmittedExamBlock;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

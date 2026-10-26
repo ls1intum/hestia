@@ -15,8 +15,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -24,7 +26,7 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
@@ -33,14 +35,15 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
@@ -56,6 +59,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -286,6 +290,62 @@ class ExtractionControllerTest {
                 .satisfies(source -> assertThat(source.getDocument().getId()).isEqualTo(document.getId()));
     }
 
+    /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
+    @Test
+    void competencyTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Tree stage without a held transaction"));
+        documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Tree Label");
+
+        startExtraction(course.getId());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Tree Label");
+    }
+
+    @Test
+    void rebuildHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild without a held transaction"));
+        documentRepository.save(new Document(course, "rebuild.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("rebuild.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        stubTopicPlan("First Label", List.of(List.of(0)));
+        startExtraction(course.getId());
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Rebuilt Label");
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Rebuilt Label");
+    }
+
+    /**
+     * Plans one topic over the first outcome and records whether the planning call ran inside a
+     * transaction. The call runs on the caller's thread, so the thread's own state is what counts.
+     */
+    private AtomicLong stubTopicPlanCountingOpenTransactions(String topicLabel) {
+        AtomicLong openTransactions = new AtomicLong(-1);
+        when(topicTreeSynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
+            openTransactions.set(TransactionSynchronizationManager.isActualTransactionActive() ? 1 : 0);
+            return new TopicTreeSynthesizer.Plan(List.of(
+                    new TopicTreeSynthesizer.PlannedTopic(topicLabel, List.of(), List.of(0))), List.of());
+        });
+        return openTransactions;
+    }
+
     @Test
     void aFailedForcedExtractionKeepsThePreviousOne() throws Exception {
         Course course = courseRepository.save(new Course("Failed forced extraction"));
@@ -376,7 +436,7 @@ class ExtractionControllerTest {
         ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
                 .findFirst()
                 .orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getPromptVersion()).isEqualTo(SessionExtractionService.PROMPT_VERSION);
         assertThat(run.getGoalsCreated()).isEqualTo(3);
         assertThat(run.getFinishedAt()).isNotNull();
@@ -416,12 +476,12 @@ class ExtractionControllerTest {
         Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
                 "{\"unit-max-chars\":12000,\"skill-target-chars\":3000,\"parallelism\":16}");
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
-                .isEqualTo(ExtractionRun.Status.RUNNING);
+                .isEqualTo(ExtractionStatus.RUNNING);
 
-        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, 3, "direct-v1");
+        extractionRunAuditService.finish(runId, ExtractionStatus.SUCCEEDED, null, 4, 1, 3, "direct-v1");
 
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getGoalsCreated()).isEqualTo(4);
         assertThat(run.getFailedSessions()).isEqualTo(1);
         assertThat(run.getDroppedOutcomes()).isEqualTo(3);
@@ -1097,7 +1157,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("Topic tree synthesis failed");
                     assertThat(run.getGoalsCreated()).isEqualTo(1);
                 });
@@ -1130,7 +1190,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("failed.pdf");
                     assertThat(run.getFinishedAt()).isNotNull();
                     assertThat(run.getGoalsCreated()).isNull();

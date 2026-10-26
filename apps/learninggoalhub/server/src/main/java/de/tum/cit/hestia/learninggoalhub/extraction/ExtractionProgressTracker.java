@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmUsageSink;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Component;
  * concurrent poller until commit anyway).
  */
 @Component
-public class ExtractionProgressTracker {
+public class ExtractionProgressTracker implements LlmUsageSink {
 
     /** Ordered to match the pipeline so the client can show the current pipeline step if it wants. */
     public enum Phase {
@@ -71,6 +72,17 @@ public class ExtractionProgressTracker {
     /** The handle of the run holding the global slot, for work that must be booked to it. */
     public Optional<Run> activeRun() {
         return Optional.ofNullable(activeRun.get());
+    }
+
+    /** Books a chat call to the run's current phase while a run holds the slot. */
+    @Override
+    public boolean record(String model, int promptTokens, int completionTokens, int reasoningTokens) {
+        Run run = activeRun.get();
+        if (run == null) {
+            return false;
+        }
+        run.recordUsage(model, promptTokens, completionTokens, reasoningTokens);
+        return true;
     }
 
     /** Begins (or replaces) tracking for a course and returns the handle the runner updates. */

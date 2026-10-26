@@ -1,6 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeResult;
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
+import de.tum.cit.hestia.learninggoalhub.web.ExtractionErrors;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +35,7 @@ public class ExtractionController {
     private static final Logger log = LoggerFactory.getLogger(ExtractionController.class);
 
     private final ExtractionRunner runner;
+    private final CompetencyTreeService competencyTrees;
     private final ExtractionProgressTracker progressTracker;
     private final ExtractionRunRepository extractionRunRepository;
     private final ExtractionRunAuditService extractionRunAuditService;
@@ -38,12 +43,14 @@ public class ExtractionController {
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
+                                CompetencyTreeService competencyTrees,
                                 ExtractionProgressTracker progressTracker,
                                 ExtractionRunRepository extractionRunRepository,
                                 ExtractionRunAuditService extractionRunAuditService,
                                 CourseRepository courseRepository,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
+        this.competencyTrees = competencyTrees;
         this.progressTracker = progressTracker;
         this.extractionRunRepository = extractionRunRepository;
         this.extractionRunAuditService = extractionRunAuditService;
@@ -55,9 +62,7 @@ public class ExtractionController {
     public ResponseEntity<ExtractionStartResponse> extract(
             @PathVariable Long courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
+        courseRepository.requireExists(courseId);
 
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
@@ -102,7 +107,7 @@ public class ExtractionController {
      * discards them deliberately.
      */
     @PostMapping("/competency-tree")
-    public ExtractionRunner.CompetencyTreeResult rebuildCompetencyTree(
+    public CompetencyTreeResult rebuildCompetencyTree(
             @PathVariable Long courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
@@ -113,7 +118,7 @@ public class ExtractionController {
         ExtractionProgressTracker.Run run = claimed.get();
         run.phase(ExtractionProgressTracker.Phase.SYNTHESIZING, 1);
         try {
-            ExtractionRunner.CompetencyTreeResult result = runner.rebuildCompetencyTree(courseId, null, force);
+            CompetencyTreeResult result = competencyTrees.rebuildCompetencyTree(courseId, null, force);
             run.increment();
             extractionRunAuditService.finishTreeRetry(courseId);
             run.succeed(new ExtractionRunner.ExtractionSummary(0, 0, result.competencies()));
@@ -143,12 +148,12 @@ public class ExtractionController {
     }
 
     private static ExtractionProgressTracker.Snapshot durableSnapshot(ExtractionRun extractionRun) {
-        boolean succeeded = extractionRun.getStatus() == ExtractionRun.Status.SUCCEEDED;
+        boolean succeeded = extractionRun.getStatus() == ExtractionStatus.SUCCEEDED;
         ExtractionProgressTracker.Status status = succeeded
                 ? ExtractionProgressTracker.Status.SUCCEEDED
                 : ExtractionProgressTracker.Status.FAILED;
         String error = extractionRun.getError();
-        if (extractionRun.getStatus() == ExtractionRun.Status.RUNNING) {
+        if (extractionRun.getStatus() == ExtractionStatus.RUNNING) {
             error = "The extraction was interrupted before it finished. Retry the extraction.";
         }
         ExtractionRunner.ExtractionSummary summary = extractionRun.getGoalsCreated() == null

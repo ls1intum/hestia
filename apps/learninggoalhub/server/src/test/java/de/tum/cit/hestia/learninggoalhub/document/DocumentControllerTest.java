@@ -1,6 +1,9 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -14,6 +17,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,6 +29,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -41,6 +47,9 @@ class DocumentControllerTest {
 
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private DocumentSectionRepository documentSectionRepository;
 
     // Bookmark-less PDFs would otherwise trigger a real vision-model call at upload; the default mock
     // returns null, exercising the filename-fallback path without touching the network.
@@ -308,5 +317,27 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$.message").value("Not a valid PDF file: renamed.pdf"));
 
         assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
+
+    @Test
+    void uploadNamesTheSessionWithoutHoldingATransaction() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        List<Boolean> inTransaction = new ArrayList<>();
+        when(titleService.deriveTitle(any(), any(), anyString())).thenAnswer(invocation -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return "Requirements Elicitation";
+        });
+
+        MvcResult result = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long documentId = objectMapper.readTree(result.getResponse().getContentAsString()).get(0).get("id").asLong();
+
+        assertThat(inTransaction).containsExactly(false);
+        assertThat(documentSectionRepository.findByDocumentIdOrderByOrdinal(documentId))
+                .extracting(DocumentSection::getTitle)
+                .containsExactly("Requirements Elicitation");
     }
 }

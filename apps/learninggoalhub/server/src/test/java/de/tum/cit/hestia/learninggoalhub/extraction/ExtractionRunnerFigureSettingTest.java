@@ -16,6 +16,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -28,12 +29,12 @@ import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -103,7 +104,6 @@ class ExtractionRunnerFigureSettingTest {
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
-        TaxonomyService taxonomyService = mock(TaxonomyService.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
 
@@ -111,7 +111,7 @@ class ExtractionRunnerFigureSettingTest {
         when(course.getId()).thenReturn(1L);
         when(course.getName()).thenReturn("Figure course");
         when(course.isFiguresEnabled()).thenReturn(figuresEnabled);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
 
         String text = "text from the lecture";
         Document document = mock(Document.class);
@@ -142,7 +142,7 @@ class ExtractionRunnerFigureSettingTest {
                 .thenReturn(List.of());
         clearInvocations(spec);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);
@@ -168,9 +168,8 @@ class ExtractionRunnerFigureSettingTest {
                 new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(TopicTreeSynthesizer.class),
+                mock(CompetencyTreeService.class),
                 hierarchyNodeRepository,
-                taxonomyService,
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 1,

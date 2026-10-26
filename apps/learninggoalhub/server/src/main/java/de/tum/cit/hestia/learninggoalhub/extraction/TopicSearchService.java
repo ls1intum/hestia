@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.competency.CompetencyTreeService;
+import de.tum.cit.hestia.learninggoalhub.competency.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -17,24 +19,24 @@ import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SessionUnit;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitExtraction;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitGoal;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.Window;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalCreationProvenance;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalStatus;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.time.Clock;
@@ -201,7 +203,7 @@ public class TopicSearchService {
         Set<String> terms = new LinkedHashSet<>();
         terms.add(topic);
         try {
-            terms.addAll(topicSearchSynthesizer.searchTerms(topic, languageName(course, documents), modelOverride));
+            terms.addAll(topicSearchSynthesizer.searchTerms(topic, LanguageUtils.courseLanguageName(course, documents), modelOverride));
         } catch (RuntimeException ex) {
             log.warn("Search terms for topic '{}' failed, searching for the topic alone: {}", topic, ex.getMessage());
         }
@@ -293,8 +295,8 @@ public class TopicSearchService {
         Map<Long, Document> documentsById = courseDocuments.stream()
                 .collect(Collectors.toMap(Document::getId, document -> document));
         int pagesRead = validateRanges(ranges, documentsById);
-        String dominantLanguage = ExtractionRunner.dominantLanguage(courseDocuments);
-        String languageName = languageName(course, courseDocuments);
+        String dominantLanguage = LanguageUtils.dominantLanguage(courseDocuments);
+        String languageName = LanguageUtils.courseLanguageName(course, courseDocuments);
 
         List<SessionUnit<PageRange>> units = new ArrayList<>();
         Map<Long, List<FigureDescription>> figuresByDocument = new HashMap<>();
@@ -609,8 +611,7 @@ public class TopicSearchService {
             }
         });
         // Locked so a concurrent request cannot add the same topic between the check and the insert.
-        Course course = courseRepository.lockById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = courseRepository.lockOrThrow(courseId);
         Set<Integer> ticked = new HashSet<>();
         for (String key : subSkillKeys == null ? List.<String>of() : subSkillKeys) {
             Integer index = subSkillIndex(key, proposal.candidates().size());
@@ -621,18 +622,13 @@ public class TopicSearchService {
         if (ticked.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Keep at least one sub-skill.");
         }
-        boolean duplicateTopic = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL))
-                .stream()
-                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(proposal.topic()));
-        if (duplicateTopic) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
+        goalRepository.rejectDuplicateTopic(courseId, proposal.topic());
 
         LearningGoal topic = new LearningGoal(course, proposal.topic(), GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         topic.setStatus(GoalStatus.PENDING);
         topic.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        topic.setHierarchyNode(competencyRoot(course));
+        topic.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
         goalRepository.saveAndFlush(topic);
 
         Map<Integer, LearningGoal> subSkills = new HashMap<>();
@@ -672,7 +668,7 @@ public class TopicSearchService {
             skill.setRole(GoalRole.SKILL);
             skill.setShortLabel(plan.shortLabel());
             skill.setLectureOrder(median(members));
-            TaxonomyClassification levels = ExtractionRunner.atLeastChildLevels(plan.classification(),
+            TaxonomyClassification levels = CompetencyTreeService.atLeastChildLevels(plan.classification(),
                     members.stream().map(LearningGoal::getBloomLevel).filter(Objects::nonNull).toList(),
                     members.stream().map(LearningGoal::getSoloLevel).filter(Objects::nonNull).toList());
             if (levels != null) {
@@ -750,12 +746,6 @@ public class TopicSearchService {
                         new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName())));
     }
 
-    private HierarchyNode competencyRoot(Course course) {
-        return hierarchyNodeRepository.findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
-                .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies")));
-    }
-
     /** Places new goals among the goals already on their session, or after every goal of the course. */
     private int lectureOrderFor(Course course, HierarchyNode node) {
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
@@ -786,8 +776,7 @@ public class TopicSearchService {
     }
 
     private Course course(Long courseId) {
-        return courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        return courseRepository.findOrThrow(courseId);
     }
 
     private static String requireTopic(String text) {
@@ -800,11 +789,6 @@ public class TopicSearchService {
                     "Topic text must be at most " + MAX_TOPIC_CHARS + " characters");
         }
         return topic;
-    }
-
-    private static String languageName(Course course, List<Document> documents) {
-        return LanguageUtils.englishName(
-                ExtractionRunner.resolveLanguage(course, null, ExtractionRunner.dominantLanguage(documents)));
     }
 
     /**
@@ -895,7 +879,7 @@ public class TopicSearchService {
                 solos.add(levels.solo());
             }
         }
-        return ExtractionRunner.atLeastChildLevels(classified, blooms, solos);
+        return CompetencyTreeService.atLeastChildLevels(classified, blooms, solos);
     }
 
     private static String blankToNull(String value) {
