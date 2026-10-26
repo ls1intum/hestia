@@ -34,5 +34,5 @@ npm run generate:api
 - `npm run build` – typecheck (`tsc -b`) and production build
 - `npm run typecheck` – typecheck only
 - `npm run lint` – ESLint
-- `npm test` – Vitest
+- `npm test` – Vitest. Helper tests run in Node; component tests (`*.test.tsx`) opt into jsdom with a `// @vitest-environment jsdom` header and import `src/test/dom.ts`, and mock `src/api/client.ts` instead of calling a server.
 - `npm run generate:api` – regenerate `src/api/schema.d.ts` from `openapi/openapi.json`
