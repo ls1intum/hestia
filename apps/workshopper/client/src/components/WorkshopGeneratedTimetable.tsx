@@ -67,7 +67,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
     blocks, sessionTitle, latestSession, expandedBlocks, toggleExpand, editing, setEditing,
     editingBlockId, toggleEditBlock, cancelEditBlock, pendingMappingsRef,
     confirmLeave, leaveDialog, setLeaveDialog, isSavingDraft, discardAndProceed, saveAndProceed,
-    saveTitle, saveObjective, saveStep, saveStepTime, saveBlockDuration, addStep, deleteStep, deleteActivity,
+    saveTitle, saveObjective, saveStep, saveStepTime, saveBlockDuration, saveSectionDuration, addStep, deleteStep, deleteActivity,
     addBlock, deleteBlock, lastDeletedBlock, setLastDeletedBlock, undoDelete, handleDragEnd,
   } = timetable;
 
@@ -99,13 +99,13 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                 <span className="py-1">{sessionTitle || "Workshop Title"}</span>
               </h2>
               <CardDescription className="mt-1">
-                Edit any title, activity, or step inline. Click an activity badge to switch it.
+                Edit block contents, activities, time allocation and ordering.
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          
+
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={blocks.map(b => b.dndId)} strategy={verticalListSortingStrategy}>
@@ -133,6 +133,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                     onSaveStep={(sIdx, stIdx, v) => saveStep(block.dndId, sIdx, stIdx, v)}
                     onSaveStepTime={(sIdx, stIdx, v) => saveStepTime(block.dndId, sIdx, stIdx, v)}
                     onSaveBlockDuration={v => saveBlockDuration(block.dndId, v)}
+                    onSaveSectionDuration={(sIdx, v) => saveSectionDuration(block.dndId, sIdx, v)}
                     onSaveObjective={v => saveObjective(block.dndId, v)}
                     onDeleteBlock={() => deleteBlock(block.dndId)}
                     onSwitchActivity={(oldAct, newAct) => switchActivity(block.dndId, oldAct, newAct)}
@@ -144,7 +145,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                 );
               })}
             </SortableContext>
-            
+
             <div className="mt-4 flex justify-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -209,14 +210,14 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
               {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <div 
+            <div
               title={evaluateBlockNeedsPrioritySelection ? "please review Understanding Check first" : undefined}
               className={evaluateBlockNeedsPrioritySelection ? "shrink-0 cursor-help" : "shrink-0"}
             >
-              <Button 
-                size="sm" 
-                onClick={handleNext} 
-                disabled={evaluateBlockNeedsPrioritySelection || regeneratingBlockId !== null} 
+              <Button
+                size="sm"
+                onClick={handleNext}
+                disabled={evaluateBlockNeedsPrioritySelection || regeneratingBlockId !== null}
                 className={`gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150 ${evaluateBlockNeedsPrioritySelection ? "pointer-events-none" : ""}`}
               >
                 {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />

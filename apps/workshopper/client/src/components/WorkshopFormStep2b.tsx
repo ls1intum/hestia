@@ -64,7 +64,7 @@ export default function WorkshopFormStep2b({ initialInput, onGenerate, isLoading
         <CardHeader>
           <CardTitle className="font-display text-3xl">Materials</CardTitle>
           <CardDescription>
-            Select the materials that will be available during the workshop.
+            Select the materials that will be available during the session.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -73,7 +73,6 @@ export default function WorkshopFormStep2b({ initialInput, onGenerate, isLoading
             <div className="space-y-2">
               <Label className="font-body font-medium">
                 Available Materials{" "}
-                <span className="text-muted-foreground font-normal">(select what's available)</span>
               </Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {MATERIALS.map((mat) => (
@@ -82,11 +81,10 @@ export default function WorkshopFormStep2b({ initialInput, onGenerate, isLoading
                     type="button"
                     disabled={isLoading}
                     onClick={() => toggleMaterial(mat.name)}
-                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left transition-all text-sm ${
-                      selectedMaterials.includes(mat.name)
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border/60 bg-card hover:bg-muted/40"
-                    }`}
+                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left transition-all text-sm ${selectedMaterials.includes(mat.name)
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/60 bg-card hover:bg-muted/40"
+                      }`}
                   >
                     <CheckSquare className={`h-4 w-4 shrink-0 ${selectedMaterials.includes(mat.name) ? "opacity-100" : "opacity-30"}`} />
                     <span className="truncate">{mat.emoji} {mat.name}</span>

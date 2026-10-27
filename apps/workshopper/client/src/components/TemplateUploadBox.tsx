@@ -21,7 +21,7 @@ interface Props {
 /** The PowerPoint template drop zone shared by the slide workstation and the course settings. */
 export function TemplateUploadBox({
   fileName, caption, isBusy = false, onUpload, onRemove, removeTitle = "Remove template",
-  emptyHint = "Hint: optional branding", note,
+  emptyHint = "", note,
 }: Props) {
   const readOnly = !onUpload;
   const filled = fileName !== null;

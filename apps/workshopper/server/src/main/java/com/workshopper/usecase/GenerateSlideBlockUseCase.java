@@ -547,13 +547,22 @@ public class GenerateSlideBlockUseCase {
         }
 
         for (Map<String, Object> slide : llmSlides) {
+            String layout = (String) slide.get("layout");
+            // Summary phase has NO participant activity: filter out activity layouts or convert to summary
+            if (layout != null && (layout.startsWith("activity_") || layout.equals("live_poll") || layout.equals("debrief"))) {
+                if (slide.containsKey("bullets") && slide.get("bullets") instanceof List<?> list && !list.isEmpty()) {
+                    slide.put("layout", "summary");
+                } else {
+                    continue; // drop activity-only prompt slides (e.g. One-Minute Paper prompt)
+                }
+            }
             slide.put("group", "summary");
             slide.put("topic", label);
             slide.put("subtitle", phaseName);
+            slide.remove("activityName");
+            slide.remove("activityPrompt");
+            slide.remove("activityInstructions");
             if (!slide.containsKey("layout")) slide.put("layout", "summary");
-            if ("activity_q&a".equals(slide.get("layout"))) {
-                slide.put("activityName", "🙋 ONE-MINUTE PAPER");
-            }
             slides.add(slide);
         }
 
@@ -568,12 +577,12 @@ public class GenerateSlideBlockUseCase {
     }
 
     private List<Map<String, Object>> buildSummaryFallback(String label) {
-        Map<String, Object> omp = new LinkedHashMap<>();
-        omp.put("title", "One Minute Paper");
-        omp.put("layout", "activity_q&a");
-        omp.put("activityPrompt", "What is the most important concept you learned today?\n2. What is your biggest remaining question?");
-        omp.put("notes", "Give 1 min for silent writing. Invite 2–3 to share. Collect papers if desired.");
-        return List.of(omp);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("title", "Key Takeaways");
+        summary.put("layout", "summary");
+        summary.put("bullets", List.of("Review the core concepts covered in today's session", "Apply key lessons to upcoming work or assignments"));
+        summary.put("notes", "Summarize the primary takeaways and answer any concluding questions from participants.");
+        return List.of(summary);
     }
 
     // =========================================================================

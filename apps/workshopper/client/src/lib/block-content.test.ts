@@ -24,6 +24,13 @@ describe("blockMethods", () => {
     const b = block("LEARNING_CYCLE", [section("Practice", [], ["Quiz", "Lecture"])], { methods: ["Quiz / Polls", "Presentation"] });
     expect(blockMethods(b)).toEqual(["Quiz / Polls"]); // "Quiz" is contained in "Quiz / Polls"
   });
+
+  it("returns empty methods for summary and administrative blocks", () => {
+    const summary = block("SUMMARY", [section("Wrap-up", [], ["Q&A"])], { methods: ["Think-Pair-Share"] });
+    expect(blockMethods(summary)).toEqual([]);
+    const arrive = block("ARRIVE", [], { methods: ["Welcome Activity"] });
+    expect(blockMethods(arrive)).toEqual([]);
+  });
 });
 
 describe("blockContent", () => {

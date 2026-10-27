@@ -81,7 +81,7 @@ export const PHASES: Record<string, PhaseInfo> = {
   },
   SUMMARY: {
     label: "Summary & Wrap-up", emoji: "🏁", mode: "summary", compact: false, expandable: true, hasSlides: true,
-    template: () => oneSection("SUMMARY", "Summary & Wrap-up", 5, "Wrap-up", ["3 min - ", "2 min - Prompt: "]),
+    template: () => oneSection("SUMMARY", "Summary & Wrap-up", 5, "Wrap-up", ["3 min - Review key concepts", "2 min - Wrap-up"]),
   },
   BREAK: {
     label: "Break", emoji: "☕", mode: "break", compact: true, expandable: false, hasSlides: true,

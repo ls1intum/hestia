@@ -233,11 +233,11 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
             style={
               hasSlides
                 ? {
-                    background: 'transparent',
-                    border: '1px solid var(--hestia-border)',
-                    color: 'var(--hestia-text)',
-                    fontFamily: 'var(--hestia-font-body)'
-                  }
+                  background: 'transparent',
+                  border: '1px solid var(--hestia-border)',
+                  color: 'var(--hestia-text)',
+                  fontFamily: 'var(--hestia-font-body)'
+                }
                 : { fontFamily: 'var(--hestia-font-body)', background: 'var(--hestia-primary)' }
             }
             onMouseEnter={(e) => {
@@ -279,7 +279,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (isEditMode) confirmLeave(() => {});
+                if (isEditMode) confirmLeave(() => { });
                 else startEditing();
                 if (!isOpen && !isEditMode) setIsOpen(true);
               }}
@@ -331,7 +331,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
               <>
                 <div style={{ height: '1px', background: 'var(--hestia-border)', margin: '12px 0' }} />
                 <div className="space-y-3">
-                  <h4 style={sidebarHeading}>Slide Prep Tasks</h4>
+                  <h4 style={sidebarHeading}>Todos</h4>
                   <SlidePrepTasks
                     slide={savedDeck[currentSlideIndex - 1]?.slide}
                     slideIndex={currentSlideIndex}

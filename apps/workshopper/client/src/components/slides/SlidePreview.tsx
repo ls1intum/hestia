@@ -125,6 +125,10 @@ export function SlidePreview({ slide: slideData }: { slide: SlideData }) {
     }
 
     const group = (slideData as any).group;
+    if (group === 'summary') {
+      activityType = null;
+      isActivityLayout = false;
+    }
     const rawTopic = (slideData as any).topic || slideData.subtitle || displayTitle;
     const topicVal = rawTopic.replace(/\s*-\s*LG\s*\d+/i, '').trim();
 
@@ -249,6 +253,20 @@ export function SlidePreview({ slide: slideData }: { slide: SlideData }) {
 
   // ── Q&A ─────────────────────────────────────────────────────────────────
   if (layout === 'activity_qanda' || layout === 'activity_q&a') {
+    if ((slideData as any).group === 'summary') {
+      return shell(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(slideData.bullets || [slideData.activityPrompt || '']).filter(Boolean).map((bullet, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: accent, marginTop: 7, flexShrink: 0 }} />
+              <p style={{ fontFamily: bodyFont, fontSize: '1rem', color: DARK, lineHeight: 1.4, margin: 0 }}>
+                {renderBoldPlaceholders(typeof bullet === 'string' ? bullet : String(bullet))}
+              </p>
+            </div>
+          ))}
+        </div>
+      );
+    }
     return shell(
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
         <div style={{ fontSize: '3rem' }}>🙋</div>

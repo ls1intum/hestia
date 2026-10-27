@@ -128,17 +128,15 @@ export default function App() {
                       });
                     }}
                     disabled={!isClickable && effectiveStep !== s.id}
-                    className={`flex items-center gap-1.5 transition-opacity ${
-                      isClickable ? "cursor-pointer hover:opacity-70" 
-                      : i > highestStepIdx ? "cursor-not-allowed opacity-50" 
-                      : "cursor-default"
-                    }`}
+                    className={`flex items-center gap-1.5 transition-opacity ${isClickable ? "cursor-pointer hover:opacity-70"
+                      : i > highestStepIdx ? "cursor-not-allowed opacity-50"
+                        : "cursor-default"
+                      }`}
                   >
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold transition-colors ${
-                      effectiveStep === s.id ? "bg-primary text-primary-foreground"
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold transition-colors ${effectiveStep === s.id ? "bg-primary text-primary-foreground"
                       : i <= highestStepIdx ? "bg-primary/30 text-primary"
-                      : "bg-muted text-muted-foreground"
-                    }`}>
+                        : "bg-muted text-muted-foreground"
+                      }`}>
                       {i + 1}
                     </span>
                     <span className={effectiveStep === s.id ? "text-foreground font-medium" : ""}>{s.label}</span>
@@ -218,6 +216,7 @@ export default function App() {
             courseTemplate={templateInfo}
             settings={workshopInput}
             onEdit={() => setStep("input-1")}
+            onTitleChange={(title) => setWorkshopInput(prev => ({ ...prev, title }))}
             onContinue={() => {
               // we don't save draft here yet, since user didn't enter anything new, just goes to goals
               setStep("goals");
@@ -278,8 +277,8 @@ export default function App() {
         {step === "prepare" && session && (
           <div className="space-y-6">
             <div>
-              <h2 className="font-display font-semibold text-2xl">Class Preparation</h2>
-              <p className="text-muted-foreground font-body text-sm mt-1">Generate and edit the slides for each block, and tick off the prep tasks per slide.</p>
+              <h2 className="font-display font-semibold text-2xl">Slide Preparation</h2>
+              <p className="text-muted-foreground font-body text-sm mt-1">Generate and edit the slides. Use the task list to help you prepare.</p>
             </div>
             <SlideWorkstation
               session={session}

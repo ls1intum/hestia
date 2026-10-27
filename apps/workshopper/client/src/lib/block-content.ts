@@ -32,6 +32,10 @@ export const stripStepTime = (step: string) => step.replace(TIME_PREFIX, "").tri
 
 /** The activities shown as badges: the block's own and its sections', without lecture/presentation. */
 export function blockMethods(block: ActivityBlock): string[] {
+  const phase = (block.phase || "").toUpperCase();
+  if (phase === "SUMMARY" || phase === "ARRIVE" || phase === "BREAK" || phase === "BUFFER") {
+    return [];
+  }
   const raw = Array.from(new Set([
     ...(block.methods || []),
     ...(block.sections || []).flatMap(s => s.methods || []),

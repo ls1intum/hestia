@@ -56,12 +56,29 @@ export function setStepMinutes<B extends ActivityBlock>(block: B, sectionIdx: nu
   return { ...block, sections, duration: sumSections(sections) };
 }
 
-/** Sets the block's minutes; with a single section, the section carries the same time box. */
+/** Sets the block's minutes; distributes proportionally across sections (single-section: direct assignment). */
 export function setBlockMinutes<B extends ActivityBlock>(block: B, minutes: string): B {
   const num = toMinutes(minutes);
-  const sections = block.sections && block.sections.length === 1
-    ? [{ ...block.sections[0], duration: num }]
-    : block.sections;
+  if (!block.sections || block.sections.length === 0) {
+    return { ...block, duration: num };
+  }
+  if (block.sections.length === 1) {
+    return { ...block, sections: [{ ...block.sections[0], duration: num }], duration: num };
+  }
+  // Multi-section: distribute proportionally, preserving the ratio between sections
+  const total = sumSections(block.sections);
+  let remaining = num;
+  const sections = block.sections.map((sec, i) => {
+    if (i === block.sections!.length - 1) {
+      // Last section gets the remainder so the total is exact
+      return { ...sec, duration: Math.max(0, remaining) };
+    }
+    const share = total > 0
+      ? Math.min(Math.max(0, Math.round(((sec.duration || 0) / total) * num)), remaining)
+      : Math.min(Math.max(0, Math.floor(num / block.sections!.length)), remaining);
+    remaining -= share;
+    return { ...sec, duration: share };
+  });
   return { ...block, sections, duration: num };
 }
 
@@ -94,4 +111,13 @@ export function removeActivity<B extends ActivityBlock>(block: B, method: string
     methods: (block.methods || []).filter(m => m !== method),
     sections: (block.sections || []).map(s => ({ ...s, methods: (s.methods || []).filter(m => m !== method) })),
   };
+}
+
+/** Sets one section's duration directly; the block total is recalculated from all sections. */
+export function setSectionDuration<B extends ActivityBlock>(block: B, sectionIdx: number, minutes: string): B {
+  const num = Math.max(1, toMinutes(minutes));
+  const sections = (block.sections || []).map((sec, i) =>
+    i === sectionIdx ? { ...sec, duration: num } : sec
+  );
+  return { ...block, sections, duration: sumSections(sections) };
 }

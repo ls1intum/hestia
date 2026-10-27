@@ -3,7 +3,7 @@ Block objective: {blockObjective}
 All session learning goals (for the summary):
 {goals}
 
-Wrap-up activity steps (Takeaways, Q&A, Logistics):
+Wrap-up steps (Takeaways, Logistics, Next Steps):
 {sectionSteps}
 
 
