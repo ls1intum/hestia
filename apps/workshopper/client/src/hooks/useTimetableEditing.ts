@@ -266,6 +266,8 @@ export function useTimetableEditing({ initialSession, goals, meta, onSaveSession
     updateBlock(dndId, b => edits.setStepMinutes(b, sIdx, stIdx, v));
   const saveBlockDuration = (dndId: string, v: string) =>
     updateBlock(dndId, b => edits.setBlockMinutes(b, v));
+  const saveSectionDuration = (dndId: string, sIdx: number, v: string) =>
+    updateBlock(dndId, b => edits.setSectionDuration(b, sIdx, v));
   const addStep = (dndId: string, text: string) =>
     updateBlock(dndId, b => edits.addStep(b, text));
   const deleteStep = (dndId: string, sIdx: number, stIdx: number) =>
@@ -341,7 +343,7 @@ export function useTimetableEditing({ initialSession, goals, meta, onSaveSession
     expandedBlocks, toggleExpand, expandBlock, editing, setEditing,
     editingBlockId, toggleEditBlock, cancelEditBlock, pendingMappingsRef,
     confirmLeave, leaveDialog, setLeaveDialog, isSavingDraft, discardAndProceed, saveAndProceed,
-    saveTitle, saveObjective, saveStep, saveStepTime, saveBlockDuration, addStep, deleteStep, deleteActivity,
+    saveTitle, saveObjective, saveStep, saveStepTime, saveBlockDuration, saveSectionDuration, addStep, deleteStep, deleteActivity,
     addBlock, deleteBlock, lastDeletedBlock, setLastDeletedBlock, undoDelete, handleDragEnd,
   };
 }

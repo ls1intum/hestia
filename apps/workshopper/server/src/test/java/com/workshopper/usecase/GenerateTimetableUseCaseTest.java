@@ -47,6 +47,19 @@ class GenerateTimetableUseCaseTest {
     }
 
     @Test
+    void restrictToSelectionsDropsMethodsFromNonInstructionalPhases() {
+        var section = new ActivitySectionDto("Wrap-up", 5, List.of("5 min - Wrap-up"),
+                List.of("Quiz / Polls"), List.of());
+        var block = new ActivityBlockDto("b1", "SUMMARY", "Summary & Wrap-up", "", "obj", "desc",
+                List.of("Quiz / Polls"), List.of(), List.of(section), 5);
+
+        var result = GenerateTimetableUseCase.restrictToSelections(block, List.of("Quiz / Polls"), List.of());
+
+        assertThat(result.methods()).isEmpty();
+        assertThat(result.sections().get(0).methods()).isEmpty();
+    }
+
+    @Test
     void normalizeEvaluateStepsMergesSplitQuestionsIntoOnePerBox() {
         var section = new ActivitySectionDto("Check", 10, List.of(
                 "5 min - Goal 1 & 2 - Worked Problem: Solve a problem on decision regions.",

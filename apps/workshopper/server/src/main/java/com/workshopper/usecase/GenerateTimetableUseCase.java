@@ -305,20 +305,28 @@ public class GenerateTimetableUseCase {
     /**
      * Drops any method or material the LLM returned that the user did not select,
      * so the initial timetable only shows the user's own choices.
+     * Administrative and non-instructional phases (ARRIVE, BREAK, BUFFER, SUMMARY) never have activities.
      * A null {@code selectedActivities} means activities are unrestricted.
      */
     static ActivityBlockDto restrictToSelections(ActivityBlockDto block, List<String> selectedActivities, List<String> materials) {
         if (block == null) return null;
+        boolean noActivities = isNoActivityPhase(block.phase());
         List<ActivitySectionDto> sections = block.sections() == null ? null : block.sections().stream()
                 .map(s -> new ActivitySectionDto(s.title(), s.duration(), s.steps(),
-                        selectedActivities == null ? s.methods() : keepSelected(s.methods(), selectedActivities),
+                        noActivities ? List.of() : (selectedActivities == null ? s.methods() : keepSelected(s.methods(), selectedActivities)),
                         keepSelected(s.materials(), materials)))
                 .collect(Collectors.toList());
         return new ActivityBlockDto(block.blockId(), block.phase(), block.phaseLabel(), block.goalTag(),
                 block.objective(), block.description(),
-                selectedActivities == null ? block.methods() : keepSelected(block.methods(), selectedActivities),
+                noActivities ? List.of() : (selectedActivities == null ? block.methods() : keepSelected(block.methods(), selectedActivities)),
                 keepSelected(block.materials(), materials),
                 sections, block.duration());
+    }
+
+    static boolean isNoActivityPhase(String phase) {
+        if (phase == null) return false;
+        String p = phase.trim().toUpperCase();
+        return p.equals("ARRIVE") || p.equals("BREAK") || p.equals("BUFFER") || p.equals("SUMMARY");
     }
 
     private static List<String> keepSelected(List<String> values, List<String> allowed) {

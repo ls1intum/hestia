@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addStep, deleteStep, removeActivity, setBlockMinutes, setStepMinutes, setStepText } from "./block-edits";
+import { addStep, deleteStep, removeActivity, setBlockMinutes, setSectionDuration, setStepMinutes, setStepText } from "./block-edits";
 import type { ActivityBlock } from "./workshop-generator";
 
 const cycle = (): ActivityBlock => ({
@@ -50,10 +50,19 @@ describe("setBlockMinutes", () => {
     expect(b.sections![0].duration).toBe(12);
   });
 
-  it("leaves several sections alone", () => {
+  it("distributes proportionally across multiple sections", () => {
     const b = setBlockMinutes(cycle(), "30");
     expect(b.duration).toBe(30);
-    expect(b.sections!.map(s => s.duration)).toEqual([5, 10]);
+    expect(b.sections!.map(s => s.duration)).toEqual([10, 20]);
+  });
+});
+
+describe("setSectionDuration", () => {
+  it("sets one section's duration and recalculates the block total", () => {
+    const b = setSectionDuration(cycle(), 0, "8");
+    expect(b.sections![0].duration).toBe(8);
+    expect(b.sections![1].duration).toBe(10);
+    expect(b.duration).toBe(18);
   });
 });
 

@@ -6,10 +6,10 @@ CONTENT TIERS (strictly enforced):
 3. Invisible — session-level logistics, timekeeping, or broad curriculum goals stay in the timetable. Never create slides or notes for these.
 
 DENSITY PROFILE FOR THIS PHASE:
-Medium-density. Maximum 3 slides total.
-- Usually 1 slide summarizing the key takeaways for the session goals.
-- 1 slide for the final activity/Q&A if applicable.
-- 1 slide for final logistics/dismissal. DO NOT hallucinate specific times, dates, or rooms (like "Room 204" or "Tuesday"). Use generic placeholders like "[Date/Time]" and "[Room/Link]".
+Maximum 2 slides total.
+- 1 slide summarizing the key takeaways synthesized from the session goals.
+- 1 slide for final logistics, next steps, or dismissal (if applicable). DO NOT hallucinate specific times, dates, or rooms (like "Room 204" or "Tuesday"). Use generic placeholders like "[Date/Time]" and "[Room/Link]".
+- DO NOT generate any interactive activity slides, student exercises, or prompts (no One-Minute Paper, no pair discussions, no questions for students to complete). Summary contains NO participant activity.
 
 Return ONLY a valid JSON array matching this schema:
 [

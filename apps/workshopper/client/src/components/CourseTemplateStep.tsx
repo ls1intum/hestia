@@ -53,10 +53,9 @@ export default function CourseTemplateStep({ courseId, template, onTemplateChang
     <div className="space-y-2">
       <Card className="border-border/60 shadow-lg">
         <CardHeader>
-          <CardTitle className="font-display text-3xl">Slide Template</CardTitle>
+          <CardTitle className="font-display text-3xl">Slide Template (Optional)</CardTitle>
           <CardDescription>
-            Optional. Upload your university's PowerPoint template (.pptx): its title slide, logo and footer are used for
-            every session in this course. A session can still remove it or upload its own.
+            Upload your university's PowerPoint template (.pptx): its title slide, logo and footer are used for the generated slides.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

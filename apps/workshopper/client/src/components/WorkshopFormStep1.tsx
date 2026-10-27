@@ -23,7 +23,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
   const [title, setTitle] = useState(initialInput?.title ?? "");
   const [duration, setDuration] = useState<number | "">(initialInput?.duration ?? 90);
   const [participants, setParticipants] = useState<number | "">(initialInput?.participants ?? 50);
-  const [sessionType, setSessionType] = useState<SessionType>((initialInput?.sessionType as SessionType) ?? "course");
+  const [sessionType, setSessionType] = useState<SessionType>((initialInput?.sessionType as SessionType) ?? "lecture");
   const [sessionTypeOther, setSessionTypeOther] = useState(initialInput?.sessionTypeOther ?? "");
   const [studentBackground, setStudentBackground] = useState(initialInput?.studentBackground ?? "");
 
@@ -64,9 +64,11 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
   return (
     <Card className="border-border/60 shadow-lg">
       <CardHeader>
-        <CardTitle className="font-display text-3xl">Session Setup</CardTitle>
+        <CardTitle className="font-display text-3xl">
+          {entityType === "COURSE" ? "Course Setup" : "Session Setup"}
+        </CardTitle>
         <CardDescription>
-          Configure the basic parameters for your session.
+          Configure the basic parameters for your {entityType === "COURSE" ? "course" : "session"}.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -96,7 +98,7 @@ export default function WorkshopFormStep1({ onNext, isLoading = false, initialIn
                 <SelectValue placeholder="Select a session type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="course">Course</SelectItem>
+                <SelectItem value="lecture">Lecture</SelectItem>
                 <SelectItem value="workshop">Workshop</SelectItem>
                 <SelectItem value="exercise">Exercise session</SelectItem>
                 <SelectItem value="seminar">Seminar</SelectItem>

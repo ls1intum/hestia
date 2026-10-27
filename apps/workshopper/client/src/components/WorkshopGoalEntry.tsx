@@ -163,9 +163,9 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         if (idx === -1) return prev;
         const newGoals = [...prev];
         const baseGoal = { ...newGoals[idx] };
-        
+
         newGoals[idx] = { ...baseGoal, text: suggestion.values[0], suggestions: [], dirty: false };
-        
+
         const extraGoals = suggestion.values.slice(1).map((val, i) => ({
           ...baseGoal, // Preserve bloomLevel, soloLevel, session, subSkills
           id: `g${Date.now()}-${i}`,
@@ -216,7 +216,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
       checking: false,
       dirty: false,
     }));
-    
+
     setGoals((prev) => {
       const nonEmpty = prev.filter((g) => g.text.trim().length > 0);
       const merged = [...nonEmpty, ...newDrafts];
@@ -348,11 +348,10 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
         >
           {/* G-5: text label so type is readable in grayscale */}
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-              s.type === "split"
+            <span className={`text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${s.type === "split"
                 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                 : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-            }`}>
+              }`}>
               {s.type === "split" ? "Split Goal" : "Refinement"}
             </span>
           </div>
@@ -401,7 +400,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             Enter Learning Goals
           </CardTitle>
           <CardDescription className="font-body text-sm">
-            What should a student be able to do after this session?
+            What should a participant be able to do after this session?
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -421,7 +420,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           <div>
             <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Import from LearningGoalHub</h3>
             <LGHImportModal onAddSkills={handleAddSkillsFromLGH} disabled={isLoading} />
-            
+
             {lghDrafts.length > 0 && (
               <div className="mt-4 space-y-4">
                 {lghDrafts.map(renderGoal)}

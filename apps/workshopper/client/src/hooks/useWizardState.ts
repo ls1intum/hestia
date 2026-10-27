@@ -38,14 +38,14 @@ import { generateDefaultSkeleton, SlideData, templateInfoFromDetail } from "@/li
 export type Step = "input-1" | "input-2" | "input-2b" | "course-template" | "course-summary" | "goals" | "timeline" | "prepare" | "final-review";
 
 const ALL_STEPS: { id: Step; label: string }[] = [
-  { id: "input-1",  label: "Setup" },
-  { id: "input-2",  label: "Activities" },
+  { id: "input-1", label: "Setup" },
+  { id: "input-2", label: "Activities" },
   { id: "input-2b", label: "Materials" },
   { id: "course-template", label: "Template" },
   { id: "course-summary", label: "Review" },
-  { id: "goals",    label: "Goals" },
+  { id: "goals", label: "Goals" },
   { id: "timeline", label: "Timetable" },
-  { id: "prepare",  label: "Preparation" },
+  { id: "prepare", label: "Slides" },
   { id: "final-review", label: "Final Review" },
 ];
 
@@ -83,7 +83,7 @@ function computeStepOrder(entityType: "SESSION" | "COURSE", courseId: string | n
 
 export function useWizardState() {
   const [view, setView] = useState<"dashboard" | "wizard">("dashboard");
-  const [step, setStep]         = useState<Step>("input-1");
+  const [step, setStep] = useState<Step>("input-1");
   const [highestStepIdx, setHighestStepIdx] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -112,7 +112,7 @@ export function useWizardState() {
 
   // All form state
   const [workshopInput, setWorkshopInput] = useState<Partial<WorkshopInput>>({});
-  const [refinedGoals,  setRefinedGoals]  = useState<LearningGoalPlan[]>([]);
+  const [refinedGoals, setRefinedGoals] = useState<LearningGoalPlan[]>([]);
   const [session, setSession] = useState<WorkshopSession | null>(null);
   const [originalSession, setOriginalSession] = useState<WorkshopSession | null>(null);
   const [currentSkeleton, setCurrentSkeleton] = useState<SessionSkeleton | null>(null);
@@ -176,7 +176,7 @@ export function useWizardState() {
           draftSaveTimeout.current = null;
           pendingSave.current = null;
           try {
-            
+
             let id: string;
             // The entityType state determines if we're creating/editing a Course or a Session.
             if (entityType === "COURSE") {
@@ -354,7 +354,7 @@ export function useWizardState() {
       setCompletedTasks([]);
       setSlidesCache({});
       setIsFinished(false);
-      
+
       // A new session in a course starts at its Review step; the steps up to it are open
       setHighestStepIdx(computeStepOrder("SESSION", courseId).indexOf("course-summary"));
       setStep("course-summary");
@@ -370,7 +370,7 @@ export function useWizardState() {
   const resumeSession = async (id: string, opts?: { silent?: boolean; type?: "SESSION" | "COURSE"; step?: string }) => {
     setIsLoading(true);
     try {
-      
+
       const resolvedEntityType = opts?.type ?? "SESSION";
       const detail = resolvedEntityType === "COURSE" ? await getCourseDetail(id) : await getSessionDetail(id);
       // R-2: resolve courseId locally so we can compute the correct step order immediately
@@ -441,7 +441,7 @@ export function useWizardState() {
             // What was loaded is what is saved; only later edits count as unsaved settings
             savedInputRef.current = draft.workshopInput;
           }
-          if (draft.refinedGoals)  setRefinedGoals(draft.refinedGoals);
+          if (draft.refinedGoals) setRefinedGoals(draft.refinedGoals);
           setKeptGoals(draft.keptGoals ?? null);
           if (draft.skeleton) setCurrentSkeleton(draft.skeleton);
           if (draft.session) {
@@ -456,7 +456,7 @@ export function useWizardState() {
           if (draft.completedTasks) setCompletedTasks(draft.completedTasks);
         } catch (_) { /* best effort */ }
       }
-      
+
       // Also restore slidesCache for the draft
       if (detail.session?.slides) {
         setSlidesCache(detail.session.slides);
@@ -577,7 +577,7 @@ export function useWizardState() {
     isGeneratingRef.current = true;
     setIsFinished(false);
     setRefinedGoals(goalsWithPriority);
-    
+
     const updatedInput = { ...workshopInput };
     if (!updatedInput.evaluateMappings || updatedInput.evaluateMappings.length === 0) {
       if (goalsWithPriority.length > 0 && goalsWithPriority.length <= 2) {
@@ -591,14 +591,14 @@ export function useWizardState() {
     try {
       const skeleton = generateDefaultSkeleton(goalsWithPriority, updatedInput.duration || 90);
       setCurrentSkeleton(skeleton);
-      
+
       // We must save the draft first. If the LLM generation times out, we don't want to create an orphaned session.
       setKeptGoals(null);
       const initialDraft = { ...buildDraft(updatedInput, goalsWithPriority, skeleton), keptGoals: undefined };
       const currentId = await persistDraft(initialDraft, "timeline", sessionIdRef.current, currentCourseId);
       if (!currentId) throw new Error("The session could not be saved, so no timetable was generated.");
       if (!sessionId) setSessionIdSynced(currentId);
-      
+
       const skeletonWithId: SessionSkeleton = {
         ...skeleton,
         sessionId: currentId,
@@ -613,7 +613,7 @@ export function useWizardState() {
       }
       setSession(result);
       setOriginalSession(JSON.parse(JSON.stringify(result)));
-      
+
       const draft = { ...buildDraft(updatedInput, goalsWithPriority, skeleton, result), keptGoals: undefined };
       await persistDraft(draft, "timeline", currentId, currentCourseId);
       setStep("timeline");

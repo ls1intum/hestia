@@ -16,6 +16,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { InlineEditText } from "./InlineEditText";
 import { InlineEditableStep } from "./InlineEditableStep";
+import { MinutesInput } from "./MinutesInput";
 import { getStepEmoji, ACTIVITY_GROUPS, MODE_COLORS, getSectionMode, getStepMode } from "@/lib/constants";
 import { phaseInfo } from "@/lib/phases";
 import { blockContent, blockMethods, ShownStep } from "@/lib/block-content";
@@ -28,7 +29,7 @@ import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
 export function SortableBlockRow({
   block, isExpanded, editing, meta, isRegenerating, selectedActivities,
   onToggleExpand, onEditTitle, onSaveTitle, onSaveStep, onSaveStepTime,
-  onSaveBlockDuration, onSaveObjective,
+  onSaveBlockDuration, onSaveSectionDuration, onSaveObjective,
   onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
   isEditMode = false, onToggleEditMode, onCancelEditMode,
   goals, needsEvaluatePriority, onConfirmEvaluateMappings, onPendingMappingsChange
@@ -45,6 +46,7 @@ export function SortableBlockRow({
   onSaveStep: (sectionIdx: number, stepIdx: number, v: string) => void;
   onSaveStepTime: (sectionIdx: number, stepIdx: number, v: string) => void;
   onSaveBlockDuration: (v: string) => void;
+  onSaveSectionDuration: (sectionIdx: number, v: string) => void;
   onSaveObjective: (v: string) => void;
   onDeleteBlock: () => void;
   onSwitchActivity: (oldMethod: string, newMethod: string) => void;
@@ -173,9 +175,9 @@ export function SortableBlockRow({
             <div className="flex items-center gap-1.5 shrink-0">
 
               {/* Activity tags (Methods) */}
-              {(allMethods.length > 0 || isEditMode) && (
+              {(allMethods.length > 0 || (isEditMode && block.phase !== "SUMMARY")) && (
                 <div className="flex items-center gap-1 mr-1">
-                  {allMethods.map((m, j) => (isEditMode && block.phase !== "EVALUATE") ? (
+                  {allMethods.map((m, j) => (isEditMode && block.phase !== "EVALUATE" && block.phase !== "SUMMARY") ? (
                     <DropdownMenu key={j}>
                       <DropdownMenuTrigger asChild>
                         <div
@@ -210,7 +212,7 @@ export function SortableBlockRow({
                       {m}
                     </div>
                   ))}
-                  {isEditMode && (
+                  {isEditMode && block.phase !== "SUMMARY" && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10 shrink-0" title="Add activity method">
@@ -358,7 +360,8 @@ export function SortableBlockRow({
               }
 
               if (content.kind !== "other") {
-                return <BlockDetails content={content} methods={allMethods} isEditMode={isEditMode} renderText={renderItem} />;
+                return <BlockDetails content={content} methods={allMethods} isEditMode={isEditMode} renderText={renderItem} sections={block.sections}
+                  onSaveSectionDuration={isEditMode ? (sIdx, v) => onSaveSectionDuration(sIdx, v) : undefined} />;
               }
 
               // Custom blocks: every section and step, with times
@@ -468,41 +471,5 @@ function ActivityMenuItems({ selectedActivities, onPick, label = act => act }: {
         </DropdownMenuSub>
       ))}
     </>
-  );
-}
-
-/** Small numeric minutes field; commits on blur or Enter, reverts on Escape. */
-function MinutesInput({ value, onSave, className = "", title }: {
-  value: number;
-  onSave: (v: string) => void;
-  className?: string;
-  title?: string;
-}) {
-  const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
-  const commit = () => {
-    if (draft !== String(value)) onSave(draft);
-  };
-
-  return (
-    <input
-      type="number"
-      min={0}
-      value={draft}
-      title={title}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={commit}
-      onClick={e => e.stopPropagation()}
-      onPointerDown={e => e.stopPropagation()}
-      onKeyDown={e => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") { setDraft(String(value)); }
-      }}
-      className={`bg-background border border-primary/60 rounded-md focus:outline-none focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${className}`}
-    />
   );
 }

@@ -8,19 +8,18 @@ interface PrepTask {
 
 /** What the lecturer has to prepare for a slide: activity slides need their material, lecture slides their own content. */
 function prepTasks(slide: SlideData, block: ActivityBlock | undefined): PrepTask[] {
+  if (slide.group === "summary" || block?.phase === "SUMMARY") {
+    return [];
+  }
   const isLecture = slide.layout === "lecture_placeholder" || slide.layout === "content"
     || slide.group === "activate_prior_knowledge" || slide.group === "main_lecture";
   const isActivity = slide.layout?.startsWith("activity_") || slide.layout === "live_poll" || slide.layout === "debrief";
 
   if (isActivity) {
     const tasks = [{ id: "review-instructions", text: "Review activity instructions and prompt" }];
-    const materials = Array.from(new Set(
-      [...(block?.materials || []), ...(block?.sections || []).flatMap(s => s.materials || [])]
-        .filter(Boolean)
-        .map(m => String(m).trim())
-        .filter(m => !m.toLowerCase().includes("slide")),
-    ));
-    if (materials.length > 0) tasks.push({ id: "prepare-material", text: `Prepare material: ${materials.join(", ")}` });
+    const hasMaterials = [...(block?.materials || []), ...(block?.sections || []).flatMap(s => s.materials || [])]
+      .some(m => m && !String(m).toLowerCase().includes("slide"));
+    if (hasMaterials) tasks.push({ id: "prepare-material", text: "Prepare materials" });
     return tasks;
   }
   return isLecture ? [{ id: "replace-slide", text: "Replace slide with your own lecture slide" }] : [];

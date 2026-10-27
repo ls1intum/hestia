@@ -130,7 +130,7 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                     if (allMethods.length === 0) return null;
 
                     return (
-                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 ml-2">
+                          <div className="flex items-center flex-wrap gap-1.5 shrink-0 ml-2">
                           <div className="h-4 w-[1px] bg-border/60 mx-1 shrink-0 hidden sm:block"></div>
                           {allMethods.map((m, j) => (
                             <TooltipProvider key={`meth-${j}`}>
@@ -170,9 +170,9 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
 
                         {/* The block — fixed height, gap below encodes duration */}
                         <div 
-                          className={`transition-all rounded-xl ${phase.compact ? "px-3" : "px-4"} flex items-center gap-2 shrink-0`}
+                          className={`transition-all rounded-xl ${phase.compact ? "px-3" : "px-4"} flex items-center flex-wrap gap-2 shrink-0`}
                           style={{
-                            height: phase.compact ? "36px" : "44px",
+                            minHeight: phase.compact ? "36px" : "44px",
                             backgroundColor: modeColors.bgTint,
                             border: isBreak ? `1.5px dashed ${modeColors.border}` : `1px solid rgba(0,0,0,0.08)`,
                             boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
