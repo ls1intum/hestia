@@ -116,162 +116,162 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
                   const mode = phase.mode;
                   const modeColors = MODE_COLORS[mode];
                   const isBreak = mode === "break";
-                  
-                  const nextBlock = i < rows.length - 1 ? rows[i+1].block : null;
+
+                  const nextBlock = i < rows.length - 1 ? rows[i + 1].block : null;
                   // Gap below this block encodes its duration on the timeline
                   const gapBelow = i < rows.length - 1 ? Math.max(12, block.duration * 5) : 0;
-                  
+
                   const nextIsSmall = nextBlock && phaseInfo(nextBlock.phase).compact;
                   const nextDot = nextIsSmall ? 18 : 26;
-                  
+
                   const tagsContent = (() => {
                     const allMethods = blockMethods(block);
 
                     if (allMethods.length === 0) return null;
 
                     return (
-                          <div className="flex items-center flex-wrap gap-1.5 shrink-0 ml-2">
-                          <div className="h-4 w-[1px] bg-border/60 mx-1 shrink-0 hidden sm:block"></div>
-                          {allMethods.map((m, j) => (
-                            <TooltipProvider key={`meth-${j}`}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div 
-                                    style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
-                                    className="inline-flex items-center justify-center whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0 cursor-help"
-                                  >
-                                    {m}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-[250px] text-xs font-body font-normal">
-                                  {getMechanicDescription(m)}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ))}
-                        </div>
+                      <div className="flex items-center flex-wrap gap-1.5 shrink-0 ml-2">
+                        <div className="h-4 w-[1px] bg-border/60 mx-1 shrink-0 hidden sm:block"></div>
+                        {allMethods.map((m, j) => (
+                          <TooltipProvider key={`meth-${j}`}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div
+                                  style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
+                                  className="inline-flex items-center justify-center whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0 cursor-help"
+                                >
+                                  {m}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-[250px] text-xs font-body font-normal">
+                                {getMechanicDescription(m)}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
                     );
                   })();
 
                   const innerContent = (
-                      <div className="relative flex items-center w-full text-left">
-                        {/* Time label column: 3.5rem (w-14) */}
-                        <div className="w-14 shrink-0 flex flex-col justify-center text-right hidden sm:flex font-mono text-sm pr-2"
-                             style={{ color: block.duration >= 10 ? 'var(--hestia-primary)' : 'var(--hestia-text-muted)', fontWeight: block.duration >= 10 ? 700 : 400 }}>
-                          {block.duration}m
-                        </div>
+                    <div className="relative flex items-center w-full text-left">
+                      {/* Time label column: 3.5rem (w-14) */}
+                      <div className="w-14 shrink-0 flex flex-col justify-center text-right hidden sm:flex font-mono text-sm pr-2"
+                        style={{ color: block.duration >= 10 ? 'var(--hestia-primary)' : 'var(--hestia-text-muted)', fontWeight: block.duration >= 10 ? 700 : 400 }}>
+                        {block.duration}m
+                      </div>
 
-                        {/* Spine column: 2rem (w-8) */}
-                        <div className="w-8 shrink-0 flex flex-col justify-center items-center relative hidden sm:flex self-stretch">
-                          {/* Dot */}
-                          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full shadow-sm z-10" 
-                               style={{ backgroundColor: modeColors.dot, border: '1px solid white' }} />
-                        </div>
+                      {/* Spine column: 2rem (w-8) */}
+                      <div className="w-8 shrink-0 flex flex-col justify-center items-center relative hidden sm:flex self-stretch">
+                        {/* Dot */}
+                        <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full shadow-sm z-10"
+                          style={{ backgroundColor: modeColors.dot, border: '1px solid white' }} />
+                      </div>
 
-                        {/* The block — fixed height, gap below encodes duration */}
-                        <div 
-                          className={`transition-all rounded-xl ${phase.compact ? "px-3" : "px-4"} flex items-center flex-wrap gap-2 shrink-0`}
+                      {/* The block — fixed height, gap below encodes duration */}
+                      <div
+                        className={`transition-all rounded-xl ${phase.compact ? "px-3" : "px-4"} flex items-center flex-wrap gap-2 shrink-0`}
+                        style={{
+                          minHeight: phase.compact ? "36px" : "44px",
+                          backgroundColor: modeColors.bgTint,
+                          border: isBreak ? `1.5px dashed ${modeColors.border}` : `1px solid rgba(0,0,0,0.08)`,
+                          boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+                        }}
+                      >
+                        <span className="text-base shrink-0">{phase.emoji}</span>
+                        <span className="font-body text-sm font-medium text-foreground whitespace-nowrap">{block.phaseLabel}</span>
+                        {tagsContent}
+                        {phase.expandable && <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 hidden sm:block ml-1" />}
+                      </div>
+                    </div>
+                  );
+
+                  if (!phase.expandable) {
+                    return (
+                      <div
+                        key={block.blockId || i}
+                        className="border-0 relative bg-transparent mb-[var(--gap-below)]"
+                        style={{ '--gap-below': `${gapBelow}px` } as React.CSSProperties}
+                      >
+                        {/* Timeline spine for blocks without details (break, buffer) */}
+                        {i < rows.length - 1 && (
+                          <div
+                            className="absolute w-[2px] z-0 opacity-60 hidden sm:block transition-all duration-300"
+                            style={{
+                              backgroundColor: modeColors.dot,
+                              top: '18px',
+                              left: '71px',
+                              bottom: `calc(-1 * (var(--gap-below) + ${nextDot}px))`
+                            }}
+                          />
+                        )}
+                        {innerContent}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <AccordionItem
+                      key={block.blockId || i}
+                      value={`item-${block.blockId || i}`}
+                      className="border-0 relative bg-transparent group/item transition-all duration-300 data-[state=closed]:mb-[var(--gap-below)] data-[state=open]:mb-6"
+                      style={{
+                        '--gap-below': `${gapBelow}px`,
+                        '--closed-bottom': `calc(-1 * (var(--gap-below) + ${nextDot}px))`,
+                        '--open-bottom': `calc(-1 * (24px + ${nextDot}px))`
+                      } as React.CSSProperties}
+                    >
+                      {/* Timeline spine */}
+                      {i < rows.length - 1 && (
+                        <div
+                          className="absolute w-[2px] z-0 opacity-60 hidden sm:block transition-all duration-300 group-data-[state=closed]/item:bottom-[var(--closed-bottom)] group-data-[state=open]/item:bottom-[var(--open-bottom)]"
                           style={{
-                            minHeight: phase.compact ? "36px" : "44px",
-                            backgroundColor: modeColors.bgTint,
-                            border: isBreak ? `1.5px dashed ${modeColors.border}` : `1px solid rgba(0,0,0,0.08)`,
-                            boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+                            backgroundColor: modeColors.dot,
+                            top: '26px',
+                            left: '71px'
                           }}
-                        >
-                          <span className="text-base shrink-0">{phase.emoji}</span>
-                          <span className="font-body text-sm font-medium text-foreground whitespace-nowrap">{block.phaseLabel}</span>
-                          {tagsContent}
-                          {phase.expandable && <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 hidden sm:block ml-1" />}
-                        </div>
-                          </div>
-                      );
-
-                      if (!phase.expandable) {
-                        return (
-                          <div 
-                            key={block.blockId || i} 
-                            className="border-0 relative bg-transparent mb-[var(--gap-below)]" 
-                            style={{ '--gap-below': `${gapBelow}px` } as React.CSSProperties}
-                          >
-                            {/* Timeline spine for blocks without details (break, buffer) */}
-                            {i < rows.length - 1 && (
-                              <div 
-                                className="absolute w-[2px] z-0 opacity-60 hidden sm:block transition-all duration-300"
-                                style={{ 
-                                  backgroundColor: modeColors.dot, 
-                                  top: '18px', 
-                                  left: '71px',
-                                  bottom: `calc(-1 * (var(--gap-below) + ${nextDot}px))`
-                                }} 
-                              />
-                            )}
-                            {innerContent}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <AccordionItem 
-                          key={block.blockId || i} 
-                          value={`item-${block.blockId || i}`} 
-                          className="border-0 relative bg-transparent group/item transition-all duration-300 data-[state=closed]:mb-[var(--gap-below)] data-[state=open]:mb-6" 
-                          style={{ 
-                            '--gap-below': `${gapBelow}px`,
-                            '--closed-bottom': `calc(-1 * (var(--gap-below) + ${nextDot}px))`,
-                            '--open-bottom': `calc(-1 * (24px + ${nextDot}px))`
-                          } as React.CSSProperties}
-                        >
-                          {/* Timeline spine */}
-                          {i < rows.length - 1 && (
-                            <div 
-                              className="absolute w-[2px] z-0 opacity-60 hidden sm:block transition-all duration-300 group-data-[state=closed]/item:bottom-[var(--closed-bottom)] group-data-[state=open]/item:bottom-[var(--open-bottom)]"
-                              style={{ 
-                                backgroundColor: modeColors.dot, 
-                                top: '26px', 
-                                left: '71px' 
-                              }} 
-                            />
-                          )}
-                          <AccordionTrigger className="w-full py-1 hover:no-underline [&>svg]:hidden group focus:outline-none">
-                            {innerContent}
-                          </AccordionTrigger>
-                          <AccordionContent className="pl-0 sm:pl-[5.5rem] pr-0 pb-4 pt-2 relative z-10">
-                            {(() => {
-                              const content = blockContent(block, goals.map(g => g.goal).filter(Boolean));
-                              if (content.kind === "evaluate") {
-                                return (
-                                  <div className="mt-2">
-                                    <UnderstandingCheckSteps
-                                      allSteps={content.steps}
-                                      renderEditable={(_, text, className) => <span className={className}>{text}</span>}
-                                      mappings={meta.evaluateMappings}
-                                      goalIds={goals.map(g => g.id)}
-                                    />
-                                  </div>
-                                );
-                              }
-                              if (content.kind === "other") {
-                                return (
-                                  <div className="pl-4 mt-2">
-                                    <p className="text-sm text-muted-foreground leading-relaxed">{block.objective || block.description}</p>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <BlockDetails
-                                  content={content}
-                                  methods={blockMethods(block)}
-                                  renderText={(item, className) => <span className={className}>{item.text}</span>}
-                                  className="pl-4 mt-2"
+                        />
+                      )}
+                      <AccordionTrigger className="w-full py-1 hover:no-underline [&>svg]:hidden group focus:outline-none">
+                        {innerContent}
+                      </AccordionTrigger>
+                      <AccordionContent className="pl-0 sm:pl-[5.5rem] pr-0 pb-4 pt-2 relative z-10">
+                        {(() => {
+                          const content = blockContent(block, goals.map(g => g.goal).filter(Boolean));
+                          if (content.kind === "evaluate") {
+                            return (
+                              <div className="mt-2">
+                                <UnderstandingCheckSteps
+                                  allSteps={content.steps}
+                                  renderEditable={(_, text, className) => <span className={className}>{text}</span>}
+                                  mappings={meta.evaluateMappings}
+                                  goalIds={goals.map(g => g.id)}
                                 />
-                              );
-                            })()}
-                          </AccordionContent>
-                        </AccordionItem>
-                      );
-                    })}
-                  </Accordion>
-                </div>
+                              </div>
+                            );
+                          }
+                          if (content.kind === "other") {
+                            return (
+                              <div className="pl-4 mt-2">
+                                <p className="text-sm text-muted-foreground leading-relaxed">{block.objective || block.description}</p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <BlockDetails
+                              content={content}
+                              methods={blockMethods(block)}
+                              renderText={(item, className) => <span className={className}>{item.text}</span>}
+                              className="pl-4 mt-2"
+                            />
+                          );
+                        })()}
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            </div>
           </div>
         </div>
 
@@ -294,12 +294,12 @@ export default function WorkshopFinalReview({ session, goals = [], meta, slidesC
               <Download className="h-3.5 w-3.5" /> PPTX Slides
             </Button>
             <Button
-            size="sm"
-            onClick={onDone}
-            className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" /> Save & Export
-          </Button>
+              size="sm"
+              onClick={onDone}
+              className="gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Done
+            </Button>
           </div>
         </div>
       </Card>
