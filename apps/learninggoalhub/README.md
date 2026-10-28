@@ -10,6 +10,7 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
 | `server/` | Spring Boot 3.5 + Spring AI server, PostgreSQL, Flyway | [server/README.md](server/README.md) |
 | `client/` | React 18 + TypeScript + Tailwind CSS, built with Vite | [client/README.md](client/README.md) |
 | `docs/api.md` | API contract for the consuming apps | [docs/api.md](docs/api.md) |
+| `docs/EXTENDING.md` | checklists for changes that cross server and client | [docs/EXTENDING.md](docs/EXTENDING.md) |
 | `docs/acceptance.md` | manual acceptance passes against the requirements | [docs/acceptance.md](docs/acceptance.md) |
 | `DEPLOY.md` | containers, CI/CD, VM setup, backups | [DEPLOY.md](DEPLOY.md) |
 | `AGENTS.md` | instructions for AI coding agents | [AGENTS.md](AGENTS.md) |
