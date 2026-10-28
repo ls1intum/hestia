@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -13,9 +13,26 @@ const BASE_PATH = "/learninggoalhub";
 // single origin and we avoid CORS configuration during development.
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8080";
 
+// The router accepts the prefix without its trailing slash (a deleted course navigates there), but
+// Vite's dev server only serves it with the slash and shows a "did you mean" page otherwise. In
+// production the proxy strips the prefix, so the same URL already works there.
+const prefixWithoutSlash: Plugin = {
+  name: "redirect-prefix-without-slash",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.url === BASE_PATH) {
+        res.writeHead(302, { Location: `${BASE_PATH}/` });
+        res.end();
+        return;
+      }
+      next();
+    });
+  },
+};
+
 export default defineConfig({
   base: `${BASE_PATH}/`,
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), prefixWithoutSlash],
   server: {
     // Bind all interfaces so both IPv4 (127.0.0.1) and IPv6 (::1) localhost resolve.
     host: true,

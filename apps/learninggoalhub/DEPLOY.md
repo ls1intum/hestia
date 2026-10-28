@@ -179,3 +179,23 @@ sudo docker compose -f compose.prod.yaml --env-file .env start server
 `--clean --if-exists` drops and recreates every object in the dump, so the tables and the Flyway
 history return to the dump's state; objects created after the dump are left in place. To start
 from an empty database instead, restore after `docker compose down -v` and `up -d postgres`.
+
+### Check that a dump restores
+
+A dump that was never restored is not yet a backup. `scripts/verify-backup.sh` restores a dump into
+a disposable Postgres container, prints the rows of every table and the Flyway version, then starts
+the server image against that copy and checks that it turns healthy and that `/api/courses` serves
+as many courses as the copy holds. The live database is not touched, and the script removes its
+containers when it ends. Run it on the VM after the first deploy and after every migration that
+rewrites data, against the newest dump. The deploy only places the compose file on the VM, so copy
+the script there first:
+
+```bash
+scp apps/learninggoalhub/scripts/verify-backup.sh <user>@<vm>:/tmp/   # from a clone
+sudo bash /tmp/verify-backup.sh "$(ls -t /opt/hestia/backups/learninggoalhub/*.dump | head -1)"   # on the VM
+```
+
+The second argument picks the server image (default `…/learninggoalhub/server:latest`); `none`
+checks the restore alone. The server runs Flyway on the copy, so a dump from before a migration
+also proves that the migration applies to real data. The script needs about 1.5 GB of free memory
+for the server; on the VM, run it when no extraction is running.

@@ -50,7 +50,7 @@ function renderTree() {
       <TopicTree courseId={1} goals={goals} onUpdate={() => {}} onDelete={() => {}} />
     </QueryClientProvider>,
   );
-  return screen.getByRole("table", { name: "Topic tree" });
+  return screen.getByRole("treegrid", { name: "Topic tree" });
 }
 
 describe("TopicTree", () => {

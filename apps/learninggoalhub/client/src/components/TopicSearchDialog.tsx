@@ -42,6 +42,8 @@ const validRange = (range: PickedRange) =>
 const pageCount = (range: PickedRange) =>
   validRange(range) ? range.endPage - range.startPage + 1 : 0;
 
+const pages = (count: number) => `${count} ${count === 1 ? "page" : "pages"}`;
+
 /**
  * "Find in the slides": adds the topic an instructor typed from the pages that teach it. First the
  * instructor settles which pages to read, starting from the runs the text search found; then the
@@ -310,7 +312,7 @@ export default function TopicSearchDialog({
               readMutation.isPending ? (
                 <div className="flex items-center gap-2.5 py-6 text-sm text-hestia-text-muted">
                   <Spinner />
-                  Reading {totalPages} pages. This can take a minute…
+                  Reading {pages(totalPages)}. This can take a minute…
                 </div>
               ) : pagesQuery.isLoading ? (
                 <div className="flex items-center gap-2.5 py-6 text-sm text-hestia-text-muted">
@@ -508,7 +510,7 @@ export default function TopicSearchDialog({
                         onClick={() => readMutation.mutate()}
                         disabled={totalPages === 0 || totalPages > maxPages || invalidRange}
                       >
-                        Read {totalPages} pages
+                        Read {pages(totalPages)}
                       </Button>
                     </div>
                   </div>
@@ -522,7 +524,7 @@ export default function TopicSearchDialog({
                       Choose the sub-skills to add
                     </p>
                     <p className="text-xs tabular-nums text-hestia-text-muted">
-                      Read {proposal.pagesRead} pages · {newCount} new
+                      Read {pages(proposal.pagesRead ?? 0)} · {newCount} new
                       {duplicateCount > 0 &&
                         ` · ${duplicateCount} already ${
                           sharedDuplicateTopic

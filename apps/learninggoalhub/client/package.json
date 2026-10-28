@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "e2e": "playwright test",
     "generate:api": "openapi-typescript ./openapi/openapi.json -o ./src/api/schema.d.ts"
   },
   "dependencies": {
@@ -21,7 +22,9 @@
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

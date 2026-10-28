@@ -398,7 +398,14 @@ export default function SourcePdfPane({
           </button>
         </div>
       </header>
-      <div ref={paneRef} className="min-h-0 flex-1 overflow-auto p-3">
+      {/* Focusable so the page can be scrolled from the keyboard. */}
+      <div
+        ref={paneRef}
+        tabIndex={0}
+        role="region"
+        aria-label="PDF page"
+        className="min-h-0 flex-1 overflow-auto p-3"
+      >
         {loading ? (
           <div className="flex h-full min-h-40 items-center justify-center gap-2 text-xs text-hestia-text-muted">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-hestia-border border-t-hestia-primary" />
