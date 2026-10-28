@@ -207,7 +207,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
 
           {totalDuration > targetDuration ? (
             <Button size="sm" disabled className="gap-2 shadow-md bg-muted text-muted-foreground font-semibold shrink-0 rounded-lg">
-              {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />
+              {regeneratingBlockId !== null ? "Generating..." : "Next Step"} <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
             <div
@@ -220,7 +220,7 @@ export default function WorkshopGeneratedTimetable({ session: initialSession, go
                 disabled={evaluateBlockNeedsPrioritySelection || regeneratingBlockId !== null}
                 className={`gap-2 shadow-md hover:shadow-lg bg-primary text-primary-foreground font-semibold shrink-0 rounded-lg transition-all duration-150 ${evaluateBlockNeedsPrioritySelection ? "pointer-events-none" : ""}`}
               >
-                {regeneratingBlockId !== null ? "Generating..." : "Preparation"} <ArrowRight className="h-4 w-4" />
+                {regeneratingBlockId !== null ? "Generating..." : "Next Step"} <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           )}

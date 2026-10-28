@@ -331,7 +331,7 @@ export function SlideWorkstation({ session, meta, goals, slidesCache, setSlidesC
               <>
                 <div style={{ height: '1px', background: 'var(--hestia-border)', margin: '12px 0' }} />
                 <div className="space-y-3">
-                  <h4 style={sidebarHeading}>Todos</h4>
+                  <h4 style={sidebarHeading}>To-dos</h4>
                   <SlidePrepTasks
                     slide={savedDeck[currentSlideIndex - 1]?.slide}
                     slideIndex={currentSlideIndex}
