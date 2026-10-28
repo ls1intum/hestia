@@ -543,10 +543,11 @@ async function notYetUploaded(
     params: { path: { courseId } },
   });
   if (error || !data) throw new Error("Course created, but its materials could not be checked.");
-  const stored = new Set(data.map((document) => document.filename));
+  // By kind and name: a stored lecture must not hide an exercise sheet with the same filename.
+  const stored = new Set(data.map((document) => `${document.kind}/${document.filename}`));
   return {
-    LECTURE: staged.LECTURE.filter((file) => !stored.has(file.name)),
-    EXERCISE: staged.EXERCISE.filter((file) => !stored.has(file.name)),
+    LECTURE: staged.LECTURE.filter((file) => !stored.has(`LECTURE/${file.name}`)),
+    EXERCISE: staged.EXERCISE.filter((file) => !stored.has(`EXERCISE/${file.name}`)),
   };
 }
 
