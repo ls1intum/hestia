@@ -55,7 +55,9 @@ public class SecurityConfig {
                 LLM_REQUESTS, llmRequestLimit, llmRequestWindow, Clock.systemUTC());
 
         http
-            .csrf(csrf -> csrf.disable()) // Disable CSRF temporarily so frontend isn't blocked locally
+            // CSRF off: /api/** has no login yet, so there is no session to forge requests with.
+            // Turn it on together with the SAML login (#116).
+            .csrf(csrf -> csrf.disable())
             .addFilterBefore(serviceKeys, AnonymousAuthenticationFilter.class)
             .addFilterAfter(rateLimit, ServiceApiKeyFilter.class)
             // An API client gets a 401, not a redirect to the SAML login page.

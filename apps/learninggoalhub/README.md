@@ -9,6 +9,9 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
 | --- | --- | --- |
 | `server/` | Spring Boot 3.5 + Spring AI server, PostgreSQL, Flyway | [server/README.md](server/README.md) |
 | `client/` | React 18 + TypeScript + Tailwind CSS, built with Vite | [client/README.md](client/README.md) |
+| `docs/ARCHITECTURE.md` | containers, client, data model, legacy values | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| `docs/LLM.md` | every model call, failure handling, comparing runs | [docs/LLM.md](docs/LLM.md) |
+| `docs/SECURITY.md` | what is protected, what is open, and what changes with login | [docs/SECURITY.md](docs/SECURITY.md) |
 | `docs/api.md` | API contract for the consuming apps | [docs/api.md](docs/api.md) |
 | `docs/acceptance.md` | manual acceptance passes against the requirements | [docs/acceptance.md](docs/acceptance.md) |
 | `DEPLOY.md` | containers, CI/CD, VM setup, backups | [DEPLOY.md](DEPLOY.md) |
