@@ -12,7 +12,7 @@ LearningGoalHub is Florian's master's thesis project.
 
 The system helps instructors extract, review, edit and manage learning goals from educational materials. It uses LLM-based analysis, organizes learning goals in a Topic tree, classifies them with Bloom's revised taxonomy and the SOLO taxonomy, and provides APIs consumed by related thesis projects such as ExamLens and Workshopper.
 
-Read [README.md](README.md) (setup, run, test) and [server/README.md](server/README.md) (package map, conventions, how to add an endpoint or LLM call) before changing code.
+Read [README.md](README.md) (setup, run, test) and [server/README.md](server/README.md) (package map, conventions, how to add an endpoint or LLM call) before changing code. For a change that spans server and client (a new goal field, course setting, extraction phase or page), follow the checklist in [docs/EXTENDING.md](docs/EXTENDING.md).
 
 The LLM defaults come from `libs/shared-llm`, which Workshopper uses too. Read `libs/shared-llm/AGENTS.md` before changing it.
 

@@ -71,20 +71,28 @@ public class DocumentController {
             contents.add(requirePdf(file));
         }
 
-        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        // Likewise every file is parsed and checked before any is stored, so an unreadable file later
+        // in the upload does not leave the ones before it saved.
+        List<DocumentStructureService.ParsedDocument> parsedFiles = new ArrayList<>(files.length);
         for (int i = 0; i < files.length; i++) {
             MultipartFile file = files[i];
-            byte[] bytes = contents.get(i);
             DocumentStructureService.ParsedDocument parsed;
             try {
-                parsed = structureService.parse(bytes, file.getContentType(), file.getOriginalFilename());
+                parsed = structureService.parse(contents.get(i), file.getContentType(), file.getOriginalFilename());
             } catch (DocumentParser.DocumentParseException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Could not read uploaded file: " + file.getOriginalFilename(), e);
             }
+            requireText(file.getOriginalFilename(), parsed);
             requireWithinLimits(file.getOriginalFilename(), parsed);
+            parsedFiles.add(parsed);
+        }
+
+        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        for (int i = 0; i < files.length; i++) {
+            MultipartFile file = files[i];
             Document saved = documentService.persist(
-                    course, file.getOriginalFilename(), file.getContentType(), kind, parsed, bytes);
+                    course, file.getOriginalFilename(), file.getContentType(), kind, parsedFiles.get(i), contents.get(i));
             responses.add(DocumentResponse.from(saved));
         }
         return responses;
@@ -123,6 +131,19 @@ public class DocumentController {
         if (parsed.rawText().length() > maxTextChars) {
             throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
                     name + " contains more text than one document may (" + maxTextChars + " characters)");
+        }
+    }
+
+    /**
+     * Extraction reads the PDF's text layer; figure descriptions only add to text that is there. A
+     * scanned or image-only PDF would therefore "succeed" with no goals, so it is rejected here with
+     * a reason the user can act on instead.
+     */
+    private static void requireText(String name, DocumentStructureService.ParsedDocument parsed) {
+        if (parsed.rawText() == null || parsed.rawText().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    name + " has no selectable text (a scanned or image-only PDF?). "
+                            + "Run text recognition (OCR) on it or export it with its text, then upload it again.");
         }
     }
 

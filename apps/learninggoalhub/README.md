@@ -13,6 +13,7 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
 | `docs/LLM.md` | every model call, failure handling, comparing runs | [docs/LLM.md](docs/LLM.md) |
 | `docs/SECURITY.md` | what is protected, what is open, and what changes with login | [docs/SECURITY.md](docs/SECURITY.md) |
 | `docs/api.md` | API contract for the consuming apps | [docs/api.md](docs/api.md) |
+| `docs/EXTENDING.md` | checklists for changes that cross server and client | [docs/EXTENDING.md](docs/EXTENDING.md) |
 | `docs/acceptance.md` | manual acceptance passes against the requirements | [docs/acceptance.md](docs/acceptance.md) |
 | `DEPLOY.md` | containers, CI/CD, VM setup, backups | [DEPLOY.md](DEPLOY.md) |
 | `AGENTS.md` | instructions for AI coding agents | [AGENTS.md](AGENTS.md) |
