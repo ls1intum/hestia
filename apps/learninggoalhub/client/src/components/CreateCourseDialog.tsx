@@ -81,8 +81,6 @@ export default function CreateCourseDialog({
   const removeFile = (kind: DocumentKind, index: number) =>
     setStaged((prev) => ({ ...prev, [kind]: prev[kind].filter((_, i) => i !== index) }));
 
-  const files = [...staged.LECTURE, ...staged.EXERCISE];
-
   const [error, setError] = useState<string | null>(null);
   // Set once the dialog is gone. A run started here keeps going after that, but must neither close
   // a dialog reopened in the meantime nor report its errors into one that is no longer shown.
@@ -115,20 +113,18 @@ export default function CreateCourseDialog({
         queryClient.invalidateQueries({ queryKey: ["courses"] });
       }
 
-      if (files.length > 0) {
-        setUploadPercent(0);
-        setStep("uploading");
-        // On a retry, files an earlier attempt already stored are not sent again.
-        const remaining = await notYetUploaded(courseId, staged);
-        if (remaining.LECTURE.length + remaining.EXERCISE.length > 0) {
-          await uploadDocuments(courseId, remaining, setUploadPercent, () => setStep("processing"));
-        }
-        setStep("starting");
-        await startExtraction(courseId);
-        // The list picks the run up from its own polling and shows progress on the course's row.
-        queryClient.invalidateQueries({ queryKey: ["courses"] });
-        queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
+      setUploadPercent(0);
+      setStep("uploading");
+      // On a retry, files an earlier attempt already stored are not sent again.
+      const remaining = await notYetUploaded(courseId, staged);
+      if (remaining.LECTURE.length + remaining.EXERCISE.length > 0) {
+        await uploadDocuments(courseId, remaining, setUploadPercent, () => setStep("processing"));
       }
+      setStep("starting");
+      await startExtraction(courseId);
+      // The list picks the run up from its own polling and shows progress on the course's row.
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
       if (!closed.current) onClose();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not create the course.";
@@ -144,8 +140,9 @@ export default function CreateCourseDialog({
   const trimmed = name.trim();
   const busy = step != null;
   // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
-  // exercises alone would extract fine and still leave the course without a Topic tree.
-  const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
+  // exercises alone would extract fine and still leave the course without a Topic tree. A course
+  // with no files at all would open on an empty page with nothing to add, so a lecture is required.
+  const noLecture = staged.LECTURE.length === 0;
   const progressPercent = step == null
     ? 0
     : step === "creating"
@@ -191,7 +188,7 @@ export default function CreateCourseDialog({
           onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed && !busy && !exercisesOnly) void create();
+            if (trimmed && !busy && !noLecture) void create();
           }}
           className="comp-unfold flex w-full max-w-5xl flex-col gap-4 sm:mt-[6vh]"
         >
@@ -317,10 +314,15 @@ export default function CreateCourseDialog({
                     </div>
                   </div>
                 )}
-                {exercisesOnly && (
+                {noLecture && staged.EXERCISE.length > 0 && (
                   <p className="text-sm text-hestia-text-muted">
                     Exercises are placed onto the topics named from the lectures. Add at least one
                     lecture.
+                  </p>
+                )}
+                {noLecture && staged.EXERCISE.length === 0 && trimmed && (
+                  <p className="text-sm text-hestia-text-muted">
+                    Add at least one lecture PDF. The Topic tree is built from the lectures.
                   </p>
                 )}
                 {error && <p className="text-sm text-hestia-danger">{error}</p>}
@@ -331,7 +333,7 @@ export default function CreateCourseDialog({
                   <Button
                     type="submit"
                     className="h-9"
-                    disabled={!trimmed || busy || exercisesOnly}
+                    disabled={!trimmed || busy || noLecture}
                   >
                     {busy ? "Creating…" : "Create course →"}
                   </Button>
@@ -624,7 +626,7 @@ function uploadBatch(
     request.upload.onload = () => onTransferred();
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error(`Course created, but the upload failed (HTTP ${request.status}).`));
+      else reject(uploadError(request));
     };
     request.onerror = () =>
       reject(new Error("Course created, but the upload failed. Please check your connection."));
@@ -632,6 +634,23 @@ function uploadBatch(
       reject(new Error("Course created, but the upload timed out. Please try again."));
     request.send(formData);
   });
+}
+
+/**
+ * A 4xx carries the server's reason (a scanned PDF, a file over the size limit), which says what to
+ * change before retrying; a 5xx or an unreadable body falls back to the status code.
+ */
+function uploadError(request: XMLHttpRequest): Error {
+  const fallback = `Course created, but the upload failed (HTTP ${request.status}).`;
+  if (request.status < 400 || request.status >= 500) return new Error(fallback);
+  let message: unknown;
+  try {
+    message = (JSON.parse(request.responseText) as { message?: unknown } | null)?.message;
+  } catch {
+    return new Error(fallback);
+  }
+  if (typeof message !== "string" || message.trim() === "") return new Error(fallback);
+  return new Error(`Course created, but the upload failed: ${message.trim()}`);
 }
 
 function formatSize(bytes: number): string {

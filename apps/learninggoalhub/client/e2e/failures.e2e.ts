@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { courseRow, failNextModelCalls, lectureFiles, resetFakeLlm, uniqueName } from "./helpers.ts";
+import { textPdf } from "./pdf.ts";
 
 test.beforeEach(async ({ request }) => {
   await resetFakeLlm(request);
@@ -56,4 +57,26 @@ test("a run whose model calls fail names the sessions, saves nothing, and can be
   // A finished run opens the course with the skill review.
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("dialog", { name: "Review your skills" })).toContainText("0 of 4 accepted");
+});
+
+test("a course needs a lecture, and a PDF without text is refused with the reason", async ({ page }) => {
+  const name = uniqueName("Scanned");
+  await page.goto("./");
+  await page.getByRole("button", { name: "Add course" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create course" });
+  await dialog.getByLabel("Course title").fill(name);
+  await expect(dialog).toContainText("Add at least one lecture PDF.");
+  await expect(dialog.getByRole("button", { name: /Create course/ })).toBeDisabled();
+
+  // A page with no text layer stands in for a scan: the server reads no text from it either way.
+  await page.locator('input[type="file"]').first().setInputFiles([
+    ...lectureFiles,
+    { name: "scan.pdf", mimeType: "application/pdf", buffer: textPdf([[]]) },
+  ]);
+  await dialog.getByRole("button", { name: /Create course/ }).click();
+  await expect(dialog).toContainText("Course created, but the upload failed: scan.pdf has no selectable text");
+
+  await dialog.getByRole("button", { name: "Remove scan.pdf" }).click();
+  await dialog.getByRole("button", { name: /Create course/ }).click();
+  await expect(courseRow(page, name)).toContainText("Analyzed", { timeout: 60_000 });
 });

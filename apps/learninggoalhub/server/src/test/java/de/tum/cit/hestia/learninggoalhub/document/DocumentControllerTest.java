@@ -17,8 +17,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -317,6 +326,43 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$.message").value("Not a valid PDF file: renamed.pdf"));
 
         assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
+
+    @Test
+    void rejectsAScannedPdfWithoutStoringAnyFile() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .file(new MockMultipartFile("files", "scan.pdf", MediaType.APPLICATION_PDF_VALUE, imageOnlyPdf())))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
+                        "scan.pdf has no selectable text")));
+
+        assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
+
+    /** One page holding only a picture of a slide, as a scanner or a "print to image" export makes it. */
+    private static byte[] imageOnlyPdf() throws Exception {
+        BufferedImage slide = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = slide.createGraphics();
+        graphics.setColor(Color.WHITE);
+        graphics.fillRect(0, 0, 400, 300);
+        graphics.setColor(Color.BLACK);
+        graphics.drawString("Sorting algorithms", 40, 60);
+        graphics.drawRect(40, 100, 120, 80);
+        graphics.dispose();
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            PDImageXObject image = LosslessFactory.createFromImage(document, slide);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.drawImage(image, 50, 400, 400, 300);
+            }
+            document.save(out);
+            return out.toByteArray();
+        }
     }
 
     @Test
