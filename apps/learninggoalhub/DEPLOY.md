@@ -144,6 +144,11 @@ The app is then served at `https://<APP_HOST>/learninggoalhub/`.
 - `APP_HOST` must match the TLS cert SAN and drives the Traefik labels in `compose.prod.yaml`. The
   path prefix `/learninggoalhub` is fixed: it is written into those labels and into the client's
   Vite `base`, so changing it means editing both.
+- The LLM rate limit counts clients by the leftmost `X-Forwarded-For` address. That address is
+  trustworthy only because Traefik replaces any `X-Forwarded-*` headers a client sends (its default
+  while `forwardedHeaders.insecure` and `trustedIPs` are unset) and the server and client
+  containers publish no host ports. Do not trust forwarded headers in Traefik, and do not expose
+  either container directly, without moving the client address resolution to a trusted-proxy list.
 - On the small (~4 GB) shared VM the server is capped to `mem_limit: 1500m` (heap = 70%).
 
 ## Backups
@@ -151,8 +156,8 @@ The app is then served at `https://<APP_HOST>/learninggoalhub/`.
 The `backup` container writes a `pg_dump` custom-format dump of the database once a day (and once
 whenever the container is recreated) to `BACKUP_DIR` on the host, default
 `/opt/hestia/backups/learninggoalhub`, named `learninggoalhub-<YYYYMMDD-HHMMSS>.dump`. Dumps older
-than `BACKUP_KEEP_DAYS` (default 14) are deleted. A failed dump leaves no file and logs
-`backup FAILED`:
+than `BACKUP_KEEP_DAYS` (default 14) are deleted after each successful dump, so failing dumps never
+remove the last good ones. A failed dump leaves no file and logs `backup FAILED`:
 
 ```bash
 sudo docker logs learninggoalhub-backup      # one line per dump

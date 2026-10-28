@@ -115,14 +115,16 @@ services:
       - |
         while true; do
           file=/backups/learninggoalhub-$$(date +%Y%m%d-%H%M%S).dump
+          # Old dumps are pruned only after a new one was written, so a run of failures never
+          # deletes the last good backups.
           if pg_dump -Fc -f "$$file.partial"; then
             mv "$$file.partial" "$$file"
             echo "backup written: $$file"
+            find /backups -name 'learninggoalhub-*.dump' -mtime +$$BACKUP_KEEP_DAYS -delete
           else
             rm -f "$$file.partial"
             echo "backup FAILED" >&2
           fi
-          find /backups -name 'learninggoalhub-*.dump' -mtime +$$BACKUP_KEEP_DAYS -delete
           sleep 86400
         done
     restart: unless-stopped

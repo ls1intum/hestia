@@ -24,9 +24,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * answers the rest with 429. Every such request spends the deployment's inference quota and can
  * run for minutes, so without a cap a single client could exhaust it for everyone.
  *
- * <p>Clients are counted by address (the forwarded client address behind the proxies). Requests
- * authenticated with a service key are not counted: the consuming apps are trusted, and their
- * users would otherwise share one address and one allowance.
+ * <p>Clients are counted by address (the forwarded client address behind the proxies). Spring takes
+ * the leftmost {@code X-Forwarded-For} entry, which a client could set itself; it holds only because
+ * Traefik replaces client-sent forwarded headers and nothing reaches the server around it (see
+ * DEPLOY.md, Notes). Requests authenticated with a service key are not counted: the consuming apps
+ * are trusted, and their users would otherwise share one address and one allowance.
  */
 final class LlmRateLimitFilter extends OncePerRequestFilter {
 
