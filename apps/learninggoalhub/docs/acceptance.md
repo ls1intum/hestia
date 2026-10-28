@@ -85,6 +85,16 @@ list, and the issues listed under F3 and F4 elsewhere.
 | F8 | cosmetic | "Read 1 pages" in the Find-in-the-slides dialog. |
 | F9 | dev only | After deleting a course the client navigates to `/learninggoalhub` without a trailing slash; reloading that URL on the Vite dev server shows Vite's base-URL hint instead of the app. |
 
+**Fixed since.** F1: a bare object now binds where a list was asked for; a rerun stored the
+diagram's description. F2: the judge gives up after `hestia.bookmark.judge-timeout` (30 s); with
+the gateway unreachable the same upload finished in 35 s. F3: the tree is a treegrid, every child
+of a row group is a row, and a diagram box unfolds through its count line rather than being a
+button around buttons. The axe test that came with it also found that the PDF pane could not be
+scrolled from the keyboard; fixed too. F4: the secondary chip lines no longer dim muted text
+twice (5.4:1). `client/e2e/accessibility.e2e.ts` scans these screens in both themes on every pull
+request. F8: the dialog counts "1 page". F9: the dev server redirects the prefix without
+its slash to the app.
+
 ### Backup restore
 
 `scripts/verify-backup.sh` restored a dump of this pass's database (2 courses, 60 goals, an exam

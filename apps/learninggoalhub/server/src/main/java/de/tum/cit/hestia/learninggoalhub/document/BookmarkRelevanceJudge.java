@@ -2,7 +2,15 @@ package de.tum.cit.hestia.learninggoalhub.document;
 
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,11 +69,14 @@ public class BookmarkRelevanceJudge {
 
     private final LlmClient llm;
     private final String judgeModel;
+    private final Duration timeout;
 
     public BookmarkRelevanceJudge(LlmClient llm,
-                                  @Value("${hestia.bookmark.judge-model:openai-gpt-oss-120b}") String judgeModel) {
+                                  @Value("${hestia.bookmark.judge-model:openai-gpt-oss-120b}") String judgeModel,
+                                  @Value("${hestia.bookmark.judge-timeout:30s}") Duration timeout) {
         this.llm = llm;
         this.judgeModel = judgeModel;
+        this.timeout = timeout;
     }
 
     /**
@@ -106,8 +117,9 @@ public class BookmarkRelevanceJudge {
     private boolean askModel(String filename, int pageCount, List<String> titles) {
         String numbered = numberedList(titles);
         try {
-            String reply = llm.text(LlmRequest.of(PROMPT.formatted(filename, pageCount, titles.size(), numbered))
-                    .withModel(judgeModel));
+            String reply = withinTimeout(() -> llm.text(
+                    LlmRequest.of(PROMPT.formatted(filename, pageCount, titles.size(), numbered))
+                            .withModel(judgeModel)));
             Boolean verdict = parseVerdict(reply);
             if (verdict == null) {
                 log.warn("Bookmark judge gave an unclear reply for {} ({}), falling back to split: {}",
@@ -119,6 +131,29 @@ public class BookmarkRelevanceJudge {
         } catch (RuntimeException e) {
             log.warn("Bookmark judge unavailable for {}, falling back to split: {}", filename, e.getMessage());
             return true;
+        }
+    }
+
+    /**
+     * Runs the call with a deadline. The judge runs inside the upload request, and a gateway that
+     * does not answer would otherwise hold it for the whole retry ladder, minutes in which the upload
+     * looks stuck. Past the deadline the call is interrupted, which also ends its retries.
+     */
+    private String withinTimeout(Callable<String> call) {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        Future<String> reply = executor.submit(call);
+        try {
+            return reply.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new IllegalStateException("no reply within " + timeout.toSeconds() + " s");
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof RuntimeException cause ? cause : new IllegalStateException(e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted", e);
+        } finally {
+            reply.cancel(true);
+            executor.shutdown();
         }
     }
 

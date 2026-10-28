@@ -11,7 +11,7 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 function goalRow(page: Page, text: string) {
-  return page.getByRole("table", { name: "Topic tree" }).getByRole("row").filter({ hasText: text });
+  return page.getByRole("treegrid", { name: "Topic tree" }).getByRole("row").filter({ hasText: text });
 }
 
 test("renamed, re-levelled and deleted goals stay that way after a reload", async ({ page }) => {

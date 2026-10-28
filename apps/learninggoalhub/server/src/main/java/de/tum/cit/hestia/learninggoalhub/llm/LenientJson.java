@@ -38,6 +38,10 @@ import org.springframework.core.ParameterizedTypeReference;
  * paths keep the rest. The same reasoning as duplicate keys above: a strict binder must not decide
  * the fate of a reply the validators are there to judge.
  *
+ * <p>A bare object is read as a list of one where a list was asked for. The vision model, given a
+ * batch of a single page, answered {@code {"page": 3, ...}} instead of {@code [{"page": 3, ...}]};
+ * the strict binder rejected the reply and the page got no description, in every run.
+ *
  * <p>The mapper otherwise matches Spring AI's own default for
  * {@link BeanOutputConverter}, so the JSON schema sent to the model is unchanged.
  */
@@ -47,6 +51,7 @@ public final class LenientJson {
             .addModules(JacksonUtils.instantiateAvailableModules())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL, true)
+            .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true)
             .enable(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER)
             .build();
 
