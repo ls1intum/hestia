@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { courseRow, failNextModelCalls, lectureFiles, resetFakeLlm, uniqueName } from "./helpers.ts";
-import { textPdf } from "./pdf.ts";
+import { SEARCHING_LECTURE, SORTING_LECTURE, textPdf } from "./pdf.ts";
 
 test.beforeEach(async ({ request }) => {
   await resetFakeLlm(request);
@@ -79,4 +79,58 @@ test("a course needs a lecture, and a PDF without text is refused with the reaso
   await dialog.getByRole("button", { name: "Remove scan.pdf" }).click();
   await dialog.getByRole("button", { name: /Create course/ }).click();
   await expect(courseRow(page, name)).toContainText("Analyzed", { timeout: 60_000 });
+});
+
+test("a course whose analysis never started can start it from its page", async ({ page }) => {
+  let failStart = true;
+  await page.route("**/api/courses/*/extract**", async (route) => {
+    if (route.request().method() === "POST" && failStart) {
+      failStart = false;
+      return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+    }
+    return route.fallback();
+  });
+  const name = uniqueName("Unstarted");
+  await page.goto("./");
+  await page.getByRole("button", { name: "Add course" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create course" });
+  await dialog.getByLabel("Course title").fill(name);
+  await page.locator('input[type="file"]').first().setInputFiles(lectureFiles);
+  await dialog.getByRole("button", { name: /Create course/ }).click();
+  await expect(dialog).toContainText("Course created, but extraction could not be started.");
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("link", { name: new RegExp(`^${name}`) }).click();
+  await expect(page.getByText("2 documents uploaded, not analysed yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Start analysis" }).click();
+  await page.goto("./");
+  await expect(courseRow(page, name)).toContainText("Analyzed", { timeout: 60_000 });
+});
+
+test("a retried upload sends an exercise that shares a stored lecture's filename", async ({ page }) => {
+  let failExercises = true;
+  await page.route("**/api/courses/*/documents**", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.url().includes("kind=EXERCISE") && failExercises) {
+      failExercises = false;
+      return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+    }
+    return route.fallback();
+  });
+  const name = uniqueName("Same name");
+  await page.goto("./");
+  await page.getByRole("button", { name: "Add course" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create course" });
+  await dialog.getByLabel("Course title").fill(name);
+  const inputs = page.locator('input[type="file"]');
+  await inputs.nth(0).setInputFiles({ name: "week1.pdf", mimeType: "application/pdf", buffer: textPdf(SORTING_LECTURE) });
+  await inputs.nth(1).setInputFiles({ name: "week1.pdf", mimeType: "application/pdf", buffer: textPdf(SEARCHING_LECTURE) });
+  await dialog.getByRole("button", { name: /Create course/ }).click();
+  await expect(dialog).toContainText("Course created, but the upload failed (HTTP 500).");
+
+  await dialog.getByRole("button", { name: /Create course/ }).click();
+  await expect(courseRow(page, name)).toContainText("Analyzed", { timeout: 60_000 });
+  // Two documents: the exercise was sent on the retry, not taken for the stored lecture.
+  await expect(page.getByRole("link", { name: new RegExp(`^${name}`) }))
+    .toHaveAccessibleName(new RegExp(`^${name} 2 `));
 });

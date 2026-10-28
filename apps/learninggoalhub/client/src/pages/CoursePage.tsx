@@ -51,6 +51,12 @@ function CourseView({ courseId }: { courseId: number }) {
   const course = courseQuery.data;
   const extractionProblem = course?.extractionStatus === "FAILED"
     || course?.extractionStatus === "RUNNING";
+  // Materials were stored but no run was ever recorded: the create dialog was closed after the
+  // upload or the start of the analysis failed. Without this the course has no way to start one.
+  const extractionNotStarted = course != null
+    && course.extractionStatus == null
+    && (course.documentCount ?? 0) > 0
+    && (course.goalCount ?? 0) === 0;
   const reviewDue = course != null
     && (course.topicCount ?? 0) > 0
     && course.skillsReviewedAt == null;
@@ -89,6 +95,28 @@ function CourseView({ courseId }: { courseId: number }) {
       if (error) throw new Error("Could not record the skill review as done. It will be offered again.");
     },
     onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const result = await api.POST("/api/courses/{courseId}/extract", {
+        params: { path: { courseId }, query: {} },
+      });
+      if (result.error || !result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Another extraction is already running. Start this one once it finishes."
+            : "Could not start the analysis.",
+        );
+      }
+    },
+    onSuccess: async () => {
+      setExtractionModalOpen(true);
+      await queryClient.invalidateQueries({ queryKey: ["extract-status", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
       await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
     },
@@ -205,6 +233,23 @@ function CourseView({ courseId }: { courseId: number }) {
               View error and retry
             </Button>
           </div>
+        )}
+
+        {extractionNotStarted && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-border bg-hestia-surface px-4 py-3 text-sm text-hestia-text">
+            <span>
+              {course.documentCount === 1 ? "1 document" : `${course.documentCount} documents`}{" "}
+              uploaded, not analysed yet.
+            </span>
+            <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
+              {startMutation.isPending ? "Starting…" : "Start analysis"}
+            </Button>
+          </div>
+        )}
+        {startMutation.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(startMutation.error as Error).message}
+          </p>
         )}
 
         {extractionModalOpen && (
