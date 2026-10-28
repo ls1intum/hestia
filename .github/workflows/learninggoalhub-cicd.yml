@@ -92,8 +92,54 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # Browser tests: the built server against a Postgres service and a fake model
+  # (client/e2e/fake-llm.mjs), driven through the Vite dev server by Playwright.
+  test-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: learninggoalhub
+          POSTGRES_USER: learninggoalhub
+          POSTGRES_PASSWORD: learninggoalhub
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U learninggoalhub -d learninggoalhub"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/learninggoalhub/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/learninggoalhub/client/package-lock.json
+      - name: Build the server jar
+        working-directory: .
+        run: ./gradlew --no-daemon :apps:learninggoalhub:server:bootJar
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - name: Keep the Playwright report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: learninggoalhub-playwright-report
+          path: |
+            apps/learninggoalhub/client/playwright-report
+            apps/learninggoalhub/client/test-results
+          retention-days: 7
+
   build-server:
-    needs: [test-server, test-client]
+    needs: [test-server, test-client, test-e2e]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/learninggoalhub/server
@@ -103,7 +149,7 @@ jobs:
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
 
   build-client:
-    needs: [test-server, test-client]
+    needs: [test-server, test-client, test-e2e]
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
     with:
       image-name: ${{ github.repository }}/learninggoalhub/client

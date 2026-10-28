@@ -174,6 +174,7 @@ Commands (from the repository root):
 
 - server: `./gradlew :apps:learninggoalhub:server:test` — needs a running Docker (Testcontainers). A run that ends within seconds came from the Gradle cache; add `--rerun-tasks`. If it stalls with no results, check that `docker ps` answers.
 - client: `cd apps/learninggoalhub/client && npm run lint && npm run typecheck && npm test`
+- browser tests: `cd apps/learninggoalhub/client && npm run e2e` — needs a Postgres on port 5433 and the built server jar (see `client/README.md#browser-tests`). Run them after changing a user workflow or a prompt's JSON shape (the fake model in `client/e2e/fake-llm.mjs` must know it).
 - API contract changes: regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts` (see `client/README.md`) and update `docs/api.md` for endpoints other apps use.
 
 Tests that call a real model are `*LiveIT` classes, gated on `RUN_LIVE_LOGOS=1`; never make them run by default.
