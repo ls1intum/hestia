@@ -84,8 +84,8 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health").permitAll()
                     // Explicitly allow anyone to download the metadata XML (Central IT needs this!)
                     .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
-                    // Require authentication for all APIs
-                    .requestMatchers("/api/**").authenticated()
+                    // Keep all existing API endpoints open for now
+                    .requestMatchers("/api/**").permitAll()
                     // Require SAML authentication for any other endpoints
                     .anyRequest().authenticated();
             })
