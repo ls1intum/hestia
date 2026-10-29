@@ -5,10 +5,10 @@ import type { DocumentResponse } from "../api/client.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
 import { DOCUMENT_KIND_LABEL } from "../lib/documents.ts";
-import type { DocumentKind } from "../lib/documents.ts";
+import { requestError } from "../lib/requestError.ts";
 
 /**
- * Inline list of a course's uploaded documents with inline rename and kind change. Rendered under
+ * Inline list of a course's uploaded documents with their kind and inline rename. Rendered under
  * an expanded course row on the overview. The filename is immutable provenance (goal sources and the CSV
  * export cite it); renaming only sets a display name, and clearing it falls back to the filename.
  *
@@ -32,7 +32,7 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
 
   const renameMutation = useMutation({
     mutationFn: async (vars: { documentId: number; displayName: string | null }) => {
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/documents/{documentId}",
         {
           params: { path: { courseId, documentId: vars.documentId } },
@@ -42,34 +42,23 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
             JSON.stringify({ displayName: body?.displayName ?? null }),
         },
       );
-      if (error) throw new Error("Could not rename the document.");
+      if (error) throw requestError("Could not rename the document.", { error, response });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["documents", courseId] });
+      // Goal sources carry the document's name, so the goal views would keep showing the old one.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+      ]);
       setEditingId(null);
     },
-  });
-
-  const kindMutation = useMutation({
-    mutationFn: async (vars: { documentId: number; kind: DocumentKind }) => {
-      const { error } = await api.PATCH(
-        "/api/courses/{courseId}/documents/{documentId}",
-        {
-          params: { path: { courseId, documentId: vars.documentId } },
-          // displayName stays out of the body, so the server leaves it as it is.
-          body: { kind: vars.kind },
-        },
-      );
-      if (error) throw new Error("Could not change the document's kind.");
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
   });
 
   const documents = documentsQuery.data ?? [];
 
   return (
     // Sub-rows of the course row, indented to its name column, with the same shading the
-    // competency table puts under an opened topic.
+    // Topic tree table puts under an opened topic.
     <div className="border-t border-hestia-border/60 bg-hestia-bg/60 shadow-[inset_0_8px_10px_-10px_rgba(0,0,0,0.25)]">
       {documentsQuery.isLoading && (
         <p className="py-2.5 pl-11 text-sm text-hestia-text-muted">Loading…</p>
@@ -83,9 +72,6 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
         <p className="py-2.5 pl-11 text-sm text-hestia-text-muted">
           No documents uploaded for this course.
         </p>
-      )}
-      {kindMutation.isError && (
-        <p className="py-2 pl-11 text-sm text-hestia-danger">{(kindMutation.error as Error).message}</p>
       )}
       {documents.length > 0 && (
         <ul className="divide-y divide-hestia-border/60">
@@ -111,8 +97,6 @@ export default function CourseDocuments({ courseId }: { courseId: number }) {
               onSave={(displayName) =>
                 renameMutation.mutate({ documentId: doc.id!, displayName })
               }
-              kindBusy={kindMutation.isPending}
-              onKindChange={(kind) => kindMutation.mutate({ documentId: doc.id!, kind })}
             />
           ))}
         </ul>
@@ -132,8 +116,6 @@ function DocumentRow({
   onEdit,
   onCancel,
   onSave,
-  kindBusy,
-  onKindChange,
 }: {
   document: DocumentResponse;
   editing: boolean;
@@ -142,8 +124,6 @@ function DocumentRow({
   onEdit: () => void;
   onCancel: () => void;
   onSave: (displayName: string | null) => void;
-  kindBusy: boolean;
-  onKindChange: (kind: DocumentKind) => void;
 }) {
   const shown = document.displayName ?? document.filename ?? "";
   const [draft, setDraft] = useState(shown);
@@ -233,22 +213,11 @@ function DocumentRow({
               </span>
             )}
           </div>
-          {/* A document uploaded before kinds existed has none; it can be given one but not cleared. */}
-          <select
-            value={document.kind ?? ""}
-            disabled={kindBusy}
-            onChange={(e) => onKindChange(e.target.value as DocumentKind)}
-            aria-label={`Kind of ${shown}`}
-            title="Takes effect on the next extraction or competency tree rebuild"
-            className="h-[22px] cursor-pointer rounded-md border border-hestia-border bg-hestia-surface px-1.5 text-xs font-medium text-hestia-text-muted transition hover:border-hestia-primary focus:border-hestia-primary focus:outline-none disabled:opacity-50"
-          >
-            {!document.kind && <option value="">No kind</option>}
-            {(Object.keys(DOCUMENT_KIND_LABEL) as DocumentKind[]).map((kind) => (
-              <option key={kind} value={kind}>
-                {DOCUMENT_KIND_LABEL[kind]}
-              </option>
-            ))}
-          </select>
+          {/* The kind is fixed at upload: extraction already ran with it. A document uploaded before
+              kinds existed has none. */}
+          <span className="text-xs font-medium text-hestia-text-muted">
+            {document.kind ? DOCUMENT_KIND_LABEL[document.kind] : null}
+          </span>
           <span
             className="whitespace-nowrap text-right text-sm text-hestia-text-muted"
             title={uploaded ? `Uploaded ${uploaded}` : undefined}

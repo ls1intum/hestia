@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.taxonomy;
 
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,9 +22,9 @@ import org.springframework.ai.openai.api.OpenAiApi;
  * view, classification reads the finished sentence — so they can drift apart, and the drift is what
  * this counts. It asserts nothing; it prints the rate and every disagreement for inspection.
  *
- * <p>Gated on {@code RUN_LIVE_SAIA=1} so it never runs in the normal build. Run with:
+ * <p>Gated on {@code RUN_LIVE_LOGOS=1} so it never runs in the normal build. Run with:
  * <pre>
- * RUN_LIVE_SAIA=1 SAIA_API_KEY=... TAXONOMY_GOALS=/path/goals.txt \
+ * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... TAXONOMY_GOALS=/path/goals.txt \
  *   ./gradlew test --tests '*TaxonomyVerbLiveIT' -i
  * </pre>
  *
@@ -32,7 +33,7 @@ import org.springframework.ai.openai.api.OpenAiApi;
  * <p>The verb-to-level map is English only, which is enough for a diagnostic: a goal written in
  * another language simply goes uncounted rather than counted wrongly.
  */
-@EnabledIfEnvironmentVariable(named = "RUN_LIVE_SAIA", matches = "1")
+@EnabledIfEnvironmentVariable(named = "RUN_LIVE_LOGOS", matches = "1")
 class TaxonomyVerbLiveIT {
 
     /**
@@ -62,17 +63,17 @@ class TaxonomyVerbLiveIT {
         List<String> goals = Files.readAllLines(
                 new File(System.getenv("TAXONOMY_GOALS")).toPath(), StandardCharsets.UTF_8).stream()
                 .map(String::strip).filter(line -> !line.isEmpty()).toList();
-        String model = System.getenv().getOrDefault("TAXONOMY_MODEL", "openai-gpt-oss-120b");
+        String model = System.getenv().getOrDefault("TAXONOMY_MODEL", "openai/gpt-oss-120b");
         int batch = Integer.parseInt(System.getenv().getOrDefault("TAXONOMY_BATCH", "20"));
 
         ChatClient.Builder builder = ChatClient.builder(OpenAiChatModel.builder()
                 .openAiApi(OpenAiApi.builder()
-                        .baseUrl(System.getenv().getOrDefault("SAIA_BASE_URL", "https://chat-ai.academiccloud.de"))
-                        .apiKey(System.getenv("SAIA_API_KEY"))
+                        .baseUrl(System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"))
+                        .apiKey(System.getenv("LOGOS_API_KEY"))
                         .build())
                 .defaultOptions(OpenAiChatOptions.builder().model(model).build())
                 .build());
-        TaxonomyService service = new TaxonomyService(builder, 0.0);
+        TaxonomyService service = new TaxonomyService(new LlmClient(builder), 0.0);
 
         int checked = 0;
         int disagreed = 0;

@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   server:
-    image: ghcr.io/ls1intum/hestia/workshopper/backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/workshopper/server:${IMAGE_TAG:-latest}
     container_name: workshopper-server
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
@@ -26,20 +26,27 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-workshopper}
       POSTGRES_USER: ${POSTGRES_USER:-workshopper}
       POSTGRES_PASSWORD: ${WORKSHOPPER_POSTGRES_PASSWORD:?set WORKSHOPPER_POSTGRES_PASSWORD in .env}
-      WORKSHOPPER_SAIA_API_KEY: ${WORKSHOPPER_SAIA_API_KEY:?set WORKSHOPPER_SAIA_API_KEY in .env}
+      WORKSHOPPER_LOGOS_API_KEY: ${WORKSHOPPER_LOGOS_API_KEY:?set WORKSHOPPER_LOGOS_API_KEY in .env}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
+      # LearningGoalHub's nginx on the shared network, and its service key for Workshopper (the
+      # same repository secret configures LGH's side).
+      LGH_BASE_URL: ${LGH_BASE_URL:-http://learninggoalhub-web}
+      LGH_API_KEY: ${LEARNINGGOALHUB_API_KEY_WORKSHOPPER:-}
     volumes:
       - /opt/hestia/secrets/saml:/app/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default        # private: reach this app's own postgres
+      - hestia-edge    # shared: reach learninggoalhub-web by Docker DNS
     mem_limit: 1500m
     restart: unless-stopped
 
   web:
-    image: ghcr.io/ls1intum/hestia/workshopper/frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/ls1intum/hestia/workshopper/client:${IMAGE_TAG:-latest}
     container_name: workshopper-web
     expose:
       - "80"

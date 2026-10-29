@@ -8,12 +8,9 @@ export type ExtractionPhase = NonNullable<ExtractionStatus["phase"]>;
  */
 export const EXTRACTION_PHASES: { key: ExtractionPhase; label: string; short: string }[] = [
   { key: "DESCRIBING_FIGURES", label: "Understanding figures", short: "Figures" },
-  { key: "OUTLINING", label: "Outlining documents", short: "Outlining" },
-  { key: "PARSING", label: "Parsing documents", short: "Parsing" },
   { key: "EXTRACTING", label: "Extracting learning goals", short: "Extracting" },
-  { key: "CLASSIFYING", label: "Classifying (Bloom & SOLO)", short: "Classifying" },
   { key: "PERSISTING", label: "Saving learning goals", short: "Saving" },
-  { key: "SYNTHESIZING", label: "Building competency tree", short: "Tree" },
+  { key: "SYNTHESIZING", label: "Building Topic tree", short: "Tree" },
 ];
 
 export function extractionPhaseLabel(phase?: ExtractionPhase): string {

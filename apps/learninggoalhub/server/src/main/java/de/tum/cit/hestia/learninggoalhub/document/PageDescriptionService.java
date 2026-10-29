@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,8 +19,6 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -59,14 +58,14 @@ public class PageDescriptionService {
             Requested page numbers: %s
             """;
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final PageDescriptionRepository pageDescriptionRepository;
     private final String visionModel;
 
-    public PageDescriptionService(ChatClient.Builder chatClientBuilder,
+    public PageDescriptionService(LlmClient llm,
                                   PageDescriptionRepository pageDescriptionRepository,
                                   @Value("${hestia.figures.vision-model:qwen3.6-35b-a3b}") String visionModel) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.pageDescriptionRepository = pageDescriptionRepository;
         this.visionModel = visionModel;
     }
@@ -166,13 +165,11 @@ public class PageDescriptionService {
             synchronized (renderer) {
                 media = renderPages(renderer, batch);
             }
-            return chatClient.prompt()
-                    .options(ChatOptions.builder().model(visionModel).build())
-                    .user(u -> u.text(PROMPT.formatted(languageName, batch.stream()
-                            .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
-                            .media(media.toArray(Media[]::new)))
-                    .call()
-                    .entity(LenientJson.converter(new ParameterizedTypeReference<List<PageReply>>() {}));
+            return llm.entity(LlmRequest.of(PROMPT.formatted(languageName, batch.stream()
+                                    .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
+                            .withMedia(media)
+                            .withModel(visionModel),
+                    new ParameterizedTypeReference<List<PageReply>>() {});
         } catch (IOException | RuntimeException e) {
             log.warn("VLM figure description failed for document {} pages {}-{}: {}",
                     document.getId(), batch.getFirst(), batch.getLast(), e.getMessage());

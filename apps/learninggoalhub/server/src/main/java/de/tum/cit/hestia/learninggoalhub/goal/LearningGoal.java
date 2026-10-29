@@ -1,7 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.SubmittedExamBlock;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,9 +18,13 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
+/**
+ * One learning goal of a course: a topic, skill, sub-skill or knowledge item of its Topic tree.
+ *
+ * <p>The table still has the {@code embedding} column of an earlier prototype (V6). Nothing reads or
+ * writes it and the entity does not map it; it stays because older courses still hold vectors.
+ */
 @Entity
 @Table(name = "learning_goal")
 public class LearningGoal {
@@ -32,6 +39,10 @@ public class LearningGoal {
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
+
+    /** The generated wording, kept on the first rename; null while the goal was never renamed. */
+    @Column(name = "original_text", columnDefinition = "TEXT")
+    private String originalText;
 
     @Column(name = "short_label", columnDefinition = "TEXT")
     private String shortLabel;
@@ -60,6 +71,11 @@ public class LearningGoal {
     @JoinColumn(name = "hierarchy_node_id")
     private HierarchyNode hierarchyNode;
 
+    /** The exam task an EXAM goal was derived from; null for every other goal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exam_block_id")
+    private SubmittedExamBlock examBlock;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "bloom_level", length = 32)
     private BloomLevel bloomLevel;
@@ -71,10 +87,6 @@ public class LearningGoal {
     /** Stable course-wide order derived from the goal's first appearance in the lecture material. */
     @Column(name = "lecture_order")
     private Integer lectureOrder;
-
-    @JdbcTypeCode(SqlTypes.VECTOR)
-    @Column(name = "embedding", columnDefinition = "vector(4096)")
-    private float[] embedding;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -103,6 +115,14 @@ public class LearningGoal {
 
     public void setText(String text) {
         this.text = text;
+    }
+
+    public String getOriginalText() {
+        return originalText;
+    }
+
+    public void setOriginalText(String originalText) {
+        this.originalText = originalText;
     }
 
     public String getShortLabel() {
@@ -157,6 +177,14 @@ public class LearningGoal {
         this.hierarchyNode = hierarchyNode;
     }
 
+    public SubmittedExamBlock getExamBlock() {
+        return examBlock;
+    }
+
+    public void setExamBlock(SubmittedExamBlock examBlock) {
+        this.examBlock = examBlock;
+    }
+
     public BloomLevel getBloomLevel() {
         return bloomLevel;
     }
@@ -179,14 +207,6 @@ public class LearningGoal {
 
     public void setLectureOrder(Integer lectureOrder) {
         this.lectureOrder = lectureOrder;
-    }
-
-    public float[] getEmbedding() {
-        return embedding;
-    }
-
-    public void setEmbedding(float[] embedding) {
-        this.embedding = embedding;
     }
 
     public OffsetDateTime getCreatedAt() {

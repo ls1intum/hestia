@@ -3,14 +3,16 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
+import de.tum.cit.hestia.learninggoalhub.goal.LanguagePrompt;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.slf4j.Logger;
@@ -318,15 +320,18 @@ public class SessionExtractionService {
             """;
 
     private static final Logger log = LoggerFactory.getLogger(SessionExtractionService.class);
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final LanguageDetectionService languageDetectionService;
+    private final ExtractionProgressTracker progressTracker;
     private final double temperature;
 
-    public SessionExtractionService(ChatClient.Builder chatClientBuilder,
+    public SessionExtractionService(LlmClient llm,
                                     LanguageDetectionService languageDetectionService,
+                                    ExtractionProgressTracker progressTracker,
                                     @Value("${hestia.extraction.temperature:0.2}") double temperature) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.languageDetectionService = languageDetectionService;
+        this.progressTracker = progressTracker;
         this.temperature = temperature;
     }
 
@@ -337,7 +342,7 @@ public class SessionExtractionService {
     /**
      * @param sessionTitle  the structural title of the session; may be blank.
      * @param sessionText   the complete text of the session.
-     * @param modelOverride optional SAIA model id; falls back to the configured default when blank.
+     * @param modelOverride optional model id; falls back to the configured default when blank.
      * @return the broad skills and their knowledge items found in the session.
      */
     public List<ExtractedSkill> extract(String sessionTitle, String sessionText, String modelOverride) {
@@ -415,9 +420,12 @@ public class SessionExtractionService {
                 if (first.isEmpty()) {
                     throw invalidRetry;
                 }
+                int dropped = countOutcomes(retryResponse) - countOutcomes(first);
                 log.warn("Session extraction retry for '{}' still contained invalid outcomes; "
-                                + "keeping {} individually validated skills",
-                        title, first.size());
+                                + "keeping {} individually validated skills, dropping {} outcomes",
+                        title, first.size(), dropped);
+                // The run still succeeds, so the count is what tells the instructor it lost outcomes.
+                progressTracker.activeRun().ifPresent(run -> run.outcomesDropped(dropped));
             }
         }
         String detectedLanguage = detectGeneratedLanguage(first);
@@ -450,7 +458,7 @@ public class SessionExtractionService {
         return first;
     }
 
-    /** Rejects malformed structured output before taxonomy, embedding, or database persistence. */
+    /** Rejects malformed structured output before taxonomy classification or database persistence. */
     static List<ExtractedSkill> validate(List<ExtractedSkill> extracted, String languageName) {
         return validate(extracted, languageName, null, 0, MAX_SKILLS_PER_SESSION);
     }
@@ -496,13 +504,13 @@ public class SessionExtractionService {
                         offeredFigure(knowledge.sourceFigure(), figureCount),
                         numberedLines, figureCount, "Every knowledge item");
                 knowledgeItems.add(new ExtractedSkill.Knowledge(
-                        knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                        knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                         knowledge.bloom(), knowledge.solo(),
                         knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                         knowledgeCitation.figure()));
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     knowledgeItems));
@@ -662,6 +670,7 @@ public class SessionExtractionService {
                 noteTier(skill.bloom(), GoalRole.SKILL, skill.text());
                 keepIfOnlyTheLabelReadsBadly(skill.text(), skill.shortLabel(), languageName, "Every skill");
             } catch (IllegalArgumentException invalidSkill) {
+                log.warn("Dropping a skill with invalid fields or wording: {}", invalidSkill.getMessage());
                 continue;
             }
             // Evidence is judged separately from the outcome itself, because the two failures deserve
@@ -688,6 +697,7 @@ public class SessionExtractionService {
                 if (!pointsAtSourceImprecisely(skill, numberedLines, figureCount)) {
                     // Cited nothing, or cited only things that point nowhere. The model did not name
                     // any material, so there is nothing to keep it honest about.
+                    log.warn("Dropping a skill without usable evidence: {}", invalidEvidence.getMessage());
                     continue;
                 }
                 skillCitation = Citation.NONE;
@@ -713,16 +723,17 @@ public class SessionExtractionService {
                             offeredFigure(knowledge.sourceFigure(), figureCount),
                             numberedLines, figureCount, "Every knowledge item");
                     validKnowledge.add(new ExtractedSkill.Knowledge(
-                            knowledge.text().strip(), blankToNull(knowledge.shortLabel()), knowledge.kind(),
+                            knowledge.text().strip(), OutcomeWording.stripToNull(knowledge.shortLabel()), knowledge.kind(),
                             knowledge.bloom(), knowledge.solo(),
                             knowledgeCitation.startLine(), knowledgeCitation.endLine(),
                             knowledgeCitation.figure()));
                 } catch (IllegalArgumentException invalidKnowledge) {
                     // Retain the grounded parent and its other valid knowledge rather than the bad child.
+                    log.warn("Dropping a knowledge item: {}", invalidKnowledge.getMessage());
                 }
             }
             valid.add(new ExtractedSkill(
-                    skill.text().strip(), blankToNull(skill.shortLabel()), skill.kind(),
+                    skill.text().strip(), OutcomeWording.stripToNull(skill.shortLabel()), skill.kind(),
                     skill.bloom(), skill.solo(),
                     skillCitation.startLine(), skillCitation.endLine(), skillCitation.figure(),
                     validKnowledge));
@@ -748,30 +759,28 @@ public class SessionExtractionService {
         }
     }
 
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
+    /** Skills plus the knowledge items beneath them; null entries are not outcomes. */
+    private static int countOutcomes(List<ExtractedSkill> skills) {
+        int count = 0;
+        for (ExtractedSkill skill : skills) {
+            if (skill == null) {
+                continue;
+            }
+            count += 1 + (int) skill.knowledge().stream().filter(Objects::nonNull).count();
+        }
+        return count;
     }
 
     private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,
                                       double callTemperature, boolean retry) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
-                .system(retry
-                        ? LanguagePrompt.retrySystemInstruction(languageName)
-                        : LanguagePrompt.systemInstruction(languageName))
-                .options(options(modelOverride, callTemperature));
-        List<ExtractedSkill> skills = spec
-                .user(prompt)
-                .call()
-                .entity(LenientJson.converter(new ParameterizedTypeReference<List<ExtractedSkill>>() {}));
+        List<ExtractedSkill> skills = llm.entity(LlmRequest.of(prompt)
+                        .withSystem(retry
+                                ? LanguagePrompt.retrySystemInstruction(languageName)
+                                : LanguagePrompt.systemInstruction(languageName))
+                        .withModel(modelOverride)
+                        .withTemperature(callTemperature),
+                new ParameterizedTypeReference<List<ExtractedSkill>>() {});
         return skills == null ? List.of() : skills;
-    }
-
-    private ChatOptions options(String modelOverride, double callTemperature) {
-        ChatOptions.Builder builder = ChatOptions.builder().temperature(callTemperature);
-        if (modelOverride != null && !modelOverride.isBlank()) {
-            builder.model(modelOverride);
-        }
-        return builder.build();
     }
 
     private String detectGeneratedLanguage(List<ExtractedSkill> skills) {

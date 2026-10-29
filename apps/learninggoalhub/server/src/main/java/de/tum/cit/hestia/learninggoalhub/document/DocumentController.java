@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
-import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.IOException;
@@ -10,6 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -30,31 +30,27 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/courses/{courseId}/documents")
 public class DocumentController {
 
-    private final CourseRepository courseRepository;
-    private final DocumentRepository documentRepository;
-    private final DocumentContentRepository documentContentRepository;
-    private final DocumentStructureService structureService;
-    private final DocumentUploadService uploadService;
+    private static final byte[] PDF_SIGNATURE = "%PDF-".getBytes(StandardCharsets.US_ASCII);
+    private static final int PDF_SIGNATURE_WINDOW = 1024;
 
-    public DocumentController(CourseRepository courseRepository,
-                              DocumentRepository documentRepository,
-                              DocumentContentRepository documentContentRepository,
+    private final DocumentService documentService;
+    private final DocumentStructureService structureService;
+    private final int maxPages;
+    private final int maxTextChars;
+
+    public DocumentController(DocumentService documentService,
                               DocumentStructureService structureService,
-                              DocumentUploadService uploadService) {
-        this.courseRepository = courseRepository;
-        this.documentRepository = documentRepository;
-        this.documentContentRepository = documentContentRepository;
+                              @Value("${hestia.upload.max-pages:2000}") int maxPages,
+                              @Value("${hestia.upload.max-text-chars:3000000}") int maxTextChars) {
+        this.documentService = documentService;
         this.structureService = structureService;
-        this.uploadService = uploadService;
+        this.maxPages = maxPages;
+        this.maxTextChars = maxTextChars;
     }
 
     @GetMapping
     public List<DocumentResponse> list(@PathVariable Long courseId) {
-        if (!courseRepository.existsById(courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId);
-        }
-        return documentRepository.findByCourseId(courseId).stream()
-                .sorted(DocumentOrder.comparator())
+        return documentService.list(courseId).stream()
                 .map(DocumentResponse::from)
                 .toList();
     }
@@ -66,37 +62,111 @@ public class DocumentController {
                                          @Parameter(description = "Optional kind of every file in this upload: LECTURE or EXERCISE. "
                                                  + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
                                          @RequestParam(required = false) DocumentKind kind) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        Course course = documentService.course(courseId);
 
-        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
+        // upload instead of leaving the files before it saved.
+        List<byte[]> contents = new ArrayList<>(files.length);
         for (MultipartFile file : files) {
-            byte[] bytes;
+            contents.add(requirePdf(file));
+        }
+
+        // Likewise every file is parsed and checked before any is stored, so an unreadable file later
+        // in the upload does not leave the ones before it saved.
+        List<DocumentStructureService.ParsedDocument> parsedFiles = new ArrayList<>(files.length);
+        for (int i = 0; i < files.length; i++) {
+            MultipartFile file = files[i];
             DocumentStructureService.ParsedDocument parsed;
             try {
-                bytes = file.getBytes();
-                parsed = structureService.parse(bytes, file.getContentType(), file.getOriginalFilename());
-            } catch (IOException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file: " + file.getOriginalFilename(), e);
+                parsed = structureService.parse(contents.get(i), file.getContentType(), file.getOriginalFilename());
+            } catch (DocumentParser.DocumentParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Could not read uploaded file: " + file.getOriginalFilename(), e);
             }
-            Document saved = uploadService.persist(
-                    course, file.getOriginalFilename(), file.getContentType(), kind, parsed, bytes);
+            requireText(file.getOriginalFilename(), parsed);
+            requireWithinLimits(file.getOriginalFilename(), parsed);
+            parsedFiles.add(parsed);
+        }
+
+        List<DocumentResponse> responses = new ArrayList<>(files.length);
+        for (int i = 0; i < files.length; i++) {
+            MultipartFile file = files[i];
+            Document saved = documentService.persist(
+                    course, file.getOriginalFilename(), file.getContentType(), kind, parsedFiles.get(i), contents.get(i));
             responses.add(DocumentResponse.from(saved));
         }
         return responses;
     }
 
+    /**
+     * Only PDFs are accepted: the source viewer, quote highlights, bookmark sessions, figure
+     * descriptions and page search all read the PDF itself. Checks the extension and the {@code %PDF-}
+     * header, so a renamed file of another type is rejected too.
+     */
+    private static byte[] requirePdf(MultipartFile file) {
+        String name = file.getOriginalFilename();
+        if (name == null || !name.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Only PDF files can be uploaded: " + name);
+        }
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file: " + name, e);
+        }
+        if (!hasPdfSignature(bytes)) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Not a valid PDF file: " + name);
+        }
+        return bytes;
+    }
+
+    private void requireWithinLimits(String name, DocumentStructureService.ParsedDocument parsed) {
+        int pages = parsed.pageOffsets() == null ? 0 : parsed.pageOffsets().length - 1;
+        if (pages > maxPages) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    name + " has " + pages + " pages; at most " + maxPages + " are supported");
+        }
+        if (parsed.rawText().length() > maxTextChars) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    name + " contains more text than one document may (" + maxTextChars + " characters)");
+        }
+    }
+
+    /**
+     * Extraction reads the PDF's text layer; figure descriptions only add to text that is there. A
+     * scanned or image-only PDF would therefore "succeed" with no goals, so it is rejected here with
+     * a reason the user can act on instead.
+     */
+    private static void requireText(String name, DocumentStructureService.ParsedDocument parsed) {
+        if (parsed.rawText() == null || parsed.rawText().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    name + " has no selectable text (a scanned or image-only PDF?). "
+                            + "Run text recognition (OCR) on it or export it with its text, then upload it again.");
+        }
+    }
+
+    /** Readers accept the header anywhere in the first kilobyte, after stray leading bytes. */
+    private static boolean hasPdfSignature(byte[] bytes) {
+        int last = Math.min(bytes.length, PDF_SIGNATURE_WINDOW) - PDF_SIGNATURE.length;
+        outer:
+        for (int start = 0; start <= last; start++) {
+            for (int i = 0; i < PDF_SIGNATURE.length; i++) {
+                if (bytes[start + i] != PDF_SIGNATURE[i]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     @GetMapping("/{documentId}/content")
     public ResponseEntity<byte[]> content(@PathVariable Long courseId, @PathVariable Long documentId) {
-        Document document = documentRepository.findById(documentId)
-                .filter(d -> d.getCourse().getId().equals(courseId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Document not found: " + documentId));
-        DocumentContent content = documentContentRepository.findById(documentId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Document content not found: " + documentId));
-
-        byte[] bytes = content.getBytes();
+        DocumentService.StoredDocument stored = documentService.content(courseId, documentId);
+        Document document = stored.document();
+        byte[] bytes = stored.bytes();
         boolean pdf = isPdf(document);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentLength(bytes.length);
@@ -108,64 +178,11 @@ public class DocumentController {
         return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
     }
 
-    /**
-     * Renames a document for display and/or changes its kind. The filename is immutable provenance
-     * (goal sources and the CSV export cite it), so only the display name changes; an explicit null
-     * clears it back to the filename. A field left out of the body is left unchanged, and a null kind
-     * is ignored.
-     */
     @PatchMapping("/{documentId}")
     public DocumentResponse update(@PathVariable Long courseId,
                                    @PathVariable Long documentId,
                                    @RequestBody UpdateDocumentRequest request) {
-        Document document = documentRepository.findById(documentId)
-                .filter(d -> d.getCourse().getId().equals(courseId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
-        if (request.hasDisplayName()) {
-            String displayName = request.getDisplayName() == null ? null : request.getDisplayName().trim();
-            if (displayName != null && displayName.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "displayName must not be blank");
-            }
-            document.setDisplayName(displayName);
-        }
-        if (request.getKind() != null) {
-            document.setKind(request.getKind());
-        }
-        return DocumentResponse.from(documentRepository.save(document));
-    }
-
-    /**
-     * A partial update. {@code displayName} needs to tell "left out" from "null": null clears the
-     * display name, while a body that only changes the kind must not.
-     */
-    public static class UpdateDocumentRequest {
-
-        private String displayName;
-        private boolean displayNameSet;
-        private DocumentKind kind;
-
-        @Schema(nullable = true)
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public void setDisplayName(String displayName) {
-            this.displayName = displayName;
-            this.displayNameSet = true;
-        }
-
-        @Schema(nullable = true)
-        public DocumentKind getKind() {
-            return kind;
-        }
-
-        public void setKind(DocumentKind kind) {
-            this.kind = kind;
-        }
-
-        boolean hasDisplayName() {
-            return displayNameSet;
-        }
+        return DocumentResponse.from(documentService.update(courseId, documentId, request));
     }
 
     private static boolean isPdf(Document document) {

@@ -1,6 +1,12 @@
 # shared-llm
 
-Spring Boot library that wires a [Spring AI](https://docs.spring.io/spring-ai/reference/) `ChatClient` against the GWDG SAIA endpoint with sensible defaults. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder` plus `EmbeddingModel`.
+Spring Boot library that points [Spring AI](https://docs.spring.io/spring-ai/reference/)'s OpenAI client at the TUM AET [Logos](https://aet.cit.tum.de/projects/ai/logos/) gateway and sets the default models. Each thesis app in `apps/` adds it as a Gradle dependency, supplies its own API key, and gets an injectable `ChatClient.Builder`.
+
+Used by `apps/learninggoalhub` and `apps/workshopper`, so a changed default changes both apps. See [AGENTS.md](AGENTS.md) for the change rules.
+
+```bash
+./gradlew :libs:shared-llm:test   # from the repository root; no Docker needed
+```
 
 ## Usage
 
@@ -36,10 +42,10 @@ The library leaves the API key unset on purpose. Set it via `application.yml`:
 spring:
   ai:
     openai:
-      api-key: ${SAIA_API_KEY:}
+      api-key: ${LOGOS_API_KEY:}
 ```
 
-…and supply `SAIA_API_KEY` through your `.env`, the JVM process environment, or your deployment platform. Never commit the key.
+…and supply `LOGOS_API_KEY` through your `.env`, the JVM process environment, or your deployment platform. Never commit the key.
 
 ### 3. Inject and call
 
@@ -62,11 +68,14 @@ The library registers an `EnvironmentPostProcessor` that fills in low-priority d
 
 | Property                                       | Default                                  |
 |------------------------------------------------|------------------------------------------|
-| `spring.ai.openai.base-url`                    | `https://chat-ai.academiccloud.de`       |
-| `spring.ai.openai.chat.options.model`          | `openai-gpt-oss-120b`                    |
+| `spring.ai.openai.base-url`                    | `https://logos.aet.cit.tum.de`           |
+| `spring.ai.openai.chat.options.model`          | `openai/gpt-oss-120b`                    |
 | `spring.ai.openai.chat.options.temperature`    | `0.0`                                    |
-| `spring.ai.openai.embedding.options.model`     | `e5-mistral-7b-instruct`                 |
-| `spring.ai.openai.chat.options.vision-model`   | `qwen3.5-27b`                            |
+| `spring.ai.openai.chat.options.vision-model`   | `Qwen/Qwen3.8-27B`                       |
+
+Logos publishes its models under provider-prefixed ids and serves two of them: `openai/gpt-oss-120b`
+for text and the multimodal `Qwen/Qwen3.8-27B`. It has **no `/v1/embeddings` endpoint**, so the
+library sets no embedding defaults.
 
 To override, just set the same key in your `application.yml`:
 
@@ -76,8 +85,6 @@ spring:
     openai:
       chat:
         options:
-          model: qwen3.5-122b-a10b
+          model: Qwen/Qwen3.8-27B
           temperature: 0.2
 ```
-
-The current SAIA model catalog is available at `https://chat-ai.academiccloud.de/v1/models` (requires the API key) and the human-readable list at <https://docs.hpc.gwdg.de/services/chat-ai/models/index.html>.

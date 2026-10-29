@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.extraction;
 
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -17,24 +19,24 @@ import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.SessionUnit;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitExtraction;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.UnitGoal;
 import de.tum.cit.hestia.learninggoalhub.extraction.UnitExtractor.Window;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalCreationProvenance;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalStatus;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.time.Clock;
@@ -72,6 +74,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -91,6 +96,12 @@ public class TopicSearchService {
 
     static final Duration PROPOSAL_TTL = Duration.ofMinutes(30);
 
+    /** Most proposals held at once, so repeated searches cannot grow the in-memory store without bound. */
+    static final int MAX_PROPOSALS = 100;
+
+    /** A topic is a short phrase; this bounds what one search sends to the model. */
+    static final int MAX_TOPIC_CHARS = 500;
+
     /**
      * Below this many sub-skills the structure call is skipped. Two or three outcomes from a short
      * page range come back as one skill holding all of them, which structuring dissolves anyway.
@@ -109,10 +120,13 @@ public class TopicSearchService {
     private final TopicSearchSynthesizer topicSearchSynthesizer;
     private final TopicTreeSynthesizer topicTreeSynthesizer;
     private final TaxonomyService taxonomyService;
+    private final TransactionOperations transactions;
     private final int parallelism;
     private final int maxPages;
     private final Clock clock;
     private final Map<UUID, Proposal> proposals = new ConcurrentHashMap<>();
+    /** Proposals an accept is storing right now; a second accept of one of them is refused. */
+    private final Set<UUID> accepting = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public TopicSearchService(CourseRepository courseRepository,
@@ -127,12 +141,13 @@ public class TopicSearchService {
                               TopicSearchSynthesizer topicSearchSynthesizer,
                               TopicTreeSynthesizer topicTreeSynthesizer,
                               TaxonomyService taxonomyService,
+                              TransactionOperations transactions,
                               @Value("${hestia.extraction.parallelism:8}") int parallelism,
                               @Value("${hestia.topic-search.max-pages:80}") int maxPages) {
         this(courseRepository, documentRepository, documentSectionRepository, pageDescriptionRepository,
                 goalRepository, goalSourceRepository, goalRelationshipRepository, hierarchyNodeRepository,
-                unitExtractor, topicSearchSynthesizer, topicTreeSynthesizer, taxonomyService, parallelism,
-                maxPages, Clock.systemUTC());
+                unitExtractor, topicSearchSynthesizer, topicTreeSynthesizer, taxonomyService, transactions,
+                parallelism, maxPages, Clock.systemUTC());
     }
 
     TopicSearchService(CourseRepository courseRepository,
@@ -147,6 +162,7 @@ public class TopicSearchService {
                        TopicSearchSynthesizer topicSearchSynthesizer,
                        TopicTreeSynthesizer topicTreeSynthesizer,
                        TaxonomyService taxonomyService,
+                       TransactionOperations transactions,
                        int parallelism,
                        int maxPages,
                        Clock clock) {
@@ -162,6 +178,7 @@ public class TopicSearchService {
         this.topicSearchSynthesizer = topicSearchSynthesizer;
         this.topicTreeSynthesizer = topicTreeSynthesizer;
         this.taxonomyService = taxonomyService;
+        this.transactions = transactions;
         this.parallelism = parallelism;
         this.maxPages = maxPages;
         this.clock = clock;
@@ -171,8 +188,10 @@ public class TopicSearchService {
     // Page picker
     // ---------------------------------------------------------------------------------------------
 
-    /** Proposes the page runs that mention the topic, labelled by bookmark or file name. */
-    @Transactional(readOnly = true)
+    /**
+     * Proposes the page runs that mention the topic, labelled by bookmark or file name. Not
+     * transactional: the search-terms call must not hold a database connection.
+     */
     public PagePlan planPages(Long courseId, String topicText, String modelOverride) {
         Course course = course(courseId);
         String topic = requireTopic(topicText);
@@ -184,7 +203,7 @@ public class TopicSearchService {
         Set<String> terms = new LinkedHashSet<>();
         terms.add(topic);
         try {
-            terms.addAll(topicSearchSynthesizer.searchTerms(topic, languageName(course, documents), modelOverride));
+            terms.addAll(topicSearchSynthesizer.searchTerms(topic, LanguageUtils.courseLanguageName(course, documents), modelOverride));
         } catch (RuntimeException ex) {
             log.warn("Search terms for topic '{}' failed, searching for the topic alone: {}", topic, ex.getMessage());
         }
@@ -259,17 +278,25 @@ public class TopicSearchService {
     // Search
     // ---------------------------------------------------------------------------------------------
 
-    /** Reads the chosen pages and holds the resulting proposal; nothing is persisted. */
-    @Transactional(readOnly = true)
+    /**
+     * Reads the chosen pages and holds the resulting proposal; nothing is persisted. Not
+     * transactional: the model calls must not hold a database connection.
+     */
     public ProposalResponse search(Long courseId, String topicText, List<PageRange> ranges, String modelOverride) {
         Course course = course(courseId);
         String topic = requireTopic(topicText);
+        // Checked before reading any pages, so a full store does not cost a search's model calls.
+        sweep();
+        if (proposals.size() >= MAX_PROPOSALS) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Too many open topic searches. Try again in a few minutes.");
+        }
         List<Document> courseDocuments = documentRepository.findByCourseId(courseId);
         Map<Long, Document> documentsById = courseDocuments.stream()
                 .collect(Collectors.toMap(Document::getId, document -> document));
         int pagesRead = validateRanges(ranges, documentsById);
-        String dominantLanguage = ExtractionRunner.dominantLanguage(courseDocuments);
-        String languageName = languageName(course, courseDocuments);
+        String dominantLanguage = LanguageUtils.dominantLanguage(courseDocuments);
+        String languageName = LanguageUtils.courseLanguageName(course, courseDocuments);
 
         List<SessionUnit<PageRange>> units = new ArrayList<>();
         Map<Long, List<FigureDescription>> figuresByDocument = new HashMap<>();
@@ -400,24 +427,9 @@ public class TopicSearchService {
         if (candidates.isEmpty()) {
             return Map.of();
         }
-        List<LearningGoal> skills = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED))
-                .stream()
-                .filter(goal -> goal.getRole() == GoalRole.SKILL)
-                .toList();
-        if (skills.isEmpty()) {
-            return Map.of();
-        }
-        Set<Long> onPages = goalSourceRepository.findByGoalIdIn(skills.stream().map(LearningGoal::getId).toList())
-                .stream()
-                .filter(source -> source.getPage() != null && ranges.stream().anyMatch(range ->
-                        range.documentId().equals(source.getDocument().getId())
-                                && source.getPage() >= range.startPage() && source.getPage() <= range.endPage()))
-                .map(source -> source.getGoal().getId())
-                .collect(Collectors.toSet());
-        List<LearningGoal> existing = skills.stream()
-                .filter(goal -> onPages.contains(goal.getId()))
-                .sorted(Comparator.comparing(LearningGoal::getId))
-                .toList();
+        // Read in a transaction of its own, so the topic lookup can follow lazy edges, and closed
+        // before the model call.
+        List<DuplicateOf> existing = transactions.execute(status -> existingOnPages(courseId, ranges));
         if (existing.isEmpty()) {
             return Map.of();
         }
@@ -425,7 +437,7 @@ public class TopicSearchService {
         try {
             answer = topicSearchSynthesizer.duplicates(
                     candidates.stream().map(candidate -> candidate.goal().extracted().text()).toList(),
-                    existing.stream().map(LearningGoal::getText).toList(), modelOverride);
+                    existing.stream().map(DuplicateOf::text).toList(), modelOverride);
         } catch (RuntimeException ex) {
             log.warn("Duplicate check against {} existing sub-skills failed, marking none: {}",
                     existing.size(), ex.getMessage());
@@ -434,14 +446,36 @@ public class TopicSearchService {
         Map<Integer, DuplicateOf> result = new LinkedHashMap<>();
         for (int index = 0; index < answer.size(); index++) {
             if (answer.get(index) >= 0) {
-                LearningGoal match = existing.get(answer.get(index));
-                result.put(index, new DuplicateOf(match.getId(), match.getText(), topicTextOf(match)));
+                result.put(index, existing.get(answer.get(index)));
             }
         }
         return result;
     }
 
-    /** The text of the nearest topic above a goal in the competency tree, or null outside the tree. */
+    /** The course's extracted sub-skills quoted on the chosen pages, with the topic each sits under. */
+    private List<DuplicateOf> existingOnPages(Long courseId, List<PageRange> ranges) {
+        List<LearningGoal> skills = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED))
+                .stream()
+                .filter(goal -> goal.getRole() == GoalRole.SKILL)
+                .toList();
+        if (skills.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> onPages = goalSourceRepository.findByGoalIdIn(skills.stream().map(LearningGoal::getId).toList())
+                .stream()
+                .filter(source -> source.getPage() != null && ranges.stream().anyMatch(range ->
+                        range.documentId().equals(source.getDocument().getId())
+                                && source.getPage() >= range.startPage() && source.getPage() <= range.endPage()))
+                .map(source -> source.getGoal().getId())
+                .collect(Collectors.toSet());
+        return skills.stream()
+                .filter(goal -> onPages.contains(goal.getId()))
+                .sorted(Comparator.comparing(LearningGoal::getId))
+                .map(goal -> new DuplicateOf(goal.getId(), goal.getText(), topicTextOf(goal)))
+                .toList();
+    }
+
+    /** The text of the nearest topic above a goal in the Topic tree, or null outside the tree. */
     private String topicTextOf(LearningGoal goal) {
         Deque<LearningGoal> pending = new ArrayDeque<>(List.of(goal));
         Set<Long> visited = new HashSet<>();
@@ -562,7 +596,22 @@ public class TopicSearchService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "This search has expired or does not exist. Search the slides again.");
         }
-        Course course = course(courseId);
+        if (!accepting.add(proposalId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This search is already being added.");
+        }
+        // The proposal leaves the store only once its topic is committed, so a failed accept can be
+        // retried; the claim ends with the transaction either way.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    proposals.remove(proposalId);
+                }
+                accepting.remove(proposalId);
+            }
+        });
+        // Locked so a concurrent request cannot add the same topic between the check and the insert.
+        Course course = courseRepository.lockOrThrow(courseId);
         Set<Integer> ticked = new HashSet<>();
         for (String key : subSkillKeys == null ? List.<String>of() : subSkillKeys) {
             Integer index = subSkillIndex(key, proposal.candidates().size());
@@ -573,18 +622,13 @@ public class TopicSearchService {
         if (ticked.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Keep at least one sub-skill.");
         }
-        boolean duplicateTopic = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL))
-                .stream()
-                .anyMatch(goal -> goal.getText() != null && goal.getText().strip().equalsIgnoreCase(proposal.topic()));
-        if (duplicateTopic) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A terminal skill with this text already exists");
-        }
+        goalRepository.rejectDuplicateTopic(courseId, proposal.topic());
 
         LearningGoal topic = new LearningGoal(course, proposal.topic(), GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         topic.setStatus(GoalStatus.PENDING);
         topic.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        topic.setHierarchyNode(competencyRoot(course));
+        topic.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
         goalRepository.saveAndFlush(topic);
 
         Map<Integer, LearningGoal> subSkills = new HashMap<>();
@@ -624,7 +668,7 @@ public class TopicSearchService {
             skill.setRole(GoalRole.SKILL);
             skill.setShortLabel(plan.shortLabel());
             skill.setLectureOrder(median(members));
-            TaxonomyClassification levels = ExtractionRunner.atLeastChildLevels(plan.classification(),
+            TaxonomyClassification levels = TopicTreeService.atLeastChildLevels(plan.classification(),
                     members.stream().map(LearningGoal::getBloomLevel).filter(Objects::nonNull).toList(),
                     members.stream().map(LearningGoal::getSoloLevel).filter(Objects::nonNull).toList());
             if (levels != null) {
@@ -640,7 +684,6 @@ public class TopicSearchService {
 
         topic.setLectureOrder(median(new ArrayList<>(subSkills.values())));
         goalRepository.save(topic);
-        proposals.remove(proposalId);
         log.info("Created topic '{}' in course {} from a slide search with {} sub-skills",
                 proposal.topic(), courseId, subSkills.size());
         return topic;
@@ -703,12 +746,6 @@ public class TopicSearchService {
                         new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName())));
     }
 
-    private HierarchyNode competencyRoot(Course course) {
-        return hierarchyNodeRepository.findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
-                .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies")));
-    }
-
     /** Places new goals among the goals already on their session, or after every goal of the course. */
     private int lectureOrderFor(Course course, HierarchyNode node) {
         List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
@@ -739,8 +776,7 @@ public class TopicSearchService {
     }
 
     private Course course(Long courseId) {
-        return courseRepository.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + courseId));
+        return courseRepository.findOrThrow(courseId);
     }
 
     private static String requireTopic(String text) {
@@ -748,12 +784,11 @@ public class TopicSearchService {
         if (topic.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
         }
+        if (topic.length() > MAX_TOPIC_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Topic text must be at most " + MAX_TOPIC_CHARS + " characters");
+        }
         return topic;
-    }
-
-    private static String languageName(Course course, List<Document> documents) {
-        return LanguageUtils.englishName(
-                ExtractionRunner.resolveLanguage(course, null, ExtractionRunner.dominantLanguage(documents)));
     }
 
     /**
@@ -844,7 +879,7 @@ public class TopicSearchService {
                 solos.add(levels.solo());
             }
         }
-        return ExtractionRunner.atLeastChildLevels(classified, blooms, solos);
+        return TopicTreeService.atLeastChildLevels(classified, blooms, solos);
     }
 
     private static String blankToNull(String value) {

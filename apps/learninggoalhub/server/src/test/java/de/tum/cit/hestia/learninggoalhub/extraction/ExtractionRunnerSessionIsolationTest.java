@@ -15,8 +15,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentContentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
@@ -25,14 +27,13 @@ import de.tum.cit.hestia.learninggoalhub.document.HighlightGeometryService;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.StructuredOutputConverter;
@@ -59,7 +60,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
 
-        assertThatThrownBy(() -> runner.runForCourse(1L))
+        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("41.pdf")
                 .hasMessageContaining("Retry the extraction");
@@ -68,8 +69,29 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
-        verify(auditService).finish(eq(1L), eq(ExtractionRun.Status.FAILED),
-                org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), anyString());
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
+                org.mockito.ArgumentMatchers.contains("41.pdf"), isNull(), eq(1), eq(0), anyString());
+    }
+
+    @Test
+    void aRunThatFindsNoGoalsFailsInsteadOfReportingSuccess() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        when(spec.system(anyString())).thenReturn(spec);
+        when(spec.options(any())).thenReturn(spec);
+        // Every session answers, but none of them names an outcome.
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of());
+
+        ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
+        ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
+        ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
+
+        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no learning goals");
+        verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
+                org.mockito.ArgumentMatchers.contains("no learning goals"), isNull(), eq(0), eq(0), anyString());
     }
 
     private static ExtractionRunner runner(ChatClient chatClient, ExtractionRunAuditService auditService,
@@ -84,7 +106,7 @@ class ExtractionRunnerSessionIsolationTest {
         when(course.getId()).thenReturn(1L);
         when(course.getName()).thenReturn("Maths-heavy course");
         when(course.isFiguresEnabled()).thenReturn(false);
-        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseRepository.findOrThrow(1L)).thenReturn(course);
 
         // No sections, so each document is exactly one session. Both documents are stubbed before
         // the call below: nesting mock setup inside a when() argument breaks the outer stubbing.
@@ -104,7 +126,7 @@ class ExtractionRunnerSessionIsolationTest {
         ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
         when(chatClientBuilder.build()).thenReturn(chatClient);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                chatClientBuilder, mock(LanguageDetectionService.class), 0.2);
+                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
                 courseRepository,
@@ -118,9 +140,8 @@ class ExtractionRunnerSessionIsolationTest {
                 new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
-                mock(TopicTreeSynthesizer.class),
+                mock(TopicTreeService.class),
                 hierarchyNodeRepository,
-                mock(TaxonomyService.class),
                 progressTracker,
                 org.springframework.transaction.support.TransactionOperations.withoutTransaction(),
                 // Single-threaded, so the failing session is deterministically the first one.

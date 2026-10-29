@@ -1,14 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client.ts";
 import type { CourseSummary } from "../api/client.ts";
 import Button from "./Button.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
+import { requestError } from "../lib/requestError.ts";
 
-/**
- * Renames a course. The course PATCH replaces `outputLanguage` and `figuresEnabled` with whatever
- * the body carries, so the rename echoes the course's current settings back rather than dropping
- * the instructor's language override on the way through.
- */
+/** Renames a course. The course PATCH leaves every field the body omits alone. */
 export default function RenameCourseDialog({
   course,
   onClose,
@@ -21,15 +19,11 @@ export default function RenameCourseDialog({
 
   const rename = useMutation({
     mutationFn: async (nextName: string) => {
-      const { error } = await api.PATCH("/api/courses/{id}", {
+      const { error, response } = await api.PATCH("/api/courses/{id}", {
         params: { path: { id: course.id as number } },
-        body: {
-          name: nextName,
-          outputLanguage: course.outputLanguage ?? undefined,
-          figuresEnabled: course.figuresEnabled,
-        },
+        body: { name: nextName },
       });
-      if (error) throw new Error("Could not rename the course.");
+      if (error) throw requestError("Could not rename the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -46,13 +40,18 @@ export default function RenameCourseDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, rename.isPending]);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
+
   const trimmed = name.trim();
   const canSave = trimmed !== "" && trimmed !== course.name && !rename.isPending;
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       onClick={() => !rename.isPending && onClose()}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="rename-course-title"
@@ -78,6 +77,7 @@ export default function RenameCourseDialog({
           id="rename-course-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={255}
           autoFocus
           className="mt-2 w-full rounded-sm border-[1.5px] border-hestia-border bg-hestia-bg px-2.5 py-2 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none"
         />

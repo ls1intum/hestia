@@ -13,9 +13,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalCreationProvenance;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import java.util.ArrayList;
 import java.util.List;
 import org.hamcrest.Matchers;
@@ -48,6 +55,9 @@ class CourseControllerTest {
 
     @Autowired
     private LearningGoalRepository goalRepository;
+
+    @Autowired
+    private GoalRelationshipRepository relationshipRepository;
 
     @Test
     void exposesDocumentAndGoalCountsPerCourse() throws Exception {
@@ -103,6 +113,47 @@ class CourseControllerTest {
     }
 
     @Test
+    void countsTopicsAndSkillsFromTheTopicTree() throws Exception {
+        Course course = courseRepository.save(new Course("Tree Course"));
+        LearningGoal topicA = goal(course, "Testing", GoalOrigin.TERMINAL, null);
+        LearningGoal topicB = goal(course, "Design", GoalOrigin.TERMINAL, null);
+        // A skill: a topic child whose own children include a SKILL-role goal.
+        LearningGoal skill = goal(course, "Write unit tests", GoalOrigin.SYNTHESIZED, null);
+        contributes(skill, topicA);
+        contributes(goal(course, "Apply mocking", GoalOrigin.EXTRACTED, GoalRole.SKILL), skill);
+        // Also a skill: hand-added under a topic with the SKILL role, still childless.
+        LearningGoal manual = goal(course, "Review a design", GoalOrigin.EXTRACTED, GoalRole.SKILL);
+        manual.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
+        contributes(goalRepository.save(manual), topicB);
+        // Not a skill: a topic child with only knowledge beneath it.
+        LearningGoal loose = goal(course, "Explain coupling", GoalOrigin.EXTRACTED, GoalRole.SKILL);
+        contributes(loose, topicB);
+        contributes(goal(course, "Define coupling", GoalOrigin.EXTRACTED, GoalRole.KNOWLEDGE), loose);
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topicCount").value(2))
+                .andExpect(jsonPath("$.skillCount").value(2));
+        mockMvc.perform(get("/api/courses").param("size", "200"))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].topicCount", course.getId())
+                        .value(Matchers.contains(2)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].skillCount", course.getId())
+                        .value(Matchers.contains(2)));
+    }
+
+    private LearningGoal goal(Course course, String text, GoalOrigin origin, GoalRole role) {
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.EXPLICIT);
+        goal.setOrigin(origin);
+        goal.setRole(role);
+        return goalRepository.save(goal);
+    }
+
+    private void contributes(LearningGoal child, LearningGoal parent) {
+        relationshipRepository.save(new GoalRelationship(
+                child, parent, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+    }
+
+    @Test
     void getCourseReturns404WhenMissing() throws Exception {
         mockMvc.perform(get("/api/courses/{id}", 999_999_999L))
                 .andExpect(status().isNotFound());
@@ -127,6 +178,21 @@ class CourseControllerTest {
                         .content("{\"outputLanguage\":null}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outputLanguage").value(Matchers.nullValue()));
+    }
+
+    @Test
+    void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
+        Course course = new Course("Language Course");
+        course.setOutputLanguage("de");
+        course = courseRepository.save(course);
+
+        // Like the document PATCH: an omitted field is left alone, an explicit null clears it.
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed"))
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
     }
 
     @Test
@@ -192,6 +258,30 @@ class CourseControllerTest {
         mockMvc.perform(get("/api/courses/{id}", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Keeps Its Name"));
+    }
+
+    @Test
+    void rejectsACourseNameLongerThanTheColumn() throws Exception {
+        String tooLong = "x".repeat(256);
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void rejectsSortingByAnUnknownProperty() throws Exception {
+        mockMvc.perform(get("/api/courses").param("sort", "nope,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test

@@ -6,27 +6,44 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.exam.submission.ExamSubmissionRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalStatus;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,10 +54,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+// As in production: without open-in-view, a lazy association read outside a transaction fails here too.
+@SpringBootTest(properties = "spring.jpa.open-in-view=false")
 @AutoConfigureMockMvc
 class ExamGoalControllerTest {
 
@@ -63,7 +82,13 @@ class ExamGoalControllerTest {
     private TaxonomyService taxonomyService;
 
     @MockitoBean
-    private EmbeddingService embeddingService;
+    private TopicTreeSynthesizer topicTreeSynthesizer;
+
+    @MockitoSpyBean
+    private GoalRelationshipRepository relationshipRepository;
+
+    @Autowired
+    private ExamSubmissionRepository submissionRepository;
 
     private static final String HARRY_PAYLOAD = """
             {
@@ -82,7 +107,7 @@ class ExamGoalControllerTest {
     void generatesPersistsAndReturnsGoalsPerTaskBlock() throws Exception {
         Course course = courseRepository.save(new Course("Introduction to ML"));
         when(generator.generate(anyString(), eq("singleChoice"), anyString(), anyString(), isNull()))
-                .thenReturn(List.of(new GeneratedExamGoal("Recall basic integer addition.")));
+                .thenReturn(List.of(new GeneratedExamGoal("Recalling basic integer addition.", "Recall integer addition.")));
         when(generator.generate(anyString(), eq("freeText"), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(
                         new GeneratedExamGoal("Explain the impact of LLMs on knowledge work."),
@@ -93,10 +118,6 @@ class ExamGoalControllerTest {
                     .map(t -> new TaxonomyClassification(BloomLevel.UNDERSTAND, null))
                     .toList();
         });
-        when(embeddingService.embedAll(anyList())).thenAnswer(inv -> {
-            List<String> texts = inv.getArgument(0);
-            return texts.stream().map(t -> new float[4096]).toList();
-        });
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -106,7 +127,9 @@ class ExamGoalControllerTest {
                 .andExpect(jsonPath("$[0].blockId").value("2"))
                 .andExpect(jsonPath("$[0].goals", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].goals[0].id").isNumber())
-                .andExpect(jsonPath("$[0].goals[0].text").value("Recall basic integer addition."))
+                // Stored like every other outcome: no closing period, with its short label.
+                .andExpect(jsonPath("$[0].goals[0].text").value("Recalling basic integer addition"))
+                .andExpect(jsonPath("$[0].goals[0].shortLabel").value("Recall integer addition"))
                 .andExpect(jsonPath("$[0].goals[0].kind").value("IMPLICIT"))
                 .andExpect(jsonPath("$[0].goals[0].status").value("PENDING"))
                 .andExpect(jsonPath("$[0].goals[0].bloomLevel").value("UNDERSTAND"))
@@ -132,7 +155,6 @@ class ExamGoalControllerTest {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenReturn(List.of());
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
-        when(embeddingService.embedAll(anyList())).thenReturn(List.of());
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -159,13 +181,194 @@ class ExamGoalControllerTest {
     }
 
     @Test
+    void storesTheExamTaskEachGoalCameFrom() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
+                .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of(
+                new TaxonomyClassification(BloomLevel.APPLY, null),
+                new TaxonomyClassification(BloomLevel.REMEMBER, null)));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "blocks": [
+                                    { "blockId": "c", "blockType": "context", "description": "Context A" },
+                                    { "blockId": "t1", "blockType": "task", "taskType": "singleChoice", "description": "Task one" },
+                                    { "blockId": "t2", "blockType": "task", "taskType": "freeText", "description": "Task two" }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].goals[0].examTask.taskNumber").value(1))
+                .andExpect(jsonPath("$[0].goals[0].examTask.taskType").value("singleChoice"))
+                .andExpect(jsonPath("$[0].goals[0].examTask.text").value("Task one"))
+                .andExpect(jsonPath("$[0].goals[0].examTask.context").value("Context A"))
+                .andExpect(jsonPath("$[0].goals[0].examTask.submittedAt").isNotEmpty())
+                .andExpect(jsonPath("$[1].goals[0].examTask.taskNumber").value(2))
+                // The tier follows Bloom: applying is a skill, remembering is knowledge.
+                .andExpect(jsonPath("$[0].goals[0].role").value("SKILL"))
+                .andExpect(jsonPath("$[1].goals[0].role").value("KNOWLEDGE"));
+
+        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.content[1].examTask.text").value("Task two"))
+                .andExpect(jsonPath("$.content[1].examTask.taskType").value("freeText"));
+        // Without a Topic tree there is nothing to place the goals under.
+        Mockito.verify(topicTreeSynthesizer, Mockito.never()).place(anyList(), anyList(), any());
+    }
+
+    @Test
+    void placesNewGoalsInTheTreeASkillTierGoalUnderASkillAndKnowledgeUnderItsTopic() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        goalRepository.save(topic);
+        LearningGoal skill = new LearningGoal(course, "Implement comparison sorts", GoalKind.IMPLICIT);
+        skill.setOrigin(GoalOrigin.SYNTHESIZED);
+        skill.setRole(GoalRole.SKILL);
+        goalRepository.save(skill);
+        relationshipRepository.save(new GoalRelationship(skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0,
+                RelationshipOrigin.SYNTHESIS));
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
+                .thenReturn(List.of(new GeneratedExamGoal("Apply merge sort."),
+                        new GeneratedExamGoal("Recall what a stable sort is."),
+                        new GeneratedExamGoal("Design a lexer.")));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of(
+                new TaxonomyClassification(BloomLevel.APPLY, null),
+                new TaxonomyClassification(BloomLevel.REMEMBER, null),
+                new TaxonomyClassification(BloomLevel.CREATE, null)));
+        List<TopicTreeSynthesizer.MenuTopic> withSkills =
+                List.of(new TopicTreeSynthesizer.MenuTopic("Sorting", List.of("Implement comparison sorts")));
+        List<TopicTreeSynthesizer.MenuTopic> topicsOnly =
+                List.of(new TopicTreeSynthesizer.MenuTopic("Sorting", List.of()));
+        // The lexer goal is left out of the answer: no topic covers it.
+        when(topicTreeSynthesizer.place(eq(withSkills), eq(List.of("Apply merge sort", "Design a lexer")), isNull()))
+                .thenReturn(Map.of(0, new TopicTreeSynthesizer.Placement(0, 0)));
+        when(topicTreeSynthesizer.place(eq(topicsOnly), eq(List.of("Recall what a stable sort is")), isNull()))
+                .thenReturn(Map.of(0, new TopicTreeSynthesizer.Placement(0, null)));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(sourceTexts(relationshipRepository.findByTargetId(skill.getId()))).containsExactly("Apply merge sort");
+        assertThat(sourceTexts(relationshipRepository.findByTargetId(topic.getId())))
+                .containsExactlyInAnyOrder("Implement comparison sorts", "Recall what a stable sort is");
+        assertThat(relationshipRepository.findByTargetId(skill.getId()).getFirst().getOrigin())
+                .isEqualTo(RelationshipOrigin.SYNTHESIS);
+    }
+
+    private List<String> sourceTexts(List<GoalRelationship> edges) {
+        return edges.stream()
+                .map(edge -> goalRepository.findById(edge.getSource().getId()).orElseThrow().getText())
+                .toList();
+    }
+
+    @Test
+    void keepsTheGoalsWhenPlacementFails() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        goalRepository.save(topic);
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
+                .thenReturn(List.of(new GeneratedExamGoal("Apply merge sort.")));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
+        when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("HTTP 429"));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].goals", Matchers.hasSize(1)));
+
+        assertThat(relationshipRepository.findByTargetId(topic.getId())).isEmpty();
+    }
+
+    @Test
+    void persistsNothingWhenStoringThePlacementFails() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        goalRepository.save(topic);
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
+                .thenReturn(List.of(new GeneratedExamGoal("Recall what a stable sort is.")));
+        when(taxonomyService.classifyBatch(anyList(), isNull()))
+                .thenReturn(List.of(new TaxonomyClassification(BloomLevel.REMEMBER, null)));
+        when(topicTreeSynthesizer.place(anyList(), anyList(), isNull()))
+                .thenReturn(Map.of(0, new TopicTreeSynthesizer.Placement(0, null)));
+        doThrow(new IllegalStateException("database down")).when(relationshipRepository).save(any());
+        doThrow(new IllegalStateException("database down")).when(relationshipRepository).saveAll(anyList());
+        long submissionsBefore = submissionRepository.count();
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                                """))
+                .andExpect(status().isInternalServerError());
+
+        // One request is one unit: no submission, exam root, or goals of a request that failed.
+        assertThat(goalRepository.findByCourseId(course.getId())).extracting(LearningGoal::getOrigin)
+                .containsExactly(GoalOrigin.TERMINAL);
+        assertThat(hierarchyNodeRepository.findByCourseId(course.getId())).isEmpty();
+        assertThat(submissionRepository.count()).isEqualTo(submissionsBefore);
+    }
+
+    @Test
+    void anIdenticalRequestWhileTheFirstIsRunningJoinsItInsteadOfGeneratingAgain() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        CountDownLatch firstGenerating = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        AtomicInteger generations = new AtomicInteger();
+        when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenAnswer(inv -> {
+            generations.incrementAndGet();
+            firstGenerating.countDown();
+            assertThat(releaseFirst.await(10, TimeUnit.SECONDS)).isTrue();
+            return List.of(new GeneratedExamGoal("Recall a fact."));
+        });
+        when(taxonomyService.classifyBatch(anyList(), isNull()))
+                .thenReturn(java.util.Collections.singletonList(null));
+        String payload = """
+                { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
+                """;
+        Callable<String> request = () -> mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long submissionsBefore = submissionRepository.count();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> first = pool.submit(request);
+            assertThat(firstGenerating.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<String> retry = pool.submit(request);
+            // Give the retry time to arrive while the first request is still generating.
+            Thread.sleep(300);
+            releaseFirst.countDown();
+
+            assertThat(retry.get(10, TimeUnit.SECONDS)).isEqualTo(first.get(10, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(generations).hasValue(1);
+        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(1);
+        assertThat(submissionRepository.count()).isEqualTo(submissionsBefore + 1);
+    }
+
+    @Test
     void reusesExamRootAcrossRequests() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull()))
-                .thenReturn(java.util.Collections.singletonList(null));
-        when(embeddingService.embedAll(anyList()))
                 .thenReturn(java.util.Collections.singletonList(null));
 
         String payload = """
@@ -187,8 +390,7 @@ class ExamGoalControllerTest {
         Course course = courseRepository.save(new Course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
-        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("SAIA 429"));
-        when(embeddingService.embedAll(anyList())).thenThrow(new RuntimeException("SAIA 429"));
+        when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("HTTP 429"));
 
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -196,12 +398,12 @@ class ExamGoalControllerTest {
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].goals[0].bloomLevel").value(Matchers.nullValue()));
+                .andExpect(jsonPath("$[0].goals[0].bloomLevel").value(Matchers.nullValue()))
+                .andExpect(jsonPath("$[0].goals[0].role").value(Matchers.nullValue()));
 
         List<LearningGoal> persisted = goalRepository.findByCourseId(course.getId());
         assertThat(persisted).hasSize(1);
         assertThat(persisted.getFirst().getBloomLevel()).isNull();
-        assertThat(persisted.getFirst().getEmbedding()).isNull();
     }
 
     @Test
@@ -246,5 +448,48 @@ class ExamGoalControllerTest {
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": " " } ] }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returns400ForNullBlock() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"blocks\": [null] }"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returns400ForRepeatedTaskBlockId() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+
+        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "blocks": [
+                                  { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": "A" },
+                                  { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": "B" } ] }
+                                """))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(generator);
+    }
+
+    @Test
+    void returns400ForTooManyBlocksOrTooLongDescription() throws Exception {
+        Course course = courseRepository.save(new Course("Course"));
+        String tooMany = java.util.stream.IntStream.rangeClosed(1, ExamGoalController.MAX_BLOCKS + 1)
+                .mapToObj(i -> "{ \"blockId\": \"" + i + "\", \"blockType\": \"task\", \"description\": \"Q\" }")
+                .collect(java.util.stream.Collectors.joining(",", "{ \"blocks\": [", "] }"));
+        String tooLong = "{ \"blocks\": [ { \"blockId\": \"1\", \"blockType\": \"task\", \"description\": \""
+                + "x".repeat(ExamGoalController.MAX_DESCRIPTION_CHARS + 1) + "\" } ] }";
+
+        for (String body : List.of(tooMany, tooLong)) {
+            mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(generator);
     }
 }

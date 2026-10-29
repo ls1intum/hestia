@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,30 +15,40 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalCreationProvenance;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -47,7 +58,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -64,6 +77,9 @@ class TopicSearchControllerTest {
 
     @Autowired
     private DocumentRepository documentRepository;
+
+    @MockitoSpyBean
+    private UnitExtractor unitExtractor;
 
     @Autowired
     private DocumentSectionRepository documentSectionRepository;
@@ -147,6 +163,89 @@ class TopicSearchControllerTest {
             assertThat(parents(item)).containsExactly(Map.entry(bootstrap.getId(), RelationshipOrigin.HIERARCHY));
             assertThat(goalSourceRepository.findByGoalId(item.getId())).hasSize(1);
         });
+    }
+
+    @Test
+    void searchingCallsTheModelsWithoutHoldingATransaction() throws Exception {
+        Course course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
+        when(topicSearchSynthesizer.searchTerms(anyString(), anyString(), nullable(String.class))).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return List.of("bootstrap");
+        });
+        when(topicTreeSynthesizer.shortLabels(anyList(), anyString(), nullable(String.class))).thenAnswer(inv -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return List.of("Build forests");
+        });
+
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/pages", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"" + TOPIC + "\"}"))
+                .andExpect(status().isOk());
+        search(course, lecture, 1, 4);
+
+        // A search makes several model calls; none may pin a database connection meanwhile.
+        assertThat(inTransaction).containsExactly(false, false);
+    }
+
+    @Test
+    void searchMarksASubSkillTheCourseAlreadyHasWithTheTopicItSitsUnder() throws Exception {
+        Course course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        LearningGoal topic = new LearningGoal(course, "Ensemble methods", GoalKind.IMPLICIT);
+        topic.setOrigin(GoalOrigin.TERMINAL);
+        goalRepository.save(topic);
+        LearningGoal existing = new LearningGoal(course, "Choose the number of trees.", GoalKind.EXPLICIT);
+        existing.setOrigin(GoalOrigin.EXTRACTED);
+        existing.setRole(GoalRole.SKILL);
+        goalRepository.save(existing);
+        goalSourceRepository.save(new GoalSource(existing, lecture, "More trees reduce variance", 4, true));
+        goalRelationshipRepository.save(new GoalRelationship(existing, topic, RelationshipType.CONTRIBUTES_TO, 1.0,
+                RelationshipOrigin.SYNTHESIS));
+        when(topicSearchSynthesizer.duplicates(anyList(), eq(List.of("Choose the number of trees.")),
+                nullable(String.class))).thenReturn(List.of(-1, -1, -1, 0));
+
+        // The topic is read off the stored tree between the model calls, outside the request's reads.
+        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
+                                + ", \"startPage\": 1, \"endPage\": 4}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.duplicates[0].key").value("s3"))
+                .andExpect(jsonPath("$.duplicates[0].duplicateOf.goalId").value(existing.getId().intValue()))
+                .andExpect(jsonPath("$.duplicates[0].duplicateOf.topicText").value("Ensemble methods"));
+    }
+
+    @Test
+    void twoAcceptsOfOneSearchAtOnceCreateTheTopicOnce() throws Exception {
+        Course course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        String proposalId = JsonPath.read(search(course, lecture, 1, 4), "$.proposalId");
+        CountDownLatch bothAccepting = new CountDownLatch(2);
+        doAnswer(inv -> {
+            // Holds each accept until the other has arrived too, or a moment has passed.
+            bothAccepting.countDown();
+            bothAccepting.await(2, TimeUnit.SECONDS);
+            return inv.callRealMethod();
+        }).when(unitExtractor).persistSource(any(), any(), any(), any());
+        Callable<Integer> accept = () -> mockMvc.perform(
+                        post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"subSkillKeys\": [\"s0\"]}"))
+                .andReturn().getResponse().getStatus();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = pool.submit(accept);
+            Future<Integer> second = pool.submit(accept);
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 409);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.TERMINAL)))
+                .hasSize(1);
     }
 
     @Test

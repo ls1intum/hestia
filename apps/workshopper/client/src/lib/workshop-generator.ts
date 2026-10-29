@@ -1,0 +1,273 @@
+// ── Types shared across all Workshopper components ─────────────────
+
+import { PHASES } from "./phases";
+
+export type SessionType =
+  | "workshop"
+  | "lecture"
+  | "exercise"
+  | "seminar"
+  | "practical"
+  | "other";
+
+
+/** Form payload sent to the server */
+export interface WorkshopInput {
+  title?: string;
+  duration: number;
+  participants: number;
+  sessionType: SessionType;
+  sessionTypeOther?: string;
+  studentBackground?: string;
+  selectedActivities?: string[];
+  availableMaterials?: string[];
+  evaluateMappings?: { method: string; lgIds: string[] }[];
+}
+
+export interface SubSkill {
+  id: string;
+  text: string;
+  bloomLevel?: string;
+  soloLevel?: string;
+}
+
+/** One learning goal, as entered on the Goals step */
+export interface LearningGoalPlan {
+  id: string;
+  originalGoal?: string;
+  goal: string;
+  prerequisites: string[];
+  achieveActivities: string[];
+  assessActivities: string[];
+  bloomLevel?: string;
+  soloLevel?: string;
+  session?: string;
+  subSkills?: SubSkill[];
+}
+
+export interface ActivitySection {
+  title: string;
+  duration?: number;
+  steps?: string[];
+  methods: string[];
+  materials: string[];
+}
+
+/** One timetable block (Timetable step) */
+export interface ActivityBlock {
+  blockId?: string;
+  phase: string;
+  phaseLabel: string;
+  goalTag?: string;
+  objective: string;
+  description: string;
+  methods: string[];
+  materials: string[];
+  sections?: ActivitySection[];
+  duration: number;
+  lgIndex?: number;
+}
+
+export interface SlideData {
+  title: string;
+  subtitle?: string;
+  bullets?: string[];
+  notes?: string;
+  fixedInstructionFor?: string;
+  layout?:
+    | "title"
+    | "agenda"
+    | "standard"
+    | "default"
+    | "content"
+    | "activity_tiled"
+    | "activity_sidebar"
+    | "activity_grid3"
+    | "activity_qanda"
+    | "activity_q&a"
+    | "live_poll"
+    | "welcome"
+    | "summary"
+    | "concept_map"
+    | "lecture_placeholder"
+    | "debrief"
+    | "break";
+  activityInstructions?: string[];
+  activityPrompt?: string;
+  activityOutputExpectation?: string;
+  pollQuestion?: string;
+  pollOptions?: string[];
+  /** Student-facing correct answer for debrief slides */
+  suggestedAnswer?: string;
+  /** Common misconceptions for debrief slides */
+  commonMisconceptions?: string[];
+  /** Key takeaway for debrief slides */
+  keyTakeaway?: string;
+  /** Slide group from the 7-part deck structure */
+  group?: "welcome" | "agenda" | "activate_prior_knowledge" | "main_lecture" | "check_understanding" | "summary" | "break";
+  /** Learning goal index (1-based) — present on main_lecture and check_understanding slides */
+  lgIndex?: number;
+}
+
+/** The generated session (timetable), returned by POST /api/workshop/session */
+export interface WorkshopSession {
+  id?: string;
+  title?: string;
+  studentBackground?: string;
+  blocks: ActivityBlock[];
+  slides?: Record<number, SlideData[]>;
+}
+
+/** A suggestion from the AI goal check (POST /api/workshop/refine-goal) */
+export interface GoalSuggestion {
+  type: "split" | "refine";
+  values: string[];
+  message: string;
+}
+
+export interface SkeletonSection {
+  title: string;
+  duration: number;
+}
+
+export interface SkeletonBlock {
+  phase: string;
+  title?: string;
+  description?: string;
+  lgIndex: number;
+  duration: number;
+  sections?: SkeletonSection[];
+}
+
+export interface SessionSkeleton {
+  blocks: SkeletonBlock[];
+  /** Optional: existing draft session ID to update on finalisation */
+  sessionId?: string;
+}
+
+
+/** Lightweight summary returned by GET /api/workshop/sessions (dashboard list) */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  status: "draft" | "complete";
+  currentStep?: string;
+  courseId?: string;
+  /** May be an ISO string or a Java-serialized array [year, month, day, hour, minute, second] */
+  createdAt: unknown;
+  updatedAt: unknown;
+}
+
+/** Full detail returned by GET /api/workshop/sessions/{id} */
+export interface SessionDetail {
+  id: string;
+  title: string;
+  status: "draft" | "complete";
+  currentStep?: string;
+  courseId?: string;
+  draftStateJson?: string;
+  /** Where the applied template comes from; null means the default design */
+  templateSource?: "SESSION" | "COURSE" | null;
+  /** File name of the applied template, if known */
+  templateName?: string | null;
+  session?: WorkshopSession;
+}
+
+/** The slide template that applies to the session or course being edited. */
+export interface TemplateInfo {
+  source: "SESSION" | "COURSE";
+  name?: string | null;
+}
+
+export function templateInfoFromDetail(detail: SessionDetail): TemplateInfo | null {
+  return detail.templateSource ? { source: detail.templateSource, name: detail.templateName ?? null } : null;
+}
+
+/**
+ * A goal edited on the Goals step and kept without applying it. Applying goals (Continue)
+ * regenerates the timetable, so kept goals wait here until the user continues or discards them.
+ */
+export interface KeptGoal {
+  id: string;
+  text: string;
+  bloomLevel?: string;
+  soloLevel?: string;
+  session?: string;
+  subSkills?: SubSkill[];
+}
+
+/**
+ * All in-progress form state, serialized to draftStateJson and stored in the DB.
+ * Each field is optional since the user may not have reached that step yet.
+ */
+export interface DraftState {
+  workshopInput?: Partial<WorkshopInput>;
+  refinedGoals?: LearningGoalPlan[];
+  /** Goal edits kept as a draft; refinedGoals stay what the timetable was generated from */
+  keptGoals?: KeptGoal[];
+  skeleton?: SessionSkeleton;
+  session?: WorkshopSession;
+  completedTasks?: string[];
+}
+
+export function stripLgPrefix(text: string): string {
+  return text.replace(/^\s*LG\s*\d+\s*[:.\-]\s*/i, "").trim();
+}
+
+export function generateDefaultSkeleton(goals: LearningGoalPlan[], totalDuration: number): SessionSkeleton {
+  const arriveTime = 5;
+  const activateTime = Math.max(5, Math.round((totalDuration / 90) * 5));
+  // Break: 5 min for 90-min session (was 10 min — too much overhead)
+  const breakTime = totalDuration >= 90 ? Math.round((totalDuration / 90) * 5) : 0;
+  // Buffer: 5 min for 90-min session
+  const bufferTime = Math.round((totalDuration / 90) * 5);
+  const globalEvaluateTime = Math.max(5, Math.round((totalDuration / 90) * 10));
+  const summaryTime = Math.max(5, Math.round((totalDuration / 90) * 5));
+
+  const fixedTime = arriveTime + activateTime + breakTime + bufferTime + summaryTime + globalEvaluateTime;
+  const remaining = Math.max(0, totalDuration - fixedTime);
+  const baseTimePerGoal = goals.length > 0
+    ? Math.max(10, Math.floor(remaining / goals.length / 5) * 5)
+    : 0;
+
+  // Distribute leftover minutes into the learning cycle blocks (last one gets the remainder)
+  const allocatedToGoals = baseTimePerGoal * goals.length;
+  const leftover = Math.max(0, remaining - allocatedToGoals);
+
+  const blocks: SkeletonBlock[] = [
+    { phase: "ARRIVE", title: PHASES.ARRIVE.label, duration: arriveTime, lgIndex: 0 },
+    { phase: "ACTIVATE", title: PHASES.ACTIVATE.label, duration: activateTime, lgIndex: 0 },
+  ];
+
+  goals.forEach((g, i) => {
+    // Give extra leftover minutes to the last learning cycle
+    const duration = i === goals.length - 1 ? baseTimePerGoal + leftover : baseTimePerGoal;
+    const informTime = Math.max(5, Math.floor(duration / 2));
+    const processTime = Math.max(5, duration - informTime);
+
+    blocks.push({
+      phase: "LEARNING_CYCLE",
+      title: stripLgPrefix(g.goal),
+      duration,
+      lgIndex: i + 1,
+      sections: [
+        { title: "You explain", duration: informTime },
+        { title: "Participants Practice", duration: processTime },
+      ],
+    });
+
+    if (i === Math.floor(goals.length / 2) - 1 && breakTime > 0) {
+      blocks.push({ phase: "BREAK", title: PHASES.BREAK.label, duration: breakTime, lgIndex: 0 });
+    }
+  });
+
+  blocks.push({ phase: "EVALUATE", title: PHASES.EVALUATE.label, duration: globalEvaluateTime, lgIndex: 0 });
+  blocks.push({ phase: "SUMMARY", title: PHASES.SUMMARY.label, duration: summaryTime, lgIndex: 0 });
+  if (bufferTime > 0) {
+    blocks.push({ phase: "BUFFER", title: PHASES.BUFFER.label, duration: bufferTime, lgIndex: 0 });
+  }
+
+  return {
+    blocks,
+  };
+}

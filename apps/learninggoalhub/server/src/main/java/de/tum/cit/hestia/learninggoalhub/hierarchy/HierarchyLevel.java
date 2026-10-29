@@ -6,6 +6,6 @@ public enum HierarchyLevel {
     EXERCISE,
     /** Root holding a course's exam-task goals (ExamLens integration), alongside the MODULE root. */
     EXAM,
-    /** Root holding a course's terminal competencies (the competency-tree view, alongside MODULE). */
+    /** Root holding a course's topics (the Topic tree, alongside MODULE). */
     COMPETENCY
 }

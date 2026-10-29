@@ -1,0 +1,475 @@
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { GripVertical, ChevronDown, ChevronUp, Trash2, Plus, Loader2, Pencil, X, Check } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { InlineEditText } from "./InlineEditText";
+import { InlineEditableStep } from "./InlineEditableStep";
+import { MinutesInput } from "./MinutesInput";
+import { getStepEmoji, ACTIVITY_GROUPS, MODE_COLORS, getSectionMode, getStepMode } from "@/lib/constants";
+import { phaseInfo } from "@/lib/phases";
+import { blockContent, blockMethods, ShownStep } from "@/lib/block-content";
+import { BlockDetails } from "./BlockDetails";
+import type { EditTarget, DndActivityBlock } from "@/hooks/useTimetableEditing";
+import { LearningGoalPlan, WorkshopInput } from "@/lib/workshop-generator";
+import { EvaluateMappingPanel } from "./EvaluateMappingPanel";
+import { UnderstandingCheckSteps } from "./UnderstandingCheckSteps";
+
+export function SortableBlockRow({
+  block, isExpanded, editing, meta, isRegenerating, selectedActivities,
+  onToggleExpand, onEditTitle, onSaveTitle, onSaveStep, onSaveStepTime,
+  onSaveBlockDuration, onSaveSectionDuration, onSaveObjective,
+  onDeleteBlock, onSwitchActivity, onDeleteActivity, onAddActivity, onAddStep, onDeleteStep,
+  isEditMode = false, onToggleEditMode, onCancelEditMode,
+  goals, needsEvaluatePriority, onConfirmEvaluateMappings, onPendingMappingsChange
+}: {
+  block: DndActivityBlock;
+  isExpanded: boolean;
+  editing: EditTarget;
+  meta: WorkshopInput;
+  isRegenerating: boolean;
+  selectedActivities: string[];
+  onToggleExpand: () => void;
+  onEditTitle: () => void;
+  onSaveTitle: (v: string) => void;
+  onSaveStep: (sectionIdx: number, stepIdx: number, v: string) => void;
+  onSaveStepTime: (sectionIdx: number, stepIdx: number, v: string) => void;
+  onSaveBlockDuration: (v: string) => void;
+  onSaveSectionDuration: (sectionIdx: number, v: string) => void;
+  onSaveObjective: (v: string) => void;
+  onDeleteBlock: () => void;
+  onSwitchActivity: (oldMethod: string, newMethod: string) => void;
+  onDeleteActivity: (method: string) => void;
+  onAddActivity: (method: string) => void;
+  onAddStep: (text: string) => void;
+  onDeleteStep: (sectionIdx: number, stepIdx: number) => void;
+  isEditMode?: boolean;
+  onToggleEditMode?: () => void;
+  onCancelEditMode?: () => void;
+  goals?: LearningGoalPlan[];
+  needsEvaluatePriority?: boolean;
+  onConfirmEvaluateMappings?: (mappings: { method: string; lgIds: string[] }[]) => void;
+  /** Reports the mapping panel's unconfirmed boxes while the block is in edit mode. */
+  onPendingMappingsChange?: (mappings: { method: string; lgIds: string[] }[]) => void;
+}) {
+  
+  
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: block.dndId
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.45 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  const phase = phaseInfo(block.phase);
+  const mode = phase.mode;
+  const modeColors = MODE_COLORS[mode];
+  const isBreak = mode === "break";
+
+  const parentCardStyle: React.CSSProperties = {
+    backgroundColor: needsEvaluatePriority ? 'rgba(239,68,68,0.05)' : modeColors.bgTint,
+    border: needsEvaluatePriority ? '1.5px solid var(--hestia-destructive)' : (isBreak ? `1.5px dashed ${modeColors.border}` : `1px solid var(--hestia-border)`),
+    borderLeft: needsEvaluatePriority ? '4px solid var(--hestia-destructive)' : (isBreak ? `1.5px dashed ${modeColors.border}` : `2px solid ${modeColors.border}`),
+    boxShadow: isBreak ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+    borderRadius: "12px",
+  };
+  const allMethods = blockMethods(block);
+
+  const isTitleEditing = editing?.type === "title" && editing.blockId === block.dndId;
+
+  // ✓ applies the whole draft, including unconfirmed evaluate mappings; the timetable does that
+  const handleToggleEditMode = () => onToggleEditMode?.();
+
+  return (
+    <div ref={setNodeRef} style={style} className="mb-3" data-block-id={block.dndId}>
+      {/* While the AI regenerates the block it stays open, so the new content appears where the user is looking */}
+      <Collapsible open={isExpanded || (isRegenerating && phase.expandable)} onOpenChange={onToggleExpand}>
+        <div style={parentCardStyle} className={`flex flex-col p-3 transition-colors relative ${isDragging ? "ring-2 ring-primary/30" : ""}`}
+          aria-busy={isRegenerating}>
+          {isRegenerating && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[12px] bg-background/70 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-2 text-center px-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="font-body font-medium text-sm text-foreground">The AI is updating this block…</p>
+                <p className="font-body text-xs text-muted-foreground">This can take up to a minute.</p>
+              </div>
+            </div>
+          )}
+          {/* Main row */}
+          <div className="flex items-center gap-3">
+            {/* Drag handle */}
+            <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground shrink-0 touch-none">
+              <GripVertical className="h-5 w-5" />
+            </div>
+
+            {/* Fixed-Width Time Column */}
+            <div className="w-[52px] shrink-0 flex items-center justify-start">
+              {isEditMode ? (
+                <MinutesInput
+                  value={block.duration}
+                  onSave={onSaveBlockDuration}
+                  className="w-[48px] px-1.5 py-0.5 text-xs font-mono font-bold"
+                  title="Block duration (minutes)"
+                />
+              ) : (
+              <div
+                className="px-2 py-0.5 rounded-md text-xs font-mono whitespace-nowrap"
+                style={{
+                  backgroundColor: block.duration >= 10 ? 'rgba(134,92,29,0.10)' : 'rgba(0,0,0,0.05)',
+                  color: block.duration >= 10 ? 'var(--hestia-primary)' : 'var(--hestia-text-muted)',
+                  fontWeight: block.duration >= 10 ? 700 : 500,
+                }}
+              >
+                {block.duration}m
+              </div>
+              )}
+            </div>
+
+            {/* Emoji + Title + Methods */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base shrink-0">{phase.emoji}</span>
+                <InlineEditText
+                  value={block.phaseLabel || block.phase}
+                  editing={isTitleEditing}
+                  alwaysEdit={isEditMode}
+                  onStartEdit={onEditTitle}
+                  onSave={onSaveTitle}
+                  className="font-body font-semibold text-sm"
+                />
+                {/* Time Indication Bar */}
+                <div className="flex items-center ml-1">
+                  <div
+                    style={{
+                      width: Math.max(12, block.duration * 2.5),
+                      height: 4,
+                      backgroundColor: modeColors.border,
+                      opacity: 0.3,
+                      borderRadius: 9999,
+                    }}
+                  />
+                </div>
+                {needsEvaluatePriority && (
+                  <span className="ml-2 text-xs font-bold uppercase tracking-wider text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
+                    Input Needed
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Duration + action icons + expand (rightmost) */}
+            <div className="flex items-center gap-1.5 shrink-0">
+
+              {/* Activity tags (Methods) */}
+              {(allMethods.length > 0 || (isEditMode && block.phase !== "SUMMARY")) && (
+                <div className="flex items-center gap-1 mr-1">
+                  {allMethods.map((m, j) => (isEditMode && block.phase !== "EVALUATE" && block.phase !== "SUMMARY") ? (
+                    <DropdownMenu key={j}>
+                      <DropdownMenuTrigger asChild>
+                        <div
+                          role="button"
+                          onClick={e => e.stopPropagation()}
+                          onPointerDown={e => e.stopPropagation()}
+                          style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                          title="Click to switch activity"
+                        >
+                          {m} <ChevronDown className="h-2.5 w-2.5 opacity-50" />
+                        </div>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent onClick={e => e.stopPropagation()} className="w-52">
+                        <ActivityMenuItems selectedActivities={selectedActivities} onPick={act => onSwitchActivity(m, act)} />
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                          onClick={e => { e.stopPropagation(); onDeleteActivity(m); }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Activity
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <div
+                      key={j}
+                      style={{ backgroundColor: modeColors.badgeBg, color: modeColors.badgeText }}
+                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full h-5 px-2.5 text-[0.75rem] font-semibold shrink-0"
+                    >
+                      {m}
+                    </div>
+                  ))}
+                  {isEditMode && block.phase !== "SUMMARY" && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10 shrink-0" title="Add activity method">
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent onClick={e => e.stopPropagation()} className="w-52">
+                        <ActivityMenuItems selectedActivities={selectedActivities} label={act => `Add ${act}`} onPick={onAddActivity} />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              )}
+
+              {isEditMode && (
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 transition-colors shrink-0 text-destructive bg-destructive/10 hover:bg-destructive/20"
+                  onClick={e => { e.stopPropagation(); onCancelEditMode?.(); }}
+                  title="Undo block edits"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {/* Edit icon — pencil to enter, check to exit */}
+              <Button
+                variant="ghost" size="icon"
+                className={`h-7 w-7 transition-colors shrink-0 ${isEditMode
+                    ? "text-primary bg-primary/10 hover:bg-primary/20"
+                    : "text-muted-foreground/40 hover:text-primary hover:bg-primary/10"
+                  }`}
+                onClick={e => { e.stopPropagation(); handleToggleEditMode(); }}
+                title={isEditMode ? "Done editing" : "Edit block"}
+              >
+                {isEditMode ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+              </Button>
+
+              {/* Delete icon */}
+              <Button
+                variant="ghost" size="icon"
+                className="h-7 w-7 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                onClick={e => { e.stopPropagation(); onDeleteBlock(); }}
+                title="Delete block"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* Expand chevron — rightmost */}
+              {phase.expandable ? (
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+              ) : (
+                <div className="h-8 w-8" />
+              )}
+            </div>
+          </div>
+
+          {/* Expanded: sections and steps */}
+          <CollapsibleContent className="mt-3 pb-1 relative z-0">
+            {(() => {
+              const content = blockContent(block, (goals ?? []).map(g => g.goal).filter(Boolean));
+
+              // Helper to find the absolute indices of a step for saving
+              const findStepIndices = (targetStepText: string) => {
+                const sections = block.sections || [];
+                for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+                  const sec = sections[sIdx];
+                  const steps = sec.steps || [];
+                  for (let stIdx = 0; stIdx < steps.length; stIdx++) {
+                    if (steps[stIdx] === targetStepText) {
+                      return { sIdx, stIdx };
+                    }
+                  }
+                }
+                return null;
+              };
+
+              const renderEditable = (rawStep: string, cleanContent: string, className: string, style?: any) => {
+                const indices = rawStep ? findStepIndices(rawStep) : null;
+                if (!indices) {
+                  // No matching step: the text shown is the block objective, so edit that instead
+                  if ((rawStep || "") === (block.objective || "")) {
+                    return (
+                      <InlineEditableStep
+                        text={block.objective || ""}
+                        cleanText={block.objective || ""}
+                        isEditMode={isEditMode}
+                        onSave={onSaveObjective}
+                        className={className}
+                        style={style}
+                      />
+                    );
+                  }
+                  return <span className={className} style={style}>{cleanContent}</span>;
+                }
+                return (
+                  <InlineEditableStep
+                    text={rawStep}
+                    cleanText={cleanContent}
+                    isEditMode={isEditMode}
+                    onSave={(newText) => onSaveStep(indices.sIdx, indices.stIdx, newText)}
+                    className={className}
+                    style={style}
+                  />
+                );
+              };
+
+              /** Shows one item of the block details, editable in edit mode where it came from a step or the objective. */
+              const renderItem = (item: ShownStep, className: string) =>
+                item.objective ? renderEditable(block.objective || "", item.text, className)
+                : item.step ? renderEditable(item.step, item.text, className)
+                : <span className={className}>{item.text}</span>;
+
+              if (content.kind === "evaluate") {
+                if ((needsEvaluatePriority || isEditMode) && goals) {
+                  return (
+                    <EvaluateMappingPanel 
+                      initialMappings={meta.evaluateMappings}
+                      goals={goals}
+                      selectedActivities={selectedActivities}
+                      blockDuration={block.duration}
+                      isRegenerating={isRegenerating}
+                      isEditMode={isEditMode}
+                      onConfirmEvaluateMappings={(mappings) => {
+                         // In edit mode the panel's Done goes through ✓ (onToggleEditMode), which applies the mappings
+                         if (!isEditMode && onConfirmEvaluateMappings) onConfirmEvaluateMappings(mappings);
+                      }}
+                      onToggleEditMode={onToggleEditMode}
+                      onChange={(m) => onPendingMappingsChange?.(m)}
+                    />
+                  );
+                }
+
+                return (
+                  <UnderstandingCheckSteps
+                    allSteps={content.steps}
+                    renderEditable={renderEditable}
+                    mappings={meta.evaluateMappings}
+                    goalIds={goals?.map(g => g.id)}
+                  />
+                );
+              }
+
+              if (content.kind !== "other") {
+                return <BlockDetails content={content} methods={allMethods} isEditMode={isEditMode} renderText={renderItem} sections={block.sections}
+                  onSaveSectionDuration={isEditMode ? (sIdx, v) => onSaveSectionDuration(sIdx, v) : undefined} />;
+              }
+
+              // Custom blocks: every section and step, with times
+              return (
+                <div className="space-y-4">
+                  {(block.sections || []).map((section, sIdx) => {
+                    const sectionMode = getSectionMode(section.title || "", mode);
+                    const secColors = MODE_COLORS[sectionMode];
+                    return (
+                      <div key={sIdx} className="relative pl-6">
+                        <div className="absolute left-0 top-0 bottom-0 rounded-full" style={{ width: 2, backgroundColor: secColors.border, opacity: 0.25 }} />
+                        <div className="space-y-1.5">
+                          {(section.steps || []).map((step, stIdx) => {
+                            const match = step.match(/^(\d+)\s*(?:min|m)(?:utes?)?\s*(?:—|-|–|:)?\s*(.*)/i);
+                            const timeVal = match ? match[1] : "";
+                            const contentText = match ? match[2] : step;
+                            const subEmoji = getStepEmoji(contentText);
+                            const stepMode = getStepMode(contentText, sectionMode);
+                            const stepColors = MODE_COLORS[stepMode];
+
+                            return (
+                              <div key={stIdx} className={`flex items-start gap-3 group px-3 py-2 ${contentText.toLowerCase().startsWith('activity') ? 'rounded-3xl' : 'rounded-lg'}`}
+                                style={{ backgroundColor: 'var(--hestia-surface)', borderWidth: '1px', borderStyle: contentText.toLowerCase().startsWith('prompt') ? 'dashed' : 'solid', borderColor: 'color-mix(in srgb, var(--hestia-text) 10%, transparent)', borderLeftWidth: '2px', borderLeftColor: stepColors.border }}>
+                                <div className="w-[42px] shrink-0 flex items-center justify-start opacity-80 group-hover:opacity-100 transition-opacity mt-0.5">
+                                  {isEditMode ? (
+                                    <MinutesInput
+                                      value={parseInt(timeVal || "0", 10)}
+                                      onSave={v => onSaveStepTime(sIdx, stIdx, v)}
+                                      className="w-[34px] px-1 text-right text-xs font-mono"
+                                      title="Step duration (minutes)"
+                                    />
+                                  ) : (
+                                    <span className="w-6 text-right text-xs font-mono">{timeVal || "0"}</span>
+                                  )}
+                                  <span className="text-xs text-muted-foreground font-mono ml-0.5">m</span>
+                                </div>
+                                <span className="text-sm mt-0.5 shrink-0" title="Activity Type">{subEmoji}</span>
+                                <div className="flex items-center flex-1 min-w-0">
+                                  {renderEditable(step, contentText, "flex-1 text-sm text-foreground leading-relaxed py-0.5")}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                                  {isEditMode && (
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onDeleteStep(sIdx, stIdx)}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {isEditMode && (
+                    <div className="flex items-center gap-3 pl-2 mt-2 group">
+                      <Plus className="h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <input placeholder="Add detailed step..." className="flex-1 text-sm bg-transparent border-b border-transparent focus:border-primary/50 focus:outline-none py-0.5 text-foreground/85 placeholder:text-muted-foreground/50 transition-colors"
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                            onAddStep(e.currentTarget.value.trim());
+                            e.currentTarget.value = "";
+                          }
+                        }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+    </div>
+  );
+}
+
+/**
+ * The activity catalogue as submenus (Individual, Pair, …), plus "Other" for the lecturer's own
+ * activities that are not in the catalogue. Used to switch and to add an activity.
+ */
+function ActivityMenuItems({ selectedActivities, onPick, label = act => act }: {
+  selectedActivities: string[];
+  onPick: (activity: string) => void;
+  label?: (activity: string) => string;
+}) {
+  const catalogue = ACTIVITY_GROUPS.flatMap(g => g.activities.map(a => a.name));
+  const custom = Array.from(new Set(selectedActivities)).filter(a => !catalogue.includes(a));
+  const groups = [
+    ...ACTIVITY_GROUPS.map(g => ({ key: g.label, emoji: g.groupEmoji, label: g.label, activities: g.activities.map(a => a.name) })),
+    ...(custom.length > 0 ? [{ key: "other", emoji: "✨", label: "Other", activities: custom }] : []),
+  ];
+  return (
+    <>
+      {groups.map(group => (
+        <DropdownMenuSub key={group.key}>
+          <DropdownMenuSubTrigger className="flex items-center gap-2">
+            <span>{group.emoji}</span>
+            <span>{group.label}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {group.activities.map(act => (
+              <DropdownMenuItem key={act} onClick={e => { e.stopPropagation(); onPick(act); }}>
+                {label(act)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ))}
+    </>
+  );
+}

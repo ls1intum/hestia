@@ -1,0 +1,11 @@
+# Overlay on the main application.yml (Spring Boot loads classpath:/config/ after classpath:/),
+# so tests run with the production settings (open-in-view off, ddl-auto validate, hestia.*)
+# and only override what a test context needs.
+spring:
+  ai:
+    openai:
+      api-key: test-key
+hestia:
+  rate-limit:
+    # Test classes share one context and one client address; the limiter has its own tests.
+    llm-requests: 100000

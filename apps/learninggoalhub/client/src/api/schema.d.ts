@@ -20,22 +20,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/learning-goals/{goalId}/subtree": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["generateSubtree"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/courses/{courseId}/learning-goals/{goalId}/children": {
         parameters: {
             query?: never;
@@ -78,22 +62,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["createGeneratedTerminalSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/skill-suggestions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["suggestTerminalSkills"];
         delete?: never;
         options?: never;
         head?: never;
@@ -459,6 +427,7 @@ export interface components {
             /** Format: int64 */
             id?: number;
             text?: string;
+            originalText?: string;
             shortLabel?: string;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";
@@ -481,6 +450,7 @@ export interface components {
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
             /** Format: int32 */
             lectureOrder?: number;
+            examTask?: components["schemas"]["ExamTaskResponse"];
         };
         AddChildRequest: {
             text?: string;
@@ -492,10 +462,6 @@ export interface components {
             text?: string;
         };
         CreateGeneratedTerminalSkillRequest: {
-            text?: string;
-            shortLabel?: string;
-        };
-        SkillSuggestionResponse: {
             text?: string;
             shortLabel?: string;
         };
@@ -524,7 +490,7 @@ export interface components {
             courseId?: number;
             courseName?: string;
             /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
+            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
             /** Format: int32 */
             percent?: number;
             /** @enum {string} */
@@ -565,7 +531,7 @@ export interface components {
         };
         UpdateCourseRequest: {
             name?: string;
-            outputLanguage?: string;
+            outputLanguage?: string | null;
             figuresEnabled?: boolean;
         };
         UpdateLearningGoalRequest: {
@@ -607,6 +573,8 @@ export interface components {
             /** Format: int64 */
             goalCount?: number;
             /** Format: int64 */
+            topicCount?: number;
+            /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
             skillsReviewedAt?: string;
@@ -643,7 +611,7 @@ export interface components {
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
             /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "OUTLINING" | "PARSING" | "EXTRACTING" | "CLASSIFYING" | "EMBEDDING" | "PERSISTING" | "SYNTHESIZING";
+            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
             /** Format: int32 */
             completed?: number;
             /** Format: int32 */
@@ -656,6 +624,8 @@ export interface components {
             /** Format: int32 */
             failedSessions?: number;
             failedSessionNames?: string[];
+            /** Format: int32 */
+            droppedOutcomes?: number;
         };
         AcceptRequest: {
             subSkillKeys?: string[];
@@ -745,6 +715,17 @@ export interface components {
         TopicRequest: {
             text?: string;
         };
+        ExamTaskResponse: {
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int32 */
+            taskNumber?: number;
+            taskType?: string | null;
+            text?: string;
+            context?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -805,31 +786,6 @@ export interface operations {
             };
         };
     };
-    generateSubtree: {
-        parameters: {
-            query?: {
-                model?: string;
-            };
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
     addChild: {
         parameters: {
             query?: never;
@@ -885,9 +841,7 @@ export interface operations {
     };
     createGeneratedTerminalSkill: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -911,34 +865,9 @@ export interface operations {
             };
         };
     };
-    suggestTerminalSkills: {
-        parameters: {
-            query?: {
-                model?: string;
-            };
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["SkillSuggestionResponse"][];
-                };
-            };
-        };
-    };
     extract: {
         parameters: {
             query?: {
-                model?: string;
                 force?: boolean;
             };
             header?: never;
@@ -996,10 +925,7 @@ export interface operations {
     };
     generate: {
         parameters: {
-            query?: {
-                /** @description Optional SAIA chat-model override; omit for the configured default. */
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -1074,7 +1000,6 @@ export interface operations {
     rebuildCompetencyTree: {
         parameters: {
             query?: {
-                model?: string;
                 force?: boolean;
             };
             header?: never;
@@ -1421,9 +1346,7 @@ export interface operations {
     };
     search: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;
@@ -1449,9 +1372,7 @@ export interface operations {
     };
     pages: {
         parameters: {
-            query?: {
-                model?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 courseId: number;

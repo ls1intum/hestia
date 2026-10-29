@@ -2,13 +2,18 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatusLookup;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Persists extraction audit state independently of the extraction transaction. */
 @Service
-public class ExtractionRunAuditService {
+public class ExtractionRunAuditService implements ExtractionStatusLookup {
 
     private final CourseRepository courseRepository;
     private final ExtractionRunRepository extractionRunRepository;
@@ -26,10 +31,10 @@ public class ExtractionRunAuditService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void finish(Long runId, ExtractionRun.Status status, String error, Integer goalsCreated,
-                       Integer failedSessions, String promptVersion) {
+    public void finish(Long runId, ExtractionStatus status, String error, Integer goalsCreated,
+                       Integer failedSessions, Integer droppedOutcomes, String promptVersion) {
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        run.finish(status, error, goalsCreated, failedSessions, promptVersion);
+        run.finish(status, error, goalsCreated, failedSessions, droppedOutcomes, promptVersion);
         extractionRunRepository.saveAndFlush(run);
     }
 
@@ -37,12 +42,25 @@ public class ExtractionRunAuditService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void finishTreeRetry(Long courseId) {
         extractionRunRepository.findFirstByCourseIdOrderByStartedAtDesc(courseId)
-                .filter(run -> run.getStatus() == ExtractionRun.Status.FAILED)
+                .filter(run -> run.getStatus() == ExtractionStatus.FAILED)
                 .filter(run -> run.getGoalsCreated() != null)
                 .ifPresent(run -> {
-                    run.finish(ExtractionRun.Status.SUCCEEDED, null, run.getGoalsCreated(),
-                            run.getFailedSessions(), run.getPromptVersion());
+                    run.finish(ExtractionStatus.SUCCEEDED, null, run.getGoalsCreated(),
+                            run.getFailedSessions(), run.getDroppedOutcomes(), run.getPromptVersion());
                     extractionRunRepository.saveAndFlush(run);
                 });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, ExtractionStatus> latestByCourse(List<Long> courseIds) {
+        Map<Long, ExtractionStatus> statuses = new LinkedHashMap<>();
+        if (courseIds.isEmpty()) {
+            return statuses;
+        }
+        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
+            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
+        }
+        return statuses;
     }
 }

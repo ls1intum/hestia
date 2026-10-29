@@ -12,6 +12,7 @@ import Button from "../components/Button.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { RowAction } from "../components/GoalInlineEditing.tsx";
 import { extractionPhaseLabel, extractionPhaseShortLabel } from "../lib/extraction.ts";
+import { requestError } from "../lib/requestError.ts";
 
 /**
  * Heights the page size is worked out from: a course row and the column-name row (each with its
@@ -28,6 +29,8 @@ export default function CoursesPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  // An error from a course creation that kept running after its dialog was closed.
+  const [createError, setCreateError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
   const [renameCourse, setRenameCourse] = useState<CourseSummary | null>(null);
@@ -58,10 +61,10 @@ export default function CoursesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const { error } = await api.DELETE("/api/courses/{id}", {
+      const { error, response } = await api.DELETE("/api/courses/{id}", {
         params: { path: { id } },
       });
-      if (error) throw new Error("Could not delete the course.");
+      if (error) throw requestError("Could not delete the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -121,10 +124,14 @@ export default function CoursesPage() {
       const result = await api.GET("/api/courses/{courseId}/extract/status", {
         params: { path: { courseId: reviewCourseId as number } },
       });
+      if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
     },
     enabled: reviewCourseId != null,
-    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+    // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
+    // progress nor passes for "no run".
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 3000 : query.state.data?.status === "RUNNING" ? 1000 : false,
   });
 
   // Watching a run to the finish hands straight over to the course itself, where the one-time skill
@@ -176,6 +183,27 @@ export default function CoursesPage() {
         </div>
       </div>
 
+      {createError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-xl border border-hestia-danger bg-hestia-surface px-4 py-3 text-sm text-hestia-danger"
+        >
+          <span>{createError}</span>
+          <Button variant="ghost" size="icon-sm" onClick={() => setCreateError(null)} aria-label="Dismiss">
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </Button>
+        </div>
+      )}
+
       <div ref={listRef} className="overflow-hidden rounded-xl border border-hestia-border bg-hestia-surface shadow-sm">
         {coursesQuery.isLoading && (
           <p className="px-6 py-6 text-sm text-hestia-text-muted">Loading courses…</p>
@@ -208,9 +236,10 @@ export default function CoursesPage() {
           <ul>
             <li className="flex items-center border-b border-hestia-border bg-[color-mix(in_srgb,var(--hestia-text)_4%,var(--hestia-surface))] px-4 py-2 text-xs font-semibold text-hestia-text-muted">
               <span className="mr-2 w-5 shrink-0" aria-hidden />
-              <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_3rem] gap-4">
+              <div className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_4.5rem_7rem_7rem_3rem] gap-4">
                 <span>Course</span>
                 <span className="text-right">Docs</span>
+                <span className="text-right">Topics</span>
                 <span className="text-right">Skills</span>
                 <span>Status</span>
                 <span className="text-right">Created</span>
@@ -231,7 +260,7 @@ export default function CoursesPage() {
                 >
                   {/* The hover tint sits on the whole row, not on the link alone: otherwise it
                       stops short of the caret and the ⋮ and reads as a floating band. Same soft
-                      primary wash the competency tree-grid uses for its rows. */}
+                      primary wash the Topic tree grid uses for its rows. */}
                   <div className="group relative flex h-12 items-center px-4 transition-colors hover:bg-[color-mix(in_srgb,var(--hestia-primary)_7%,transparent)]">
                     <button
                       type="button"
@@ -262,11 +291,14 @@ export default function CoursesPage() {
                         }
                       }}
                       aria-haspopup={isExtracting || extractionProblem ? "dialog" : undefined}
-                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_7rem_7rem_3rem] items-center gap-4 self-stretch text-sm"
+                      className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_4.5rem_7rem_7rem_3rem] items-center gap-4 self-stretch text-sm"
                     >
                       <span className="font-medium text-hestia-text">{course.name}</span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
                         {course.documentCount ?? 0}
+                      </span>
+                      <span className="text-right tabular-nums text-hestia-text-muted">
+                        {course.topicCount ?? 0}
                       </span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
                         {course.skillCount ?? 0}
@@ -312,7 +344,7 @@ export default function CoursesPage() {
                       </span>
                       <span aria-hidden />
                     </Link>
-                    {/* Revealed on hover or keyboard focus, like the competency table's row actions. */}
+                    {/* Revealed on hover or keyboard focus, like the Topic tree table's row actions. */}
                     <span className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-hestia-border bg-hestia-surface p-0.5 opacity-0 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100">
                       <RowAction
                         label="Rename course"
@@ -388,7 +420,12 @@ export default function CoursesPage() {
         </nav>
       )}
 
-      {createOpen && <CreateCourseDialog onClose={() => setCreateOpen(false)} />}
+      {createOpen && (
+        <CreateCourseDialog
+          onClose={() => setCreateOpen(false)}
+          onBackgroundError={setCreateError}
+        />
+      )}
       {courseToDelete?.id != null && (
         <ConfirmDialog
           title="Delete course?"
@@ -407,6 +444,7 @@ export default function CoursesPage() {
         <ExtractionProgressModal
           open
           status={extractionStatusQuery.data ?? undefined}
+          statusUnavailable={extractionStatusQuery.isError}
           error={
             extractionStatusQuery.data?.status === "FAILED"
               ? extractionStatusQuery.data.error ?? "Extraction failed."
@@ -480,7 +518,7 @@ function StatusBadge({
 }) {
   let label: string;
   let className: string;
-  // Same chip shape and tints as the competency table's tier chips.
+  // Same chip shape and tints as the Topic tree table's tier chips.
   if (extractionStatus === "FAILED" || extractionStatus === "RUNNING") {
     label = extractionStatus === "FAILED" ? "Failed" : "Interrupted";
     className =

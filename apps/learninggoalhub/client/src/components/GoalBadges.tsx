@@ -1,9 +1,8 @@
-import { COMPETENCY_ROLE_META, type CompetencyRole } from "../lib/goals.ts";
+import { TREE_ROLE_META, type TreeRole } from "../lib/goals.ts";
 
-/** Pill naming a node's role in the competency tree, tinted in the role's colour. */
-export function RoleBadge({ role }: { role: CompetencyRole }) {
-  const meta = COMPETENCY_ROLE_META[role];
-  const isGap = role === "gap";
+/** Pill naming a node's role in the Topic tree, tinted in the role's colour. */
+export function RoleBadge({ role }: { role: TreeRole }) {
+  const meta = TREE_ROLE_META[role];
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
@@ -12,7 +11,6 @@ export function RoleBadge({ role }: { role: CompetencyRole }) {
         backgroundColor: `color-mix(in srgb, ${meta.color} 15%, transparent)`,
       }}
     >
-      {isGap && <GapIcon />}
       {meta.label}
     </span>
   );
@@ -24,7 +22,8 @@ export function AiInferredBadge({ compact = false }: { compact?: boolean } = {})
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
-        color: "var(--hestia-danger)",
+        // Pure danger on its own tint stays under AA; a quarter of text colour lifts it to ~5:1.
+        color: "color-mix(in srgb, var(--hestia-danger) 75%, var(--hestia-text))",
         backgroundColor: "color-mix(in srgb, var(--hestia-danger) 15%, transparent)",
       }}
     >
@@ -39,30 +38,11 @@ export function ManualBadge() {
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
       style={{
-        color: "var(--hestia-warning)",
+        color: "var(--hestia-warning-text)",
         backgroundColor: "color-mix(in srgb, var(--hestia-warning) 15%, transparent)",
       }}
     >
       Manual
     </span>
-  );
-}
-
-function GapIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="h-3 w-3"
-    >
-      <path d="M10 3.5L2.5 16.5h15z" />
-      <path d="M10 8v3.5" />
-      <path d="M10 14h.01" />
-    </svg>
   );
 }

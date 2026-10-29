@@ -9,8 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -42,7 +41,7 @@ class TaxonomyServiceTest {
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
                 .thenReturn(expected);
 
-        TaxonomyService service = new TaxonomyService(builder, 0.0);
+        TaxonomyService service = new TaxonomyService(new LlmClient(builder), 0.0);
 
         TaxonomyClassification result = service.classify("Apply test-driven development to a new feature.");
 
@@ -69,7 +68,7 @@ class TaxonomyServiceTest {
                 .thenReturn(new TaxonomyClassification(BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL));
 
         clearInvocations(spec);
-        new TaxonomyService(builder, 0.0).classify("UNIQUE-GOAL-MARKER-77");
+        new TaxonomyService(new LlmClient(builder), 0.0).classify("UNIQUE-GOAL-MARKER-77");
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(spec).user(promptCaptor.capture());
@@ -86,7 +85,7 @@ class TaxonomyServiceTest {
                 .thenReturn(new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.MULTISTRUCTURAL));
 
         clearInvocations(spec);
-        new TaxonomyService(builder, 0.0).classify("goal text", "qwen3.6-35b-a3b");
+        new TaxonomyService(new LlmClient(builder), 0.0).classify("goal text", "qwen3.6-35b-a3b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
         verify(spec).options(optionsCaptor.capture());
@@ -107,7 +106,7 @@ class TaxonomyServiceTest {
                         new BatchTaxonomyItem(3, BloomLevel.ANALYZE, SoloLevel.RELATIONAL),
                         new BatchTaxonomyItem(1, BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL)));
 
-        List<TaxonomyClassification> result = new TaxonomyService(builder, 0.0)
+        List<TaxonomyClassification> result = new TaxonomyService(new LlmClient(builder), 0.0)
                 .classifyBatch(List.of("goal one", "goal two", "goal three"), null);
 
         assertThat(result).hasSize(3);
@@ -121,7 +120,7 @@ class TaxonomyServiceTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(mock(ChatClient.class, RETURNS_DEEP_STUBS));
 
-        assertThat(new TaxonomyService(builder, 0.0).classifyBatch(List.of(), null)).isEmpty();
+        assertThat(new TaxonomyService(new LlmClient(builder), 0.0).classifyBatch(List.of(), null)).isEmpty();
     }
 
     @Test
@@ -135,7 +134,7 @@ class TaxonomyServiceTest {
                 .thenReturn(List.of());
 
         clearInvocations(spec);
-        new TaxonomyService(builder, 0.0).classifyBatch(List.of("first goal", "second goal"), null);
+        new TaxonomyService(new LlmClient(builder), 0.0).classifyBatch(List.of("first goal", "second goal"), null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(spec).user(promptCaptor.capture());

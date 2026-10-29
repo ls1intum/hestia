@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as pdfjsLib from "pdfjs-dist";
 import { API_PREFIX, api, type GoalSource } from "../api/client.ts";
+import { requestError } from "../lib/requestError.ts";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -351,6 +352,16 @@ export default function SourcePdfPane({
         {/* The page controls sit beside the close button, so the name and session keep the left. */}
         <div className="flex shrink-0 items-center gap-2">
             <div className="flex items-center gap-1 text-xs text-hestia-text-muted">
+              {/* Left of the arrows, so showing it never moves the arrows from under the cursor. */}
+              {viewedPage !== pageNumber && (
+                <button
+                  type="button"
+                  onClick={() => setViewedPage(pageNumber)}
+                  className="mr-1 whitespace-nowrap font-medium text-hestia-primary underline-offset-2 hover:underline"
+                >
+                  Back to p. {pageNumber}
+                </button>
+              )}
               <PageArrow
                 label="Previous page"
                 disabled={pageCount == null || viewedPage <= 1}
@@ -367,15 +378,6 @@ export default function SourcePdfPane({
                 onClick={() => goToPage(viewedPage + 1)}
                 path="M8 5l5 5-5 5"
               />
-              {viewedPage !== pageNumber && (
-                <button
-                  type="button"
-                  onClick={() => setViewedPage(pageNumber)}
-                  className="ml-1 whitespace-nowrap font-medium text-hestia-primary underline-offset-2 hover:underline"
-                >
-                  Back to p. {pageNumber}
-                </button>
-              )}
             </div>
           <button
             type="button"
@@ -396,7 +398,14 @@ export default function SourcePdfPane({
           </button>
         </div>
       </header>
-      <div ref={paneRef} className="min-h-0 flex-1 overflow-auto p-3">
+      {/* Focusable so the page can be scrolled from the keyboard. */}
+      <div
+        ref={paneRef}
+        tabIndex={0}
+        role="region"
+        aria-label="PDF page"
+        className="min-h-0 flex-1 overflow-auto p-3"
+      >
         {loading ? (
           <div className="flex h-full min-h-40 items-center justify-center gap-2 text-xs text-hestia-text-muted">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-hestia-border border-t-hestia-primary" />
@@ -503,13 +512,13 @@ function DocumentName({
   const shown = displayName || filename || "Source document";
   const rename = useMutation({
     mutationFn: async (next: string | null) => {
-      const { error } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
+      const { error, response } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
         params: { path: { courseId: Number(courseId), documentId: documentId! } },
         body: { displayName: next ?? undefined },
         // openapi-fetch drops undefined body keys, but clearing needs an explicit null.
         bodySerializer: (body) => JSON.stringify({ displayName: body?.displayName ?? null }),
       });
-      if (error) throw new Error("Could not rename the document.");
+      if (error) throw requestError("Could not rename the document.", { error, response });
     },
     onSuccess: async () => {
       await Promise.all([

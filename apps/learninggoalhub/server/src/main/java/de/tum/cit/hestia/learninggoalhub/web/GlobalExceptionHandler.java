@@ -3,6 +3,8 @@ package de.tum.cit.hestia.learninggoalhub.web;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -29,6 +31,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
                                                              HttpStatusCode statusCode, WebRequest request) {
         return new ResponseEntity<>(new ApiError(codeFor(statusCode), messageFor(ex, statusCode)), headers, statusCode);
+    }
+
+    /** A {@code sort} parameter naming a property the entity does not have. */
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ApiError> handleUnknownProperty(PropertyReferenceException ex) {
+        return ResponseEntity.badRequest()
+                .body(new ApiError(HttpStatus.BAD_REQUEST.name(), "Unknown property: " + ex.getPropertyName()));
+    }
+
+    /**
+     * A write the database refused because of a constraint, typically a concurrent request storing
+     * the same thing first. The client's request was valid but clashes with what is stored.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(DataIntegrityViolationException ex) {
+        log.warn("Constraint violation: {}", ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError(HttpStatus.CONFLICT.name(), "The request conflicts with the stored data"));
     }
 
     @ExceptionHandler(Exception.class)

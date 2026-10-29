@@ -12,11 +12,12 @@ package de.tum.cit.hestia.learninggoalhub.goal;
  *       the task's wording rather than uploaded course material, so it has no source snippet. Attached
  *       to the course's EXAM hierarchy root. See {@code ExamGoalService}.</li>
  *   <li>{@code TERMINAL} — a course-level topic the course's source-backed skill outcomes are assigned
- *       to (the root of a competency tree); an abstraction without a source snippet. See
+ *       to (the root of a Topic tree); an abstraction without a source snippet. See
  *       {@code TopicTreeSynthesizer}.</li>
- *   <li>{@code GAP} — a "should-be-taught" knowledge aspect the gap analysis judges MISSING from the
- *       material beneath a skill of a terminal competency; deliberately UNANCHORED (no source
- *       snippet) and rendered distinctly so an instructor sees what the course does not yet cover.</li>
+ *   <li>{@code GAP} — legacy: a "should-be-taught" knowledge aspect that the gap analysis of an
+ *       earlier prototype judged missing from the material. The gap analysis is gone and nothing
+ *       produces this value any more; older courses still store such goals, and the client hides
+ *       them.</li>
  * </ul>
  */
 public enum GoalOrigin {

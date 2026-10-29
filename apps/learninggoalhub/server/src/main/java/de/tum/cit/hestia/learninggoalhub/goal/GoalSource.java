@@ -2,7 +2,6 @@ package de.tum.cit.hestia.learninggoalhub.goal;
 
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.HighlightRect;
-import de.tum.cit.hestia.learninggoalhub.extraction.SourceMatchQuality;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;

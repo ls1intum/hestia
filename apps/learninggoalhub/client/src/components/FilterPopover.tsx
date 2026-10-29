@@ -16,7 +16,7 @@ export type FilterGroup = {
 
 /**
  * Excel-AutoFilter-style multi-select checkbox popover, anchored below its trigger. Used by the
- * competency tree-grid's per-column funnels. A column filtering on several attributes passes one
+ * Topic tree-grid's per-column funnels. A column filtering on several attributes passes one
  * group per attribute, and a switch at the top picks which group's checkboxes are listed; the
  * selections of every group apply at once. Must be rendered as a child of the same `relative`
  * element that holds the trigger button (see `AnchoredPopover`).

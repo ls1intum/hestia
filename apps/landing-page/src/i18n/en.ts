@@ -192,10 +192,8 @@ export const en: Dictionary = {
           "krusche(at)tum.de\n" +
           "+49 89 289 18233\n\n" +
           "Technical University of Munich\n" +
-          "Professorship for Applied Education Technologies (CIT – I1)\n" +
-          "Postal address: Arcisstrasse 21, 80333 Munich\n" +
-          "Telephone: +49-(0)89-289-01\n" +
-          "Email: poststelle(at)tum.de",
+          "TUS1322 Professorship for Applied Education Technologies (Prof. Krusche)\n" +
+          "Boltzmannstr. 3/I, 85748 Garching b. München",
       },
       {
         heading: "Data Protection Officer",
@@ -211,9 +209,12 @@ export const en: Dictionary = {
           "The purpose of processing is to fulfil the public tasks assigned to us in research and " +
           "teaching and to provide the Hestia tools. Unless stated otherwise, the legal basis is " +
           "Art. 6(1)(e) GDPR in conjunction with Art. 4(1) BayDSG and Art. 84 BayHIG (performance " +
-          "of a task in the public interest). For optional features (newsletter, material " +
-          "donation, AI-assisted processing) we process data on the basis of your consent " +
-          "(Art. 6(1)(a) GDPR).",
+          "of a task in the public interest). This also applies to the processing of your content " +
+          "in the tools, including AI-assisted processing via TUM's own Logos service, as it is " +
+          "part of our public task in teaching. Only for voluntary additional features " +
+          "(newsletter, material donation, use of external commercial language models) do we " +
+          "process data on the basis of your consent (Art. 6(1)(a) GDPR). Consents given are " +
+          "logged as proof (Art. 7(1) GDPR).",
       },
       {
         heading: "Recipients of personal data",
@@ -221,16 +222,18 @@ export const en: Dictionary = {
           "The technical operation of the servers takes place within TUM (Professorship for Applied " +
           "Education Technologies; servers under *.aet.cit.tum.de). Backups are performed " +
           "exclusively within the European Union.\n\n" +
-          "For the AI-assisted features, content is transmitted to language models – only if you " +
-          "actively consent to their use (see “AI-assisted processing”). Further recipients are the " +
+          "For the AI-assisted features, content is processed via the Logos service, which is also " +
+          "operated by the Professorship for Applied Education Technologies on TUM infrastructure. " +
+          "Content is transmitted to external, commercial language-model providers only if you " +
+          "separately consent to this (see “AI-assisted processing”). Further recipients are the " +
           "newsletter service (Listmonk) and the material storage (Nextcloud), each on TUM " +
           "infrastructure. No transfer to other third parties takes place unless required by law.",
       },
       {
         heading: "Transfer to third countries",
         body:
-          "Where the AI-assisted features use providers that process data in the USA (see " +
-          "“AI-assisted processing”), personal data is transferred to a third country. The transfer " +
+          "Where you have consented to the use of external providers that process data in the USA " +
+          "(see “AI-assisted processing”), personal data is transferred to a third country. The transfer " +
           "is safeguarded by appropriate guarantees within the meaning of Art. 44 et seq. GDPR – in " +
           "particular an adequacy decision of the European Commission (EU-U.S. Data Privacy " +
           "Framework) where the provider is certified, otherwise EU standard contractual clauses. " +
@@ -241,7 +244,10 @@ export const en: Dictionary = {
         body:
           "Personal data is stored only as long as necessary to fulfil our tasks, taking statutory " +
           "retention periods into account. Account data is stored for the duration of use and " +
-          "deleted on request. Server log files are automatically deleted after 90 days (see " +
+          "deleted on request. User accounts, including their content, are deleted automatically " +
+          "after one year of inactivity: after 300 days without sign-in you receive a warning, after " +
+          "350 days a final reminder, and after 365 days the account is deleted. Signing in again " +
+          "resets the period. Server log files are automatically deleted after 90 days (see " +
           "“Logging”).",
       },
       {
@@ -321,39 +327,44 @@ export const en: Dictionary = {
           "email address, and your institution and role. From these we create a user account so we " +
           "can associate your content with you.\n\n" +
           "Storage period: account data is stored for the duration of use and deleted on request, " +
-          "unless statutory retention periods apply.",
+          "unless statutory retention periods apply. After one year of inactivity the account is " +
+          "deleted automatically (see “Storage period”).",
       },
       {
         heading: "Processing of your content in the tools",
         body:
           "In the tools you upload or enter content:\n\n" +
-          "• ExamLense: uploaded exams (e.g. PDF) and the tasks, model solutions, and grades " +
-          "derived from them.\n" +
+          "• ExamLense: uploaded exams (e.g. PDF), the tasks and model solutions derived from " +
+          "them, and the performance assessment of the language models, i.e. how well the AI " +
+          "solves the tasks. These are not assessments of students; no student grades are " +
+          "processed in the system.\n" +
           "• LearningGoalHub: uploaded teaching materials (e.g. slides, module descriptions) and " +
           "the learning goals extracted from them.\n" +
           "• Workshopper: entered learning goals and parameters, uploaded materials, and the " +
           "generated handouts and slides.\n\n" +
-          "This content is stored on TUM servers and – after your consent – transmitted for " +
-          "AI-assisted processing (see “AI-assisted processing”). Please do not upload personal " +
-          "data of third parties (e.g. names or student ID numbers) or confidential content unless " +
-          "necessary; anonymise or redact such information beforehand.",
+          "This content is stored on TUM servers and processed with AI assistance (see " +
+          "“AI-assisted processing”). Please do not upload personal data of third parties (e.g. " +
+          "names or student ID numbers) or confidential content; anonymise or redact such " +
+          "information beforehand.",
       },
       {
         heading: "AI-assisted processing",
         body:
-          "The tools offer AI-assisted features. These are only used if you actively consent to " +
-          "their use (opt-in, Art. 6(1)(a) GDPR). Without your consent no AI-assisted processing " +
-          "takes place; the corresponding features are then unavailable. The content required for " +
-          "the respective request is transmitted to language models:\n\n" +
-          "a) Within the EU: open-weight models via the SAIA / “Chat AI” service of GWDG " +
-          "(Gesellschaft für wissenschaftliche Datenverarbeitung mbH Göttingen), " +
-          "chat-ai.academiccloud.de, on servers in Germany under a data-processing agreement " +
-          "(Art. 28 GDPR).\n\n" +
-          "b) External, commercial providers with transfer to the USA:\n" +
+          "The tools offer AI-assisted features. The content required for the respective request " +
+          "is processed by language models:\n\n" +
+          "a) Default – Logos (TUM): open-weight models via the Logos service, which the " +
+          "Professorship for Applied Education Technologies operates itself on TUM servers. The " +
+          "content does not leave TUM infrastructure. Legal basis: Art. 6(1)(e) GDPR in " +
+          "conjunction with Art. 4(1) BayDSG and Art. 84 BayHIG.\n\n" +
+          "b) Optional – external, commercial providers with transfer to the USA:\n" +
           "• Google (Gemini) – Google Ireland Ltd. / Google LLC, USA\n" +
           "• OpenAI (ChatGPT) – OpenAI, USA\n" +
           "• Anthropic (Claude) – Anthropic PBC, USA\n\n" +
-          "For safeguards on the third-country transfer, see “Transfer to third countries”. " +
+          "These external services are only used if you separately consent beforehand (opt-in, " +
+          "Art. 6(1)(a) GDPR). Without this consent no content is transmitted to external " +
+          "providers; the tools then use Logos exclusively. Your consent is logged and can be " +
+          "withdrawn at any time with effect for the future. For safeguards on the third-country " +
+          "transfer, see “Transfer to third countries”. " +
           "Depending on the provider and plan, it cannot be ruled out that transmitted content is " +
           "processed further. Therefore do not transmit confidential or personal data that is not " +
           "necessary for the request.",
@@ -382,14 +393,6 @@ export const en: Dictionary = {
           "If you contact us by email (e.g. to request an “exam check”), we process the data you " +
           "provide to handle your request. Legal basis: Art. 6(1)(e) GDPR or your consent " +
           "(Art. 6(1)(a) GDPR). The data is deleted once it is no longer needed.",
-      },
-      {
-        heading: "Changes to this privacy policy",
-        body:
-          "As Hestia is under active development, this privacy policy may be adapted to reflect " +
-          "changed features or legal requirements. The version published here at any given time " +
-          "applies.\n\n" +
-          "Last updated: July 2026",
       },
     ],
   },

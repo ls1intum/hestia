@@ -14,6 +14,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
@@ -28,16 +29,16 @@ import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.PageRange
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.PageRun;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.ProposalResponse;
 import de.tum.cit.hestia.learninggoalhub.extraction.TopicSearchService.ProposedSubSkill;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalRole;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.time.Clock;
 import java.time.Duration;
@@ -45,9 +46,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.server.ResponseStatusException;
 
 class TopicSearchServiceTest {
@@ -65,13 +66,14 @@ class TopicSearchServiceTest {
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-16T10:00:00Z"));
 
     private TopicSearchService service(int maxPages) {
-        when(courseRepository.findById(COURSE_ID)).thenReturn(Optional.of(new Course("Machine Learning")));
+        when(courseRepository.findOrThrow(COURSE_ID)).thenReturn(new Course("Machine Learning"));
         UnitExtractor unitExtractor = new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class),
                 mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000, 3_000);
         return new TopicSearchService(courseRepository, documentRepository, sectionRepository,
                 mock(PageDescriptionRepository.class), goalRepository, goalSourceRepository,
                 mock(GoalRelationshipRepository.class), mock(HierarchyNodeRepository.class), unitExtractor,
-                searchSynthesizer, treeSynthesizer, mock(TaxonomyService.class), 1, maxPages, clock);
+                searchSynthesizer, treeSynthesizer, mock(TaxonomyService.class),
+                TransactionOperations.withoutTransaction(), 1, maxPages, clock);
     }
 
     /** A document whose pages are the given texts, each ending in a line break. */

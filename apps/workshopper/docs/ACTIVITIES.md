@@ -1,5 +1,53 @@
 # Activities
 
+The activities a lecturer can choose in the Activities step, how Workshopper picks one per learning goal, and reference content for the activity slides.
+
+## Catalogue
+
+The catalogue lives in `client/src/lib/constants.ts` (`ACTIVITY_GROUPS`). The slide layout an activity gets is chosen in `GenerateSlideBlockUseCase` (server) and refers to a slide of `workshopper-default.pptx`.
+
+| Group | Activity | Slide layout |
+|---|---|---|
+| Individual | Quiz / Polls | `live_poll` |
+| Individual | Hands-on Practice | `activity_sidebar` |
+| Individual | Concept Mapping | `activity_sidebar` |
+| Individual | Worked Problem | `activity_grid3` |
+| Pair | Think-Pair-Share | `activity_grid3` |
+| Pair | Peer Review | `activity_sidebar` |
+| Small Group | Role Play | `activity_sidebar` |
+| Small Group | Case Study | `activity_sidebar` |
+| Small Group | Brainstorming | `activity_grid3` |
+| Small Group | Design Sprint / Prototype Challenge | `activity_grid3` |
+| Whole Class | Group Discussion | `activity_sidebar` |
+| Whole Class | Q&A Session | `activity_q&a` |
+| Whole Class | Debate | `activity_sidebar` |
+
+Lecturers can also type custom activities; their slides use the `activity_sidebar` layout.
+
+## Which activity a goal gets
+
+Learning cycles and Check Understanding use the best fit for the goal's Bloom's and SOLO level, limited to the activities the lecturer selected. If none of the selected activities fits the goal's level, the next lower level is tried, and so on. With no activities selected, any activity can be used. The table is implemented twice and must stay in sync: `ActivityRecommender.java` (server) and `activity-taxonomy.ts` (client).
+
+| Bloom's level | Best fit, in order |
+|---|---|
+| Remember | Quiz / Polls |
+| Understand | Q&A Session, Think-Pair-Share |
+| Apply | Worked Problem, Hands-on Practice |
+| Analyze | Case Study, Group Discussion, Concept Mapping |
+| Evaluate | Debate, Peer Review |
+| Create | Design Sprint / Prototype Challenge, Role Play |
+
+| SOLO level | Best fit, in order |
+|---|---|
+| Unistructural | Quiz / Polls |
+| Multistructural | Q&A Session, Brainstorming, Worked Problem |
+| Relational | Concept Mapping, Think-Pair-Share, Group Discussion, Case Study |
+| Extended abstract | Design Sprint / Prototype Challenge, Debate, Role Play, Peer Review |
+
+## Reference slide content
+
+The sections below are sample content for the activity slides (a machine-learning example), useful when designing the slide layouts or writing prompts. They do not cover every activity.
+
 ## 1. Group Discussion
 **🗣️ Analyze the Impact of Regularization**
 

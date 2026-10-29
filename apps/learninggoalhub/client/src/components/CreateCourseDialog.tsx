@@ -1,14 +1,16 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
+import { useFocusTrap } from "../lib/useFocusTrap.ts";
+import { requestError } from "../lib/requestError.ts";
 
-// The upload endpoint runs everything through Apache Tika, which parses these
-// out of the box. Kept in sync with the hint shown in the drop zone.
-const ACCEPT = ".pdf,.docx,.pptx,.txt";
-const ACCEPT_LABEL = "PDF, DOCX, PPTX, TXT";
+// The server accepts PDFs only: the source viewer, quote highlights and bookmark sessions all
+// read the PDF itself. Kept in sync with the hint shown in the drop zone.
+const ACCEPT = ".pdf";
+const ACCEPT_LABEL = "PDF";
 
 /**
  * Steps between hitting "Create course" and extraction taking over in the courses list. Upload byte
@@ -26,9 +28,16 @@ const STEP_LABEL: Record<Step, string> = {
 
 /**
  * Create a course, stage + upload its materials, then start extraction before returning to the
- * courses list. The list owns live extraction progress and review.
+ * courses list. The list owns live extraction progress and review. The dialog can be closed while
+ * this runs; the run then finishes in the background and hands any error to `onBackgroundError`.
  */
-export default function CreateCourseDialog({ onClose }: { onClose: () => void }) {
+export default function CreateCourseDialog({
+  onClose,
+  onBackgroundError,
+}: {
+  onClose: () => void;
+  onBackgroundError: (message: string) => void;
+}) {
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
@@ -42,13 +51,17 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
   const [figuresEnabled, setFiguresEnabled] = useState(false);
   const [step, setStep] = useState<Step | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
+  // Set once the course exists, so retrying after a failed upload or start carries on with that
+  // course instead of creating a second one. Its settings are fixed from then on.
+  const [createdCourseId, setCreatedCourseId] = useState<number | null>(null);
 
   // Accumulate across drops/picks, skipping files already staged in either box (name + size).
   const addFiles = (kind: DocumentKind, incoming: FileList | null) => {
     if (!incoming || incoming.length === 0) return;
     // Snapshot before updating state: the file input is reset right after this call, which empties
     // the live FileList before React gets around to running the updater below.
-    const picked = Array.from(incoming);
+    // A drop bypasses the picker's accept filter, so other file types are skipped here too.
+    const picked = Array.from(incoming).filter((file) => file.name.toLowerCase().endsWith(ACCEPT));
     setStaged((prev) => {
       const seen = new Set(
         [...prev.LECTURE, ...prev.EXERCISE].map((f) => `${f.name}:${f.size}`),
@@ -68,71 +81,68 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
   const removeFile = (kind: DocumentKind, index: number) =>
     setStaged((prev) => ({ ...prev, [kind]: prev[kind].filter((_, i) => i !== index) }));
 
-  const files = [...staged.LECTURE, ...staged.EXERCISE];
+  const [error, setError] = useState<string | null>(null);
+  // Set once the dialog is gone. A run started here keeps going after that, but must neither close
+  // a dialog reopened in the meantime nor report its errors into one that is no longer shown.
+  const closed = useRef(false);
+  useEffect(() => {
+    closed.current = false;
+    return () => {
+      closed.current = true;
+    };
+  }, []);
 
-  const extract = useMutation({
-    mutationFn: async (id: number) => {
-      const result = await api.POST("/api/courses/{courseId}/extract", {
-        params: { path: { courseId: id }, query: {} },
-      });
-      if (result.error || !result.data) {
-        const message = result.response.status === 409
-          ? "Another extraction is already running. Please wait."
-          : "Could not start extraction.";
-        throw new Error(message);
-      }
-      return result.data;
-    },
-  });
-
-  const create = useMutation({
-    mutationFn: async () => {
+  const create = async () => {
+    setError(null);
+    try {
       setStep("creating");
-      const { data, error } = await api.POST("/api/courses", {
-        body: {
-          name: name.trim(),
-          outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
-          figuresEnabled,
-        },
-      });
-      if (error || !data?.id) throw new Error("Could not create the course.");
-
-      if (files.length > 0) {
-        setUploadPercent(0);
-        setStep("uploading");
-        await uploadDocuments(data.id, staged, setUploadPercent, () => setStep("processing"));
+      let courseId = createdCourseId;
+      if (courseId == null) {
+        const { data, error, response } = await api.POST("/api/courses", {
+          body: {
+            name: name.trim(),
+            outputLanguage: outputLanguage === "" ? undefined : outputLanguage,
+            figuresEnabled,
+          },
+        });
+        if (error || !data?.id) throw requestError("Could not create the course.", { error, response });
+        courseId = data.id;
+        setCreatedCourseId(courseId);
+        // The row shows up straight away, so closing the dialog mid-upload still leaves the course
+        // in the list.
+        queryClient.invalidateQueries({ queryKey: ["courses"] });
       }
-      return data.id as number;
-    },
-    onSuccess: (id) => {
-      queryClient.invalidateQueries({ queryKey: ["courses"] });
-      // No materials → nothing to extract, so hand the list back straight away.
-      if (files.length === 0) {
-        onClose();
-        return;
+
+      setUploadPercent(0);
+      setStep("uploading");
+      // On a retry, files an earlier attempt already stored are not sent again.
+      const remaining = await notYetUploaded(courseId, staged);
+      if (remaining.LECTURE.length + remaining.EXERCISE.length > 0) {
+        await uploadDocuments(courseId, remaining, setUploadPercent, () => setStep("processing"));
       }
       setStep("starting");
-      // Closing is the dialog owner's job: the courses list renders this dialog and it is itself
-      // routed at "/", so navigating there would not dismiss anything. The list picks the run up
-      // from its own polling and shows progress inline on the course's row.
-      extract.mutate(id, {
-        onSuccess: () => onClose(),
-        onError: () => setStep(null),
-      });
-    },
-    onError: () => setStep(null),
-  });
+      await startExtraction(courseId);
+      // The list picks the run up from its own polling and shows progress on the course's row.
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
+      if (!closed.current) onClose();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not create the course.";
+      if (closed.current) {
+        onBackgroundError(message);
+      } else {
+        setError(message);
+        setStep(null);
+      }
+    }
+  };
 
   const trimmed = name.trim();
-  const busy = create.isPending || extract.isPending;
+  const busy = step != null;
   // Topics are named from lecture outcomes; exercise outcomes are only placed onto them, so
-  // exercises alone would extract fine and still leave the course without a competency tree.
-  const exercisesOnly = staged.EXERCISE.length > 0 && staged.LECTURE.length === 0;
-  const formError = extract.isError
-    ? extract.error.message
-    : create.isError
-      ? create.error.message
-      : null;
+  // exercises alone would extract fine and still leave the course without a Topic tree. A course
+  // with no files at all would open on an empty page with nothing to add, so a lecture is required.
+  const noLecture = staged.LECTURE.length === 0;
   const progressPercent = step == null
     ? 0
     : step === "creating"
@@ -143,19 +153,23 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           ? 85
           : 95;
 
-  // Escape closes the dialog, but not mid-flight (an in-progress upload/extraction must not be
-  // abandoned by a stray key).
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
+
+  // Escape closes the dialog at any point: a run already under way carries on without it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+  }, [onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-50"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-label="Create course"
@@ -165,7 +179,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           at ~30fps while typing here (16 of 45 frames over 32ms, against 2 of 65 without it). */}
       <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
       <div
-        onClick={busy ? undefined : onClose}
+        onClick={onClose}
         className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       >
         {/* One animation for the whole panel rather than per tile: every element animating over
@@ -174,7 +188,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
           onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed && !busy && !exercisesOnly) create.mutate();
+            if (trimmed && !busy && !noLecture) void create();
           }}
           className="comp-unfold flex w-full max-w-5xl flex-col gap-4 sm:mt-[6vh]"
         >
@@ -190,7 +204,6 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
               variant="ghost"
               size="icon-sm"
               onClick={onClose}
-              disabled={busy}
               aria-label="Close"
             >
               <svg
@@ -225,6 +238,8 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   placeholder="e.g. Introduction to Data Science"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  maxLength={255}
+                  disabled={createdCourseId != null}
                   autoFocus
                 />
               </div>
@@ -240,6 +255,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                   id="output-language"
                   value={outputLanguage}
                   onChange={(e) => setOutputLanguage(e.target.value as "" | "de" | "en")}
+                  disabled={createdCourseId != null}
                   className="h-9 w-full rounded-md border border-hestia-border bg-hestia-surface px-3 text-sm text-hestia-text transition focus:border-hestia-primary focus:shadow-[0_0_0_3px_var(--hestia-primary-muted)] focus:outline-none cursor-pointer px-2.5"
                 >
                   <option value="">Same as the materials</option>
@@ -261,6 +277,7 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     type="checkbox"
                     checked={figuresEnabled}
                     onChange={(e) => setFiguresEnabled(e.target.checked)}
+                    disabled={createdCourseId != null}
                     className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-hestia-primary"
                   />
                   <span className="flex flex-col gap-0.5">
@@ -297,21 +314,26 @@ export default function CreateCourseDialog({ onClose }: { onClose: () => void })
                     </div>
                   </div>
                 )}
-                {exercisesOnly && (
+                {noLecture && staged.EXERCISE.length > 0 && (
                   <p className="text-sm text-hestia-text-muted">
                     Exercises are placed onto the topics named from the lectures. Add at least one
                     lecture.
                   </p>
                 )}
-                {formError && <p className="text-sm text-hestia-danger">{formError}</p>}
+                {noLecture && staged.EXERCISE.length === 0 && trimmed && (
+                  <p className="text-sm text-hestia-text-muted">
+                    Add at least one lecture PDF. The Topic tree is built from the lectures.
+                  </p>
+                )}
+                {error && <p className="text-sm text-hestia-danger">{error}</p>}
                 <div className="flex items-center justify-between gap-3">
-                  <Button variant="neutral" className="h-9" onClick={onClose} disabled={busy}>
-                    Cancel
+                  <Button variant="neutral" className="h-9" onClick={onClose}>
+                    {busy ? "Close" : "Cancel"}
                   </Button>
                   <Button
                     type="submit"
                     className="h-9"
-                    disabled={!trimmed || busy || exercisesOnly}
+                    disabled={!trimmed || busy || noLecture}
                   >
                     {busy ? "Creating…" : "Create course →"}
                   </Button>
@@ -512,6 +534,36 @@ function MaterialsBox({
   );
 }
 
+/** The staged files the course does not hold yet, matched by file name. */
+async function notYetUploaded(
+  courseId: number,
+  staged: Record<DocumentKind, File[]>,
+): Promise<Record<DocumentKind, File[]>> {
+  const { data, error } = await api.GET("/api/courses/{courseId}/documents", {
+    params: { path: { courseId } },
+  });
+  if (error || !data) throw new Error("Course created, but its materials could not be checked.");
+  // By kind and name: a stored lecture must not hide an exercise sheet with the same filename.
+  const stored = new Set(data.map((document) => `${document.kind}/${document.filename}`));
+  return {
+    LECTURE: staged.LECTURE.filter((file) => !stored.has(`LECTURE/${file.name}`)),
+    EXERCISE: staged.EXERCISE.filter((file) => !stored.has(`EXERCISE/${file.name}`)),
+  };
+}
+
+async function startExtraction(courseId: number): Promise<void> {
+  const result = await api.POST("/api/courses/{courseId}/extract", {
+    params: { path: { courseId }, query: {} },
+  });
+  if (result.error || !result.data) {
+    throw new Error(
+      result.response.status === 409
+        ? "Course created, but another extraction is already running. Start it from the course once that one finishes."
+        : "Course created, but extraction could not be started.",
+    );
+  }
+}
+
 /**
  * Uploads the staged materials, one request per kind so each carries its own `kind`. XHR rather
  * than fetch: only XHR reports how many bytes have gone out, which is the one part of this wait we
@@ -548,6 +600,13 @@ async function uploadDocuments(
   }
 }
 
+/**
+ * Gives up on an upload request after this long. The proxy already answers 504 when the server
+ * stays silent for ten minutes after the last byte; this also ends a transfer that stalls, which
+ * would otherwise leave the dialog busy forever. A retry skips the files the server did store.
+ */
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
 function uploadBatch(
   courseId: number,
   kind: DocumentKind,
@@ -561,18 +620,38 @@ function uploadBatch(
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents?kind=${kind}`);
+    request.timeout = UPLOAD_TIMEOUT_MS;
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onFraction(event.loaded / event.total);
     };
     request.upload.onload = () => onTransferred();
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error(`Course created, but the upload failed (HTTP ${request.status}).`));
+      else reject(uploadError(request));
     };
     request.onerror = () =>
       reject(new Error("Course created, but the upload failed. Please check your connection."));
+    request.ontimeout = () =>
+      reject(new Error("Course created, but the upload timed out. Please try again."));
     request.send(formData);
   });
+}
+
+/**
+ * A 4xx carries the server's reason (a scanned PDF, a file over the size limit), which says what to
+ * change before retrying; a 5xx or an unreadable body falls back to the status code.
+ */
+function uploadError(request: XMLHttpRequest): Error {
+  const fallback = `Course created, but the upload failed (HTTP ${request.status}).`;
+  if (request.status < 400 || request.status >= 500) return new Error(fallback);
+  let message: unknown;
+  try {
+    message = (JSON.parse(request.responseText) as { message?: unknown } | null)?.message;
+  } catch {
+    return new Error(fallback);
+  }
+  if (typeof message !== "string" || message.trim() === "") return new Error(fallback);
+  return new Error(`Course created, but the upload failed: ${message.trim()}`);
 }
 
 function formatSize(bytes: number): string {

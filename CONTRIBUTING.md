@@ -21,6 +21,6 @@ The hook requires [gitleaks](https://github.com/gitleaks/gitleaks) (e.g. `brew i
 
 ## Local Setup
 
-See the individual `README.md` files in each `apps/` directory for specific instructions on running the backend and frontend components.
+See the `README.md` (or `AGENTS.md`) in each `apps/` directory for how to run and test that app. Most apps consist of a `server/` (Spring Boot) and a `client/` (React) part.
 
 Thank you for contributing!

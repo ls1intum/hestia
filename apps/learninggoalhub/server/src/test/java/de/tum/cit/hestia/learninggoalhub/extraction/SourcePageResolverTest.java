@@ -2,6 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import org.junit.jupiter.api.Test;
 
 class SourcePageResolverTest {

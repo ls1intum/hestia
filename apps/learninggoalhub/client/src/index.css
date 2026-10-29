@@ -50,9 +50,13 @@
 /* Derived values — opacity-based, never new hex (per styleguide). */
 :root {
   --hestia-primary-hover: color-mix(in srgb, var(--hestia-primary) 85%, black);
-  --hestia-primary-muted: color-mix(in srgb, var(--hestia-primary) 20%, var(--hestia-bg));
+  /* Mixed into the surface, not the page bg: primary text on it then clears AA (4.8:1 light). */
+  --hestia-primary-muted: color-mix(in srgb, var(--hestia-primary) 15%, var(--hestia-surface));
   --hestia-border: color-mix(in srgb, var(--hestia-text) 15%, transparent);
-  --hestia-text-muted: color-mix(in srgb, var(--hestia-text) 65%, transparent);
+  /* 70% keeps muted text at AA on the light page bg (5.1:1); 65% fell to 4.4:1. */
+  --hestia-text-muted: color-mix(in srgb, var(--hestia-text) 70%, transparent);
+  /* Warning as text or icon. The amber itself is a fill colour: on white it reaches only 2.9:1. */
+  --hestia-warning-text: color-mix(in srgb, var(--hestia-warning) 45%, var(--hestia-text));
 }
 
 /* Expose the runtime values as Tailwind utilities. `inline` keeps the var() reference
@@ -69,6 +73,7 @@
   --color-hestia-text-muted: var(--hestia-text-muted);
   --color-hestia-accent: var(--hestia-accent);
   --color-hestia-warning: var(--hestia-warning);
+  --color-hestia-warning-text: var(--hestia-warning-text);
   --color-hestia-danger: var(--hestia-danger);
   --color-hestia-border: var(--hestia-border);
 
@@ -135,8 +140,8 @@
   display: none;
 }
 
-/* Unfold a newly revealed competency-map tier (connector + row). Kept separate from the per-row
-   auto-animate reorder so the two never fight over the same element (see CompetencyGraph). */
+/* Unfold a newly revealed topic-map tier (connector + row). Kept separate from the per-row
+   auto-animate reorder so the two never fight over the same element (see TopicMap). */
 @keyframes comp-unfold {
   from {
     opacity: 0;
@@ -151,7 +156,7 @@
   animation: comp-unfold 220ms ease-out;
 }
 
-/* Competency-map focus transition, choreographed with the FLIP slide in CompetencyGraph:
+/* Topic-map focus transition, choreographed with the FLIP slide in TopicMap:
    the clicked box glides into place (0–300ms, WAAPI), the connector draws from the trunk toward
    the children (140–380ms), and the children pop in underneath (180ms + stagger). The delays
    live here; the FLIP cancels `comp-*` CSS animations on boxes that slide instead. */
@@ -196,7 +201,7 @@
   animation: progress-sweep 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
-/* Competency tree-grid (CompetencyTree). A newly revealed branch cascades its rows in with a
+/* Topic tree grid (TopicTree). A newly revealed branch cascades its rows in with a
    light overshoot while the rows below glide down (FLIP, in the component); a collapsing branch
    fades its rows out before the survivors slide up. Kept separate from the FLIP so the two never
    fight over the same element — the FLIP only touches surviving rows. */
@@ -230,13 +235,13 @@
 
 /* Zero-height table append affordances: the hit band straddles the divider while the label floats
    outside the grid, so adding one never creates a phantom table row. */
-.competency-append-container {
+.tree-append-container {
   position: relative;
   height: 0;
   overflow: visible;
 }
 
-.competency-append-button {
+.tree-append-button {
   position: absolute;
   top: -0.6rem;
   z-index: 5;
@@ -250,7 +255,7 @@
   cursor: pointer;
 }
 
-.competency-append-dot {
+.tree-append-dot {
   display: grid;
   place-items: center;
   height: 0.4rem;
@@ -261,7 +266,7 @@
     box-shadow 150ms ease;
 }
 
-.competency-append-dot::after {
+.tree-append-dot::after {
   content: "+";
   color: var(--hestia-surface);
   font-size: 1rem;
@@ -271,20 +276,20 @@
   transition: opacity 150ms ease;
 }
 
-.competency-append-button:hover .competency-append-dot,
-.competency-append-button:focus-visible .competency-append-dot {
+.tree-append-button:hover .tree-append-dot,
+.tree-append-button:focus-visible .tree-append-dot {
   height: 1.4rem;
   width: 1.4rem;
   opacity: 1;
   box-shadow: 0 2px 8px color-mix(in srgb, currentColor 35%, transparent);
 }
 
-.competency-append-button:hover .competency-append-dot::after,
-.competency-append-button:focus-visible .competency-append-dot::after {
+.tree-append-button:hover .tree-append-dot::after,
+.tree-append-button:focus-visible .tree-append-dot::after {
   opacity: 1;
 }
 
-.competency-append-label {
+.tree-append-label {
   position: absolute;
   top: 1.5rem;
   /* Grows rightward from the knob rather than centring on it: the knob sits near the table's left
@@ -304,21 +309,21 @@
   transition: opacity 150ms ease;
 }
 
-.competency-append-label-above {
+.tree-append-label-above {
   top: auto;
   bottom: 1.5rem;
 }
 
-.competency-append-button:hover .competency-append-label,
-.competency-append-button:focus-visible .competency-append-label {
+.tree-append-button:hover .tree-append-label,
+.tree-append-button:focus-visible .tree-append-label {
   opacity: 1;
 }
 
-.competency-append-container-active {
+.tree-append-container-active {
   height: auto;
 }
 
-.competency-append-form {
+.tree-append-form {
   /* In normal flow: an absolutely positioned form would be clipped by the grid's scroll container
      when opened on the last row. The container grows for as long as the field is open. */
   margin-block: 0.4rem;
@@ -332,7 +337,7 @@
 }
 
 /* Map creation ghosts share the dimensions of the shelf boxes but remain quiet until invited. */
-.competency-ghost {
+.tree-ghost {
   display: flex;
   min-height: 7rem;
   flex-direction: column;
@@ -340,7 +345,7 @@
   justify-content: center;
   gap: 0.5rem;
   border: 1.5px dashed
-    color-mix(in srgb, var(--competency-ghost-color) 45%, transparent);
+    color-mix(in srgb, var(--tree-ghost-color) 45%, transparent);
   border-radius: 0.5rem;
   background: transparent;
   color: var(--hestia-text-muted);
@@ -353,30 +358,30 @@
     background-color 150ms ease, color 150ms ease;
 }
 
-button.competency-ghost {
+button.tree-ghost {
   cursor: pointer;
 }
 
-.competency-ghost:hover,
-.competency-ghost:focus-visible,
-.competency-ghost-active {
+.tree-ghost:hover,
+.tree-ghost:focus-visible,
+.tree-ghost-active {
   border-style: solid;
-  border-color: var(--competency-ghost-color);
+  border-color: var(--tree-ghost-color);
   background: color-mix(
     in srgb,
-    var(--competency-ghost-color) 10%,
+    var(--tree-ghost-color) 10%,
     var(--hestia-surface)
   );
-  color: var(--competency-ghost-color);
+  color: var(--tree-ghost-color);
 }
 
-.competency-ghost-plus {
+.tree-ghost-plus {
   display: grid;
   place-items: center;
   height: 2rem;
   width: 2rem;
   border: 1px solid
-    color-mix(in srgb, var(--competency-ghost-color) 45%, transparent);
+    color-mix(in srgb, var(--tree-ghost-color) 45%, transparent);
   border-radius: 999px;
   font-size: 1.25rem;
   font-weight: 400;
@@ -384,11 +389,11 @@ button.competency-ghost {
   transition: height 150ms ease, width 150ms ease, background-color 150ms ease;
 }
 
-.competency-ghost:hover .competency-ghost-plus,
-.competency-ghost:focus-visible .competency-ghost-plus {
+.tree-ghost:hover .tree-ghost-plus,
+.tree-ghost:focus-visible .tree-ghost-plus {
   height: 2.5rem;
   width: 2.5rem;
-  background: color-mix(in srgb, var(--competency-ghost-color) 15%, transparent);
+  background: color-mix(in srgb, var(--tree-ghost-color) 15%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

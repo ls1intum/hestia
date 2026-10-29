@@ -11,12 +11,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentKind;
 import de.tum.cit.hestia.learninggoalhub.document.LanguageDetectionService;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -60,7 +61,7 @@ class SessionExtractionServiceTest {
                 .thenReturn(expected);
 
         clearInvocations(spec);
-        List<ExtractedSkill> result = new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Session 4: Testing", "FULL-SESSION-MARKER-42");
 
         assertThat(result).containsExactlyElementsOf(expected);
@@ -112,7 +113,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Vorlesung 1", "text", null, "German", null, List.of());
 
         assertThat(result).containsExactly(corrected);
@@ -142,7 +143,7 @@ class SessionExtractionServiceTest {
                 .thenReturn(List.of(outOfRange), List.of(corrected));
         clearInvocations(spec);
 
-        List<ExtractedSkill> result = new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Sheet 4", "Task 1: Compute det(A).", null, "English", null, List.of(), 2,
                         DocumentKind.EXERCISE);
 
@@ -170,7 +171,7 @@ class SessionExtractionServiceTest {
         when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class))).thenReturn(List.of());
         clearInvocations(spec);
         SessionExtractionService service =
-                new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2);
+                new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, DocumentKind.LECTURE);
         service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, null);
@@ -195,7 +196,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         SessionExtractionService service = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2);
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         assertThatThrownBy(() -> service.extract(
                 "Vorlesung 1", "text", null, "German", null, List.of()))
@@ -234,7 +235,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "first line\nsecond line", null, "English", null, List.of());
 
         assertThat(result).containsExactly(corrected);
@@ -263,7 +264,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         SessionExtractionService service = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2);
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         assertThatThrownBy(() -> service.extract(
                 "Lecture", "one line", null, "English", null, List.of()))
@@ -298,7 +299,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         assertThat(result).hasSize(1);
@@ -307,6 +308,38 @@ class SessionExtractionServiceTest {
                 .extracting(ExtractedSkill.Knowledge::text)
                 .containsExactly("Explaining the method's central assumption in context.");
         verify(spec, times(2)).user(anyString());
+    }
+
+    @Test
+    void booksOutcomesTheSalvageDropsToTheActiveRun() {
+        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
+        ChatClient.Builder builder = mock(ChatClient.Builder.class);
+        when(builder.build()).thenReturn(chatClient);
+        ExtractedSkill invalidFirst = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
+        ExtractedSkill validSkill = new ExtractedSkill(
+                "Applying a method to representative examples.", "Apply Method",
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of(
+                        new ExtractedSkill.Knowledge(
+                                "Identifying an unsupported detail in the example.",
+                                "Identify Unsupported Detail", GoalKind.IMPLICIT, BloomLevel.UNDERSTAND,
+                                SoloLevel.RELATIONAL, null, null)));
+        ExtractedSkill invalidSkill = new ExtractedSkill(
+                "Applying an unsupported procedure to examples.", "Apply Unsupported Procedure",
+                GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of());
+        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
+        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
+                .thenReturn(List.of(invalidFirst), List.of(validSkill, invalidSkill));
+        ExtractionProgressTracker tracker = new ExtractionProgressTracker();
+        ExtractionProgressTracker.Run run = tracker.tryStart(1L, null).orElseThrow();
+
+        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), tracker, 0.2)
+                .extract("Lecture", "method\nassumption", null, "English", null, List.of());
+
+        // The invalid skill and the uncited knowledge item under the kept skill.
+        assertThat(run.droppedOutcomes()).isEqualTo(2);
+        assertThat(tracker.snapshot(1L).orElseThrow().droppedOutcomes()).isEqualTo(2);
     }
 
     @Test
@@ -323,7 +356,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "one line", null, "English", null,
                         List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
 
@@ -350,7 +383,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "one line", null, "English", null,
                         List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
 
@@ -380,7 +413,7 @@ class SessionExtractionServiceTest {
         clearInvocations(spec);
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                builder, mock(LanguageDetectionService.class), 0.2)
+                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         assertThat(result).hasSize(1);
@@ -399,7 +432,7 @@ class SessionExtractionServiceTest {
                 .thenReturn(List.of());
 
         clearInvocations(spec);
-        new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "German", "qwen3.6-35b-a3b");
 
         ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
@@ -417,7 +450,7 @@ class SessionExtractionServiceTest {
                 .thenReturn(List.of());
 
         clearInvocations(spec);
-        new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "German", null);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
@@ -447,7 +480,7 @@ class SessionExtractionServiceTest {
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         clearInvocations(spec);
-        SessionExtractionService service = new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2);
+        SessionExtractionService service = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
         service.extract("title", "text", "English", null);
         service.extract("title", "text", null, "English", null, List.of());
 
@@ -471,7 +504,7 @@ class SessionExtractionServiceTest {
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         clearInvocations(spec);
-        new SessionExtractionService(builder, mock(LanguageDetectionService.class), 0.2)
+        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", null, "English", null,
                 List.of(new PageDescriptionService.FigureDescription(12, "A process diagram.")));
 
@@ -501,7 +534,7 @@ class SessionExtractionServiceTest {
         LanguageDetectionService detector = mock(LanguageDetectionService.class);
         when(detector.detect(anyString())).thenReturn("en", "de");
 
-        List<ExtractedSkill> result = new SessionExtractionService(builder, detector, 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), detector, new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "de", "German", null);
 
         assertThat(result).containsExactlyElementsOf(retry);

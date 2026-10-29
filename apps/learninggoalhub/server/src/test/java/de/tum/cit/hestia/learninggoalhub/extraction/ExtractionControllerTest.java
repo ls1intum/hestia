@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,8 +15,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
+import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.learninggoalhub.course.Course;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.document.Document;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentRepository;
 import de.tum.cit.hestia.learninggoalhub.document.DocumentSection;
@@ -25,8 +26,7 @@ import de.tum.cit.hestia.learninggoalhub.document.DocumentSectionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescription;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionRepository;
 import de.tum.cit.hestia.learninggoalhub.document.PageDescriptionService;
-import de.tum.cit.hestia.learninggoalhub.embedding.EmbeddingService;
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import de.tum.cit.hestia.learninggoalhub.goal.EvidenceKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalKind;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalOrigin;
@@ -35,27 +35,31 @@ import de.tum.cit.hestia.learninggoalhub.goal.GoalSource;
 import de.tum.cit.hestia.learninggoalhub.goal.GoalSourceRepository;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoal;
 import de.tum.cit.hestia.learninggoalhub.goal.LearningGoalRepository;
-import de.tum.cit.hestia.learninggoalhub.goal.SoloLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.SoloLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.learninggoalhub.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationshipRepository;
-import de.tum.cit.hestia.learninggoalhub.relationships.GoalRelationship;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipOrigin;
-import de.tum.cit.hestia.learninggoalhub.relationships.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.learninggoalhub.goal.GoalRelationship;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipOrigin;
+import de.tum.cit.hestia.learninggoalhub.goal.RelationshipType;
+import de.tum.cit.hestia.learninggoalhub.goal.SourceMatchQuality;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.learninggoalhub.taxonomy.TaxonomyService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -99,14 +103,14 @@ class ExtractionControllerTest {
     @Autowired
     private ExtractionRunAuditService extractionRunAuditService;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @MockitoBean
     private SessionExtractionService sessionExtractionService;
 
     @MockitoBean
     private PageDescriptionService pageDescriptionService;
-
-    @MockitoBean
-    private EmbeddingService embeddingService;
 
     @MockitoBean
     private TaxonomyService taxonomyService;
@@ -254,6 +258,118 @@ class ExtractionControllerTest {
     }
 
     @Test
+    void extractionHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Forced extraction without a held transaction"));
+        Document document = documentRepository.save(
+                new Document(course, "unlocked.pdf", "application/pdf", "new outcome"));
+        LearningGoal oldGoal = goalRepository.saveAndFlush(new LearningGoal(course, "Old goal", GoalKind.EXPLICIT));
+        AtomicLong openTransactions = new AtomicLong(-1);
+        when(sessionExtractionService.extract(eq("unlocked.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any())).thenAnswer(inv -> {
+                    // Another connection that sits in an open transaction is the runner's: with a
+                    // forced run it would hold the old goals' row locks until every call returned.
+                    openTransactions.set(jdbcTemplate.queryForObject("""
+                            select count(*) from pg_stat_activity
+                            where datname = current_database() and pid <> pg_backend_pid()
+                              and state like 'idle in transaction%'""", Long.class));
+                    return List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome")));
+                });
+
+        startForcedExtraction(course.getId());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .extracting(LearningGoal::getText)
+                .containsExactly("New goal");
+        assertThat(goalSourceRepository.findByGoalId(goalRepository.findByCourseId(course.getId()).stream()
+                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+                .findFirst().orElseThrow().getId()))
+                .singleElement()
+                .satisfies(source -> assertThat(source.getDocument().getId()).isEqualTo(document.getId()));
+    }
+
+    /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
+    @Test
+    void topicTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Tree stage without a held transaction"));
+        documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Tree Label");
+
+        startExtraction(course.getId());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Tree Label");
+    }
+
+    @Test
+    void rebuildHoldsNoTransactionWhileTheModelsRun() throws Exception {
+        Course course = courseRepository.save(new Course("Rebuild without a held transaction"));
+        documentRepository.save(new Document(course, "rebuild.pdf", "application/pdf", "Apply the capability."));
+        when(sessionExtractionService.extract(eq("rebuild.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any()))
+                .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
+                        "Apply the capability."))));
+        stubTopicPlan("First Label", List.of(List.of(0)));
+        startExtraction(course.getId());
+        AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Rebuilt Label");
+
+        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+                .andExpect(status().isOk());
+
+        assertThat(openTransactions).hasValue(0);
+        assertThat(goalRepository.findByCourseId(course.getId()))
+                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .extracting(LearningGoal::getShortLabel)
+                .containsExactly("Rebuilt Label");
+    }
+
+    /**
+     * Plans one topic over the first outcome and records whether the planning call ran inside a
+     * transaction. The call runs on the caller's thread, so the thread's own state is what counts.
+     */
+    private AtomicLong stubTopicPlanCountingOpenTransactions(String topicLabel) {
+        AtomicLong openTransactions = new AtomicLong(-1);
+        when(topicTreeSynthesizer.synthesize(anyList(), anyString(), any())).thenAnswer(inv -> {
+            openTransactions.set(TransactionSynchronizationManager.isActualTransactionActive() ? 1 : 0);
+            return new TopicTreeSynthesizer.Plan(List.of(
+                    new TopicTreeSynthesizer.PlannedTopic(topicLabel, List.of(), List.of(0))), List.of());
+        });
+        return openTransactions;
+    }
+
+    @Test
+    void aFailedForcedExtractionKeepsThePreviousOne() throws Exception {
+        Course course = courseRepository.save(new Course("Failed forced extraction"));
+        Document document = documentRepository.save(
+                new Document(course, "failing.pdf", "application/pdf", "new outcome"));
+        HierarchyNode oldModule = hierarchyRepository.save(
+                new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
+        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
+        oldGoal.setHierarchyNode(hierarchyRepository.save(
+                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document)));
+        oldGoal = goalRepository.saveAndFlush(oldGoal);
+        when(sessionExtractionService.extract(eq("failing.pdf"), anyString(), anyString(), anyString(), any(),
+                anyList(), anyInt(), any())).thenThrow(new IllegalStateException("HTTP 503"));
+
+        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
+                .andExpect(status().isAccepted());
+        assertThat(awaitExtraction(course.getId())).contains("\"status\":\"FAILED\"");
+
+        assertThat(goalRepository.findById(oldGoal.getId())).isPresent();
+        assertThat(hierarchyRepository.findByCourseId(course.getId())).extracting(HierarchyNode::getLabel)
+                .containsExactlyInAnyOrder("Old module", "Old session");
+    }
+
+    @Test
     void extractionPersistsGoalsAndSourcesPerDocument() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
@@ -269,10 +385,6 @@ class ExtractionControllerTest {
                 skill(new ExtractedGoal("Refactor without changing behaviour.", "Behaviour-Preserving Refactoring",
                         GoalKind.EXPLICIT, "...extract method..."))
         ));
-        stubEmbedAll(Map.of(
-                "Apply test-driven development.", orthogonalEmbedding(0),
-                "Value short feedback loops.", orthogonalEmbedding(1),
-                "Refactor without changing behaviour.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -285,8 +397,6 @@ class ExtractionControllerTest {
         assertThat(goals).extracting(LearningGoal::getShortLabel)
                 .containsExactlyInAnyOrder("Test-Driven Development", "Feedback Loops",
                         "Behaviour-Preserving Refactoring");
-        assertThat(goals).allSatisfy(g -> assertThat(g.getEmbedding()).isNull());
-        verifyNoInteractions(embeddingService);
 
         long sourcesForLecture = goalSourceRepository.findAll().stream()
                 .filter(s -> s.getDocument().getId().equals(lecture.getId()))
@@ -326,7 +436,7 @@ class ExtractionControllerTest {
         ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
                 .findFirst()
                 .orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getPromptVersion()).isEqualTo(SessionExtractionService.PROMPT_VERSION);
         assertThat(run.getGoalsCreated()).isEqualTo(3);
         assertThat(run.getFinishedAt()).isNotNull();
@@ -366,14 +476,15 @@ class ExtractionControllerTest {
         Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
                 "{\"unit-max-chars\":12000,\"skill-target-chars\":3000,\"parallelism\":16}");
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
-                .isEqualTo(ExtractionRun.Status.RUNNING);
+                .isEqualTo(ExtractionStatus.RUNNING);
 
-        extractionRunAuditService.finish(runId, ExtractionRun.Status.SUCCEEDED, null, 4, 1, "direct-v1");
+        extractionRunAuditService.finish(runId, ExtractionStatus.SUCCEEDED, null, 4, 1, 3, "direct-v1");
 
         ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
-        assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.SUCCEEDED);
+        assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
         assertThat(run.getGoalsCreated()).isEqualTo(4);
         assertThat(run.getFailedSessions()).isEqualTo(1);
+        assertThat(run.getDroppedOutcomes()).isEqualTo(3);
         assertThat(run.getFinishedAt()).isNotNull();
     }
 
@@ -399,10 +510,6 @@ class ExtractionControllerTest {
                                 BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of()),
                         figureSkill("Figure outcome", 0),
                         figureSkill("Unsupported outcome", 4)));
-        stubEmbedAll(Map.of(
-                "Text outcome", orthogonalEmbedding(0),
-                "Figure outcome", orthogonalEmbedding(1),
-                "Unsupported outcome", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -446,10 +553,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("combined.pdf"), eq(third), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the third capability.", "Third",
                         GoalKind.EXPLICIT, ""), 0, 0)));
-        stubEmbedAll(Map.of(
-                "Apply the first capability.", orthogonalEmbedding(0),
-                "Apply the second capability.", orthogonalEmbedding(1),
-                "Apply the third capability.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -518,11 +621,6 @@ class ExtractionControllerTest {
                     .thenReturn(List.of(skill(new ExtractedGoal(labels.get(i) + " outcome", labels.get(i),
                             GoalKind.EXPLICIT, ""), 0, 0)));
         }
-        stubEmbedAll(Map.of(
-                "Page one outcome", orthogonalEmbedding(0),
-                "Page two outcome", orthogonalEmbedding(1),
-                "Page three outcome", orthogonalEmbedding(2),
-                "Page four outcome", orthogonalEmbedding(3)));
 
         startExtraction(course.getId());
 
@@ -567,7 +665,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Terminal Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -597,9 +694,6 @@ class ExtractionControllerTest {
                     .toList();
         });
         stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
-        stubEmbedAll(java.util.stream.IntStream.rangeClosed(1, 6).boxed()
-                .collect(Collectors.toMap(index -> "Apply capability " + index + ".",
-                        index -> orthogonalEmbedding(index - 1))));
 
         startExtraction(course.getId());
 
@@ -649,7 +743,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // The model placed the only goal nowhere.
         stubTopicPlan("Covered Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -685,7 +778,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Repaired Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -708,7 +800,6 @@ class ExtractionControllerTest {
                         skill(new ExtractedGoal("Apply capability 2.", "Capability 2", GoalKind.EXPLICIT, "...two..."), 0, 0)));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubEmbedAll(Map.of("Apply capability 1.", orthogonalEmbedding(0), "Apply capability 2.", orthogonalEmbedding(1)));
         stubTopicPlan("Covered", List.of(List.of(0)), List.of(1));
 
         startExtraction(course.getId());
@@ -740,7 +831,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         // Everything lands on the first competency; the second is left empty.
         stubTopicPlan("Claimed", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -766,7 +856,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("First Label", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
         List<Long> extractedIdsBefore = goalRepository.findByCourseId(course.getId()).stream()
@@ -876,8 +965,6 @@ class ExtractionControllerTest {
                     .toList();
         });
         stubTopicPlan("Capability", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0),
-                "Understand the basics.", orthogonalEmbedding(1)));
 
         startExtraction(course.getId());
 
@@ -943,7 +1030,6 @@ class ExtractionControllerTest {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Survivor", List.of(List.of(0)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -975,7 +1061,6 @@ class ExtractionControllerTest {
                         "...capability..."))));
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtraction(course.getId());
 
@@ -1019,7 +1104,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("HTTP 500 - No response body available"));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtractionExpectingFailure(course.getId());
 
@@ -1057,7 +1141,6 @@ class ExtractionControllerTest {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("assignment call failed"));
-        stubEmbedAll(Map.of("Apply the capability.", orthogonalEmbedding(0)));
 
         startExtractionExpectingFailure(course.getId());
 
@@ -1074,7 +1157,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("Topic tree synthesis failed");
                     assertThat(run.getGoalsCreated()).isEqualTo(1);
                 });
@@ -1107,7 +1190,7 @@ class ExtractionControllerTest {
         assertThat(extractionRunRepository.findByCourseId(course.getId()))
                 .singleElement()
                 .satisfies(run -> {
-                    assertThat(run.getStatus()).isEqualTo(ExtractionRun.Status.FAILED);
+                    assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
                     assertThat(run.getError()).contains("failed.pdf");
                     assertThat(run.getFinishedAt()).isNotNull();
                     assertThat(run.getGoalsCreated()).isNull();
@@ -1127,8 +1210,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("exercise.pdf"), eq("exercise body"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet..."))
         ));
-        // Both goals get the exact same embedding; extraction no longer performs embedding deduplication.
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1152,7 +1233,6 @@ class ExtractionControllerTest {
                 skill(new ExtractedGoal("Apply TDD.", GoalKind.EXPLICIT, "...first snippet...")),
                 skill(new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet..."))
         ));
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1188,7 +1268,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first..."))
         ));
-        stubEmbedAll(Map.of());
 
         startExtraction(course.getId());
 
@@ -1222,10 +1301,6 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("Exercise 3.2: Kata"), eq(exerciseText), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata..."))
         ));
-        stubEmbedAll(Map.of(
-                "Apply TDD.", orthogonalEmbedding(0),
-                "Understand SE scope.", orthogonalEmbedding(1),
-                "Practise TDD kata.", orthogonalEmbedding(2)));
 
         startExtraction(course.getId());
 
@@ -1260,23 +1335,5 @@ class ExtractionControllerTest {
                 .filter(g -> g.getText().equals("Practise TDD kata."))
                 .findFirst().orElseThrow();
         assertThat(lectureGoal.getLectureOrder()).isLessThan(exerciseGoal.getLectureOrder());
-    }
-
-    private static float[] orthogonalEmbedding(int slot) {
-        float[] v = new float[4096];
-        v[slot] = 1.0f;
-        return v;
-    }
-
-    /**
-     * Stubs the batched goal embedding: each text maps to its vector in {@code byText}, defaulting to
-     * {@code orthogonalEmbedding(0)} for any text not listed. The returned list is aligned to the
-     * batch's input order, mirroring the real {@code embedAll}.
-     */
-    private void stubEmbedAll(Map<String, float[]> byText) {
-        when(embeddingService.embedAll(anyList())).thenAnswer(inv -> {
-            List<String> texts = inv.getArgument(0);
-            return texts.stream().map(t -> byText.getOrDefault(t, orthogonalEmbedding(0))).toList();
-        });
     }
 }

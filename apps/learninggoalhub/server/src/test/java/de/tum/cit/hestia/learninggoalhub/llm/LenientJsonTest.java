@@ -2,7 +2,7 @@ package de.tum.cit.hestia.learninggoalhub.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.learninggoalhub.goal.BloomLevel;
+import de.tum.cit.hestia.learninggoalhub.taxonomy.BloomLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ParameterizedTypeReference;
@@ -37,6 +37,19 @@ class LenientJsonTest {
                 .convert("{\"text\": \"Ergebnis\", \"unexpected\": 1}");
 
         assertThat(outcome.text()).isEqualTo("Ergebnis");
+    }
+
+    /**
+     * Real failure mode: asked to describe a batch of one page as a JSON array, the vision model
+     * answered with the bare object. Binding to a list rejected it, so the page never got a
+     * description.
+     */
+    @Test
+    void readsABareObjectWhereAListWasAskedFor() {
+        List<Outcome> outcomes = LenientJson.converter(new ParameterizedTypeReference<List<Outcome>>() {})
+                .convert("{\"text\": \"Einziges Ergebnis\"}");
+
+        assertThat(outcomes).extracting(Outcome::text).containsExactly("Einziges Ergebnis");
     }
 
     record Cited(String text, Integer sourceFigure) {

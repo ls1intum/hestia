@@ -1,6 +1,9 @@
 package de.tum.cit.hestia.learninggoalhub.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -14,6 +17,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.learninggoalhub.TestcontainersConfiguration;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,6 +38,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -41,6 +56,9 @@ class DocumentControllerTest {
 
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private DocumentSectionRepository documentSectionRepository;
 
     // Bookmark-less PDFs would otherwise trigger a real vision-model call at upload; the default mock
     // returns null, exercising the filename-fallback path without touching the network.
@@ -289,5 +307,83 @@ class DocumentControllerTest {
 
         mockMvc.perform(multipart("/api/courses/{id}/documents", 999999L).file(file))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectsNonPdfUploadsWithoutStoringAnyFile() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .file(new MockMultipartFile("files", "notes.txt", MediaType.TEXT_PLAIN_VALUE, "notes".getBytes())))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("Only PDF files can be uploaded: notes.txt"));
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "renamed.pdf", MediaType.APPLICATION_PDF_VALUE,
+                                "PK\u0003\u0004 not a pdf".getBytes())))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("Not a valid PDF file: renamed.pdf"));
+
+        assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
+
+    @Test
+    void rejectsAScannedPdfWithoutStoringAnyFile() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+
+        mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf))
+                        .file(new MockMultipartFile("files", "scan.pdf", MediaType.APPLICATION_PDF_VALUE, imageOnlyPdf())))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
+                        "scan.pdf has no selectable text")));
+
+        assertThat(documentRepository.findByCourseId(courseId)).isEmpty();
+    }
+
+    /** One page holding only a picture of a slide, as a scanner or a "print to image" export makes it. */
+    private static byte[] imageOnlyPdf() throws Exception {
+        BufferedImage slide = new BufferedImage(400, 300, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = slide.createGraphics();
+        graphics.setColor(Color.WHITE);
+        graphics.fillRect(0, 0, 400, 300);
+        graphics.setColor(Color.BLACK);
+        graphics.drawString("Sorting algorithms", 40, 60);
+        graphics.drawRect(40, 100, 120, 80);
+        graphics.dispose();
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            PDImageXObject image = LosslessFactory.createFromImage(document, slide);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.drawImage(image, 50, 400, 400, 300);
+            }
+            document.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Test
+    void uploadNamesTheSessionWithoutHoldingATransaction() throws Exception {
+        long courseId = courseRepository.save(new de.tum.cit.hestia.learninggoalhub.course.Course("Course")).getId();
+        byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
+        List<Boolean> inTransaction = new ArrayList<>();
+        when(titleService.deriveTitle(any(), any(), anyString())).thenAnswer(invocation -> {
+            inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
+            return "Requirements Elicitation";
+        });
+
+        MvcResult result = mockMvc.perform(multipart("/api/courses/{id}/documents", courseId)
+                        .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long documentId = objectMapper.readTree(result.getResponse().getContentAsString()).get(0).get("id").asLong();
+
+        assertThat(inTransaction).containsExactly(false);
+        assertThat(documentSectionRepository.findByDocumentIdOrderByOrdinal(documentId))
+                .extracting(DocumentSection::getTitle)
+                .containsExactly("Requirements Elicitation");
     }
 }

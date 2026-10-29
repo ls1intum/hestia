@@ -1,10 +1,10 @@
 package de.tum.cit.hestia.learninggoalhub.exam;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.LanguagePrompt;
-import de.tum.cit.hestia.learninggoalhub.llm.LenientJson;
+import de.tum.cit.hestia.learninggoalhub.goal.LanguagePrompt;
+import de.tum.cit.hestia.learninggoalhub.goal.OutcomeWording;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient;
+import de.tum.cit.hestia.learninggoalhub.llm.LlmClient.LlmRequest;
 import java.util.List;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -21,10 +21,10 @@ public class ExamGoalGenerator {
     static final String PROMPT_TEMPLATE = """
             You derive the learning goals that ONE exam task assesses.
 
-            A learning goal is a learning OUTCOME: a statement of what a student must be able to do
-            to solve the task, phrased the way an instructor writes learning goals — a single concise
-            sentence starting with a verb (e.g. "Explain the bias-variance tradeoff", "Apply gradient
-            descent to train a linear model").
+            A learning goal is a learning OUTCOME: what a student must be able to do to solve the
+            task. Word it like every other outcome of the course:
+
+            %s
 
             Rules:
             - Derive goals ONLY from what the task actually assesses. Do not invent broader course
@@ -39,8 +39,13 @@ public class ExamGoalGenerator {
               must not become an "apply" goal.
 
             Return the list of goals, each with:
-              - text: the learning goal as a single concise sentence, starting with a verb.
-            Write the text value in %s. Keep the JSON property name text exactly as written.
+              - text: the learning goal following the wording invariant, not ending with a period.
+              - shortLabel: a compact 2-6 word label naming the action and its topic, reusing the
+                verb of the text above, such as "Analyse the bias-variance tradeoff". Phrase it in the
+                natural word order of the output language (German puts the infinitive last:
+                "Bias-Varianz-Abwägung analysieren") and do not end it with a period.
+            Write the text and shortLabel values in %s. Keep the JSON property names text and
+            shortLabel exactly as written.
             %s
             The exam task (task type: %s):
             ---
@@ -57,12 +62,12 @@ public class ExamGoalGenerator {
             ---
             """;
 
-    private final ChatClient chatClient;
+    private final LlmClient llm;
     private final double temperature;
 
-    public ExamGoalGenerator(ChatClient.Builder chatClientBuilder,
+    public ExamGoalGenerator(LlmClient llm,
                              @Value("${hestia.extraction.temperature:0.2}") double temperature) {
-        this.chatClient = chatClientBuilder.build();
+        this.llm = llm;
         this.temperature = temperature;
     }
 
@@ -70,7 +75,7 @@ public class ExamGoalGenerator {
      * @param context         the accumulated CONTEXT blocks preceding the task; blank for none.
      * @param taskType        the consumer's task-type label (e.g. "singleChoice"); null when unknown.
      * @param taskDescription the task statement.
-     * @param modelOverride   optional SAIA model id; falls back to the configured default when blank.
+     * @param modelOverride   optional model id; falls back to the configured default when blank.
      * @return the learning goals the task assesses.
      */
     public List<GeneratedExamGoal> generate(String context, String taskType, String taskDescription,
@@ -84,22 +89,17 @@ public class ExamGoalGenerator {
                 ? ""
                 : CONTEXT_SECTION.formatted(context);
         String prompt = PROMPT_TEMPLATE.formatted(
+                OutcomeWording.instruction(),
                 languageName,
                 contextSection,
                 taskType == null || taskType.isBlank() ? "unspecified" : taskType,
                 taskDescription);
 
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
-                .system(LanguagePrompt.systemInstruction(languageName));
-        ChatOptions.Builder options = ChatOptions.builder().temperature(temperature);
-        if (modelOverride != null && !modelOverride.isBlank()) {
-            options.model(modelOverride);
-        }
-        List<GeneratedExamGoal> goals = spec
-                .options(options.build())
-                .user(prompt)
-                .call()
-                .entity(LenientJson.converter(new ParameterizedTypeReference<List<GeneratedExamGoal>>() {}));
+        List<GeneratedExamGoal> goals = llm.entity(LlmRequest.of(prompt)
+                        .withSystem(LanguagePrompt.systemInstruction(languageName))
+                        .withModel(modelOverride)
+                        .withTemperature(temperature),
+                new ParameterizedTypeReference<List<GeneratedExamGoal>>() {});
         return goals == null ? List.of() : goals;
     }
 }

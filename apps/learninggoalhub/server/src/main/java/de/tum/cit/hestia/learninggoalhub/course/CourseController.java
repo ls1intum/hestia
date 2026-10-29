@@ -1,21 +1,14 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRun;
-import de.tum.cit.hestia.learninggoalhub.extraction.ExtractionRunRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.net.URI;
-import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import org.springdoc.core.annotations.ParameterObject;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.PagedModel;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,31 +18,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/courses")
 public class CourseController {
 
-    private final CourseRepository courseRepository;
-    private final ExtractionRunRepository extractionRunRepository;
+    private final CourseService courseService;
 
-    public CourseController(CourseRepository courseRepository,
-                            ExtractionRunRepository extractionRunRepository) {
-        this.courseRepository = courseRepository;
-        this.extractionRunRepository = extractionRunRepository;
+    public CourseController(CourseService courseService) {
+        this.courseService = courseService;
     }
+
+    /** The width of the {@code course.name} column. */
+    static final int MAX_NAME_LENGTH = 255;
 
     @PostMapping
     public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
-        // The extraction runs straight after the materials upload that follows this call, so the
-        // instructor's language override has to be settable here — afterwards is too late for the
-        // first run. Null means "detect the language from the uploaded documents".
-        validateOutputLanguage(request.outputLanguage());
-        Course course = new Course(request.name());
-        course.setOutputLanguage(request.outputLanguage());
-        course.setFiguresEnabled(Boolean.TRUE.equals(request.figuresEnabled()));
-        Course saved = courseRepository.save(course);
+        Course saved = courseService.create(request.name(), request.outputLanguage(), request.figuresEnabled());
         return ResponseEntity
                 .created(URI.create("/api/courses/" + saved.getId()))
                 .body(CourseResponse.from(saved));
@@ -59,93 +44,35 @@ public class CourseController {
     public PagedModel<CourseSummaryResponse> listCourses(
             @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
-        Page<Course> page = courseRepository.findAll(pageable);
-        List<Long> ids = page.getContent().stream().map(Course::getId).toList();
-        Map<Long, Long> goalCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countGoalsByCourseIds(ids));
-        Map<Long, Long> skillCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countSkillsByCourseIds(ids));
-        Map<Long, Long> documentCounts = ids.isEmpty()
-                ? Map.of()
-                : toCountMap(courseRepository.countDocumentsByCourseIds(ids));
-        Map<Long, ExtractionRun.Status> extractionStatuses = latestExtractionStatuses(ids);
         // PagedModel serializes a stable {content, page} JSON shape, unlike PageImpl whose format
         // is an implementation detail that has changed across Spring Data versions.
-        return new PagedModel<>(page.map(course -> new CourseSummaryResponse(
-                course.getId(),
-                course.getName(),
-                course.getOutputLanguage(),
-                course.isFiguresEnabled(),
-                course.getCreatedAt(),
-                documentCounts.getOrDefault(course.getId(), 0L),
-                goalCounts.getOrDefault(course.getId(), 0L),
-                skillCounts.getOrDefault(course.getId(), 0L),
-                course.getSkillsReviewedAt(),
-                extractionStatuses.get(course.getId()))));
+        return new PagedModel<>(courseService.summaries(pageable));
     }
 
     @GetMapping("/{id}")
     public CourseSummaryResponse getCourse(@PathVariable Long id) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
-        List<Long> ids = List.of(course.getId());
-        long goalCount = toCountMap(courseRepository.countGoalsByCourseIds(ids)).getOrDefault(id, 0L);
-        long skillCount = toCountMap(courseRepository.countSkillsByCourseIds(ids)).getOrDefault(id, 0L);
-        long documentCount = toCountMap(courseRepository.countDocumentsByCourseIds(ids)).getOrDefault(id, 0L);
-        ExtractionRun.Status extractionStatus = extractionRunRepository
-                .findFirstByCourseIdOrderByStartedAtDesc(id)
-                .map(ExtractionRun::getStatus)
-                .orElse(null);
-        return new CourseSummaryResponse(
-                course.getId(), course.getName(), course.getOutputLanguage(), course.isFiguresEnabled(),
-                course.getCreatedAt(),
-                documentCount, goalCount, skillCount, course.getSkillsReviewedAt(), extractionStatus);
+        return courseService.summary(id);
     }
 
     /**
      * Marks the course's one-time skill review as done. The client shows that review the first time
      * a course is opened after its extraction produced skills; this records the dismissal so it does
-     * not reappear. Deliberately its own endpoint rather than a field on {@code PATCH}, whose body
-     * clears {@code outputLanguage} when the field is omitted.
+     * not reappear. Its own endpoint rather than a field on {@code PATCH}: it records a moment
+     * the server sets, not a value the client chooses.
      */
     @PostMapping("/{id}/skills-reviewed")
     public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
-        if (course.getSkillsReviewedAt() == null) {
-            course.setSkillsReviewedAt(OffsetDateTime.now());
-            courseRepository.save(course);
-        }
+        courseService.markSkillsReviewed(id);
         return ResponseEntity.noContent().build();
     }
 
     /**
-     * Updates a course. {@code name} is left alone when omitted — a rename must not have to know
-     * about the course's other settings — whereas {@code outputLanguage} is replaced by whatever the
-     * body carries, so an omitted language still means "back to auto-detect".
+     * Updates a course. Every field is left alone when omitted, so a rename need not know the
+     * course's other settings; an explicit {@code outputLanguage: null} means "back to auto-detect".
      */
     @PatchMapping("/{id}")
     public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
-        Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id));
-        if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
-        }
-        validateOutputLanguage(request.outputLanguage());
-        if (request.name() != null) {
-            String name = request.name().trim();
-            if (name.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name must not be blank");
-            }
-            course.setName(name);
-        }
-        course.setOutputLanguage(request.outputLanguage());
-        if (request.figuresEnabled() != null) {
-            course.setFiguresEnabled(request.figuresEnabled());
-        }
-        return CourseResponse.from(courseRepository.save(course));
+        return CourseResponse.from(courseService.update(id, request));
     }
 
     /**
@@ -155,39 +82,12 @@ public class CourseController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        if (!courseRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found: " + id);
-        }
-        courseRepository.deleteById(id);
+        courseService.delete(id);
         return ResponseEntity.noContent().build();
     }
 
-    /** Null means auto-detect; otherwise only the languages the pipeline is validated for. */
-    private static void validateOutputLanguage(String outputLanguage) {
-        if (outputLanguage != null && !outputLanguage.equals("de") && !outputLanguage.equals("en")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "outputLanguage must be null, \"de\", or \"en\"");
-        }
-    }
-
-    private static Map<Long, Long> toCountMap(List<CourseRepository.CourseCount> counts) {
-        return counts.stream().collect(Collectors.toMap(
-                CourseRepository.CourseCount::getCourseId,
-                CourseRepository.CourseCount::getCount));
-    }
-
-    private Map<Long, ExtractionRun.Status> latestExtractionStatuses(List<Long> courseIds) {
-        Map<Long, ExtractionRun.Status> statuses = new java.util.LinkedHashMap<>();
-        if (courseIds.isEmpty()) {
-            return statuses;
-        }
-        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
-            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
-        }
-        return statuses;
-    }
-
-    public record CreateCourseRequest(@NotBlank String name, String outputLanguage, Boolean figuresEnabled) {
+    public record CreateCourseRequest(@NotBlank @Size(max = MAX_NAME_LENGTH) String name, String outputLanguage,
+                                      Boolean figuresEnabled) {
     }
 
     public record CourseResponse(Long id, String name, String outputLanguage, boolean figuresEnabled) {
@@ -197,12 +97,4 @@ public class CourseController {
         }
     }
 
-    public record CourseSummaryResponse(
-            Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
-            long documentCount, long goalCount, long skillCount, OffsetDateTime skillsReviewedAt,
-            ExtractionRun.Status extractionStatus) {
-    }
-
-    public record UpdateCourseRequest(String name, String outputLanguage, Boolean figuresEnabled) {
-    }
 }

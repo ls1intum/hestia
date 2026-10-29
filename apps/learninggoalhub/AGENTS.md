@@ -10,7 +10,11 @@ Use English for repository documentation and agent-facing instructions.
 
 LearningGoalHub is Florian's master's thesis project.
 
-The system helps instructors extract, review, edit, merge, and manage learning goals from educational materials. It uses LLM-based analysis, organizes learning goals across a module → session → exercise hierarchy, classifies them with Bloom's revised taxonomy and the SOLO taxonomy, and provides APIs consumed by related thesis projects such as ExamLens and Workshopper.
+The system helps instructors extract, review, edit and manage learning goals from educational materials. It uses LLM-based analysis, organizes learning goals in a Topic tree, classifies them with Bloom's revised taxonomy and the SOLO taxonomy, and provides APIs consumed by related thesis projects such as ExamLens and Workshopper.
+
+Read [README.md](README.md) (setup, run, test) and [server/README.md](server/README.md) (package map, conventions, how to add an endpoint or LLM call) before changing code. For a change that spans server and client (a new goal field, course setting, extraction phase or page), follow the checklist in [docs/EXTENDING.md](docs/EXTENDING.md).
+
+The LLM defaults come from `libs/shared-llm`, which Workshopper uses too. Read `libs/shared-llm/AGENTS.md` before changing it.
 
 ## Required Agent Workflow
 
@@ -90,16 +94,15 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 Core LearningGoalHub concepts:
 
-- educational hierarchy: module → session → exercise
-- learning goals attached to one or more hierarchy levels
+- uploaded PDFs (lecture or exercise) split into sessions along their bookmarks, under a module → session → exercise hierarchy
+- the Topic tree: Topic → Skill → Sub-skill → Knowledge, stored as `CONTRIBUTES_TO` relationships between goals (older code and the API call it the competency tree)
 - Bloom taxonomy classification
 - SOLO taxonomy classification
-- source attribution to uploaded educational material
-- instructor review/edit/merge workflows
-- goal relationships such as:
-  - contributes-to
-  - prerequisite-of
-  - overlaps-with
+- source attribution: extracted goals quote the page they came from
+- instructor review: edit, delete, add, approve, "Find in the slides"
+- exam goals derived from ExamLens tasks and placed in the Topic tree
+
+`SUPPORTS`, `PREREQUISITE_OF`, `OVERLAPS_WITH`, `GAP` and the embedding column are legacy values kept for old data; new code does not produce them.
 
 ## Technical Direction
 
@@ -107,15 +110,17 @@ Use the technology stack below unless Florian explicitly changes it.
 
 Current high-level direction:
 
-- backend: Spring Boot
-- LLM integration: Spring AI
-- database: PostgreSQL
-- frontend: React and Tailwind CSS
+- server: Spring Boot 3.5, Java 21
+- LLM integration: Spring AI through the app's single `LlmClient`, against the TUM AET Logos gateway
+- database: PostgreSQL with Flyway migrations
+- client: React, TypeScript and Tailwind CSS (Vite)
 - API style: REST with OpenAPI documentation
 
-Authentication is not Florian's implementation responsibility. Do not spend implementation effort on auth unless explicitly requested.
+Say "server" and "client", not "backend" and "frontend".
 
-Do not introduce a different frontend framework or styling system unless explicitly requested.
+Authentication (the SAML login) is not Florian's implementation responsibility. Do not spend implementation effort on it unless explicitly requested. Service keys and the LLM rate limit in `config/` are in scope.
+
+Do not introduce a different client framework or styling system unless explicitly requested.
 
 ## LLM and Extraction Rules
 
@@ -165,11 +170,16 @@ Never bypass the hook (`--no-verify`). For a deliberate, reviewed binary excepti
 
 Before reporting work as done, run the narrowest relevant verification.
 
-Examples:
+Commands (from the repository root):
 
-- backend tests when backend code changes
-- frontend typecheck/lint/build when frontend code changes
-- API documentation generation/checks when API contracts change
+- server: `./gradlew :apps:learninggoalhub:server:test` — needs a running Docker (Testcontainers). A run that ends within seconds came from the Gradle cache; add `--rerun-tasks`. If it stalls with no results, check that `docker ps` answers.
+- client: `cd apps/learninggoalhub/client && npm run lint && npm run typecheck && npm test`
+- browser tests: `cd apps/learninggoalhub/client && npm run e2e` — needs a Postgres on port 5433 and the built server jar (see `client/README.md#browser-tests`). Run them after changing a user workflow or a prompt's JSON shape (the fake model in `client/e2e/fake-llm.mjs` must know it).
+- API contract changes: regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts` (see `client/README.md`) and update `docs/api.md` for endpoints other apps use.
+
+Tests that call a real model are `*LiveIT` classes, gated on `RUN_LIVE_LOGOS=1`; never make them run by default.
+
+Booting the server locally needs a throwaway SAML key pair and a non-empty `LOGOS_API_KEY` (see `README.md`). Flyway migrates the database it connects to on startup; point a branch with new migrations at a separate database, not at one holding data you need.
 
 If verification cannot run in the current environment, state why and provide the exact command that should be run.
 

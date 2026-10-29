@@ -3,15 +3,22 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_PREFIX } from "../api/client.ts";
 import type { ExtractionStatus, LearningGoal } from "../api/client.ts";
-import CompetencyTree from "../components/CompetencyTree.tsx";
+import TopicTree from "../components/TopicTree.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ExtractionProgressModal from "../components/ExtractionProgressModal.tsx";
 import Button from "../components/Button.tsx";
 import { fetchAllGoals } from "../lib/fetchGoals.ts";
+import NotFoundPage from "./NotFoundPage.tsx";
+import { requestError } from "../lib/requestError.ts";
 
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
-  const courseId = Number(courseIdParam);
+  // Only a plain positive id reaches the server; "/courses/abc" would otherwise request course NaN.
+  if (!/^[1-9]\d*$/.test(courseIdParam ?? "")) return <NotFoundPage message="There is no such course." />;
+  return <CourseView key={courseIdParam} courseId={Number(courseIdParam)} />;
+}
+
+function CourseView({ courseId }: { courseId: number }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -23,9 +30,11 @@ export default function CoursePage() {
   const courseQuery = useQuery({
     queryKey: ["course", courseId],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/courses/{id}", {
+      const { data, error, response } = await api.GET("/api/courses/{id}", {
         params: { path: { id: courseId } },
       });
+      // null, not an error: a missing course is an answer, so it is neither retried nor shown as a failure.
+      if (response.status === 404) return null;
       if (error || !data) throw new Error("Could not load the course.");
       return data;
     },
@@ -42,16 +51,34 @@ export default function CoursePage() {
   const course = courseQuery.data;
   const extractionProblem = course?.extractionStatus === "FAILED"
     || course?.extractionStatus === "RUNNING";
+  // Materials were stored but no run was ever recorded: the create dialog was closed after the
+  // upload or the start of the analysis failed. Without this the course has no way to start one.
+  const extractionNotStarted = course != null
+    && course.extractionStatus == null
+    && (course.documentCount ?? 0) > 0
+    && (course.goalCount ?? 0) === 0;
+  const reviewDue = course != null
+    && (course.topicCount ?? 0) > 0
+    && course.skillsReviewedAt == null;
+  const [reviewDismissed, setReviewDismissed] = useState(false);
+  // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
+  // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
+  const showReview = reviewOpen || (reviewDue && !reviewDismissed);
   const extractionStatusQuery = useQuery<ExtractionStatus | null>({
     queryKey: ["extract-status", courseId],
     queryFn: async () => {
       const result = await api.GET("/api/courses/{courseId}/extract/status", {
         params: { path: { courseId } },
       });
+      if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
     },
-    enabled: extractionModalOpen,
-    refetchInterval: (query) => (query.state.data?.status === "RUNNING" ? 1000 : false),
+    // Also read for the review, which reports what the run that built the tree left out.
+    enabled: extractionModalOpen || showReview,
+    // A failed poll keeps the last snapshot and keeps polling, so a server hiccup neither stalls the
+    // progress nor passes for "no run".
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 3000 : query.state.data?.status === "RUNNING" ? 1000 : false,
   });
   useEffect(() => {
     if (extractionStatusQuery.data?.status !== "SUCCEEDED") return;
@@ -59,29 +86,48 @@ export default function CoursePage() {
     queryClient.invalidateQueries({ queryKey: ["courses"] });
     queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
   }, [courseId, extractionStatusQuery.data?.status, queryClient]);
-  const reviewDue = course != null
-    && (course.skillCount ?? 0) > 0
-    && course.skillsReviewedAt == null;
-  const [reviewDismissed, setReviewDismissed] = useState(false);
-  // The review is also reachable on demand from the kebab menu, long after the one-time prompt was
-  // dismissed — re-reading the tree is a normal thing to want, and the flag only ever gets set.
-  const showReview = reviewOpen || (reviewDue && !reviewDismissed);
 
   const markReviewed = useMutation({
     mutationFn: async () => {
-      await api.POST("/api/courses/{id}/skills-reviewed", {
+      const { error } = await api.POST("/api/courses/{id}/skills-reviewed", {
         params: { path: { id: courseId } },
       });
+      if (error) throw new Error("Could not record the skill review as done. It will be offered again.");
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["course", courseId] }),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const result = await api.POST("/api/courses/{courseId}/extract", {
+        params: { path: { courseId }, query: {} },
+      });
+      if (result.error || !result.data) {
+        throw new Error(
+          result.response.status === 409
+            ? "Another extraction is already running. Start this one once it finishes."
+            : "Could not start the analysis.",
+        );
+      }
+    },
+    onSuccess: async () => {
+      setExtractionModalOpen(true);
+      await queryClient.invalidateQueries({ queryKey: ["extract-status", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["extraction-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["course", courseId] });
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await api.DELETE("/api/courses/{id}", {
+      const { error, response } = await api.DELETE("/api/courses/{id}", {
         params: { path: { id: courseId } },
       });
-      if (error) throw new Error("Could not delete the course.");
+      if (error) throw requestError("Could not delete the course.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -99,14 +145,14 @@ export default function CoursePage() {
       soloLevel?: LearningGoal["soloLevel"];
     }) => {
       const { goalId, ...body } = vars;
-      const { error } = await api.PATCH(
+      const { error, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
           params: { path: { courseId, goalId } },
           body,
         },
       );
-      if (error) throw new Error("Could not update the learning goal.");
+      if (error) throw requestError("Could not update the learning goal.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
@@ -115,11 +161,11 @@ export default function CoursePage() {
 
   const deleteGoalMutation = useMutation({
     mutationFn: async (goalId: number) => {
-      const { error } = await api.DELETE(
+      const { error, response } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         { params: { path: { courseId, goalId } } },
       );
-      if (error) throw new Error("Could not delete the learning goal.");
+      if (error) throw requestError("Could not delete the learning goal.", { error, response });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["goals", courseId] });
@@ -138,14 +184,17 @@ export default function CoursePage() {
       bloomLevel?: LearningGoal["bloomLevel"];
       soloLevel?: LearningGoal["soloLevel"];
     },
-  ) => updateGoalMutation.mutate({ goalId, ...changes });
+    onFailed: () => void,
+  ) => {
+    // Per call: mutate()'s own onError fires only for the latest of several quick edits.
+    updateGoalMutation.mutateAsync({ goalId, ...changes }).catch(onFailed);
+  };
 
-  // Gap-analysis goals are hidden for now (backlog: dedicated gap review);
-  // the pipeline still synthesises and stores them, only the client filters.
-  const goals: LearningGoal[] = useMemo(
-    () => (goalsQuery.data ?? []).filter((g) => g.origin !== "GAP"),
-    [goalsQuery.data],
-  );
+  const goals: LearningGoal[] = useMemo(() => goalsQuery.data ?? [], [goalsQuery.data]);
+
+  if (courseQuery.data === null) {
+    return <NotFoundPage message="This course does not exist or was deleted." />;
+  }
 
   const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
   return (
@@ -156,10 +205,20 @@ export default function CoursePage() {
           <h1 className="text-2xl">{courseName}</h1>
           <CourseMenu
             exportHref={`${API_PREFIX}/api/courses/${courseId}/learning-goals/export.csv`}
-            onReview={(course?.skillCount ?? 0) > 0 ? () => setReviewOpen(true) : undefined}
+            onReview={(course?.topicCount ?? 0) > 0 ? () => setReviewOpen(true) : undefined}
             onDelete={() => setConfirmDelete(true)}
           />
         </div>
+        {courseQuery.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(courseQuery.error as Error).message}
+          </p>
+        )}
+        {markReviewed.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(markReviewed.error as Error).message}
+          </p>
+        )}
         {deleteMutation.isError && (
           <p className="text-sm text-hestia-danger">
             {(deleteMutation.error as Error).message}
@@ -168,7 +227,7 @@ export default function CoursePage() {
         {extractionProblem && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-danger/40 bg-hestia-danger/10 px-4 py-3 text-sm text-hestia-text">
             <span>
-              The latest extraction did not finish, so this course may not contain a complete skill tree.
+              The latest extraction did not finish, so this course may not contain a complete Topic tree.
             </span>
             <Button size="sm" onClick={() => setExtractionModalOpen(true)}>
               View error and retry
@@ -176,10 +235,28 @@ export default function CoursePage() {
           </div>
         )}
 
+        {extractionNotStarted && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-hestia-border bg-hestia-surface px-4 py-3 text-sm text-hestia-text">
+            <span>
+              {course.documentCount === 1 ? "1 document" : `${course.documentCount} documents`}{" "}
+              uploaded, not analysed yet.
+            </span>
+            <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
+              {startMutation.isPending ? "Starting…" : "Start analysis"}
+            </Button>
+          </div>
+        )}
+        {startMutation.isError && (
+          <p className="text-sm text-hestia-danger">
+            {(startMutation.error as Error).message}
+          </p>
+        )}
+
         {extractionModalOpen && (
           <ExtractionProgressModal
             open
             status={extractionStatusQuery.data ?? undefined}
+            statusUnavailable={extractionStatusQuery.isError}
             error={
               extractionStatusQuery.data?.status === "FAILED"
                 ? extractionStatusQuery.data.error ?? "Extraction failed."
@@ -213,7 +290,7 @@ export default function CoursePage() {
         {goalToDelete && (
           <ConfirmDialog
             title="Delete learning goal?"
-            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the competency tree, together with their sources and relationships. This cannot be undone.`}
+            message={`This permanently removes "${goalToDelete.text}" and everything beneath it in the Topic tree, together with their sources and relationships. This cannot be undone.`}
             confirmLabel={
               deleteGoalMutation.isPending ? "Deleting…" : "Delete goal"
             }
@@ -247,11 +324,11 @@ export default function CoursePage() {
         )}
       </div>
 
-      {/* The competency grid: topics as a filterable Excel-style list, each opening its map
+      {/* The Topic tree grid: topics as a filterable Excel-style list, each opening its map
           inline beneath its row. */}
       {goals.length > 0 && (
         <div className="w-full">
-          <CompetencyTree
+          <TopicTree
             courseId={courseId}
             goals={goals}
             onUpdate={updateGoal}
@@ -264,6 +341,8 @@ export default function CoursePage() {
         <ExtractionProgressModal
           open
           reviewOnly
+          // Only a successful run built the tree under review; a later failed run stored nothing.
+          status={extractionStatusQuery.data?.status === "SUCCEEDED" ? extractionStatusQuery.data : undefined}
           courseId={courseId}
           onClose={() => {
             setReviewOpen(false);
