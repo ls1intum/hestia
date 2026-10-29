@@ -45,7 +45,7 @@ npm install
 npm run dev
 ```
 
-The app opens at **http://localhost:5173/workshopper/**. The dev server proxies `/workshopper/api` to the server (`VITE_API_TARGET`, default `http://localhost:8081`). Importing goals from the Learning Goal Hub needs that app running on `VITE_LGH_TARGET` (default `http://localhost:8080`).
+The app opens at **http://localhost:5173/workshopper/**. The dev server proxies `/workshopper/api` to the server (`VITE_API_TARGET`, default `http://localhost:8081`). Importing goals from the Learning Goal Hub goes through the server, which reads LGH at `LGH_BASE_URL` (default `http://localhost:8080`) with the service key `LGH_API_KEY`.
 
 ### Tests
 

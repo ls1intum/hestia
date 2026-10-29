@@ -1,4 +1,4 @@
-const BASE_URL = "/learninggoalhub/api";
+import { getFromLearningGoalHub } from "./api";
 
 export interface Course {
   id: number;
@@ -39,14 +39,10 @@ export interface SessionGroup {
 }
 
 export async function fetchCourses(): Promise<Course[]> {
-  const res = await fetch(`${BASE_URL}/courses?size=100`);
-  if (!res.ok) throw new Error("Failed to fetch courses");
-  const data = await res.json();
+  const data = await getFromLearningGoalHub<{ content: Course[] }>("/courses?size=100");
   return data.content;
 }
 
-export async function fetchGoalsBySession(courseId: number): Promise<SessionGroup[]> {
-  const res = await fetch(`${BASE_URL}/courses/${courseId}/learning-goals/by-session`);
-  if (!res.ok) throw new Error("Failed to fetch learning goals");
-  return await res.json();
+export function fetchGoalsBySession(courseId: number): Promise<SessionGroup[]> {
+  return getFromLearningGoalHub<SessionGroup[]>(`/courses/${courseId}/learning-goals/by-session`);
 }
