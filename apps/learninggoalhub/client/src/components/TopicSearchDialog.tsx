@@ -289,7 +289,7 @@ export default function TopicSearchDialog({
       aria-modal="true"
       aria-labelledby="topic-search-title"
     >
-      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
+      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg" />
       <div
         onClick={busy ? undefined : onClose}
         className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"

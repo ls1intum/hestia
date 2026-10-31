@@ -177,7 +177,7 @@ export default function CreateCourseDialog({
       {/* An opaque scrim rather than the goal modal's backdrop-blur: blurring the courses list
           through this layer costs a repaint of the whole table on every frame, which measured out
           at ~30fps while typing here (16 of 45 frames over 32ms, against 2 of 65 without it). */}
-      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
+      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg" />
       <div
         onClick={onClose}
         className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"

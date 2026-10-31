@@ -117,7 +117,7 @@ export default function ExtractionProgressModal({
     >
       {/* An opaque scrim rather than a backdrop-blur, matching the create-course and goal dialogs:
           blurring the page through this layer repaints all of it every frame. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg/90" />
+      <div aria-hidden="true" className="absolute inset-0 bg-hestia-bg" />
       <div
         onClick={reviewLocked ? undefined : onClose}
         className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 sm:p-8"

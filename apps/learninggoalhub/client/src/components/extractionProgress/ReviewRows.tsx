@@ -65,35 +65,42 @@ export function TopicHeader({
         className="mr-1 w-[3px] shrink-0 self-stretch rounded-full"
         style={{ backgroundColor: TREE_ROLE_META.topic.color }}
       />
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-hestia-text-muted">
-        <svg
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
-        >
-          <path d="M7 5l6 5-6 5" />
-        </svg>
-      </span>
-      <span className="flex min-w-0 flex-1 items-center text-sm font-semibold leading-relaxed text-hestia-text">
-        <span className="mr-1 tabular-nums text-hestia-text-muted">{number}.</span>
-        {renaming ? (
-          <RenameField text={topic.goal.text ?? ""} onDone={onRename} />
-        ) : (
-          topic.goal.text
-        )}
-        {topic.goal.originalText != null && !renaming && (
-          <span
-            title={`Generated as: ${topic.goal.originalText}`}
-            className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+      {/* Chevron and name are centred as one block, so a wrapped name keeps the chevron on its
+          first line, beside the number. */}
+      <span className="flex min-w-0 flex-1 items-start gap-1">
+        <span className="flex h-[1lh] w-5 shrink-0 items-center justify-center text-sm leading-relaxed text-hestia-text-muted">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`}
           >
-            Edited
-          </span>
-        )}
+            <path d="M7 5l6 5-6 5" />
+          </svg>
+        </span>
+        {/* As in a skill row: the number keeps the first line and a long name wraps beside it. */}
+        <span className="flex min-w-0 flex-1 items-baseline text-sm font-semibold leading-relaxed text-hestia-text">
+          <span className="mr-1 shrink-0 tabular-nums text-hestia-text-muted">{number}.</span>
+          {renaming ? (
+            <RenameField text={topic.goal.text ?? ""} onDone={onRename} />
+          ) : (
+            <span className="min-w-0 flex-1">
+              {topic.goal.text}
+              {topic.goal.originalText != null && (
+                <span
+                  title={`Generated as: ${topic.goal.originalText}`}
+                  className="ml-2 inline-flex h-[22px] items-center whitespace-nowrap rounded-md border border-hestia-border px-2 align-middle text-xs font-medium text-hestia-text-muted"
+                >
+                  Edited
+                </span>
+              )}
+            </span>
+          )}
+        </span>
       </span>
       <span className="shrink-0 tabular-nums text-xs text-hestia-text-muted">{countLabel}</span>
     </>
