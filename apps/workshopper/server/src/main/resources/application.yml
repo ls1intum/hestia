@@ -4,6 +4,14 @@ spring:
   application:
     name: workshopper-server
 
+  # compose.prod.yaml sets the deploy target (Staging/Production) as the profile when no
+  # SPRING_PROFILES_ACTIVE is given. hestia-test is unknown to TUM login, so Staging runs `local`;
+  # Production runs `prod`.
+  profiles:
+    group:
+      Staging: local
+      Production: prod
+
   security:
     saml2:
       relyingparty:
