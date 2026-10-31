@@ -3,6 +3,7 @@ package de.tum.cit.hestia.learninggoalhub.config;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +23,9 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    @Autowired(required = false)
+    private DevAuthFilter devAuthFilter;
 
     private static final PathPatternRequestMatcher.Builder PATHS = PathPatternRequestMatcher.withDefaults();
 
@@ -55,31 +59,37 @@ public class SecurityConfig {
                 LLM_REQUESTS, llmRequestLimit, llmRequestWindow, Clock.systemUTC());
 
         http
-            // CSRF off: /api/** has no login yet, so there is no session to forge requests with.
-            // Turn it on together with the SAML login (#116).
-            .csrf(csrf -> csrf.disable())
+            .csrf(csrf -> csrf.disable()) // Disable CSRF temporarily so frontend isn't blocked locally
             .addFilterBefore(serviceKeys, AnonymousAuthenticationFilter.class)
-            .addFilterAfter(rateLimit, ServiceApiKeyFilter.class)
+            .addFilterAfter(rateLimit, ServiceApiKeyFilter.class);
+
+        if (devAuthFilter != null) {
+            http.addFilterBefore(devAuthFilter, AnonymousAuthenticationFilter.class);
+        }
+
+        http
             // An API client gets a 401, not a redirect to the SAML login page.
             .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
                 new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), PATHS.matcher("/api/**")))
             .authorizeHttpRequests(authorize -> {
                 if (enforceServiceKeys) {
                     authorize.requestMatchers(SERVICE_ONLY).hasRole(ServiceApiKeyFilter.ROLE);
+                } else {
+                    authorize.requestMatchers(SERVICE_ONLY).permitAll();
                 }
                 authorize
-                    // Keep all existing API endpoints open for now
-                    .requestMatchers("/api/**").permitAll()
                     // The OpenAPI contract is public for API consumers and client codegen (docs/api.md)
                     .requestMatchers("/v3/api-docs", "/v3/api-docs/**").permitAll()
                     // Container healthcheck and post-deploy smoke check
                     .requestMatchers("/actuator/health").permitAll()
                     // Explicitly allow anyone to download the metadata XML (Central IT needs this!)
                     .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
+                    // Keep all existing API endpoints open for now
+                    .requestMatchers("/api/**").permitAll()
                     // Require SAML authentication for any other endpoints
                     .anyRequest().authenticated();
             })
-            .saml2Login(withDefaults())
+            .saml2Login(saml2 -> saml2.defaultSuccessUrl("/", true))
             .saml2Metadata(withDefaults());
 
         return http.build();
