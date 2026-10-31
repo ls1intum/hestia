@@ -1,6 +1,8 @@
 # LearningGoalHub Client
 
-Vite + React 18 + TypeScript + Tailwind CSS client for the LearningGoalHub server.
+Vite + React 18 + TypeScript + Tailwind CSS client for the LearningGoalHub server. Which component
+renders which part of the UI, the query keys and the styling tokens are in
+[docs/CLIENT.md](../docs/CLIENT.md).
 
 ## Development
 
@@ -17,16 +19,24 @@ the throwaway SAML key pair the server needs to boot.
 
 ## API client
 
-Types are generated from the backend's OpenAPI schema with
+Types are generated from the server's OpenAPI schema with
 [`openapi-typescript`](https://openapi-ts.dev) and consumed through a typed
 [`openapi-fetch`](https://openapi-ts.dev/openapi-fetch/) client (`src/api/client.ts`).
 
-To regenerate after a server API change, with the server running:
+`openapi/openapi.json` is a checked-in snapshot of the server's `/v3/api-docs`, and
+`OpenApiSnapshotTest` in the server tests fails when the two differ. After a server API change,
+regenerate both files from the repository root (Docker must be running and `npm ci` must have
+run in `client/`; no server or `.env` is needed):
 
 ```bash
-curl -s http://localhost:8080/v3/api-docs -o openapi/openapi.json
-npm run generate:api
+UPDATE_OPENAPI_SNAPSHOT=1 ./gradlew :apps:learninggoalhub:server:test --tests '*OpenApiSnapshotTest' --rerun-tasks
+cd apps/learninggoalhub/client && npm run generate:api && npm run typecheck
 ```
+
+The server sorts the document's keys, so the diff shows only what changed. Responses other than
+the one springdoc infers from the return type (a `202`, a `204`, a `409` the client handles) need
+an `@ApiResponse` on the controller method, as `ExtractionController.extract` has; otherwise they
+are missing from the types.
 
 ## Scripts
 

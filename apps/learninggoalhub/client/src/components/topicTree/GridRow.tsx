@@ -203,6 +203,28 @@ export function GridRow({
   // Role-tinted rail beside the name, so the tier reads at a glance; knowledge is faded so the
   // branch tiers (topic / skill / sub-skill) and gaps stand out.
   const railColor = tierRailColor(row.role);
+  // The Bloom and SOLO cells differ only in their scale.
+  const levelCell = (scale: LevelScale) => (
+    <div key={scale} role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
+      <LevelCell
+        scale={scale}
+        value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
+        // A topic is a noun phrase with no level of its own, so its cells are not editable.
+        interactive={interactive && row.role !== "topic"}
+        open={openLevel === scale}
+        onToggle={() => onToggleLevel(row, scale)}
+        onClose={onCloseLevel}
+        onSelect={(value) =>
+          onUpdate(
+            row.id,
+            scale === "bloom"
+              ? { bloomLevel: value as LearningGoal["bloomLevel"] }
+              : { soloLevel: value as LearningGoal["soloLevel"] },
+          )
+        }
+      />
+    </div>
+  );
   // The attribute cells by column, so they render in the reader's column order.
   const cells = {
     role: (
@@ -225,30 +247,8 @@ export function GridRow({
         <KindChip row={row} />
       </div>
     ),
-    ...Object.fromEntries(
-      (["bloom", "solo"] as const).map((scale) => [
-        scale,
-        <div key={scale} role="gridcell" className="flex min-w-0 items-start overflow-hidden px-2 py-1.5">
-          <LevelCell
-            scale={scale}
-            value={scale === "bloom" ? row.goal.bloomLevel : row.goal.soloLevel}
-            // A topic is a noun phrase with no level of its own, so its cells are not editable.
-            interactive={interactive && row.role !== "topic"}
-            open={openLevel === scale}
-            onToggle={() => onToggleLevel(row, scale)}
-            onClose={onCloseLevel}
-            onSelect={(value) =>
-              onUpdate(
-                row.id,
-                scale === "bloom"
-                  ? { bloomLevel: value as LearningGoal["bloomLevel"] }
-                  : { soloLevel: value as LearningGoal["soloLevel"] },
-              )
-            }
-          />
-        </div>,
-      ]),
-    ),
+    bloom: levelCell("bloom"),
+    solo: levelCell("solo"),
     source: (
       <div
         key="source"
@@ -264,7 +264,7 @@ export function GridRow({
         />
       </div>
     ),
-  } as Record<AttributeKey, ReactElement>;
+  } satisfies Record<AttributeKey, ReactElement>;
   return (
     <div
       role="row"
