@@ -6,6 +6,12 @@ server:
 spring:
   application:
     name: learninggoalhub-server
+  # compose.prod.yaml sets the deploy target (Staging/Production) as the profile when no
+  # SPRING_PROFILES_ACTIVE is given. hestia-test is unknown to TUM login, so Staging runs `local`
+  # (DevAuthFilter); Production matches no group and keeps the login.
+  profiles:
+    group:
+      Staging: local
   security:
     saml2:
       relyingparty:
