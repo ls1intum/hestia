@@ -1,6 +1,8 @@
 # LearningGoalHub Client
 
-Vite + React 18 + TypeScript + Tailwind CSS client for the LearningGoalHub server.
+Vite + React 18 + TypeScript + Tailwind CSS client for the LearningGoalHub server. Which component
+renders which part of the UI, the query keys and the styling tokens are in
+[docs/CLIENT.md](../docs/CLIENT.md).
 
 ## Development
 
@@ -17,16 +19,31 @@ the throwaway SAML key pair the server needs to boot.
 
 ## API client
 
-Types are generated from the backend's OpenAPI schema with
+Types are generated from the server's OpenAPI schema with
 [`openapi-typescript`](https://openapi-ts.dev) and consumed through a typed
 [`openapi-fetch`](https://openapi-ts.dev/openapi-fetch/) client (`src/api/client.ts`).
 
-To regenerate after a server API change, with the server running:
+`openapi/openapi.json` is a checked-in snapshot, pretty-printed with two spaces. It is not a plain
+copy of the live document: some responses in it were added by hand because the controllers do not
+declare them (for example `202` and `409` on `/extract`, and `204` where a controller returns
+`ResponseEntity.noContent()`), and the client's error handling relies on them. Overwriting the snapshot with the live output drops them,
+and `npm run typecheck` then fails in `CoursePage.tsx`, `CreateCourseDialog.tsx` and
+`RunFailure.tsx`. It also reorders the paths, which buries your change in churn.
+
+So merge your change into the snapshot instead. With the server running (see the
+[app README](../README.md#run-locally)):
 
 ```bash
-curl -s http://localhost:8080/v3/api-docs -o openapi/openapi.json
+curl -s http://localhost:8080/v3/api-docs | jq . > /tmp/live-openapi.json
+jq '.components.schemas.LearningGoalResponse' /tmp/live-openapi.json   # the schema or path you changed
+# copy the changed schema or path into openapi/openapi.json by hand, then:
 npm run generate:api
+npm run typecheck
 ```
+
+To check a schema you merged, compare it with the live one:
+`diff <(jq -S '.components.schemas.<Name>' /tmp/live-openapi.json) <(jq -S '.components.schemas.<Name>' openapi/openapi.json)`.
+Only the hand-kept parts above should differ.
 
 ## Scripts
 

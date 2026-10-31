@@ -1,6 +1,8 @@
 # AGENTS.md
 
-This file defines repository-specific instructions for AI coding agents working on LearningGoalHub.
+Instructions for AI coding agents working on LearningGoalHub. They extend the repository's root
+[AGENTS.md](../../AGENTS.md) (never commit secrets or personal data, the repo guard, commit
+scopes), which applies as well.
 
 ## Language
 
@@ -8,13 +10,71 @@ Use English for repository documentation and agent-facing instructions.
 
 ## Project Context
 
-LearningGoalHub is Florian's master's thesis project.
+LearningGoalHub is a master's thesis project. It helps instructors extract, review, edit and
+manage learning goals from course materials. It uses LLM-based analysis, organizes learning goals
+in a Topic tree, classifies them with Bloom's revised taxonomy and the SOLO taxonomy, and provides
+APIs consumed by the related thesis projects ExamLens and Workshopper.
 
-The system helps instructors extract, review, edit and manage learning goals from educational materials. It uses LLM-based analysis, organizes learning goals in a Topic tree, classifies them with Bloom's revised taxonomy and the SOLO taxonomy, and provides APIs consumed by related thesis projects such as ExamLens and Workshopper.
+## Read First
 
-Read [README.md](README.md) (setup, run, test) and [server/README.md](server/README.md) (package map, conventions, how to add an endpoint or LLM call) before changing code. For a change that spans server and client (a new goal field, course setting, extraction phase or page), follow the checklist in [docs/EXTENDING.md](docs/EXTENDING.md).
+| Before you … | read |
+| --- | --- |
+| run, test or configure anything | [README.md](README.md) |
+| change server code | [server/README.md](server/README.md): packages, conventions, how to add an endpoint, an LLM call or a prompt |
+| change client code | [docs/CLIENT.md](docs/CLIENT.md): which component renders what, query keys, tier names, styling |
+| change something that spans server and client (a goal field, a course setting, an extraction phase, a page) | the checklist in [docs/EXTENDING.md](docs/EXTENDING.md) |
+| touch a model call or a prompt | [docs/LLM.md](docs/LLM.md) |
+| change an endpoint other apps use | [docs/api.md](docs/api.md) |
+| change security, keys or limits | [docs/SECURITY.md](docs/SECURITY.md) |
+| change the database | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#data-model) |
 
-The LLM defaults come from `libs/shared-llm`, which Workshopper uses too. Read `libs/shared-llm/AGENTS.md` before changing it.
+The LLM defaults come from `libs/shared-llm`, which Workshopper uses too. Read
+`libs/shared-llm/AGENTS.md` before changing it.
+
+## Rules That Are Easy to Miss
+
+These are the mistakes the compilers and most tests do not catch.
+
+1. **Tier names differ between UI, client, server and API.** The UI says Topic → Skill → Sub-skill →
+   Knowledge. The server calls the Skill tier "capability" and the Sub-skill tier "skill", and the
+   API gives skills and sub-skills the same `role: SKILL` (the position in the tree tells them
+   apart). The tree itself is the "competency tree" in older code and the API
+   (`POST /competency-tree`, `HierarchyLevel.COMPETENCY`). Mapping:
+   [docs/api.md](docs/api.md#topic-tree). In the client, use the `TreeRole` that `buildTopicForest`
+   (`lib/goals.ts`) gives each row, not the goal's API `role`.
+2. **No model call inside a database transaction.** A call can take minutes and holds row locks the
+   whole time. Read in one transaction, call the model, write in another; take
+   `CourseRepository.lockById` when two requests may write the same course
+   ([conventions](server/README.md#conventions)).
+3. **The client's API types come from a checked-in snapshot.** After changing a request or response
+   record, merge the change into `client/openapi/openapi.json` and regenerate
+   `client/src/api/schema.d.ts` ([client/README.md](client/README.md#api-client)); commit both.
+   Do not overwrite the snapshot with the live `/v3/api-docs`: it holds hand-kept responses the
+   client relies on. Without the update, the client still compiles against the old shape. Records
+   are positional: `grep` for every `new ...(` call.
+4. **Other theses depend on the API.** ExamLens and Workshopper read `LearningGoalResponse`, the
+   goal endpoints and the exam-task endpoint. Add fields; do not rename or remove them. Document
+   additions in [docs/api.md](docs/api.md). Errors keep the `{code, message}` body from
+   `GlobalExceptionHandler`; throw `ResponseStatusException` instead of building error responses.
+5. **A new prompt shape needs the fake model.** The browser tests answer every model call from
+   `client/e2e/fake-llm.mjs`, which recognizes a prompt by the JSON it asks for. A new or changed
+   shape fails the e2e suite with the fake's `400` until `answer()` knows it.
+6. **Prompts carry versions.** Bump `SessionExtractionService.PROMPT_VERSION` or
+   `PageDescriptionService.FIGURE_PROMPT_VERSION` when you change those prompts, so stored runs show
+   which prompt produced them.
+7. **Endpoints that start model calls are rate-limited by path.** Add a new one to
+   `SecurityConfig.LLM_REQUESTS`, and to `SERVICE_ONLY` if only consuming servers call it.
+8. **Package layers are enforced.** `PackageCycleTest` (ArchUnit) fails on a dependency cycle
+   between packages. Move the shared piece down instead of importing upward.
+9. **Migrations are append-only.** Add `V<next>__<name>.sql`; never edit a merged one. Hibernate
+   only validates the schema, so an entity change without a migration fails at startup.
+10. **Legacy values stay.** `SUPPORTS`, `PREREQUISITE_OF`, `OVERLAPS_WITH`, `GAP` and the embedding
+    column are kept for old data. New code does not produce them; do not delete them.
+11. **Some gaps compile.** A cell missing from `GridRow`'s `cells` map and an attribute missing
+    from `DiagramAttributes` both pass typecheck and the existing tests
+    ([EXTENDING.md](docs/EXTENDING.md#add-a-field-to-a-learning-goal), step 10).
+12. **Theme colours are CSS variables.** Use the `hestia-*` Tailwind colours from `index.css`,
+    not fixed colours or `dark:` variants ([docs/CLIENT.md](docs/CLIENT.md#styling)).
 
 ## Required Agent Workflow
 
@@ -95,20 +155,16 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 Core LearningGoalHub concepts:
 
 - uploaded PDFs (lecture or exercise) split into sessions along their bookmarks, under a module → session → exercise hierarchy
-- the Topic tree: Topic → Skill → Sub-skill → Knowledge, stored as `CONTRIBUTES_TO` relationships between goals (older code and the API call it the competency tree)
+- the Topic tree: Topic → Skill → Sub-skill → Knowledge, stored as `CONTRIBUTES_TO` relationships between goals
 - Bloom taxonomy classification
 - SOLO taxonomy classification
 - source attribution: extracted goals quote the page they came from
-- instructor review: edit, delete, add, approve, "Find in the slides"
+- instructor review: edit, delete, add, approve, "Find in the slides", "Generate with AI"
 - exam goals derived from ExamLens tasks and placed in the Topic tree
-
-`SUPPORTS`, `PREREQUISITE_OF`, `OVERLAPS_WITH`, `GAP` and the embedding column are legacy values kept for old data; new code does not produce them.
 
 ## Technical Direction
 
-Use the technology stack below unless Florian explicitly changes it.
-
-Current high-level direction:
+Use this stack unless the project owner explicitly changes it:
 
 - server: Spring Boot 3.5, Java 21
 - LLM integration: Spring AI through the app's single `LlmClient`, against the TUM AET Logos gateway
@@ -118,7 +174,9 @@ Current high-level direction:
 
 Say "server" and "client", not "backend" and "frontend".
 
-Authentication (the SAML login) is not Florian's implementation responsibility. Do not spend implementation effort on it unless explicitly requested. Service keys and the LLM rate limit in `config/` are in scope.
+The SAML login is integrated separately and is out of scope unless a task asks for it (see
+[docs/SECURITY.md](docs/SECURITY.md)). Service keys and the LLM rate limit in `config/` are in
+scope.
 
 Do not introduce a different client framework or styling system unless explicitly requested.
 
@@ -126,85 +184,34 @@ Do not introduce a different client framework or styling system unless explicitl
 
 LLM extraction must be reproducible and evaluable.
 
-Rules:
-
-- prefer structured output over free-text parsing
+- prefer structured output (a record via `LlmClient.entity`) over free-text parsing
 - preserve source attribution for extracted goals
-- keep prompt/model/provider choices explicit where relevant
-- avoid real LLM calls in automated CI tests
-- use mocked or recorded responses for automated tests where possible
-
-## API Notes
-
-The API is consumed by related thesis projects. Treat breaking API changes as expensive.
-
-Prefer:
-
-- REST endpoints
-- JSON request/response bodies
-- OpenAPI documentation
-- additive changes over breaking changes
-- clear error responses
-
-## Never Commit
-
-- secrets or credentials — only `.env.example` templates; real values live in gitignored `.env` files
-- personal data (usernames, emails, private hostnames)
-- copyrighted material (lecture slides/PDFs); test fixtures must be synthetic or freely licensed
-- user-specific details in docs — keep repository docs user-agnostic
-- never use `git add -A`; stage files by explicit path
-
-## Repo Guard
-
-The repo ships a pre-commit guard (secret scan via gitleaks + binary file guard). One-time setup per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-The hook requires `gitleaks` (e.g. `brew install gitleaks`). The same checks run in CI on every pull request (`.github/workflows/repo-guard.yml`).
-
-Never bypass the hook (`--no-verify`). For a deliberate, reviewed binary exception, add the exact path to `.githooks/binary-allowlist` in the same commit.
+- read model and temperature from `application.yml`, not from constants
+- validate a reply before storing it; count what you drop instead of failing silently
+- no real model calls in automated tests: mock `LlmClient`, or write a `*LiveIT` gated on
+  `RUN_LIVE_LOGOS=1`
 
 ## Verification
 
-Before reporting work as done, run the narrowest relevant verification.
-
-Commands (from the repository root):
+Before reporting work as done, run the narrowest relevant verification. Commands, from the
+repository root:
 
 - server: `./gradlew :apps:learninggoalhub:server:test` — needs a running Docker (Testcontainers). A run that ends within seconds came from the Gradle cache; add `--rerun-tasks`. If it stalls with no results, check that `docker ps` answers.
 - client: `cd apps/learninggoalhub/client && npm run lint && npm run typecheck && npm test`
-- browser tests: `cd apps/learninggoalhub/client && npm run e2e` — needs a Postgres on port 5433 and the built server jar (see `client/README.md#browser-tests`). Run them after changing a user workflow or a prompt's JSON shape (the fake model in `client/e2e/fake-llm.mjs` must know it).
-- API contract changes: regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts` (see `client/README.md`) and update `docs/api.md` for endpoints other apps use.
-
-Tests that call a real model are `*LiveIT` classes, gated on `RUN_LIVE_LOGOS=1`; never make them run by default.
+- browser tests: `cd apps/learninggoalhub/client && npm run e2e` — needs a Postgres on port 5433 and the built server jar (see `client/README.md#browser-tests`). Run them after changing a user workflow or a prompt's JSON shape.
+- API contract changes: update the client types (rule 3) and `docs/api.md` for endpoints other apps use.
+- docs: if your change moves a class, component or setting that a doc names, update that doc in the same change. `grep -rn '<OldName>' apps/learninggoalhub --include='*.md'` finds them.
 
 Booting the server locally needs a throwaway SAML key pair and a non-empty `LOGOS_API_KEY` (see `README.md`). Flyway migrates the database it connects to on startup; point a branch with new migrations at a separate database, not at one holding data you need.
 
-If verification cannot run in the current environment, state why and provide the exact command that should be run.
+Back every "done" with evidence: the test output that passed, or the `grep` that shows no old
+reference is left. If verification cannot run in the current environment, say why and give the
+exact command to run. Never claim tests passed unless they actually ran.
 
-Never claim tests passed unless they actually ran.
+## Commits and Pull Requests
 
-## Commits
-
-Use Conventional Commits for commit messages. Since LearningGoalHub lives in the `ls1intum/hestia` monorepo alongside parallel theses, always include the `(learninggoalhub)` scope.
-
-Examples:
-
-- `feat(learninggoalhub): add learning goal review view`
-- `fix(learninggoalhub): handle missing learning goal title`
-- `docs(learninggoalhub): update setup instructions`
-- `chore(learninggoalhub): update project configuration`
-
-## Branches and Pull Requests
-
-Use short-lived feature branches for non-trivial changes.
-
-Commit directly to `main` only for small documentation or housekeeping changes.
-
-Open a pull request when a branch is ready for review or before merging it into `main`.
-
-Each pull request description should include:
-
-- What changed and why
-- How it was tested
+Conventional Commits with the `(learninggoalhub)` scope, for example
+`feat(learninggoalhub): add learning goal review view` or
+`docs(learninggoalhub): update setup instructions`. Work on a short-lived branch and open a pull
+request against `main`; `main` is protected. Each pull request description says what changed and
+why, and how it was tested.

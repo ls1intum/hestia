@@ -9,6 +9,7 @@ sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
 | --- | --- | --- |
 | `server/` | Spring Boot 3.5 + Spring AI server, PostgreSQL, Flyway | [server/README.md](server/README.md) |
 | `client/` | React 18 + TypeScript + Tailwind CSS, built with Vite | [client/README.md](client/README.md) |
+| `docs/CLIENT.md` | which component renders which part of the UI, data, styling | [docs/CLIENT.md](docs/CLIENT.md) |
 | `docs/ARCHITECTURE.md` | containers, client, data model, legacy values | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `docs/LLM.md` | every model call, failure handling, comparing runs | [docs/LLM.md](docs/LLM.md) |
 | `docs/SECURITY.md` | what is protected, what is open, and what changes with login | [docs/SECURITY.md](docs/SECURITY.md) |
@@ -40,6 +41,30 @@ All model calls go to the TUM AET Logos gateway (OpenAI-compatible). Defaults ar
 `openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for vision, set in
 [`libs/shared-llm`](../../libs/shared-llm/README.md). Workshopper uses that library too.
 
+## Where things are
+
+```
+apps/learninggoalhub/
+├── server/src/main/java/de/tum/cit/hestia/learninggoalhub/
+│   ├── llm/  course/  document/  hierarchy/  taxonomy/   ← one package per concern, see server/README.md
+│   ├── goal/  topictree/  extraction/  exam/
+│   └── config/  web/                                      ← security, rate limit, error body
+├── server/src/main/resources/
+│   ├── application.yml                                    ← every setting, with why it has its value
+│   └── db/migration/V<n>__*.sql                           ← Flyway, append-only
+├── client/src/
+│   ├── pages/        ← the course list and the course page
+│   ├── components/   ← Topic tree grid (topicTree/), topic map (topicMap/), extraction and review (extractionProgress/)
+│   ├── lib/          ← request helpers, tier names, extraction phases
+│   └── api/          ← typed client over the generated schema.d.ts
+├── client/e2e/       ← Playwright tests and the fake model (fake-llm.mjs)
+├── docs/             ← architecture, client, model calls, API, security, extending
+├── compose.yaml      ← local Postgres
+└── compose.prod.yaml ← deployment (server, web, postgres, backup)
+```
+
+Prompts are Java text blocks next to the class that sends them (see [docs/LLM.md](docs/LLM.md)).
+
 ## Prerequisites
 
 - Java 21 (the Gradle wrapper fetches everything else)
@@ -57,7 +82,7 @@ All commands below run from the repository root unless a `cd` says otherwise.
 cp apps/learninggoalhub/.env.example apps/learninggoalhub/.env   # then fill in LOGOS_API_KEY
 docker compose -f apps/learninggoalhub/compose.yaml up -d postgres
 
-# 2. A throwaway SAML key pair, kept outside the repository (see below)
+# 2. A throwaway SAML key pair; any directory outside the repository works (see below)
 mkdir -p ~/.learninggoalhub-dev
 openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" \
   -keyout ~/.learninggoalhub-dev/saml-key.pem -out ~/.learninggoalhub-dev/saml-cert.crt
