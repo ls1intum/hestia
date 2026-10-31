@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.config;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -33,12 +34,15 @@ class ServiceApiKeyTest {
 
     @Test
     void serviceOnlyEndpointRejectsAMissingOrWrongKey() throws Exception {
-        mockMvc.perform(from("10.0.0.1", examTasks()))
+        mockMvc.perform(from("10.0.0.1", examTasks().with(anonymous())))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(from("10.0.0.1", examTasks().header(ServiceApiKeyFilter.HEADER, "wrong")))
+        mockMvc.perform(from("10.0.0.1", examTasks().with(anonymous()).header(ServiceApiKeyFilter.HEADER, "wrong")))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(from("10.0.0.1", get("/api/courses/{id}/learning-goals/by-session", 1)))
+        mockMvc.perform(from("10.0.0.1", get("/api/courses/{id}/learning-goals/by-session", 1).with(anonymous())))
                 .andExpect(status().isUnauthorized());
+        // A TUM login is not enough: only the consuming servers call these.
+        mockMvc.perform(from("10.0.0.7", examTasks()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -49,8 +53,14 @@ class ServiceApiKeyTest {
     }
 
     @Test
-    void endpointsTheClientUsesStayOpen() throws Exception {
+    void endpointsTheClientUsesNeedALoginOrAKey() throws Exception {
+        mockMvc.perform(from("10.0.0.3", get("/api/courses").with(anonymous())))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(from("10.0.0.3", get("/api/courses")))
+                .andExpect(status().isOk());
+        // A consuming server's key works beyond its service-only endpoint (Workshopper lists courses).
+        mockMvc.perform(from("10.0.0.3", get("/api/courses").with(anonymous())
+                        .header(ServiceApiKeyFilter.HEADER, "examlense-test-key")))
                 .andExpect(status().isOk());
     }
 

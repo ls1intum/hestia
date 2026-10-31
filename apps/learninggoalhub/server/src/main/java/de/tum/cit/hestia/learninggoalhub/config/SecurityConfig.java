@@ -48,7 +48,8 @@ public class SecurityConfig {
             HttpSecurity http,
             @Value("${hestia.security.api-key.examlense:}") String examlenseKey,
             @Value("${hestia.security.api-key.workshopper:}") String workshopperKey,
-            // Off until the consumers send their key; until then rejections are only logged.
+            // Off: the service-only endpoints accept any logged-in caller and log a missing key.
+            // On (the deploy default): only a valid key reaches them.
             @Value("${hestia.security.enforce-service-keys:false}") boolean enforceServiceKeys,
             @Value("${hestia.rate-limit.llm-requests:60}") int llmRequestLimit,
             @Value("${hestia.rate-limit.window:10m}") Duration llmRequestWindow) throws Exception {
@@ -59,7 +60,8 @@ public class SecurityConfig {
                 LLM_REQUESTS, llmRequestLimit, llmRequestWindow, Clock.systemUTC());
 
         http
-            .csrf(csrf -> csrf.disable()) // Disable CSRF temporarily so frontend isn't blocked locally
+            // CSRF still off: turning it on needs the client to echo a token (docs/SECURITY.md).
+            .csrf(csrf -> csrf.disable())
             .addFilterBefore(serviceKeys, AnonymousAuthenticationFilter.class)
             .addFilterAfter(rateLimit, ServiceApiKeyFilter.class);
 
@@ -74,8 +76,6 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> {
                 if (enforceServiceKeys) {
                     authorize.requestMatchers(SERVICE_ONLY).hasRole(ServiceApiKeyFilter.ROLE);
-                } else {
-                    authorize.requestMatchers(SERVICE_ONLY).permitAll();
                 }
                 authorize
                     // The OpenAPI contract is public for API consumers and client codegen (docs/api.md)
@@ -84,8 +84,8 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health").permitAll()
                     // Explicitly allow anyone to download the metadata XML (Central IT needs this!)
                     .requestMatchers("/saml2/service-provider-metadata/**").permitAll()
-                    // Keep all existing API endpoints open for now
-                    .requestMatchers("/api/**").permitAll()
+                    // A TUM login, or a consuming server's key (ServiceApiKeyFilter)
+                    .requestMatchers("/api/**").authenticated()
                     // Require SAML authentication for any other endpoints
                     .anyRequest().authenticated();
             })

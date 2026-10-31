@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.learninggoalhub.config;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -15,7 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 // The deploy healthcheck and the OpenAPI contract must stay reachable without a SAML session;
-// everything outside the explicit allow-list (here: Swagger UI) still redirects to login.
+// everything outside the explicit allow-list (the API, Swagger UI) needs a login.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -39,13 +40,21 @@ class SecurityConfigTest {
     @Test
     void swaggerUiRequiresLogin() throws Exception {
         // A browser is sent to the SAML login; a non-browser client gets a plain 401.
-        mockMvc.perform(get("/swagger-ui/index.html").accept(MediaType.TEXT_HTML))
+        mockMvc.perform(get("/swagger-ui/index.html").with(anonymous()).accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection());
-        mockMvc.perform(get("/swagger-ui/index.html")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/swagger-ui/index.html").with(anonymous())).andExpect(status().isUnauthorized());
     }
 
     @Test
-    void serviceOnlyEndpointsOnlyLogAMissingKeyUntilEnforced() throws Exception {
+    void apiRequiresLogin() throws Exception {
+        // The client shows its login screen on 401; an API call is never redirected.
+        mockMvc.perform(get("/api/courses").with(anonymous()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/courses")).andExpect(status().isOk());
+    }
+
+    @Test
+    void serviceOnlyEndpointsAcceptALoggedInUserUntilEnforced() throws Exception {
         // The unknown course is the endpoint's own 404: the request was not stopped at security.
         mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", 999999)
                         .contentType(MediaType.APPLICATION_JSON)

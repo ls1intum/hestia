@@ -86,9 +86,12 @@ set, so app-specific values carry the app name as a prefix:
   value to that app's deployment)
 - **Variables:** `VM_HOST`, `VM_USERNAME`, `APP_HOST` (the VM's FQDN, must match the TLS cert
   SAN), and optionally `POSTGRES_DB`, `POSTGRES_USER`, `JAVA_OPTS`, and
-  `LEARNINGGOALHUB_ENFORCE_SERVICE_KEYS` (`true` makes the service-only endpoints reject requests
-  without a key; leave it unset until both consumers send theirs, and check the server log for
-  `Would reject` lines before switching it on)
+  `LEARNINGGOALHUB_ENFORCE_SERVICE_KEYS` (defaults to `true`: the service-only endpoints reject
+  requests without a key; `false` lets any logged-in caller reach them)
+
+The server's Spring profile defaults to the deploy target (`ENVIRONMENT`, written into `.env` by
+the deploy). `Staging` is a profile group for `local`, so hestia-test, which TUM login does not
+know, signs every request in as a dev user; `Production` keeps the TUM login.
 
 The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config — they do not
 need to be set per repo. Everything except the connection keys is written verbatim into `.env`
