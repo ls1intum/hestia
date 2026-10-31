@@ -42,6 +42,9 @@ services:
       API_KEY_EXAMLENSE: ${LEARNINGGOALHUB_API_KEY_EXAMLENSE:-}
       API_KEY_WORKSHOPPER: ${LEARNINGGOALHUB_API_KEY_WORKSHOPPER:-}
       ENFORCE_SERVICE_KEYS: ${LEARNINGGOALHUB_ENFORCE_SERVICE_KEYS:-false}
+      # `local` turns on DevAuthFilter (no TUM login). Only on hestia-test, which TUM login
+      # does not know; never on production.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
