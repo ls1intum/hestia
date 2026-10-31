@@ -14,7 +14,8 @@ import org.springframework.web.client.RestClient;
 
 /**
  * Thin HTTP client for the LearningGoalHub service (`learninggoalhub.base-url`,
- * env {@code LGH_BASE_URL}). No auth — LGH runs inside the trusted LRZ setup.
+ * env {@code LGH_BASE_URL}). Authenticates with LGH's service key for ExamLens
+ * (`learninggoalhub.api-key`, env {@code LGH_API_KEY}), sent as {@code X-Api-Key}.
  *
  * Two clients with different read timeouts: reads/deletes are fast, but goal
  * generation runs one LLM call per task block on LGH's side and can take
@@ -33,19 +34,23 @@ public class LearningGoalHubClient {
     private final RestClient readClient;
     private final RestClient generationClient;
 
-    public LearningGoalHubClient(@Value("${learninggoalhub.base-url}") String baseUrl) {
-        this.readClient = buildClient(baseUrl, READ_TIMEOUT);
-        this.generationClient = buildClient(baseUrl, GENERATION_READ_TIMEOUT);
+    public LearningGoalHubClient(@Value("${learninggoalhub.base-url}") String baseUrl,
+                                 @Value("${learninggoalhub.api-key:}") String apiKey) {
+        this.readClient = buildClient(baseUrl, apiKey, READ_TIMEOUT);
+        this.generationClient = buildClient(baseUrl, apiKey, GENERATION_READ_TIMEOUT);
     }
 
-    private static RestClient buildClient(String baseUrl, Duration readTimeout) {
+    private static RestClient buildClient(String baseUrl, String apiKey, Duration readTimeout) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
         factory.setReadTimeout((int) readTimeout.toMillis());
-        return RestClient.builder()
+        RestClient.Builder builder = RestClient.builder()
             .baseUrl(baseUrl.replaceAll("/$", ""))
-            .requestFactory(factory)
-            .build();
+            .requestFactory(factory);
+        if (apiKey != null && !apiKey.isBlank()) {
+            builder.defaultHeader("X-Api-Key", apiKey.strip());
+        }
+        return builder.build();
     }
 
     /**
