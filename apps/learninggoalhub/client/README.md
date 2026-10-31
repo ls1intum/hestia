@@ -23,27 +23,20 @@ Types are generated from the server's OpenAPI schema with
 [`openapi-typescript`](https://openapi-ts.dev) and consumed through a typed
 [`openapi-fetch`](https://openapi-ts.dev/openapi-fetch/) client (`src/api/client.ts`).
 
-`openapi/openapi.json` is a checked-in snapshot, pretty-printed with two spaces. It is not a plain
-copy of the live document: some responses in it were added by hand because the controllers do not
-declare them (for example `202` and `409` on `/extract`, and `204` where a controller returns
-`ResponseEntity.noContent()`), and the client's error handling relies on them. Overwriting the snapshot with the live output drops them,
-and `npm run typecheck` then fails in `CoursePage.tsx`, `CreateCourseDialog.tsx` and
-`RunFailure.tsx`. It also reorders the paths, which buries your change in churn.
-
-So merge your change into the snapshot instead. With the server running (see the
-[app README](../README.md#run-locally)):
+`openapi/openapi.json` is a checked-in snapshot of the server's `/v3/api-docs`, and
+`OpenApiSnapshotTest` in the server tests fails when the two differ. After a server API change,
+regenerate both files from the repository root (Docker must be running; no server or `.env` is
+needed):
 
 ```bash
-curl -s http://localhost:8080/v3/api-docs | jq . > /tmp/live-openapi.json
-jq '.components.schemas.LearningGoalResponse' /tmp/live-openapi.json   # the schema or path you changed
-# copy the changed schema or path into openapi/openapi.json by hand, then:
-npm run generate:api
-npm run typecheck
+UPDATE_OPENAPI_SNAPSHOT=1 ./gradlew :apps:learninggoalhub:server:test --tests '*OpenApiSnapshotTest' --rerun-tasks
+cd apps/learninggoalhub/client && npm run generate:api && npm run typecheck
 ```
 
-To check a schema you merged, compare it with the live one:
-`diff <(jq -S '.components.schemas.<Name>' /tmp/live-openapi.json) <(jq -S '.components.schemas.<Name>' openapi/openapi.json)`.
-Only the hand-kept parts above should differ.
+The server sorts the document's keys, so the diff shows only what changed. Responses other than
+the one springdoc infers from the return type (a `202`, a `204`, a `409` the client handles) need
+an `@ApiResponse` on the controller method, as `ExtractionController.extract` has; otherwise they
+are missing from the types.
 
 ## Scripts
 

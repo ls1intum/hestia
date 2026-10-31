@@ -3,6 +3,11 @@ server:
   # base URL in /v3/api-docs (and Swagger UI "Try it out") instead of the container's localhost.
   forward-headers-strategy: framework
 
+# Sorted keys make /v3/api-docs byte-stable, so client/openapi/openapi.json can be compared with
+# it (OpenApiSnapshotTest) and a regenerated snapshot shows only real changes.
+springdoc:
+  writer-with-order-by-keys: true
+
 spring:
   application:
     name: learninggoalhub-server

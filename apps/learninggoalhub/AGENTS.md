@@ -47,11 +47,10 @@ These are the mistakes the compilers and most tests do not catch.
    `CourseRepository.lockById` when two requests may write the same course
    ([conventions](server/README.md#conventions)).
 3. **The client's API types come from a checked-in snapshot.** After changing a request or response
-   record, merge the change into `client/openapi/openapi.json` and regenerate
-   `client/src/api/schema.d.ts` ([client/README.md](client/README.md#api-client)); commit both.
-   Do not overwrite the snapshot with the live `/v3/api-docs`: it holds hand-kept responses the
-   client relies on. Without the update, the client still compiles against the old shape. Records
-   are positional: `grep` for every `new ...(` call.
+   record or an endpoint, regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts`
+   with the command in [client/README.md](client/README.md#api-client) and commit both;
+   `OpenApiSnapshotTest` fails until you do. A status code other than the inferred one (`202`,
+   `204`, `409`) needs an `@ApiResponse`. Records are positional: `grep` for every `new ...(` call.
 4. **Other theses depend on the API.** ExamLens and Workshopper read `LearningGoalResponse`, the
    goal endpoints and the exam-task endpoint. Add fields; do not rename or remove them. Document
    additions in [docs/api.md](docs/api.md). Errors keep the `{code, message}` body from
@@ -70,8 +69,8 @@ These are the mistakes the compilers and most tests do not catch.
    only validates the schema, so an entity change without a migration fails at startup.
 10. **Legacy values stay.** `SUPPORTS`, `PREREQUISITE_OF`, `OVERLAPS_WITH`, `GAP` and the embedding
     column are kept for old data. New code does not produce them; do not delete them.
-11. **Some gaps compile.** A cell missing from `GridRow`'s `cells` map and an attribute missing
-    from `DiagramAttributes` both pass typecheck and the existing tests
+11. **The diagram layout is wired by hand.** An attribute missing from `DiagramAttributes` passes
+    typecheck and the tests; the field is just absent from the diagram
     ([EXTENDING.md](docs/EXTENDING.md#add-a-field-to-a-learning-goal), step 10).
 12. **Theme colours are CSS variables.** Use the `hestia-*` Tailwind colours from `index.css`,
     not fixed colours or `dark:` variants ([docs/CLIENT.md](docs/CLIENT.md#styling)).

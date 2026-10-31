@@ -4,24 +4,15 @@
     "title": "OpenAPI definition",
     "version": "v0"
   },
-  "servers": [
-    {
-      "url": "http://localhost:8080",
-      "description": "Generated server url"
-    }
-  ],
   "paths": {
     "/api/courses": {
       "get": {
-        "tags": [
-          "course-controller"
-        ],
         "operationId": "listCourses",
         "parameters": [
           {
-            "name": "page",
-            "in": "query",
             "description": "Zero-based page index (0..N)",
+            "in": "query",
+            "name": "page",
             "required": false,
             "schema": {
               "type": "integer",
@@ -30,9 +21,9 @@
             }
           },
           {
-            "name": "size",
-            "in": "query",
             "description": "The size of the page to be returned",
+            "in": "query",
+            "name": "size",
             "required": false,
             "schema": {
               "type": "integer",
@@ -41,9 +32,9 @@
             }
           },
           {
-            "name": "sort",
-            "in": "query",
             "description": "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+            "in": "query",
+            "name": "sort",
             "required": false,
             "schema": {
               "type": "array",
@@ -58,21 +49,21 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/PagedModelCourseSummaryResponse"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
-      },
-      "post": {
+        },
         "tags": [
           "course-controller"
-        ],
+        ]
+      },
+      "post": {
         "operationId": "create",
         "requestBody": {
           "content": {
@@ -86,160 +77,28 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/CourseResponse"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "addChild",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddChildRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
+        "tags": [
+          "course-controller"
+        ]
       }
     },
-    "/api/courses/{courseId}/learning-goals/terminal": {
+    "/api/courses/{courseId}/competency-tree": {
       "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "createTerminalSkill",
+        "operationId": "rebuildCompetencyTree",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTerminalSkillRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/terminal/generated": {
-      "post": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "createGeneratedTerminalSkill",
-        "parameters": [
-          {
             "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateGeneratedTerminalSkillRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/extract": {
-      "post": {
-        "tags": [
-          "extraction-controller"
-        ],
-        "operationId": "extract",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
             "required": true,
             "schema": {
               "type": "integer",
@@ -247,8 +106,8 @@
             }
           },
           {
-            "name": "force",
             "in": "query",
+            "name": "force",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -257,101 +116,29 @@
           }
         ],
         "responses": {
-          "202": {
-            "description": "Accepted",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExtractionStartResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict"
-          }
-        }
-      }
-    },
-    "/api/extractions/current": {
-      "get": {
-        "tags": [
-          "current-extraction-controller"
-        ],
-        "operationId": "current",
-        "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/CurrentExtractionResponse"
+                  "$ref": "#/components/schemas/CompetencyTreeResult"
                 }
               }
-            }
-          },
-          "204": {
-            "description": "No Content"
+            },
+            "description": "OK"
           }
-        }
-      }
-    },
-    "/api/courses/{courseId}/exam-tasks/learning-goals": {
-      "post": {
-        "tags": [
-          "exam-goal-controller"
-        ],
-        "summary": "Generate learning goals for exam tasks",
-        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.",
-        "operationId": "generate",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateExamGoalsRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ExamTaskGoalsResponse"
-                  }
-                }
-              }
-            }
-          }
-        }
+        "tags": [
+          "extraction-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/documents": {
       "get": {
-        "tags": [
-          "document-controller"
-        ],
         "operationId": "list",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -361,7 +148,6 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
@@ -371,19 +157,20 @@
                   }
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
-      },
-      "post": {
+        },
         "tags": [
           "document-controller"
-        ],
+        ]
+      },
+      "post": {
         "operationId": "upload",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -391,8 +178,8 @@
             }
           },
           {
-            "name": "files",
             "in": "query",
+            "name": "files",
             "required": true,
             "schema": {
               "type": "array",
@@ -403,9 +190,9 @@
             }
           },
           {
-            "name": "kind",
-            "in": "query",
             "description": "Optional kind of every file in this upload: LECTURE or EXERCISE. Omit to upload without a kind, which keeps the title-based hierarchy level.",
+            "in": "query",
+            "name": "kind",
             "required": false,
             "schema": {
               "type": "string",
@@ -418,7 +205,6 @@
         ],
         "responses": {
           "201": {
-            "description": "Created",
             "content": {
               "*/*": {
                 "schema": {
@@ -428,284 +214,22 @@
                   }
                 }
               }
-            }
+            },
+            "description": "Created"
           }
-        }
-      }
-    },
-    "/api/courses/{courseId}/competency-tree": {
-      "post": {
-        "tags": [
-          "extraction-controller"
-        ],
-        "operationId": "rebuildCompetencyTree",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "force",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CompetencyTreeResult"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{id}": {
-      "get": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "getCourse",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseSummaryResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "delete",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "update",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCourseRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/{goalId}": {
-      "delete": {
         "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "delete_1",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "update_1",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "goalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateLearningGoalRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningGoalResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
-      "patch": {
-        "tags": [
-          "hierarchy-node-controller"
-        ],
-        "operationId": "update_2",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "nodeId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateHierarchyNodeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/HierarchyNodeResponse"
-                }
-              }
-            }
-          }
-        }
+          "document-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/documents/{documentId}": {
       "patch": {
-        "tags": [
-          "document-controller"
-        ],
         "operationId": "update_3",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -713,8 +237,8 @@
             }
           },
           {
-            "name": "documentId",
             "in": "path",
+            "name": "documentId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -734,28 +258,28 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentResponse"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "document-controller"
+        ]
       }
     },
-    "/api/courses/{courseId}/learning-goals": {
+    "/api/courses/{courseId}/documents/{documentId}/content": {
       "get": {
-        "tags": [
-          "learning-goal-controller"
-        ],
-        "operationId": "list_1",
+        "operationId": "content",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -763,8 +287,222 @@
             }
           },
           {
-            "name": "status",
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "document-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/exam-tasks/learning-goals": {
+      "post": {
+        "description": "Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.",
+        "operationId": "generate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateExamGoalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExamTaskGoalsResponse"
+                  }
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Generate learning goals for exam tasks",
+        "tags": [
+          "exam-goal-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/extract": {
+      "post": {
+        "operationId": "extract",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
             "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionStartResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "extraction-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/extract/status": {
+      "get": {
+        "operationId": "extractStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "extraction-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
+      "patch": {
+        "operationId": "update_2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHierarchyNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/HierarchyNodeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "hierarchy-node-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/learning-goals": {
+      "get": {
+        "operationId": "list_1",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
             "required": false,
             "schema": {
               "type": "string",
@@ -775,9 +513,9 @@
             }
           },
           {
-            "name": "role",
-            "in": "query",
             "description": "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.",
+            "in": "query",
+            "name": "role",
             "required": false,
             "schema": {
               "type": "string",
@@ -788,9 +526,9 @@
             }
           },
           {
-            "name": "page",
-            "in": "query",
             "description": "Zero-based page index (0..N)",
+            "in": "query",
+            "name": "page",
             "required": false,
             "schema": {
               "type": "integer",
@@ -799,9 +537,9 @@
             }
           },
           {
-            "name": "size",
-            "in": "query",
             "description": "The size of the page to be returned",
+            "in": "query",
+            "name": "size",
             "required": false,
             "schema": {
               "type": "integer",
@@ -810,9 +548,9 @@
             }
           },
           {
-            "name": "sort",
-            "in": "query",
             "description": "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+            "in": "query",
+            "name": "sort",
             "required": false,
             "schema": {
               "type": "array",
@@ -827,28 +565,98 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/PagedModelLearningGoalResponse"
                 }
               }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/by-session": {
+      "get": {
+        "operationId": "listBySession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "description": "Optional review-status filter: PENDING or APPROVED. Omit for all goals.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "APPROVED"
+              ]
+            }
+          },
+          {
+            "description": "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.",
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SKILL",
+                "KNOWLEDGE"
+              ]
+            }
+          },
+          {
+            "description": "Optional id of a single hierarchy node (module/session/exercise) to return only that group. Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list.",
+            "in": "query",
+            "name": "nodeId",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
-        }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionGoalsResponse"
+                  }
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/learning-goals/export.csv": {
       "get": {
-        "tags": [
-          "learning-goal-controller"
-        ],
         "operationId": "exportCsv",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -860,164 +668,19 @@
           "200": {
             "description": "OK"
           }
-        }
-      }
-    },
-    "/api/courses/{courseId}/learning-goals/by-session": {
-      "get": {
+        },
         "tags": [
           "learning-goal-controller"
-        ],
-        "operationId": "listBySession",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "description": "Optional review-status filter: PENDING or APPROVED. Omit for all goals.",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "PENDING",
-                "APPROVED"
-              ]
-            }
-          },
-          {
-            "name": "role",
-            "in": "query",
-            "description": "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "SKILL",
-                "KNOWLEDGE"
-              ]
-            }
-          },
-          {
-            "name": "nodeId",
-            "in": "query",
-            "description": "Optional id of a single hierarchy node (module/session/exercise) to return only that group. Read the id from the 'nodeId' field of this endpoint's unfiltered response. An unknown id yields an empty list.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SessionGoalsResponse"
-                  }
-                }
-              }
-            }
-          }
-        }
+        ]
       }
     },
-    "/api/courses/{courseId}/extract/status": {
-      "get": {
-        "tags": [
-          "extraction-controller"
-        ],
-        "operationId": "extractStatus",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/Snapshot"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "No Content"
-          }
-        }
-      }
-    },
-    "/api/courses/{courseId}/documents/{documentId}/content": {
-      "get": {
-        "tags": [
-          "document-controller"
-        ],
-        "operationId": "content",
-        "parameters": [
-          {
-            "name": "courseId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "documentId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/courses/{id}/skills-reviewed": {
+    "/api/courses/{courseId}/learning-goals/terminal": {
       "post": {
-        "tags": [
-          "course-controller"
-        ],
-        "operationId": "markSkillsReviewed",
+        "operationId": "createTerminalSkill",
         "parameters": [
           {
-            "name": "id",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -1025,23 +688,81 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            },
+            "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/terminal/generated": {
+      "post": {
+        "operationId": "createGeneratedTerminalSkill",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGeneratedTerminalSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/learning-goals/topic-search": {
       "post": {
-        "tags": [
-          "topic-search-controller"
-        ],
         "operationId": "search",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -1061,28 +782,28 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/ProposalResponse"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "topic-search-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/learning-goals/topic-search/pages": {
       "post": {
-        "tags": [
-          "topic-search-controller"
-        ],
         "operationId": "pages",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -1102,28 +823,28 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/PagePlan"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "topic-search-controller"
+        ]
       }
     },
     "/api/courses/{courseId}/learning-goals/topic-search/{proposalId}": {
       "post": {
-        "tags": [
-          "topic-search-controller"
-        ],
         "operationId": "accept",
         "parameters": [
           {
-            "name": "courseId",
             "in": "path",
+            "name": "courseId",
             "required": true,
             "schema": {
               "type": "integer",
@@ -1131,8 +852,8 @@
             }
           },
           {
-            "name": "proposalId",
             "in": "path",
+            "name": "proposalId",
             "required": true,
             "schema": {
               "type": "string",
@@ -1152,24 +873,410 @@
         },
         "responses": {
           "201": {
-            "description": "Created",
             "content": {
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/LearningGoalResponse"
                 }
               }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "topic-search-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/{goalId}": {
+      "delete": {
+        "operationId": "delete_1",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "path",
+            "name": "goalId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
-        }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
+      },
+      "patch": {
+        "operationId": "update_1",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "path",
+            "name": "goalId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLearningGoalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
+      }
+    },
+    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
+      "post": {
+        "operationId": "addChild",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "path",
+            "name": "goalId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddChildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningGoalResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "learning-goal-controller"
+        ]
+      }
+    },
+    "/api/courses/{id}": {
+      "delete": {
+        "operationId": "delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "course-controller"
+        ]
+      },
+      "get": {
+        "operationId": "getCourse",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseSummaryResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "course-controller"
+        ]
+      },
+      "patch": {
+        "operationId": "update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "course-controller"
+        ]
+      }
+    },
+    "/api/courses/{id}/skills-reviewed": {
+      "post": {
+        "operationId": "markSkillsReviewed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "course-controller"
+        ]
+      }
+    },
+    "/api/extractions/current": {
+      "get": {
+        "operationId": "current",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentExtractionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "current-extraction-controller"
+        ]
       }
     }
   },
   "components": {
     "schemas": {
+      "AcceptRequest": {
+        "type": "object",
+        "properties": {
+          "subSkillKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AddChildRequest": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "SKILL",
+              "KNOWLEDGE"
+            ]
+          },
+          "shortLabel": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "CompetencyTreeResult": {
+        "type": "object",
+        "properties": {
+          "competencies": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unmatchedGoals": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "CourseResponse": {
+        "type": "object",
+        "properties": {
+          "figuresEnabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outputLanguage": {
+            "type": "string"
+          }
+        }
+      },
+      "CourseSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "documentCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "figuresEnabled": {
+            "type": "boolean"
+          },
+          "goalCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outputLanguage": {
+            "type": "string"
+          },
+          "skillCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "skillsReviewedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "topicCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "CreateCourseRequest": {
         "type": "object",
         "properties": {
+          "figuresEnabled": {
+            "type": "boolean"
+          },
           "name": {
             "type": "string",
             "maxLength": 255,
@@ -1177,297 +1284,20 @@
           },
           "outputLanguage": {
             "type": "string"
-          },
-          "figuresEnabled": {
-            "type": "boolean"
           }
         },
         "required": [
           "name"
         ]
       },
-      "CourseResponse": {
+      "CreateGeneratedTerminalSkillRequest": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "name": {
-            "type": "string"
-          },
-          "outputLanguage": {
-            "type": "string"
-          },
-          "figuresEnabled": {
-            "type": "boolean"
-          }
-        }
-      },
-      "GoalRelationshipResponse": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "CONTRIBUTES_TO",
-              "SUPPORTS",
-              "PREREQUISITE_OF",
-              "OVERLAPS_WITH"
-            ]
-          },
-          "targetGoalId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "targetText": {
-            "type": "string"
-          },
-          "confidence": {
-            "type": "number",
-            "format": "double"
-          },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "HIERARCHY",
-              "EMBEDDING",
-              "LLM"
-            ]
-          }
-        }
-      },
-      "GoalSourceResponse": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "documentKind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "LECTURE",
-              "EXERCISE"
-            ]
-          },
-          "snippet": {
-            "type": "string"
-          },
-          "page": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "contentAvailable": {
-            "type": "boolean"
-          },
-          "grounded": {
-            "type": "boolean"
-          },
-          "groundingQuality": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "EXACT_IN_SESSION",
-              "EXACT_IN_DOCUMENT",
-              "NORMALIZED",
-              "FRAGMENT",
-              "NONE"
-            ]
-          },
-          "evidenceKind": {
-            "type": "string",
-            "enum": [
-              "TEXT",
-              "FIGURE",
-              "UNSUPPORTED"
-            ]
-          },
-          "figureDescription": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "highlightRects": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/HighlightRect"
-            }
-          }
-        }
-      },
-      "HierarchyPath": {
-        "type": "object",
-        "properties": {
-          "module": {
-            "type": "string"
-          },
-          "session": {
-            "type": "string"
-          },
-          "exercise": {
-            "type": "string"
-          },
-          "sessionId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "HighlightRect": {
-        "type": "object",
-        "properties": {
-          "x": {
-            "type": "number",
-            "format": "double"
-          },
-          "y": {
-            "type": "number",
-            "format": "double"
-          },
-          "width": {
-            "type": "number",
-            "format": "double"
-          },
-          "height": {
-            "type": "number",
-            "format": "double"
-          }
-        }
-      },
-      "LearningGoalResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "text": {
-            "type": "string"
-          },
-          "originalText": {
-            "type": "string"
-          },
           "shortLabel": {
             "type": "string"
           },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "EXPLICIT",
-              "IMPLICIT"
-            ]
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "SKILL",
-              "KNOWLEDGE"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "APPROVED"
-            ]
-          },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "EXTRACTED",
-              "SYNTHESIZED",
-              "EXAM",
-              "TERMINAL",
-              "GAP"
-            ]
-          },
-          "creationProvenance": {
-            "type": "string",
-            "enum": [
-              "USER_CREATED",
-              "WIZARD_AI_SUBTREE"
-            ]
-          },
-          "hierarchy": {
-            "$ref": "#/components/schemas/HierarchyPath"
-          },
-          "bloomLevel": {
-            "type": "string",
-            "enum": [
-              "REMEMBER",
-              "UNDERSTAND",
-              "APPLY",
-              "ANALYZE",
-              "EVALUATE",
-              "CREATE"
-            ]
-          },
-          "soloLevel": {
-            "type": "string",
-            "enum": [
-              "PRESTRUCTURAL",
-              "UNISTRUCTURAL",
-              "MULTISTRUCTURAL",
-              "RELATIONAL",
-              "EXTENDED_ABSTRACT"
-            ]
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "sources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GoalSourceResponse"
-            }
-          },
-          "relationships": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GoalRelationshipResponse"
-            }
-          },
-          "lectureOrder": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "examTask": {
-            "$ref": "#/components/schemas/ExamTaskResponse"
-          }
-        }
-      },
-      "AddChildRequest": {
-        "type": "object",
-        "properties": {
           "text": {
             "type": "string"
-          },
-          "shortLabel": {
-            "type": "string"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "SKILL",
-              "KNOWLEDGE"
-            ]
           }
         }
       },
@@ -1479,43 +1309,154 @@
           }
         }
       },
-      "CreateGeneratedTerminalSkillRequest": {
+      "CurrentExtractionResponse": {
         "type": "object",
         "properties": {
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "courseName": {
+            "type": "string"
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "DESCRIBING_FIGURES",
+              "EXTRACTING",
+              "PERSISTING",
+              "SYNTHESIZING"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          }
+        }
+      },
+      "DocumentResponse": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "LECTURE",
+              "EXERCISE"
+            ]
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DuplicateOf": {
+        "type": "object",
+        "properties": {
+          "goalId": {
+            "type": "integer",
+            "format": "int64"
+          },
           "text": {
             "type": "string"
           },
-          "shortLabel": {
+          "topicText": {
             "type": "string"
           }
         }
       },
-      "ExtractionSummary": {
+      "ExamBlock": {
         "type": "object",
         "properties": {
-          "documentsProcessed": {
+          "blockId": {
+            "type": "string"
+          },
+          "blockType": {
+            "type": "string",
+            "enum": [
+              "CONTEXT",
+              "TASK"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "taskType": {
+            "type": "string"
+          }
+        }
+      },
+      "ExamTaskGoalsResponse": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningGoalResponse"
+            }
+          }
+        }
+      },
+      "ExamTaskResponse": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "submissionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "taskNumber": {
             "type": "integer",
             "format": "int32"
           },
-          "goalsCreated": {
-            "type": "integer",
-            "format": "int32"
+          "taskType": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "terminalCompetencies": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "textSources": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "figureSources": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "unsupportedSources": {
-            "type": "integer",
-            "format": "int32"
+          "text": {
+            "type": "string"
           }
         }
       },
@@ -1536,57 +1477,32 @@
           }
         }
       },
-      "CurrentExtractionResponse": {
+      "ExtractionSummary": {
         "type": "object",
         "properties": {
-          "courseId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "courseName": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string",
-            "enum": [
-              "DESCRIBING_FIGURES",
-              "EXTRACTING",
-              "PERSISTING",
-              "SYNTHESIZING"
-            ]
-          },
-          "percent": {
+          "documentsProcessed": {
             "type": "integer",
             "format": "int32"
           },
-          "status": {
-            "type": "string",
-            "enum": [
-              "RUNNING",
-              "SUCCEEDED",
-              "FAILED"
-            ]
-          }
-        }
-      },
-      "ExamBlock": {
-        "type": "object",
-        "properties": {
-          "blockId": {
-            "type": "string"
+          "figureSources": {
+            "type": "integer",
+            "format": "int32"
           },
-          "blockType": {
-            "type": "string",
-            "enum": [
-              "CONTEXT",
-              "TASK"
-            ]
+          "goalsCreated": {
+            "type": "integer",
+            "format": "int32"
           },
-          "taskType": {
-            "type": "string"
+          "terminalCompetencies": {
+            "type": "integer",
+            "format": "int32"
           },
-          "description": {
-            "type": "string"
+          "textSources": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unsupportedSources": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1601,41 +1517,54 @@
           }
         }
       },
-      "ExamTaskGoalsResponse": {
+      "GoalRelationshipResponse": {
         "type": "object",
         "properties": {
-          "blockId": {
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "HIERARCHY",
+              "EMBEDDING",
+              "LLM",
+              "SYNTHESIS"
+            ]
+          },
+          "targetGoalId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "targetText": {
             "type": "string"
           },
-          "goals": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LearningGoalResponse"
-            }
+          "type": {
+            "type": "string",
+            "enum": [
+              "CONTRIBUTES_TO",
+              "SUPPORTS",
+              "PREREQUISITE_OF",
+              "OVERLAPS_WITH"
+            ]
           }
         }
       },
-      "DocumentResponse": {
+      "GoalSourceResponse": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "courseId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "filename": {
-            "type": "string"
+          "contentAvailable": {
+            "type": "boolean"
           },
           "displayName": {
             "type": "string"
           },
-          "contentType": {
-            "type": "string"
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
           },
-          "kind": {
+          "documentKind": {
             "type": [
               "string",
               "null"
@@ -1645,55 +1574,125 @@
               "EXERCISE"
             ]
           },
-          "uploadedAt": {
+          "evidenceKind": {
             "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "CompetencyTreeResult": {
-        "type": "object",
-        "properties": {
-          "competencies": {
-            "type": "integer",
-            "format": "int32"
+            "enum": [
+              "TEXT",
+              "FIGURE",
+              "UNSUPPORTED"
+            ]
           },
-          "unmatchedGoals": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "UpdateCourseRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "outputLanguage": {
+          "figureDescription": {
             "type": [
               "string",
               "null"
             ]
           },
-          "figuresEnabled": {
+          "filename": {
+            "type": "string"
+          },
+          "grounded": {
             "type": "boolean"
+          },
+          "groundingQuality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "EXACT_IN_SESSION",
+              "EXACT_IN_DOCUMENT",
+              "NORMALIZED",
+              "FRAGMENT",
+              "NONE"
+            ]
+          },
+          "highlightRects": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/HighlightRect"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "snippet": {
+            "type": "string"
           }
         }
       },
-      "UpdateLearningGoalRequest": {
+      "HierarchyNodeResponse": {
         "type": "object",
         "properties": {
-          "text": {
+          "courseId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "label": {
             "type": "string"
           },
-          "status": {
+          "level": {
             "type": "string",
             "enum": [
-              "PENDING",
-              "APPROVED"
+              "MODULE",
+              "SESSION",
+              "EXERCISE",
+              "EXAM",
+              "COMPETENCY"
             ]
+          }
+        }
+      },
+      "HierarchyPath": {
+        "type": "object",
+        "properties": {
+          "exercise": {
+            "type": "string"
           },
+          "module": {
+            "type": "string"
+          },
+          "session": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "HighlightRect": {
+        "type": "object",
+        "properties": {
+          "height": {
+            "type": "number",
+            "format": "double"
+          },
+          "width": {
+            "type": "number",
+            "format": "double"
+          },
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "LearningGoalResponse": {
+        "type": "object",
+        "properties": {
           "bloomLevel": {
             "type": "string",
             "enum": [
@@ -1705,6 +1704,68 @@
               "CREATE"
             ]
           },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creationProvenance": {
+            "type": "string",
+            "enum": [
+              "USER_CREATED",
+              "WIZARD_AI_SUBTREE"
+            ]
+          },
+          "examTask": {
+            "type": "null",
+            "$ref": "#/components/schemas/ExamTaskResponse"
+          },
+          "hierarchy": {
+            "$ref": "#/components/schemas/HierarchyPath"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "EXPLICIT",
+              "IMPLICIT"
+            ]
+          },
+          "lectureOrder": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "EXTRACTED",
+              "SYNTHESIZED",
+              "EXAM",
+              "TERMINAL",
+              "GAP"
+            ]
+          },
+          "originalText": {
+            "type": "string"
+          },
+          "relationships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoalRelationshipResponse"
+            }
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "SKILL",
+              "KNOWLEDGE"
+            ]
+          },
+          "shortLabel": {
+            "type": "string"
+          },
           "soloLevel": {
             "type": "string",
             "enum": [
@@ -1714,122 +1775,33 @@
               "RELATIONAL",
               "EXTENDED_ABSTRACT"
             ]
-          }
-        }
-      },
-      "UpdateHierarchyNodeRequest": {
-        "type": "object",
-        "properties": {
-          "label": {
-            "type": "string"
-          }
-        }
-      },
-      "HierarchyNodeResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
           },
-          "courseId": {
-            "type": "integer",
-            "format": "int64"
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoalSourceResponse"
+            }
           },
-          "level": {
+          "status": {
             "type": "string",
             "enum": [
-              "MODULE",
-              "SESSION",
-              "EXERCISE",
-              "EXAM",
-              "COMPETENCY"
+              "PENDING",
+              "APPROVED"
             ]
           },
-          "label": {
+          "text": {
             "type": "string"
-          }
-        }
-      },
-      "UpdateDocumentRequest": {
-        "type": "object",
-        "properties": {
-          "displayName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "LECTURE",
-              "EXERCISE"
-            ]
-          }
-        }
-      },
-      "CourseSummaryResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "name": {
-            "type": "string"
-          },
-          "outputLanguage": {
-            "type": "string"
-          },
-          "figuresEnabled": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "documentCount": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "goalCount": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "topicCount": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "skillCount": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "skillsReviewedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "extractionStatus": {
-            "type": "string",
-            "enum": [
-              "RUNNING",
-              "SUCCEEDED",
-              "FAILED"
-            ]
           }
         }
       },
       "PageMetadata": {
         "type": "object",
         "properties": {
-          "size": {
+          "number": {
             "type": "integer",
             "format": "int64"
           },
-          "number": {
+          "size": {
             "type": "integer",
             "format": "int64"
           },
@@ -1840,6 +1812,68 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PagePlan": {
+        "type": "object",
+        "properties": {
+          "maxPages": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageRun"
+            }
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PageRange": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "endPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startPage": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PageRun": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "endPage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "label": {
+            "type": "string"
+          },
+          "startPage": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1871,200 +1905,9 @@
           }
         }
       },
-      "SessionGoalsResponse": {
-        "type": "object",
-        "properties": {
-          "nodeId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "level": {
-            "type": "string",
-            "enum": [
-              "MODULE",
-              "SESSION",
-              "EXERCISE",
-              "EXAM",
-              "COMPETENCY"
-            ]
-          },
-          "label": {
-            "type": "string"
-          },
-          "goals": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LearningGoalResponse"
-            }
-          }
-        }
-      },
-      "Snapshot": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "RUNNING",
-              "SUCCEEDED",
-              "FAILED"
-            ]
-          },
-          "phase": {
-            "type": "string",
-            "enum": [
-              "DESCRIBING_FIGURES",
-              "EXTRACTING",
-              "PERSISTING",
-              "SYNTHESIZING"
-            ]
-          },
-          "completed": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "total": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "percent": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "model": {
-            "type": "string"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/ExtractionSummary"
-          },
-          "error": {
-            "type": "string"
-          },
-          "failedSessions": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "failedSessionNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "droppedOutcomes": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "AcceptRequest": {
-        "type": "object",
-        "properties": {
-          "subSkillKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "DuplicateOf": {
-        "type": "object",
-        "properties": {
-          "goalId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "text": {
-            "type": "string"
-          },
-          "topicText": {
-            "type": "string"
-          }
-        }
-      },
-      "PagePlan": {
-        "type": "object",
-        "properties": {
-          "terms": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "runs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PageRun"
-            }
-          },
-          "totalPages": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "maxPages": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "PageRange": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "startPage": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "endPage": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "PageRun": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "label": {
-            "type": "string"
-          },
-          "startPage": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "endPage": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
       "ProposalResponse": {
         "type": "object",
         "properties": {
-          "proposalId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "pagesRead": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "skills": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProposedSkill"
-            }
-          },
           "direct": {
             "type": "array",
             "items": {
@@ -2076,16 +1919,34 @@
             "items": {
               "$ref": "#/components/schemas/ProposedSubSkill"
             }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pagesRead": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedSkill"
+            }
           }
         }
       },
       "ProposedKnowledge": {
         "type": "object",
         "properties": {
-          "text": {
+          "shortLabel": {
             "type": "string"
           },
-          "shortLabel": {
+          "text": {
             "type": "string"
           }
         }
@@ -2093,15 +1954,6 @@
       "ProposedSkill": {
         "type": "object",
         "properties": {
-          "key": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
-            "type": "string"
-          },
           "bloom": {
             "type": "string",
             "enum": [
@@ -2112,6 +1964,12 @@
               "EVALUATE",
               "CREATE"
             ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "shortLabel": {
+            "type": "string"
           },
           "solo": {
             "type": "string",
@@ -2128,25 +1986,21 @@
             "items": {
               "$ref": "#/components/schemas/ProposedSubSkill"
             }
+          },
+          "text": {
+            "type": "string"
           }
         }
       },
       "ProposedSource": {
         "type": "object",
         "properties": {
-          "documentId": {
-            "type": "integer",
-            "format": "int64"
-          },
           "displayName": {
             "type": "string"
           },
-          "page": {
+          "documentId": {
             "type": "integer",
-            "format": "int32"
-          },
-          "snippet": {
-            "type": "string"
+            "format": "int64"
           },
           "evidenceKind": {
             "type": "string",
@@ -2155,21 +2009,19 @@
               "FIGURE",
               "UNSUPPORTED"
             ]
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "snippet": {
+            "type": "string"
           }
         }
       },
       "ProposedSubSkill": {
         "type": "object",
         "properties": {
-          "key": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "shortLabel": {
-            "type": "string"
-          },
           "bloom": {
             "type": "string",
             "enum": [
@@ -2180,6 +2032,21 @@
               "EVALUATE",
               "CREATE"
             ]
+          },
+          "duplicateOf": {
+            "$ref": "#/components/schemas/DuplicateOf"
+          },
+          "key": {
+            "type": "string"
+          },
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedKnowledge"
+            }
+          },
+          "shortLabel": {
+            "type": "string"
           },
           "solo": {
             "type": "string",
@@ -2194,28 +2061,107 @@
           "source": {
             "$ref": "#/components/schemas/ProposedSource"
           },
-          "knowledge": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProposedKnowledge"
-            }
-          },
-          "duplicateOf": {
-            "$ref": "#/components/schemas/DuplicateOf"
+          "text": {
+            "type": "string"
           }
         }
       },
       "SearchRequest": {
         "type": "object",
         "properties": {
-          "text": {
-            "type": "string"
-          },
           "ranges": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PageRange"
             }
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "SessionGoalsResponse": {
+        "type": "object",
+        "properties": {
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LearningGoalResponse"
+            }
+          },
+          "label": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "MODULE",
+              "SESSION",
+              "EXERCISE",
+              "EXAM",
+              "COMPETENCY"
+            ]
+          },
+          "nodeId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "droppedOutcomes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error": {
+            "type": "string"
+          },
+          "failedSessionNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failedSessions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "model": {
+            "type": "string"
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "DESCRIBING_FIGURES",
+              "EXTRACTING",
+              "PERSISTING",
+              "SYNTHESIZING"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ExtractionSummary"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -2227,35 +2173,85 @@
           }
         }
       },
-      "ExamTaskResponse": {
+      "UpdateCourseRequest": {
         "type": "object",
         "properties": {
-          "submissionId": {
-            "type": "integer",
-            "format": "int64"
+          "figuresEnabled": {
+            "type": "boolean"
           },
-          "submittedAt": {
-            "type": "string",
-            "format": "date-time"
+          "name": {
+            "type": "string"
           },
-          "taskNumber": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "taskType": {
+          "outputLanguage": {
             "type": [
               "string",
               "null"
+            ]
+          }
+        }
+      },
+      "UpdateDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "LECTURE",
+              "EXERCISE"
+            ]
+          }
+        }
+      },
+      "UpdateHierarchyNodeRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateLearningGoalRequest": {
+        "type": "object",
+        "properties": {
+          "bloomLevel": {
+            "type": "string",
+            "enum": [
+              "REMEMBER",
+              "UNDERSTAND",
+              "APPLY",
+              "ANALYZE",
+              "EVALUATE",
+              "CREATE"
+            ]
+          },
+          "soloLevel": {
+            "type": "string",
+            "enum": [
+              "PRESTRUCTURAL",
+              "UNISTRUCTURAL",
+              "MULTISTRUCTURAL",
+              "RELATIONAL",
+              "EXTENDED_ABSTRACT"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED"
             ]
           },
           "text": {
             "type": "string"
-          },
-          "context": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       }

@@ -38,10 +38,9 @@ Example: a new attribute that is stored, shown in the Topic tree and editable, l
 
 **Contract**
 
-7. Update `client/openapi/openapi.json` and regenerate `client/src/api/schema.d.ts`
-   ([client/README.md](../client/README.md#api-client), which explains why the snapshot is merged,
-   not overwritten). `LearningGoal` in `api/client.ts` is derived from the schema and picks the
-   field up.
+7. Regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts`
+   ([client/README.md](../client/README.md#api-client)); `OpenApiSnapshotTest` fails until you do.
+   `LearningGoal` in `api/client.ts` is derived from the schema and picks the field up.
 8. ExamLens and Workshopper read `LearningGoalResponse`. A new field is additive and safe; document
    it under `LearningGoalResponse` in [api.md](api.md). Renaming or removing one breaks them.
 
@@ -57,10 +56,8 @@ Example: a new attribute that is stored, shown in the Topic tree and editable, l
       in `valuesOf` and, for readable values, `displayValue` if the column filters).
     - `components/topicTree/columns.ts`: an entry in `COLUMNS`. Saved column layouts pick a new key
       up on their own.
-    - `components/topicTree/GridRow.tsx`: the cell in the `cells` map. The map is cast
-      (`as Record<AttributeKey, ReactElement>`), so a missing cell compiles: the header gets the
-      column, and every row is one cell short, which shifts the cells after it into the wrong
-      columns. A component test that compares each row's cell count with the headers catches it.
+    - `components/topicTree/GridRow.tsx`: the cell in the `cells` map. TypeScript fails until it
+      is there (`satisfies Record<AttributeKey, ReactElement>`).
     - `components/topicTree/DiagramRows.tsx`: the diagram layout shows a box's attributes in
       `DiagramAttributes`, which picks them by hand (`columns.includes(...)`). Nothing fails if you
       skip it; the field is then missing from the diagram.

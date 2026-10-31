@@ -20,7 +20,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
+    "/api/courses/{courseId}/competency-tree": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,7 +29,171 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["addChild"];
+        post: operations["rebuildCompetencyTree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        post: operations["upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_3"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/documents/{documentId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/exam-tasks/learning-goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate learning goals for exam tasks
+         * @description Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.
+         */
+        post: operations["generate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["extract"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/extract/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["extractStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_2"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/by-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBySession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportCsv"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -62,250 +226,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["createGeneratedTerminalSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/extract": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["extract"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/extractions/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["current"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/exam-tasks/learning-goals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate learning goals for exam tasks
-         * @description Takes an exam as an ordered list of context/task blocks, derives the learning goals each task assesses (one LLM call per task, with all preceding context blocks attached), persists them under the course's EXAM hierarchy root and returns them per task block. Synchronous — expect a few seconds per task block.
-         */
-        post: operations["generate"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/documents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list"];
-        put?: never;
-        post: operations["upload"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/competency-tree": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["rebuildCompetencyTree"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getCourse"];
-        put?: never;
-        post?: never;
-        delete: operations["delete"];
-        options?: never;
-        head?: never;
-        patch: operations["update"];
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/{goalId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["delete_1"];
-        options?: never;
-        head?: never;
-        patch: operations["update_1"];
-        trace?: never;
-    };
-    "/api/courses/{courseId}/hierarchy-nodes/{nodeId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["update_2"];
-        trace?: never;
-    };
-    "/api/courses/{courseId}/documents/{documentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["update_3"];
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/export.csv": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["exportCsv"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/learning-goals/by-session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listBySession"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/extract/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["extractStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{courseId}/documents/{documentId}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["content"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/courses/{id}/skills-reviewed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["markSkillsReviewed"];
         delete?: never;
         options?: never;
         head?: never;
@@ -360,168 +280,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{courseId}/learning-goals/{goalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_1"];
+        options?: never;
+        head?: never;
+        patch: operations["update_1"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/learning-goals/{goalId}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addChild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCourse"];
+        put?: never;
+        post?: never;
+        delete: operations["delete"];
+        options?: never;
+        head?: never;
+        patch: operations["update"];
+        trace?: never;
+    };
+    "/api/courses/{id}/skills-reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["markSkillsReviewed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extractions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["current"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        CreateCourseRequest: {
-            name: string;
-            outputLanguage?: string;
-            figuresEnabled?: boolean;
-        };
-        CourseResponse: {
-            /** Format: int64 */
-            id?: number;
-            name?: string;
-            outputLanguage?: string;
-            figuresEnabled?: boolean;
-        };
-        GoalRelationshipResponse: {
-            /** @enum {string} */
-            type?: "CONTRIBUTES_TO" | "SUPPORTS" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
-            /** Format: int64 */
-            targetGoalId?: number;
-            targetText?: string;
-            /** Format: double */
-            confidence?: number;
-            /** @enum {string} */
-            origin?: "HIERARCHY" | "EMBEDDING" | "LLM";
-        };
-        GoalSourceResponse: {
-            /** Format: int64 */
-            documentId?: number;
-            filename?: string;
-            displayName?: string;
-            /** @enum {string|null} */
-            documentKind?: "LECTURE" | "EXERCISE" | null;
-            snippet?: string;
-            /** Format: int32 */
-            page?: number;
-            contentAvailable?: boolean;
-            grounded?: boolean;
-            /** @enum {string|null} */
-            groundingQuality?: "EXACT_IN_SESSION" | "EXACT_IN_DOCUMENT" | "NORMALIZED" | "FRAGMENT" | "NONE" | null;
-            /** @enum {string} */
-            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
-            figureDescription?: string | null;
-            highlightRects?: components["schemas"]["HighlightRect"][] | null;
-        };
-        HierarchyPath: {
-            module?: string;
-            session?: string;
-            exercise?: string;
-            /** Format: int64 */
-            sessionId?: number;
-        };
-        HighlightRect: {
-            /** Format: double */
-            x?: number;
-            /** Format: double */
-            y?: number;
-            /** Format: double */
-            width?: number;
-            /** Format: double */
-            height?: number;
-        };
-        LearningGoalResponse: {
-            /** Format: int64 */
-            id?: number;
-            text?: string;
-            originalText?: string;
-            shortLabel?: string;
-            /** @enum {string} */
-            kind?: "EXPLICIT" | "IMPLICIT";
-            /** @enum {string} */
-            role?: "SKILL" | "KNOWLEDGE";
-            /** @enum {string} */
-            status?: "PENDING" | "APPROVED";
-            /** @enum {string} */
-            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
-            /** @enum {string} */
-            creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
-            hierarchy?: components["schemas"]["HierarchyPath"];
-            /** @enum {string} */
-            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
-            /** @enum {string} */
-            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
-            /** Format: date-time */
-            createdAt?: string;
-            sources?: components["schemas"]["GoalSourceResponse"][];
-            relationships?: components["schemas"]["GoalRelationshipResponse"][];
-            /** Format: int32 */
-            lectureOrder?: number;
-            examTask?: components["schemas"]["ExamTaskResponse"];
+        AcceptRequest: {
+            subSkillKeys?: string[];
         };
         AddChildRequest: {
-            text?: string;
-            shortLabel?: string;
             /** @enum {string} */
             role?: "SKILL" | "KNOWLEDGE";
-        };
-        CreateTerminalSkillRequest: {
-            text?: string;
-        };
-        CreateGeneratedTerminalSkillRequest: {
-            text?: string;
             shortLabel?: string;
-        };
-        ExtractionSummary: {
-            /** Format: int32 */
-            documentsProcessed?: number;
-            /** Format: int32 */
-            goalsCreated?: number;
-            /** Format: int32 */
-            terminalCompetencies?: number;
-            /** Format: int32 */
-            textSources?: number;
-            /** Format: int32 */
-            figureSources?: number;
-            /** Format: int32 */
-            unsupportedSources?: number;
-        };
-        ExtractionStartResponse: {
-            /** Format: int64 */
-            courseId?: number;
-            /** @enum {string} */
-            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
-        };
-        CurrentExtractionResponse: {
-            /** Format: int64 */
-            courseId?: number;
-            courseName?: string;
-            /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
-            /** Format: int32 */
-            percent?: number;
-            /** @enum {string} */
-            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
-        };
-        ExamBlock: {
-            blockId?: string;
-            /** @enum {string} */
-            blockType?: "CONTEXT" | "TASK";
-            taskType?: string;
-            description?: string;
-        };
-        GenerateExamGoalsRequest: {
-            blocks?: components["schemas"]["ExamBlock"][];
-        };
-        ExamTaskGoalsResponse: {
-            blockId?: string;
-            goals?: components["schemas"]["LearningGoalResponse"][];
-        };
-        DocumentResponse: {
-            /** Format: int64 */
-            id?: number;
-            /** Format: int64 */
-            courseId?: number;
-            filename?: string;
-            displayName?: string;
-            contentType?: string;
-            /** @enum {string|null} */
-            kind?: "LECTURE" | "EXERCISE" | null;
-            /** Format: date-time */
-            uploadedAt?: string;
+            text?: string;
         };
         CompetencyTreeResult: {
             /** Format: int32 */
@@ -529,67 +379,240 @@ export interface components {
             /** Format: int32 */
             unmatchedGoals?: number;
         };
-        UpdateCourseRequest: {
-            name?: string;
-            outputLanguage?: string | null;
+        CourseResponse: {
             figuresEnabled?: boolean;
-        };
-        UpdateLearningGoalRequest: {
-            text?: string;
-            /** @enum {string} */
-            status?: "PENDING" | "APPROVED";
-            /** @enum {string} */
-            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
-            /** @enum {string} */
-            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
-        };
-        UpdateHierarchyNodeRequest: {
-            label?: string;
-        };
-        HierarchyNodeResponse: {
-            /** Format: int64 */
-            id?: number;
-            /** Format: int64 */
-            courseId?: number;
-            /** @enum {string} */
-            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
-            label?: string;
-        };
-        UpdateDocumentRequest: {
-            displayName?: string | null;
-            /** @enum {string|null} */
-            kind?: "LECTURE" | "EXERCISE" | null;
-        };
-        CourseSummaryResponse: {
             /** Format: int64 */
             id?: number;
             name?: string;
             outputLanguage?: string;
-            figuresEnabled?: boolean;
+        };
+        CourseSummaryResponse: {
             /** Format: date-time */
             createdAt?: string;
             /** Format: int64 */
             documentCount?: number;
+            /** @enum {string} */
+            extractionStatus?: "RUNNING" | "SUCCEEDED" | "FAILED";
+            figuresEnabled?: boolean;
             /** Format: int64 */
             goalCount?: number;
             /** Format: int64 */
-            topicCount?: number;
+            id?: number;
+            name?: string;
+            outputLanguage?: string;
             /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
             skillsReviewedAt?: string;
+            /** Format: int64 */
+            topicCount?: number;
+        };
+        CreateCourseRequest: {
+            figuresEnabled?: boolean;
+            name: string;
+            outputLanguage?: string;
+        };
+        CreateGeneratedTerminalSkillRequest: {
+            shortLabel?: string;
+            text?: string;
+        };
+        CreateTerminalSkillRequest: {
+            text?: string;
+        };
+        CurrentExtractionResponse: {
+            /** Format: int64 */
+            courseId?: number;
+            courseName?: string;
+            /** Format: int32 */
+            percent?: number;
             /** @enum {string} */
-            extractionStatus?: "RUNNING" | "SUCCEEDED" | "FAILED";
+            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
+            /** @enum {string} */
+            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
+        };
+        DocumentResponse: {
+            contentType?: string;
+            /** Format: int64 */
+            courseId?: number;
+            displayName?: string;
+            filename?: string;
+            /** Format: int64 */
+            id?: number;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
+            /** Format: date-time */
+            uploadedAt?: string;
+        };
+        DuplicateOf: {
+            /** Format: int64 */
+            goalId?: number;
+            text?: string;
+            topicText?: string;
+        };
+        ExamBlock: {
+            blockId?: string;
+            /** @enum {string} */
+            blockType?: "CONTEXT" | "TASK";
+            description?: string;
+            taskType?: string;
+        };
+        ExamTaskGoalsResponse: {
+            blockId?: string;
+            goals?: components["schemas"]["LearningGoalResponse"][];
+        };
+        ExamTaskResponse: {
+            context?: string | null;
+            /** Format: int64 */
+            submissionId?: number;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: int32 */
+            taskNumber?: number;
+            taskType?: string | null;
+            text?: string;
+        };
+        ExtractionStartResponse: {
+            /** Format: int64 */
+            courseId?: number;
+            /** @enum {string} */
+            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
+        };
+        ExtractionSummary: {
+            /** Format: int32 */
+            documentsProcessed?: number;
+            /** Format: int32 */
+            figureSources?: number;
+            /** Format: int32 */
+            goalsCreated?: number;
+            /** Format: int32 */
+            terminalCompetencies?: number;
+            /** Format: int32 */
+            textSources?: number;
+            /** Format: int32 */
+            unsupportedSources?: number;
+        };
+        GenerateExamGoalsRequest: {
+            blocks?: components["schemas"]["ExamBlock"][];
+        };
+        GoalRelationshipResponse: {
+            /** Format: double */
+            confidence?: number;
+            /** @enum {string} */
+            origin?: "HIERARCHY" | "EMBEDDING" | "LLM" | "SYNTHESIS";
+            /** Format: int64 */
+            targetGoalId?: number;
+            targetText?: string;
+            /** @enum {string} */
+            type?: "CONTRIBUTES_TO" | "SUPPORTS" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
+        };
+        GoalSourceResponse: {
+            contentAvailable?: boolean;
+            displayName?: string;
+            /** Format: int64 */
+            documentId?: number;
+            /** @enum {string|null} */
+            documentKind?: "LECTURE" | "EXERCISE" | null;
+            /** @enum {string} */
+            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
+            figureDescription?: string | null;
+            filename?: string;
+            grounded?: boolean;
+            /** @enum {string|null} */
+            groundingQuality?: "EXACT_IN_SESSION" | "EXACT_IN_DOCUMENT" | "NORMALIZED" | "FRAGMENT" | "NONE" | null;
+            highlightRects?: components["schemas"]["HighlightRect"][] | null;
+            /** Format: int32 */
+            page?: number;
+            snippet?: string;
+        };
+        HierarchyNodeResponse: {
+            /** Format: int64 */
+            courseId?: number;
+            /** Format: int64 */
+            id?: number;
+            label?: string;
+            /** @enum {string} */
+            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
+        };
+        HierarchyPath: {
+            exercise?: string;
+            module?: string;
+            session?: string;
+            /** Format: int64 */
+            sessionId?: number;
+        };
+        HighlightRect: {
+            /** Format: double */
+            height?: number;
+            /** Format: double */
+            width?: number;
+            /** Format: double */
+            x?: number;
+            /** Format: double */
+            y?: number;
+        };
+        LearningGoalResponse: {
+            /** @enum {string} */
+            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            /** Format: date-time */
+            createdAt?: string;
+            /** @enum {string} */
+            creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
+            examTask?: components["schemas"]["ExamTaskResponse"];
+            hierarchy?: components["schemas"]["HierarchyPath"];
+            /** Format: int64 */
+            id?: number;
+            /** @enum {string} */
+            kind?: "EXPLICIT" | "IMPLICIT";
+            /** Format: int32 */
+            lectureOrder?: number;
+            /** @enum {string} */
+            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
+            originalText?: string;
+            relationships?: components["schemas"]["GoalRelationshipResponse"][];
+            /** @enum {string} */
+            role?: "SKILL" | "KNOWLEDGE";
+            shortLabel?: string;
+            /** @enum {string} */
+            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+            sources?: components["schemas"]["GoalSourceResponse"][];
+            /** @enum {string} */
+            status?: "PENDING" | "APPROVED";
+            text?: string;
         };
         PageMetadata: {
             /** Format: int64 */
-            size?: number;
-            /** Format: int64 */
             number?: number;
+            /** Format: int64 */
+            size?: number;
             /** Format: int64 */
             totalElements?: number;
             /** Format: int64 */
             totalPages?: number;
+        };
+        PagePlan: {
+            /** Format: int32 */
+            maxPages?: number;
+            runs?: components["schemas"]["PageRun"][];
+            terms?: string[];
+            /** Format: int32 */
+            totalPages?: number;
+        };
+        PageRange: {
+            /** Format: int64 */
+            documentId?: number;
+            /** Format: int32 */
+            endPage?: number;
+            /** Format: int32 */
+            startPage?: number;
+        };
+        PageRun: {
+            /** Format: int64 */
+            documentId?: number;
+            /** Format: int32 */
+            endPage?: number;
+            label?: string;
+            /** Format: int32 */
+            startPage?: number;
         };
         PagedModelCourseSummaryResponse: {
             content?: components["schemas"]["CourseSummaryResponse"][];
@@ -599,132 +622,109 @@ export interface components {
             content?: components["schemas"]["LearningGoalResponse"][];
             page?: components["schemas"]["PageMetadata"];
         };
-        SessionGoalsResponse: {
-            /** Format: int64 */
-            nodeId?: number;
-            /** @enum {string} */
-            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
-            label?: string;
-            goals?: components["schemas"]["LearningGoalResponse"][];
-        };
-        Snapshot: {
-            /** @enum {string} */
-            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
-            /** @enum {string} */
-            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
-            /** Format: int32 */
-            completed?: number;
-            /** Format: int32 */
-            total?: number;
-            /** Format: int32 */
-            percent?: number;
-            model?: string;
-            summary?: components["schemas"]["ExtractionSummary"];
-            error?: string;
-            /** Format: int32 */
-            failedSessions?: number;
-            failedSessionNames?: string[];
-            /** Format: int32 */
-            droppedOutcomes?: number;
-        };
-        AcceptRequest: {
-            subSkillKeys?: string[];
-        };
-        DuplicateOf: {
-            /** Format: int64 */
-            goalId?: number;
-            text?: string;
-            topicText?: string;
-        };
-        PagePlan: {
-            terms?: string[];
-            runs?: components["schemas"]["PageRun"][];
-            /** Format: int32 */
-            totalPages?: number;
-            /** Format: int32 */
-            maxPages?: number;
-        };
-        PageRange: {
-            /** Format: int64 */
-            documentId?: number;
-            /** Format: int32 */
-            startPage?: number;
-            /** Format: int32 */
-            endPage?: number;
-        };
-        PageRun: {
-            /** Format: int64 */
-            documentId?: number;
-            label?: string;
-            /** Format: int32 */
-            startPage?: number;
-            /** Format: int32 */
-            endPage?: number;
-        };
         ProposalResponse: {
-            /** Format: uuid */
-            proposalId?: string;
+            direct?: components["schemas"]["ProposedSubSkill"][];
+            duplicates?: components["schemas"]["ProposedSubSkill"][];
             /** Format: date-time */
             expiresAt?: string;
             /** Format: int32 */
             pagesRead?: number;
+            /** Format: uuid */
+            proposalId?: string;
             skills?: components["schemas"]["ProposedSkill"][];
-            direct?: components["schemas"]["ProposedSubSkill"][];
-            duplicates?: components["schemas"]["ProposedSubSkill"][];
         };
         ProposedKnowledge: {
-            text?: string;
             shortLabel?: string;
+            text?: string;
         };
         ProposedSkill: {
-            key?: string;
-            text?: string;
-            shortLabel?: string;
             /** @enum {string} */
             bloom?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            key?: string;
+            shortLabel?: string;
             /** @enum {string} */
             solo?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
             subSkills?: components["schemas"]["ProposedSubSkill"][];
+            text?: string;
         };
         ProposedSource: {
+            displayName?: string;
             /** Format: int64 */
             documentId?: number;
-            displayName?: string;
+            /** @enum {string} */
+            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
             /** Format: int32 */
             page?: number;
             snippet?: string;
-            /** @enum {string} */
-            evidenceKind?: "TEXT" | "FIGURE" | "UNSUPPORTED";
         };
         ProposedSubSkill: {
-            key?: string;
-            text?: string;
-            shortLabel?: string;
             /** @enum {string} */
             bloom?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            duplicateOf?: components["schemas"]["DuplicateOf"];
+            key?: string;
+            knowledge?: components["schemas"]["ProposedKnowledge"][];
+            shortLabel?: string;
             /** @enum {string} */
             solo?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
             source?: components["schemas"]["ProposedSource"];
-            knowledge?: components["schemas"]["ProposedKnowledge"][];
-            duplicateOf?: components["schemas"]["DuplicateOf"];
+            text?: string;
         };
         SearchRequest: {
-            text?: string;
             ranges?: components["schemas"]["PageRange"][];
+            text?: string;
+        };
+        SessionGoalsResponse: {
+            goals?: components["schemas"]["LearningGoalResponse"][];
+            label?: string;
+            /** @enum {string} */
+            level?: "MODULE" | "SESSION" | "EXERCISE" | "EXAM" | "COMPETENCY";
+            /** Format: int64 */
+            nodeId?: number;
+        };
+        Snapshot: {
+            /** Format: int32 */
+            completed?: number;
+            /** Format: int32 */
+            droppedOutcomes?: number;
+            error?: string;
+            failedSessionNames?: string[];
+            /** Format: int32 */
+            failedSessions?: number;
+            model?: string;
+            /** Format: int32 */
+            percent?: number;
+            /** @enum {string} */
+            phase?: "DESCRIBING_FIGURES" | "EXTRACTING" | "PERSISTING" | "SYNTHESIZING";
+            /** @enum {string} */
+            status?: "RUNNING" | "SUCCEEDED" | "FAILED";
+            summary?: components["schemas"]["ExtractionSummary"];
+            /** Format: int32 */
+            total?: number;
         };
         TopicRequest: {
             text?: string;
         };
-        ExamTaskResponse: {
-            /** Format: int64 */
-            submissionId?: number;
-            /** Format: date-time */
-            submittedAt?: string;
-            /** Format: int32 */
-            taskNumber?: number;
-            taskType?: string | null;
+        UpdateCourseRequest: {
+            figuresEnabled?: boolean;
+            name?: string;
+            outputLanguage?: string | null;
+        };
+        UpdateDocumentRequest: {
+            displayName?: string | null;
+            /** @enum {string|null} */
+            kind?: "LECTURE" | "EXERCISE" | null;
+        };
+        UpdateHierarchyNodeRequest: {
+            label?: string;
+        };
+        UpdateLearningGoalRequest: {
+            /** @enum {string} */
+            bloomLevel?: "REMEMBER" | "UNDERSTAND" | "APPLY" | "ANALYZE" | "EVALUATE" | "CREATE";
+            /** @enum {string} */
+            soloLevel?: "PRESTRUCTURAL" | "UNISTRUCTURAL" | "MULTISTRUCTURAL" | "RELATIONAL" | "EXTENDED_ABSTRACT";
+            /** @enum {string} */
+            status?: "PENDING" | "APPROVED";
             text?: string;
-            context?: string | null;
         };
     };
     responses: never;
@@ -786,86 +786,7 @@ export interface operations {
             };
         };
     };
-    addChild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddChildRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
-    createTerminalSkill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTerminalSkillRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
-    createGeneratedTerminalSkill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateGeneratedTerminalSkillRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
-            };
-        };
-    };
-    extract: {
+    rebuildCompetencyTree: {
         parameters: {
             query?: {
                 force?: boolean;
@@ -878,73 +799,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ExtractionStartResponse"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    current: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["CurrentExtractionResponse"];
-                };
-            };
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    generate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GenerateExamGoalsRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ExamTaskGoalsResponse"][];
+                    "*/*": components["schemas"]["CompetencyTreeResult"];
                 };
             };
         };
@@ -997,7 +858,83 @@ export interface operations {
             };
         };
     };
-    rebuildCompetencyTree: {
+    update_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                documentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["DocumentResponse"];
+                };
+            };
+        };
+    };
+    content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                documentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+        };
+    };
+    generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateExamGoalsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ExamTaskGoalsResponse"][];
+                };
+            };
+        };
+    };
+    extract: {
         parameters: {
             query?: {
                 force?: boolean;
@@ -1010,52 +947,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Accepted */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["CompetencyTreeResult"];
+                    "*/*": components["schemas"]["ExtractionStartResponse"];
                 };
             };
-        };
-    };
-    getCourse: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["CourseSummaryResponse"];
-                };
-            };
-        };
-    };
-    delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1063,20 +965,16 @@ export interface operations {
             };
         };
     };
-    update: {
+    extractStatus: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                courseId: number;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateCourseRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -1084,56 +982,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["CourseResponse"];
+                    "*/*": components["schemas"]["Snapshot"];
                 };
             };
-        };
-    };
-    delete_1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
             /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    update_1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-                goalId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateLearningGoalRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["LearningGoalResponse"];
-                };
             };
         };
     };
@@ -1160,33 +1017,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["HierarchyNodeResponse"];
-                };
-            };
-        };
-    };
-    update_3: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-                documentId: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateDocumentRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["DocumentResponse"];
                 };
             };
         };
@@ -1223,26 +1053,6 @@ export interface operations {
             };
         };
     };
-    exportCsv: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                courseId: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     listBySession: {
         parameters: {
             query?: {
@@ -1272,7 +1082,7 @@ export interface operations {
             };
         };
     };
-    extractStatus: {
+    exportCsv: {
         parameters: {
             query?: never;
             header?: never;
@@ -1288,59 +1098,59 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "*/*": components["schemas"]["Snapshot"];
-                };
-            };
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
                 content?: never;
             };
         };
     };
-    content: {
+    createTerminalSkill: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 courseId: number;
-                documentId: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTerminalSkillRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": string;
+                    "*/*": components["schemas"]["LearningGoalResponse"];
                 };
             };
         };
     };
-    markSkillsReviewed: {
+    createGeneratedTerminalSkill: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                courseId: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGeneratedTerminalSkillRequest"];
+            };
+        };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
             };
         };
     };
@@ -1420,6 +1230,196 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["LearningGoalResponse"];
                 };
+            };
+        };
+    };
+    delete_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                goalId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                goalId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLearningGoalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    addChild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseId: number;
+                goalId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddChildRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["LearningGoalResponse"];
+                };
+            };
+        };
+    };
+    getCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CourseSummaryResponse"];
+                };
+            };
+        };
+    };
+    delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CourseResponse"];
+                };
+            };
+        };
+    };
+    markSkillsReviewed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    current: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CurrentExtractionResponse"];
+                };
+            };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
