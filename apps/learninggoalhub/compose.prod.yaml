@@ -42,6 +42,9 @@ services:
       API_KEY_EXAMLENSE: ${LEARNINGGOALHUB_API_KEY_EXAMLENSE:-}
       API_KEY_WORKSHOPPER: ${LEARNINGGOALHUB_API_KEY_WORKSHOPPER:-}
       ENFORCE_SERVICE_KEYS: ${LEARNINGGOALHUB_ENFORCE_SERVICE_KEYS:-false}
+      # Defaults to the deploy target the CI deploy writes into .env (Staging/Production);
+      # application.yml maps Staging to `local`, which turns on DevAuthFilter (no TUM login).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-${ENVIRONMENT:-}}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
