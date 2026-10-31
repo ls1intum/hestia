@@ -228,7 +228,8 @@ human-readable `message`:
   on it rather than parsing `message`.
 - The HTTP status line carries the same status, so consumers can also key on that.
 
-- `401 UNAUTHORIZED` — a service-only endpoint was called without a valid key (once enforced).
+- `401 UNAUTHORIZED` — no TUM login and no valid service key.
+- `403 FORBIDDEN` — a service-only endpoint was called with a login but without a valid key.
 - `429 TOO_MANY_REQUESTS` — too many requests that start model calls from one client address
   (default 60 per 10 minutes). The `Retry-After` header gives the seconds to wait. Requests with a
   valid service key are not counted.
@@ -242,16 +243,16 @@ Each consuming server gets its own key, set as a deployment secret on both sides
 X-Api-Key: <key>
 ```
 
-The server logs each keyed request with the caller's name. These endpoints are for consuming
-servers only and will require the key:
+The server logs each keyed request with the caller's name. The key also works on every other
+`/api/**` endpoint, which otherwise needs a TUM login. These endpoints are for consuming servers
+only and require the key:
 
 - `POST /api/courses/{courseId}/exam-tasks/learning-goals` (ExamLens)
 - `GET /api/courses/{courseId}/learning-goals/by-session` (Workshopper)
 
-Until `hestia.security.enforce-service-keys` is switched on, a request to them without a key still
-succeeds and is logged as `Would reject ...`. Send the key now; once every consumer does, the
-switch makes them return `401` without one. A key is a server-side secret: never put it in a
-browser bundle.
+Deployments enforce this (`hestia.security.enforce-service-keys`, on by default in
+`compose.prod.yaml`). With it off, any logged-in caller reaches them and a missing key is only
+logged as `Would reject ...`. A key is a server-side secret: never put it in a browser bundle.
 
 ## Consuming from Java (Spring Boot)
 

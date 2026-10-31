@@ -1,6 +1,6 @@
 # Security
 
-What protects LearningGoalHub today, what is still open, and what changes once TUM login works.
+What protects LearningGoalHub today and what is still open.
 The configuration lives in `server/src/main/java/.../config/` (`SecurityConfig`,
 `ServiceApiKeyFilter`, `LlmRateLimitFilter`) and in `client/nginx.conf`.
 
@@ -8,50 +8,42 @@ The configuration lives in `server/src/main/java/.../config/` (`SecurityConfig`,
 
 | Area | State |
 | --- | --- |
-| Browser login | Not enforced. `/api/**` is open to anyone who can reach the server. |
-| Service-only endpoints | One `X-Api-Key` per consuming server; logged now, required once `ENFORCE_SERVICE_KEYS=true`. |
+| Browser login | TUM login (SAML) required on `/api/**`; hestia-test and local runs use a dev user instead. |
+| Service-only endpoints | One `X-Api-Key` per consuming server, required in deployments (`ENFORCE_SERVICE_KEYS`). |
 | Model calls | At most 60 requests that start model calls per client address and 10 minutes. |
 | Uploads | PDF only, checked by extension and file signature; page and text limits. |
 | ExamLens input | At most 100 blocks per request and 20,000 characters per block description. |
 | CSV export | Cells that a spreadsheet would run as a formula are neutralised. |
 | Client | Content Security Policy and hardening headers from nginx. |
-| CSRF | Off, because there is no login session to forge requests with (see below). |
+| CSRF | Off; open item now that a login session exists (see below). |
 | Secrets | Server-side only, from environment variables and a read-only mount. |
 | Database | No host port; reachable only from the app's containers. Daily `pg_dump`. |
 
-## Browser login is not enforced
+## Browser login
 
-The server is a SAML service provider for TUM login (`saml2Login` in `SecurityConfig`). TUM's
-identity provider does not know it yet: the registration with TUM IT is pending, and the login
-UI is a separate pull request (#116) that belongs to the shared Hestia login, not to this app.
-Until both land, `SecurityConfig` keeps `/api/**` open. Swagger UI already sits behind the SAML
-login, and the OpenAPI document at `/v3/api-docs` is public on purpose.
+The server is a SAML service provider for TUM login (`saml2Login` in `SecurityConfig`), and
+`/api/**` needs a login or a consuming server's key. Without either, the API answers `401`, and
+the client shows a "Log in with TUM" screen that starts the SAML login. Swagger UI needs the login
+too; the OpenAPI document at `/v3/api-docs` and `/actuator/health` stay public on purpose.
 
-This means anyone who can reach the server can read, change and delete any course and start
-model calls. The controls below limit the damage: the rate limit caps model spending, the upload
-limits cap parsing work, and the daily backup restores deleted data (see
-[DEPLOY.md](../DEPLOY.md#backups)). Courses have no owner column, so every user sees every course.
+TUM's identity provider only knows the production host. hestia-test and local runs use the
+`local` profile instead, where `DevAuthFilter` signs every request in as `dev-local-user`. The
+deploy sets the profile from its target (`Staging` is a profile group for `local`, see
+[DEPLOY.md](../DEPLOY.md#cicd)), so hestia-test needs no manual step and production keeps the
+login. hestia-test is reachable only inside the university network.
 
-A separate password for the UI was considered and rejected: it would sit next to the TUM login
-and be replaced by it anyway.
-
-### When login works
-
-1. Change `.requestMatchers("/api/**").permitAll()` to require an authenticated user. Keep the
-   service-only endpoints on their key (`hasRole(SERVICE)`), because the consuming servers have no
-   browser session.
-2. Turn CSRF protection on (next section), because the login session cookie is then sent with
-   every request.
-3. Decide on ownership. Without an owner per course, every logged-in user still sees and edits
-   every course.
+Courses have no owner column, so every logged-in user sees and edits every course. The rate
+limit, the upload limits and the daily backup (see [DEPLOY.md](../DEPLOY.md#backups)) still limit
+the damage a single account can do.
 
 ## CSRF
 
-CSRF protection is off. A CSRF attack makes a victim's browser send a request that carries the
-victim's session cookie. `/api/**` has no session, so a forged request can do nothing an attacker
-could not do by calling the API directly. Turn it on together with the login: a cookie token
+CSRF protection is still off. A CSRF attack makes a logged-in user's browser send a request that
+carries their session cookie, for example a form on another site that posts to the API. Browsers
+that treat cookies without a `SameSite` attribute as `Lax` do not send the session cookie on such
+cross-site posts, but not every browser does. Turn it on as the next step: a cookie token
 (`CookieCsrfTokenRepository`) that the client echoes in an `X-XSRF-TOKEN` header on every write,
-with the service-only endpoints exempt because their callers are servers.
+with requests carrying a service key exempt because their callers are servers.
 
 ## Service keys
 
@@ -61,9 +53,11 @@ time and, on a match, treats the request as that caller for this request only. A
 never configured, so an unset secret cannot match an empty header. The two service-only
 endpoints, the rollout and the error codes are in [api.md](api.md#service-keys).
 
-Until `ENFORCE_SERVICE_KEYS=true`, a request without a key still succeeds and the log shows
-`Would reject ...`. Switch it on once both consumers send their key and the log shows no such
-line. A key is a server secret and must never end up in a browser bundle.
+A valid key also passes the login check on every other `/api/**` endpoint, because the consuming
+servers have no browser session (Workshopper lists the courses this way). `ENFORCE_SERVICE_KEYS`
+defaults to `true` in `compose.prod.yaml`: the service-only endpoints then accept only a key, not
+a TUM login. With it off, any logged-in caller reaches them and the log shows `Would reject ...`.
+A key is a server secret and must never end up in a browser bundle.
 
 ## Rate limit on model calls
 

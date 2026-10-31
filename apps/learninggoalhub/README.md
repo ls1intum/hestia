@@ -77,8 +77,9 @@ or pass them on the command line as above.
 
 **Why the SAML pair.** The server is configured as a SAML service provider for TUM login, and Spring
 refuses to start without a signing key, which no clone contains. Any self-signed pair works locally.
-The `/api/**` endpoints do not require a login yet. Swagger UI (`/swagger-ui.html`) sits behind
-SAML, but the OpenAPI document at `/v3/api-docs` is public.
+`/api/**` and Swagger UI (`/swagger-ui.html`) need a TUM login, which only works on production. Run the
+server with `SPRING_PROFILES_ACTIVE=local` to sign every request in as a dev user (`DevAuthFilter`).
+The OpenAPI document at `/v3/api-docs` is public.
 
 **Database migrations.** Flyway applies new migrations on startup, so running a newer branch against
 your local database upgrades it, and the upgrade cannot be undone. To try a branch without touching
@@ -114,7 +115,8 @@ its value. The ones you are most likely to change:
 | `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `localhost` / `5432` / `learninggoalhub` ×3 | database |
 | `SAML_PRIVATE_KEY_LOCATION` / `SAML_CERTIFICATE_LOCATION` | `classpath:certs/…` (absent) | SAML signing pair |
 | `API_KEY_EXAMLENSE` / `API_KEY_WORKSHOPPER` | empty | keys the consuming servers send in `X-Api-Key` |
-| `ENFORCE_SERVICE_KEYS` | `false` | reject service-only calls without a key |
+| `ENFORCE_SERVICE_KEYS` | `false` (`true` in `compose.prod.yaml`) | reject service-only calls without a key |
+| `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) turns off the TUM login |
 | `VITE_API_TARGET` (client dev server) | `http://localhost:8080` | where Vite proxies `/learninggoalhub/api` |
 
 Pipeline settings (parallelism, unit size, models, temperatures) are under `hestia.*` in

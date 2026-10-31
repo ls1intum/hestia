@@ -18,4 +18,6 @@ export SPRING_AI_OPENAI_BASE_URL="http://localhost:${FAKE_LLM_PORT:-4010}"
 export HESTIA_EXTRACTION_SKILL_TARGET_CHARS=40
 export SAML_PRIVATE_KEY_LOCATION="file:$keys/saml-key.pem"
 export SAML_CERTIFICATE_LOCATION="file:$keys/saml-cert.crt"
+# /api/** needs a login; the local profile signs every request in as a dev user.
+export SPRING_PROFILES_ACTIVE=local
 exec java -jar "$jar"
