@@ -162,11 +162,17 @@ a group whose `level` is `EXAM` and whose `label` is `Exam`.
 {
   "id": 421,
   "text": "Explain the bias-variance tradeoff.",
+  "originalText": null,
+  "shortLabel": "Bias-variance tradeoff",
   "kind": "EXPLICIT",
+  "role": "SKILL",
   "status": "APPROVED",
+  "origin": "EXTRACTED",
+  "creationProvenance": null,
   "hierarchy": { "module": "Introduction to Machine Learning", "session": "Chapter 07: Evaluation", "exercise": null },
   "bloomLevel": "UNDERSTAND",
   "soloLevel": "RELATIONAL",
+  "lectureOrder": 12,
   "createdAt": "2026-06-04T18:21:09.123456+02:00",
   "sources": [ { "documentId": 68, "filename": "Chapters 1-10.pdf", "snippet": "…bias-variance…" } ],
   "relationships": [
@@ -178,6 +184,18 @@ a group whose `level` is `EXAM` and whose `label` is `Exam`.
 
 Field semantics:
 
+- `originalText` — the generated wording, kept when an instructor first renames the goal; `null`
+  for a goal never renamed.
+- `shortLabel` — a compact label for tight spaces; `null` when none was generated.
+- `role` — `SKILL` or `KNOWLEDGE`; `null` for a topic. See [Topic tree](#topic-tree) for how
+  role and position give the tier.
+- `origin` — `EXTRACTED` (read from a document), `SYNTHESIZED` (a skill grouping sub-skills),
+  `TERMINAL` (a topic) or `EXAM` (from an ExamLens task); `GAP` is legacy.
+- `creationProvenance` — for goals made in the UI: `USER_CREATED` or `WIZARD_AI_SUBTREE`
+  ("Generate with AI"); `null` for everything the pipeline made.
+- `lectureOrder` — a stable course-wide order from the goal's first appearance in the lecture
+  material; topics and skills take the median of the goals under them. `null` when there is none
+  to derive, as for goals added by hand.
 - `kind` — `EXPLICIT`: stated as a learning goal in the material; `IMPLICIT`: inferred from
   the content.
 - `status` — review lifecycle: extraction produces `PENDING`; an instructor approves to

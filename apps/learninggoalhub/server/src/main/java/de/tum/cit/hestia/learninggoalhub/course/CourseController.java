@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.learninggoalhub.course;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -60,6 +62,7 @@ public class CourseController {
      * not reappear. Its own endpoint rather than a field on {@code PATCH}: it records a moment
      * the server sets, not a value the client chooses.
      */
+    @ApiResponse(responseCode = "204", description = "No Content", content = @Content)
     @PostMapping("/{id}/skills-reviewed")
     public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
         courseService.markSkillsReviewed(id);
@@ -86,7 +89,7 @@ public class CourseController {
         return ResponseEntity.noContent().build();
     }
 
-    public record CreateCourseRequest(@NotBlank @Size(max = MAX_NAME_LENGTH) String name, String outputLanguage,
+    public record CreateCourseRequest(@NotBlank @Size(min = 1, max = MAX_NAME_LENGTH) String name, String outputLanguage,
                                       Boolean figuresEnabled) {
     }
 

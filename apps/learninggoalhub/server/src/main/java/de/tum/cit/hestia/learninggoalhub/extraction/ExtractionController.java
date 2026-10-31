@@ -5,6 +5,8 @@ import de.tum.cit.hestia.learninggoalhub.topictree.TopicTreeService;
 import de.tum.cit.hestia.learninggoalhub.course.CourseRepository;
 import de.tum.cit.hestia.learninggoalhub.course.ExtractionStatus;
 import de.tum.cit.hestia.learninggoalhub.web.ExtractionErrors;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -58,6 +60,10 @@ public class ExtractionController {
         this.extractionExecutor = extractionExecutor;
     }
 
+    // Declared so the OpenAPI document (and the client's types) carry the 202 and the 409 that the
+    // client handles; springdoc only infers a 200 from the return type.
+    @ApiResponse(responseCode = "202", description = "Accepted")
+    @ApiResponse(responseCode = "409", description = "Conflict", content = @Content)
     @PostMapping("/extract")
     public ResponseEntity<ExtractionStartResponse> extract(
             @PathVariable Long courseId,
@@ -135,6 +141,8 @@ public class ExtractionController {
      * Progress of the in-flight (or most recent) extraction for this course, for the client to poll
      * while {@code POST /extract} is still running. Returns 204 when no run has been started yet.
      */
+    @ApiResponse(responseCode = "200", description = "OK")
+    @ApiResponse(responseCode = "204", description = "No Content", content = @Content)
     @GetMapping("/extract/status")
     public ResponseEntity<ExtractionProgressTracker.Snapshot> extractStatus(@PathVariable Long courseId) {
         Optional<ExtractionProgressTracker.Snapshot> live = progressTracker.snapshot(courseId);
