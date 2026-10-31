@@ -25,8 +25,8 @@ Types are generated from the server's OpenAPI schema with
 
 `openapi/openapi.json` is a checked-in snapshot of the server's `/v3/api-docs`, and
 `OpenApiSnapshotTest` in the server tests fails when the two differ. After a server API change,
-regenerate both files from the repository root (Docker must be running; no server or `.env` is
-needed):
+regenerate both files from the repository root (Docker must be running and `npm ci` must have
+run in `client/`; no server or `.env` is needed):
 
 ```bash
 UPDATE_OPENAPI_SNAPSHOT=1 ./gradlew :apps:learninggoalhub:server:test --tests '*OpenApiSnapshotTest' --rerun-tasks

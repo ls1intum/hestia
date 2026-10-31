@@ -73,6 +73,9 @@ After a write, invalidate every key whose data changed. Deleting a goal, for exa
 `["goals", courseId]`, `["course", courseId]` and `["courses"]`, because the course row shows a goal
 count.
 
+The server sends an unset field as `null`, although the generated types mark it as optional
+(`field?: X`). Compare with `??` or `== null`, not `=== undefined`.
+
 A failed write throws `requestError(...)` (`lib/requestError.ts`). It keeps the server's
 `{code, message}` reason for a 4xx, which names the field or the conflict, so show its message.
 
