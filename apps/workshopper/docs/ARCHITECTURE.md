@@ -23,7 +23,7 @@ Workshopper integrates with TUM Central IT via SAML 2.0. Developing locally agai
 * **The Profile Gate**: `SecurityConfig.java` refuses to start (`IllegalStateException`) if `local` is active together with `prod`, or inside Kubernetes or Fly.io (`KUBERNETES_SERVICE_HOST`, `FLY_APP_NAME`).
 * **Environments**:
   * Laptop: `SPRING_PROFILES_ACTIVE=local`, SAML bypassed.
-  * `hestia-test` (VM, VPN-only): `SPRING_PROFILES_ACTIVE=local` in its `.env`, SAML bypassed, because SAML access was only requested for production. Every tester is the same `dev-local-user` and sees the same sessions.
+  * `hestia-test` (VM, VPN-only): the deploy writes `ENVIRONMENT=Staging` into `.env`, and `application.yml` maps the `Staging` profile to `local`, so SAML is bypassed, because SAML access was only requested for production. `Production` maps to `prod`. Every tester is the same `dev-local-user` and sees the same sessions.
   * Production: `compose.prod.yaml` defaults to `prod`, real SAML enforced.
 
 ## 3. API Authorization & Error Handling

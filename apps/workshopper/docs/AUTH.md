@@ -28,6 +28,6 @@ To avoid needing the TUM VPN and live SAML certificates locally, there is `DevAu
 
 ## 4. Environment Variables
 In deployment (`compose.prod.yaml`), the server expects:
-- `SPRING_PROFILES_ACTIVE`: defaults to `prod`, which enforces SAML. `hestia-test` sets `local` in its `.env`, because SAML access was only requested for production; there every tester is the same `dev-local-user`.
+- `SPRING_PROFILES_ACTIVE`: defaults to the deploy target (`ENVIRONMENT`, written into `.env` by the deploy), or `prod` without one. `application.yml` maps `Production` to `prod`, which enforces SAML, and `Staging` (`hestia-test`) to `local`, because SAML access was only requested for production; there every tester is the same `dev-local-user`.
 - `SAML_PRIVATE_KEY_LOCATION`: path to the `.pem` file mounted into the container (`/opt/hestia/secrets/saml` → `/app/certs`).
 - `SAML_CERTIFICATE_LOCATION`: path to the `.crt` file mounted into the container.
