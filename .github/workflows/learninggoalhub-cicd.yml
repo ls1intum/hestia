@@ -95,7 +95,9 @@ jobs:
   # Browser tests: the built server against a Postgres service and a fake model
   # (client/e2e/fake-llm.mjs), driven through the Vite dev server by Playwright.
   test-e2e:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright ships no Chromium for ubuntu-latest (26.04) yet. Back to
+    # ubuntu-latest once `npx playwright install --with-deps chromium` supports it.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: pgvector/pgvector:pg16
