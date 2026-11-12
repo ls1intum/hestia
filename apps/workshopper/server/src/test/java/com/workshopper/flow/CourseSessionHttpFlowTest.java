@@ -36,7 +36,7 @@ class CourseSessionHttpFlowTest extends FlowTestSupport {
     }
 
     @Test
-    void createCourse_createSessionInIt_readItBackAndList() {
+    void createCourse_createSessionInIt_readItBackAndList() throws Exception {
         FlowClient api = signedIn();
 
         String courseId = createCourse(api, "Flow Course A");
@@ -55,7 +55,10 @@ class CourseSessionHttpFlowTest extends FlowTestSupport {
         assertThat(body.path("courseId").asText()).isEqualTo(courseId);
         assertThat(body.path("status").asText()).isEqualTo("draft");
         assertThat(body.path("currentStep").asText()).isEqualTo("goals");
-        assertThat(body.path("draftStateJson").asText()).contains("\"duration\":90");
+        // Stored as jsonb, so compare the parsed JSON, not its formatting.
+        JsonNode draftState = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(body.path("draftStateJson").asText());
+        assertThat(draftState.path("workshopInput").path("duration").asInt()).isEqualTo(90);
 
         JsonNode sessions = api.get(FlowPaths.SESSIONS).json();
         JsonNode listed = find(sessions, sessionId);
