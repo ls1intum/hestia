@@ -5,7 +5,7 @@ name: workshopper CI/CD
 # are unaffected.
 #
 #   PR               -> [test server] -> build images (pr-<N> tags), no deploy   [validation]
-#   push to main     -> [test server] -> build (latest) + deploy to Staging
+#   push to main     -> [test server] -> build (sha-<commit>) + deploy to Staging
 #   release published -> [test server] -> build (<tag>)  + deploy to Production (approval gate via the env)
 #   workflow_dispatch -> [test server] -> build + deploy to the chosen environment/tag (manual)
 #
@@ -46,9 +46,9 @@ on:
         options: [Staging, Production]
         default: Staging
       image-tag:
-        description: "Image tag to deploy (must already exist in GHCR)"
+        description: "Image tag to deploy (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
         type: string
-        default: latest
+        default: ""
 
 concurrency:
   group: workshopper-cicd-${{ github.ref }}
@@ -116,7 +116,7 @@ jobs:
       docker-file: apps/workshopper/server/Dockerfile
       # Repo root: the server is a multi-module Gradle build (depends on :libs:shared-llm).
       docker-context: .
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   build-client:
     needs: [test-server, test-client]
@@ -125,7 +125,7 @@ jobs:
       image-name: ${{ github.repository }}/workshopper/client
       docker-file: apps/workshopper/client/Dockerfile
       docker-context: apps/workshopper/client
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   # ── Deploy ───────────────────────────────────────────────────────────────────
   deploy:
@@ -137,7 +137,7 @@ jobs:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/workshopper/compose.prod.yaml
       main-image-name: ${{ github.repository }}/workshopper/server
-      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
+      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
       deployment-base-path: /opt/hestia/workshopper
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
     # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars (POSTGRES_PASSWORD,

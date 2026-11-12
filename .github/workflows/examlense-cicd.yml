@@ -7,7 +7,7 @@ name: examlense CI/CD
 # it has no dependency on libs/ or the root Gradle files.
 #
 #   PR                -> build images (pr-<N> tags), no deploy   [validation]
-#   push to main      -> build (latest) + deploy to Staging
+#   push to main      -> build (sha-<commit>) + deploy to Staging
 #   release published -> build (<tag>)  + deploy to Production (approval gate via the env)
 #   workflow_dispatch -> build + deploy to the chosen environment/tag (manual)
 #
@@ -35,9 +35,9 @@ on:
         options: [Staging, Production]
         default: Staging
       image-tag:
-        description: "Image tag to deploy (must already exist in GHCR)"
+        description: "Image tag to deploy (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
         type: string
-        default: latest
+        default: ""
 
 concurrency:
   group: examlense-cicd-${{ github.ref }}
@@ -72,7 +72,7 @@ jobs:
       docker-file: apps/examlense/server/Dockerfile
       # Standalone Gradle project: build from the server directory itself.
       docker-context: apps/examlense/server
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   build-client:
     uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
@@ -80,7 +80,7 @@ jobs:
       image-name: ${{ github.repository }}/examlense/client
       docker-file: apps/examlense/client/Dockerfile
       docker-context: apps/examlense/client
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   deploy:
     needs: [test-server, build-server, build-client]
@@ -94,7 +94,7 @@ jobs:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/examlense/compose.prod.yaml
       main-image-name: ${{ github.repository }}/examlense/server
-      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
+      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
       deployment-base-path: /opt/hestia/examlense
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
     # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars (POSTGRES_PASSWORD,
