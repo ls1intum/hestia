@@ -51,7 +51,7 @@ dependencies {
     // Testcontainers: a real Postgres for the boot/migration/DB-integrity/isolation
     // tests. The pure unit tests don't touch it. Requires a Docker daemon locally
     // and in CI (GitHub-hosted runners provide one).
-    testImplementation(platform("org.testcontainers:testcontainers-bom:1.20.4"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
