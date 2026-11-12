@@ -34,6 +34,22 @@ class LearningGoalHubClientTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
+        // Like LGH, the goal endpoint answers only a consuming server's valid key.
+        server.createContext("/api/courses/8/learning-goals/by-session", exchange -> {
+            String key = exchange.getRequestHeaders().getFirst("X-Api-Key");
+            requests.add(exchange.getRequestURI() + " key=" + key);
+            if (!"workshopper-key".equals(key)) {
+                exchange.sendResponseHeaders(401, -1);
+                exchange.close();
+                return;
+            }
+            byte[] body = "[{\"label\":\"Session 1\",\"goals\":[{\"id\":3,\"text\":\"Explain overfitting\"}]}]"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
         server.start();
     }
 
@@ -63,6 +79,22 @@ class LearningGoalHubClientTest {
         client("").courses(0, 100);
 
         assertThat(requests).containsExactly("/api/courses?page=0&size=100 key=null");
+    }
+
+    @Test
+    void goalFetchWorksWithTheServiceKeyAndFailsWithoutIt() {
+        JsonNode sessions = client("workshopper-key").goalsBySession(8);
+        assertThat(sessions.get(0).get("goals").get(0).get("text").asText()).isEqualTo("Explain overfitting");
+
+        for (String key : List.of("", "wrong-key")) {
+            assertThatThrownBy(() -> client(key).goalsBySession(8))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY));
+        }
+        assertThat(requests).containsExactly(
+                "/api/courses/8/learning-goals/by-session key=workshopper-key",
+                "/api/courses/8/learning-goals/by-session key=null",
+                "/api/courses/8/learning-goals/by-session key=wrong-key");
     }
 
     @Test
