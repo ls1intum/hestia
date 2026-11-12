@@ -31,9 +31,10 @@ val examlenseTest by tasks.registering(Exec::class) {
     description = "Runs the ExamLense server tests through its own Gradle wrapper."
     workingDir = examlenseServerDir.asFile
     val windows = System.getProperty("os.name").lowercase().contains("windows")
+    val wrapper = examlenseServerDir.file(if (windows) "gradlew.bat" else "gradlew").asFile.absolutePath
     commandLine(
-        if (windows) listOf("cmd", "/c", "gradlew.bat", "test", "--no-daemon")
-        else listOf("./gradlew", "test", "--no-daemon")
+        if (windows) listOf("cmd", "/c", wrapper, "test", "--no-daemon")
+        else listOf(wrapper, "test", "--no-daemon")
     )
 }
 
