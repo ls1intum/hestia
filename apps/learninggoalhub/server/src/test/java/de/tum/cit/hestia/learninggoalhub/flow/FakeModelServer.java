@@ -136,7 +136,22 @@ final class FakeModelServer {
         if (prompt.contains("\"capabilities\"")) {
             return new Object[] {"naming", naming(prompt)};
         }
+        if (prompt.contains("educational taxonomies")) {
+            return new Object[] {"taxonomy", taxonomy(prompt)};
+        }
         return null;
+    }
+
+    private static final Pattern GOAL_LINE = Pattern.compile("(?m)^(\\d+)\\. ");
+
+    /** Bloom/SOLO batch classification: one fixed level pair per numbered goal ("1. ..."). */
+    private static List<Map<String, Object>> taxonomy(String prompt) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        Matcher m = GOAL_LINE.matcher(prompt);
+        while (m.find()) {
+            items.add(Map.of("index", Integer.parseInt(m.group(1)), "bloom", "APPLY", "solo", "RELATIONAL"));
+        }
+        return items;
     }
 
     private static List<Line> numbered(String text) {

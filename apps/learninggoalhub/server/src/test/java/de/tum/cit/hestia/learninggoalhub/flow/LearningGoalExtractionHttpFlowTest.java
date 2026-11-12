@@ -41,15 +41,24 @@ class LearningGoalExtractionHttpFlowTest extends HttpFlowTestBase {
         all.forEach(goal -> {
             assertThat(goal.path("id").asLong()).isPositive();
             assertThat(goal.path("text").asText()).isNotBlank();
-            assertThat(goal.path("role").asText()).isIn("SKILL", "KNOWLEDGE");
+            // Goals outside the skill/knowledge tiers (e.g. synthesized parents) carry no role.
+            if (!goal.path("role").isNull() && !goal.path("role").isMissingNode()) {
+                assertThat(goal.path("role").asText()).isIn("SKILL", "KNOWLEDGE");
+            }
         });
+        long withRole = 0;
+        for (JsonNode goal : all) {
+            if (goal.hasNonNull("role")) {
+                withRole++;
+            }
+        }
 
         // The tier filter separates skills from the knowledge items under them.
         JsonNode skills = goalsOf(courseId, "&role=SKILL");
         JsonNode knowledge = goalsOf(courseId, "&role=KNOWLEDGE");
         assertThat(skills.size()).isGreaterThan(0);
         assertThat(knowledge.size()).isGreaterThan(0);
-        assertThat(skills.size() + knowledge.size()).isEqualTo(all.size());
+        assertThat((long) skills.size() + knowledge.size()).isEqualTo(withRole);
         assertThat(texts(knowledge)).allSatisfy(text -> assertThat(text).startsWith("Recalling the terms behind"));
 
         // The course summary reflects the finished extraction.
