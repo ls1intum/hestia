@@ -78,9 +78,8 @@ Prompts are Java text blocks next to the class that sends them (see [docs/LLM.md
 All commands below run from the repository root unless a `cd` says otherwise.
 
 ```bash
-# 1. Database (pgvector/pgvector:pg16 on localhost:5432)
-cp apps/learninggoalhub/.env.example apps/learninggoalhub/.env   # then fill in LOGOS_API_KEY
-docker compose -f apps/learninggoalhub/compose.yaml up -d postgres
+# 1. Database (postgres:16 on localhost:5432, database hestia, roles from infra/postgres/init)
+docker compose up -d postgres
 
 # 2. A throwaway SAML key pair; any directory outside the repository works (see below)
 mkdir -p ~/.learninggoalhub-dev
@@ -97,8 +96,8 @@ SAML_CERTIFICATE_LOCATION=file:$HOME/.learninggoalhub-dev/saml-cert.crt \
 cd apps/learninggoalhub/client && npm install && npm run dev
 ```
 
-The server reads plain environment variables, not the `.env` file. Export the values you changed
-or pass them on the command line as above.
+The server reads plain environment variables, not a `.env` file. Export the values you need or
+pass them on the command line as above (the repository root's `.env.example` lists them).
 
 **Why the SAML pair.** The server is configured as a SAML service provider for TUM login, and Spring
 refuses to start without a signing key, which no clone contains. Any self-signed pair works locally.
