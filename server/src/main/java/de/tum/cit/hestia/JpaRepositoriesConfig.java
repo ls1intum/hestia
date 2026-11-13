@@ -8,9 +8,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * Spring Data does not use the application's bean name generator, so the repositories are enabled
  * here with the fully qualified one ({@code CourseRepository} exists in two modules). A separate
  * configuration class, not an annotation on {@link HestiaApplication}, so that test slices such as
- * {@code @WebMvcTest} do not pull in JPA.
+ * {@code @WebMvcTest} do not pull in JPA. {@code @DataJpaTest} slices import it, because Spring Boot's
+ * repository auto-configuration would otherwise name both {@code CourseRepository}s the same.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableJpaRepositories(nameGenerator = FullyQualifiedAnnotationBeanNameGenerator.class)
-class JpaRepositoriesConfig {
+public class JpaRepositoriesConfig {
 }

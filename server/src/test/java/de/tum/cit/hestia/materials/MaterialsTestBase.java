@@ -10,9 +10,5 @@ public abstract class MaterialsTestBase {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         TestDatabase.register(registry);
-        // Many differently configured Spring contexts stay cached at once, each with its own pool, and
-        // they all share the one Postgres; small pools keep it below its connection limit.
-        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "3");
-        registry.add("spring.datasource.hikari.minimum-idle", () -> "0");
     }
 }

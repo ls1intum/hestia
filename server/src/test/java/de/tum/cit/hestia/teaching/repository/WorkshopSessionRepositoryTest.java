@@ -1,11 +1,13 @@
 package de.tum.cit.hestia.teaching.repository;
 
+import de.tum.cit.hestia.JpaRepositoriesConfig;
 import de.tum.cit.hestia.TestDatabase;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -15,6 +17,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
+@Import(JpaRepositoriesConfig.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class WorkshopSessionRepositoryTest {
 

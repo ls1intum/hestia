@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.JpaRepositoriesConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -17,7 +18,7 @@ import org.springframework.context.annotation.Import;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(MaterialsTestConfiguration.class)
+@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
 class LearningGoalRepositoryTest extends MaterialsTestBase {
 
     @Autowired

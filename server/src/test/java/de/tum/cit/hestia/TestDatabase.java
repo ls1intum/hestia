@@ -43,6 +43,10 @@ public final class TestDatabase {
         registry.add("spring.datasource.password", () -> APP_PASSWORD);
         registry.add("spring.flyway.user", () -> "hestia_owner");
         registry.add("spring.flyway.password", () -> OWNER_PASSWORD);
+        // Many differently configured Spring contexts stay cached at once, each with its own pool, and
+        // they all share the one Postgres; small pools keep it below its connection limit.
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "3");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "0");
     }
 
     /** The running container, e.g. for a test that connects with plain JDBC. */

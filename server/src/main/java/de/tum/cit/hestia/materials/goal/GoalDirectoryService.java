@@ -37,9 +37,9 @@ public class GoalDirectoryService implements GoalDirectory {
 
     @Override
     public GoalDirectory.Page<GoalDirectory.Course> listCourses(int page, int size) {
-        // The order of GET /api/courses: newest first.
+        // The order of GET /api/courses: newest first; the id decides between equal timestamps.
         org.springframework.data.domain.Page<CourseSummaryResponse> courses = courseService.summaries(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
         return new GoalDirectory.Page<>(
                 courses.getContent().stream()
                         .map(c -> new GoalDirectory.Course(c.id(), c.name()))
