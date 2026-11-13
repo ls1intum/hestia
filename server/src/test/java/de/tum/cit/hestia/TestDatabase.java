@@ -29,6 +29,8 @@ public final class TestDatabase {
     @SuppressWarnings("resource")
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
             .withDatabaseName("hestia")
+            // Every cached Spring context of the run keeps its own pool open on this one database.
+            .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=300")
             .withEnv("HESTIA_OWNER_PASSWORD", OWNER_PASSWORD)
             .withEnv("HESTIA_APP_PASSWORD", APP_PASSWORD)
             .withCopyFileToContainer(MountableFile.forHostPath(ROLES_SCRIPT), "/docker-entrypoint-initdb.d/01-roles.sql");
