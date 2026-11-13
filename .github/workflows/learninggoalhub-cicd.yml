@@ -5,7 +5,7 @@ name: learninggoalhub CI/CD
 # are unaffected.
 #
 #   PR               -> test + build images (pr-<N> tags), no deploy   [validation]
-#   push to main     -> test + build (latest) + deploy to Staging + smoke check
+#   push to main     -> test + build (sha-<commit>) + deploy to Staging + smoke check
 #   release published -> test + build (<tag>)  + deploy to Production (approval gate via the env)
 #                        + smoke check
 #   workflow_dispatch -> test + build + deploy to the chosen environment/tag (manual) + smoke check
@@ -49,9 +49,9 @@ on:
         options: [Staging, Production]
         default: Staging
       image-tag:
-        description: "Image tag to deploy (must already exist in GHCR)"
+        description: "Image tag to deploy (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
         type: string
-        default: latest
+        default: ""
 
 concurrency:
   group: learninggoalhub-cicd-${{ github.ref }}
@@ -147,7 +147,7 @@ jobs:
       docker-file: apps/learninggoalhub/server/Dockerfile
       # Repo root: the server is a multi-module Gradle build (depends on :libs:shared-llm).
       docker-context: .
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   build-client:
     needs: [test-server, test-client, test-e2e]
@@ -156,7 +156,7 @@ jobs:
       image-name: ${{ github.repository }}/learninggoalhub/client
       docker-file: apps/learninggoalhub/client/Dockerfile
       docker-context: apps/learninggoalhub/client
-      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   deploy:
     needs: [build-server, build-client]
@@ -170,7 +170,7 @@ jobs:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/learninggoalhub/compose.prod.yaml
       main-image-name: ${{ github.repository }}/learninggoalhub/server
-      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || 'latest' }}
+      image-tag: ${{ github.event_name == 'release' && github.event.release.tag_name || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
       deployment-base-path: /opt/hestia/learninggoalhub
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME,
     # VM_SSH_PRIVATE_KEY, DEPLOYMENT_GATEWAY_*) and the app secrets/vars

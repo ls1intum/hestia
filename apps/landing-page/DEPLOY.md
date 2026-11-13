@@ -32,7 +32,7 @@ the shared ls1intum reusable workflows (`.github/workflows/landing-page-cicd.yml
 | Trigger | Image built | Deploy |
 | --- | --- | --- |
 | Pull request | `…/landing-page:pr-<N>` | — (build only, validation) |
-| Push to `main` | `…:latest` | → **Staging** (automatic) |
+| Push to `main` | `…:sha-<commit>` | → **Staging** (automatic) |
 | GitHub Release `vX.Y.Z` | `…:vX.Y.Z` | → **Production** (waits for approval) |
 | Manual (`workflow_dispatch`) | per branch | → chosen environment/tag |
 

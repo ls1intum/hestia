@@ -47,7 +47,7 @@ by the shared ls1intum reusable workflows (`.github/workflows/learninggoalhub-ci
 | Trigger | Images built | Deploy |
 | --- | --- | --- |
 | Pull request | `…/learninggoalhub/{server,client}:pr-<N>` | — (build only, validation) |
-| Push to `main` | `…:latest` | → **Staging** (automatic) |
+| Push to `main` | `…:sha-<commit>` | → **Staging** (automatic) |
 | GitHub Release `vX.Y.Z` | `…:vX.Y.Z` | → **Production** (waits for approval) |
 | Manual (`workflow_dispatch`) | per branch | → chosen environment/tag |
 
