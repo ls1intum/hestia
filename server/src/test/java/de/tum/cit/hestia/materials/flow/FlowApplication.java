@@ -3,7 +3,8 @@ package de.tum.cit.hestia.materials.flow;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,15 +21,12 @@ import org.springframework.test.context.DynamicPropertySource;
  * {@link HttpFlowTestBase} wires the fake, {@link LogosSmokeLiveIT} the real gateway. (A subclass
  * cannot re-point a property its superclass already registered, so neither of them does.)
  */
-@Import(TestcontainersConfiguration.class)
+@Import({MaterialsTestConfiguration.class, FlowLoginConfiguration.class})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-abstract class FlowApplication {
+abstract class FlowApplication extends MaterialsTestBase {
 
     @DynamicPropertySource
     static void application(DynamicPropertyRegistry registry) {
-        // Login: one shared service key, which HubApi sends as a header. The service-key rules stay off.
-        registry.add("hestia.security.api-key.examlense", () -> HubApi.TEST_API_KEY);
-        registry.add("hestia.security.enforce-service-keys", () -> "false");
         // One skill per 40 characters, so the short fixture lines may each become a skill.
         registry.add("hestia.extraction.skill-target-chars", () -> "40");
         registry.add("hestia.extraction.exercise-skill-target-chars", () -> "40");

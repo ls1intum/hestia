@@ -1,7 +1,7 @@
 # Architecture
 
 How LearningGoalHub's parts fit together at runtime and what the database holds. The server's
-packages and the steps of an extraction run are in [server/README.md](../server/README.md);
+packages and the steps of an extraction run are in [server/docs/materials.md](../../../server/docs/materials.md);
 deployment is in [DEPLOY.md](../DEPLOY.md).
 
 ## Runtime
@@ -10,12 +10,11 @@ deployment is in [DEPLOY.md](../DEPLOY.md).
 flowchart LR
     browser[Browser] -->|"/learninggoalhub/*"| traefik[Traefik<br/>TLS, strips the prefix]
     traefik --> web[web: nginx<br/>static client]
-    web -->|"/api, /v3/api-docs,<br/>/swagger-ui, /saml2"| server[server: Spring Boot]
+    web -->|"/api, /v3/api-docs,<br/>/swagger-ui, /saml2"| server[hestia-server: Spring Boot]
     server --> db[(postgres)]
     backup[backup: daily pg_dump] --> db
     server -->|OpenAI-compatible API| logos[Logos gateway]
-    examlens[ExamLens server] -->|"POST exam tasks, X-Api-Key<br/>shared Docker network"| web
-    workshopper[Workshopper client] -->|"GET courses,<br/>goals by session"| traefik
+    modules[assessment, teaching<br/>same server process] -->|"core.spi ports,<br/>in-process"| server
 ```
 
 - **web** serves the built React client and proxies the API, the OpenAPI document, Swagger UI

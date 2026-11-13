@@ -14,7 +14,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
@@ -57,11 +58,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 // As in production: without open-in-view, a lazy association read outside a transaction fails here too.
 @SpringBootTest(properties = "spring.jpa.open-in-view=false")
 @AutoConfigureMockMvc
-class ExamGoalControllerTest {
+class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Autowired
     private MockMvc mockMvc;
@@ -119,7 +120,7 @@ class ExamGoalControllerTest {
                     .toList();
         });
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(HARRY_PAYLOAD))
                 .andExpect(status().isOk())
@@ -156,7 +157,7 @@ class ExamGoalControllerTest {
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenReturn(List.of());
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -189,7 +190,7 @@ class ExamGoalControllerTest {
                 new TaxonomyClassification(BloomLevel.APPLY, null),
                 new TaxonomyClassification(BloomLevel.REMEMBER, null)));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -211,7 +212,7 @@ class ExamGoalControllerTest {
                 .andExpect(jsonPath("$[0].goals[0].role").value("SKILL"))
                 .andExpect(jsonPath("$[1].goals[0].role").value("KNOWLEDGE"));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", Matchers.hasSize(2)))
                 .andExpect(jsonPath("$.content[1].examTask.text").value("Task two"))
@@ -250,7 +251,7 @@ class ExamGoalControllerTest {
         when(topicTreeSynthesizer.place(eq(topicsOnly), eq(List.of("Recall what a stable sort is")), isNull()))
                 .thenReturn(Map.of(0, new TopicTreeSynthesizer.Placement(0, null)));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
@@ -281,7 +282,7 @@ class ExamGoalControllerTest {
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
         when(topicTreeSynthesizer.place(anyList(), anyList(), any())).thenThrow(new RuntimeException("HTTP 429"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
@@ -308,7 +309,7 @@ class ExamGoalControllerTest {
         doThrow(new IllegalStateException("database down")).when(relationshipRepository).saveAll(anyList());
         long submissionsBefore = submissionRepository.count();
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
@@ -339,7 +340,7 @@ class ExamGoalControllerTest {
         String payload = """
                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
                 """;
-        Callable<String> request = () -> mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        Callable<String> request = () -> mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -374,9 +375,9 @@ class ExamGoalControllerTest {
         String payload = """
                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
                 """;
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                 .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isOk());
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                 .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isOk());
 
         long examRoots = hierarchyNodeRepository.findByCourseId(course.getId()).stream()
@@ -392,7 +393,7 @@ class ExamGoalControllerTest {
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("HTTP 429"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": null, "description": "Task" } ] }
@@ -408,7 +409,7 @@ class ExamGoalControllerTest {
 
     @Test
     void returns404ForUnknownCourse() throws Exception {
-        mockMvc.perform(post("/api/courses/999999/exam-tasks/learning-goals")
+        mockMvc.perform(post("/learninggoalhub/api/courses/999999/exam-tasks/learning-goals")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(HARRY_PAYLOAD))
                 .andExpect(status().isNotFound())
@@ -419,7 +420,7 @@ class ExamGoalControllerTest {
     void returns400WhenNoTaskBlockPresent() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "context", "description": "Only context" } ] }
@@ -432,7 +433,7 @@ class ExamGoalControllerTest {
     void returns400ForEmptyBlocks() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"blocks\": [] }"))
                 .andExpect(status().isBadRequest());
@@ -442,7 +443,7 @@ class ExamGoalControllerTest {
     void returns400ForBlankTaskDescription() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [ { "blockId": "1", "blockType": "task", "taskType": "freeText", "description": " " } ] }
@@ -454,7 +455,7 @@ class ExamGoalControllerTest {
     void returns400ForNullBlock() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{ \"blocks\": [null] }"))
                 .andExpect(status().isBadRequest());
@@ -464,7 +465,7 @@ class ExamGoalControllerTest {
     void returns400ForRepeatedTaskBlockId() throws Exception {
         Course course = courseRepository.save(new Course("Course"));
 
-        mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 { "blocks": [
@@ -485,7 +486,7 @@ class ExamGoalControllerTest {
                 + "x".repeat(ExamGoalController.MAX_DESCRIPTION_CHARS + 1) + "\" } ] }";
 
         for (String body : List.of(tooMany, tooLong)) {
-            mockMvc.perform(post("/api/courses/{id}/exam-tasks/learning-goals", course.getId())
+            mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());

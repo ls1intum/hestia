@@ -14,7 +14,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
@@ -63,12 +64,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {"hestia.extraction.unit-max-chars=80",
         "hestia.extraction.skill-target-chars=0"})
-class ExtractionControllerTest {
+class ExtractionControllerTest extends MaterialsTestBase {
 
     @Autowired
     private MockMvc mockMvc;
@@ -170,13 +171,13 @@ class ExtractionControllerTest {
     }
 
     private void startExtraction(Long courseId) throws Exception {
-        mockMvc.perform(post("/api/courses/{id}/extract", courseId))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", courseId))
                 .andExpect(status().isAccepted());
         awaitSucceeded(courseId);
     }
 
     private void startForcedExtraction(Long courseId) throws Exception {
-        mockMvc.perform(post("/api/courses/{id}/extract?force=true", courseId))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract?force=true", courseId))
                 .andExpect(status().isAccepted());
         awaitSucceeded(courseId);
     }
@@ -194,7 +195,7 @@ class ExtractionControllerTest {
 
     /** For runs the test expects to fail — the guard rejections and audit-failure cases. */
     private void startExtractionExpectingFailure(Long courseId) throws Exception {
-        mockMvc.perform(post("/api/courses/{id}/extract", courseId))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", courseId))
                 .andExpect(status().isAccepted());
         awaitExtraction(courseId);
     }
@@ -202,7 +203,7 @@ class ExtractionControllerTest {
     /** Waits for the run to reach a terminal state and returns the final status body. */
     private String awaitExtraction(Long courseId) throws Exception {
         for (int attempt = 0; attempt < 200; attempt++) {
-            MvcResult result = mockMvc.perform(get("/api/courses/{id}/extract/status", courseId)).andReturn();
+            MvcResult result = mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", courseId)).andReturn();
             String body = result.getResponse().getContentAsString();
             if (body.contains("\"status\":\"SUCCEEDED\"")
                     || body.contains("\"status\":\"FAILED\"")) {
@@ -220,7 +221,7 @@ class ExtractionControllerTest {
 
         startExtractionExpectingFailure(course.getId());
 
-        mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"));
 
@@ -322,7 +323,7 @@ class ExtractionControllerTest {
         startExtraction(course.getId());
         AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Rebuilt Label");
 
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
         assertThat(openTransactions).hasValue(0);
@@ -360,7 +361,7 @@ class ExtractionControllerTest {
         when(sessionExtractionService.extract(eq("failing.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any())).thenThrow(new IllegalStateException("HTTP 503"));
 
-        mockMvc.perform(post("/api/courses/{id}/extract?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract?force=true", course.getId()))
                 .andExpect(status().isAccepted());
         assertThat(awaitExtraction(course.getId())).contains("\"status\":\"FAILED\"");
 
@@ -803,7 +804,7 @@ class ExtractionControllerTest {
         stubTopicPlan("Covered", List.of(List.of(0)), List.of(1));
 
         startExtraction(course.getId());
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.competencies").value(1))
                 .andExpect(jsonPath("$.unmatchedGoals").value(1));
@@ -877,7 +878,7 @@ class ExtractionControllerTest {
 
         stubTopicPlan("Second Label", List.of(List.of(0)));
 
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.competencies").value(1))
                 .andExpect(jsonPath("$.unmatchedGoals").value(0));
@@ -929,9 +930,9 @@ class ExtractionControllerTest {
                 .map(LearningGoal::getId).toList();
         int afterExtraction = goalRelationshipRepository.findBySourceIdIn(courseGoalIds).size();
 
-        mockMvc.perform(post("/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
                 .andExpect(status().isOk());
-        mockMvc.perform(post("/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
                 .andExpect(status().isOk());
 
         List<Long> rebuiltGoalIds = goalRepository.findByCourseId(course.getId()).stream()
@@ -991,7 +992,7 @@ class ExtractionControllerTest {
                 .contains(skillBefore.getId());
 
         stubTopicPlan("Rebuilt Capability", List.of(List.of(0)));
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
         LearningGoal knowledge = goalRepository.findByCourseId(course.getId()).stream()
@@ -1037,7 +1038,7 @@ class ExtractionControllerTest {
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("model unavailable"));
 
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isBadGateway());
 
         assertThat(goalRepository.findByCourseId(course.getId()))
@@ -1071,13 +1072,13 @@ class ExtractionControllerTest {
         terminal.setStatus(de.tum.cit.hestia.materials.goal.GoalStatus.APPROVED);
         goalRepository.save(terminal);
 
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isConflict());
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .anyMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
 
         // The override is what makes the destruction deliberate.
-        mockMvc.perform(post("/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
                 .andExpect(status().isOk());
         assertThat(goalRepository.findByCourseId(course.getId()))
                 .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
@@ -1120,7 +1121,7 @@ class ExtractionControllerTest {
         assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
 
         stubTopicPlan("Apply Course Capability", List.of(List.of(0)));
-        mockMvc.perform(post("/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
                 .andExpect(status().isOk());
 
         assertThat(awaitExtraction(course.getId())).contains("\"status\":\"SUCCEEDED\"");
@@ -1183,7 +1184,7 @@ class ExtractionControllerTest {
                 .contains("\"status\":\"FAILED\"")
                 .contains("\"failedSessions\":1")
                 .contains("\"failedSessionNames\":[\"failed.pdf\"]");
-        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.extractionStatus").value("FAILED"));
         assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
@@ -1248,7 +1249,7 @@ class ExtractionControllerTest {
 
     @Test
     void unknownCourseReturns404() throws Exception {
-        mockMvc.perform(post("/api/courses/{id}/extract", 999999L))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", 999999L))
                 .andExpect(status().isNotFound());
     }
 
@@ -1256,7 +1257,7 @@ class ExtractionControllerTest {
     void statusReturnsNoContentBeforeAnyRun() throws Exception {
         Course course = courseRepository.save(new Course("Untouched"));
 
-        mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isNoContent());
     }
 
@@ -1271,7 +1272,7 @@ class ExtractionControllerTest {
 
         startExtraction(course.getId());
 
-        mockMvc.perform(get("/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.phase").value("SYNTHESIZING"))

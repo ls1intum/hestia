@@ -8,9 +8,9 @@ import tailwindcss from "@tailwindcss/vite";
 // Keep dev and prod identical so paths behave the same in both.
 const BASE_PATH = "/learninggoalhub";
 
-// The Spring Boot server runs on :8080. The dev server proxies the prefixed API path to
-// it (stripping the prefix, exactly like Traefik does in prod) so the browser talks to a
-// single origin and we avoid CORS configuration during development.
+// The hestia Spring Boot server runs on :8080 and serves this app's API under the same
+// /learninggoalhub prefix, so the dev server forwards the prefixed path unchanged. The browser
+// talks to a single origin and we avoid CORS configuration during development.
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8080";
 
 // The router accepts the prefix without its trailing slash (a deleted course navigates there), but
@@ -41,7 +41,6 @@ export default defineConfig({
       [`${BASE_PATH}/api`]: {
         target: API_TARGET,
         changeOrigin: true,
-        rewrite: (path) => path.replace(new RegExp(`^${BASE_PATH}`), ""),
       },
     },
   },

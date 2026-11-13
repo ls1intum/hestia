@@ -2,7 +2,8 @@ package de.tum.cit.hestia.materials.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
 import java.util.List;
@@ -14,8 +15,8 @@ import org.springframework.context.annotation.Import;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(TestcontainersConfiguration.class)
-class DocumentRepositoryTest {
+@Import(MaterialsTestConfiguration.class)
+class DocumentRepositoryTest extends MaterialsTestBase {
 
     @Autowired
     private CourseRepository courseRepository;

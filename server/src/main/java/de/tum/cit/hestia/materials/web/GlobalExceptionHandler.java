@@ -22,7 +22,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * requirement). Extends {@link ResponseEntityExceptionHandler} so Spring MVC's own exceptions keep
  * their correct status (400 for bad input, 404 for unknown paths, …) instead of collapsing into 500.
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "de.tum.cit.hestia.materials")
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);

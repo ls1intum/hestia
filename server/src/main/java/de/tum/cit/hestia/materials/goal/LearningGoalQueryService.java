@@ -71,6 +71,25 @@ public class LearningGoalQueryService {
         return page.map(g -> responses.get(g.getId()));
     }
 
+    /** Every goal of the course in id order, any review status. */
+    @Transactional(readOnly = true)
+    public List<LearningGoalResponse> all(Long courseId) {
+        courseRepository.requireExists(courseId);
+        List<LearningGoal> goals = goalRepository.findByCourseId(courseId).stream()
+                .sorted(Comparator.comparing(LearningGoal::getId))
+                .toList();
+        Map<Long, LearningGoalResponse> responses = responsesById(goals);
+        return goals.stream().map(g -> responses.get(g.getId())).toList();
+    }
+
+    /** One goal of the course, or empty when the course has no such goal. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<LearningGoalResponse> find(Long courseId, Long goalId) {
+        courseRepository.requireExists(courseId);
+        return goalRepository.findByIdAndCourseId(goalId, courseId)
+                .map(goal -> responsesById(List.of(goal)).get(goal.getId()));
+    }
+
     /** See {@link LearningGoalController#listBySession} for the grouping and ordering rules. */
     @Transactional(readOnly = true)
     public List<SessionGoalsResponse> bySession(Long courseId, GoalStatus status, GoalRole role, Long nodeId) {
