@@ -77,6 +77,9 @@ Failed or timed-out calls report no usage.
 - The browser tests run the real server against `client/e2e/fake-llm.mjs`, a stand-in gateway
   that recognises each prompt by the JSON shape it asks for and answers deterministically. A new
   prompt shape needs a matching answer there.
-- `*LiveIT` classes call the real gateway (`PageDescriptionModelLiveIT`, `TaxonomyVerbLiveIT`).
-  They run only with `RUN_LIVE_LOGOS=1` and a `LOGOS_API_KEY`; each class's Javadoc gives its
-  command.
+- `*LiveIT` classes call the real gateway (`PageDescriptionModelLiveIT`, `TaxonomyVerbLiveIT`,
+  `flow/LogosSmokeLiveIT`). They run only with `RUN_LIVE_LOGOS=1` and a `LOGOS_API_KEY`; each
+  class's Javadoc gives its command. `LogosSmokeLiveIT` (and its Workshopper counterpart) also runs
+  by hand in CI through the `Logos smoke test` workflow.
+- The flow tests also have a copy of the fake in Java (`flow/FakeModelServer`); a new prompt shape
+  needs an answer there too.

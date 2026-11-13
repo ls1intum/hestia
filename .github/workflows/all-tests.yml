@@ -1,0 +1,65 @@
+name: all tests
+
+# Runs the tests of every app on every pull request and every push to main, independent of
+# which paths changed. The per-app CI/CD workflows keep building and deploying; this one is the
+# safety net for changes that span several apps.
+#
+#   servers: `./gradlew testAll` (LearningGoalHub, Workshopper, shared-llm and ExamLense,
+#            unit + Testcontainers-Postgres integration + HTTP flow tests)
+#   clients: `npm test` in each app's client
+#
+# No job needs a real model key: model calls in the tests are answered by fakes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: all-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  servers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run the tests of all servers
+        run: ./gradlew --no-daemon testAll
+      - name: Keep the test reports of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-reports
+          path: |
+            apps/*/server/build/reports/tests/test/
+            libs/*/build/reports/tests/test/
+          retention-days: 7
+
+  clients:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [examlense, learninggoalhub, workshopper]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/client/package-lock.json
+      - run: npm ci
+      - run: npm test

@@ -1,0 +1,49 @@
+name: Logos smoke test
+
+# Runs the *LogosSmokeLiveIT tests against the real Logos gateway: LearningGoalHub extracts
+# learning goals from a synthetic lecture, Workshopper refines a goal and fixes its grammar.
+# They check only that the real model's answers still fit the prompts and parsers, not the wording.
+#
+# Started by hand only (Actions tab -> "Logos smoke test" -> Run workflow), never on pull requests:
+# every run costs model tokens, and forks never receive the secret.
+# Needs the repository secret LOGOS_API_KEY.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: logos-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_LIVE_LOGOS: "1"
+      LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check that the secret is set
+        run: test -n "$LOGOS_API_KEY" || { echo "::error::Repository secret LOGOS_API_KEY is missing"; exit 1; }
+      - name: Run the Logos smoke tests
+        run: >-
+          ./gradlew --no-daemon
+          :apps:learninggoalhub:server:test --tests '*LogosSmokeLiveIT'
+          :apps:workshopper:server:test --tests '*LogosSmokeLiveIT'
+          --continue
+      - name: Keep the test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logos-smoke-reports
+          path: apps/*/server/build/reports/tests/test/
+          retention-days: 7
