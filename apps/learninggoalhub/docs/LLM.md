@@ -2,7 +2,7 @@
 
 Every model call LearningGoalHub makes, which settings drive it, how failures are handled, and how
 runs stay comparable. To add a call, follow the steps in
-[server/README.md](../server/README.md#an-llm-call).
+[server/docs/materials.md](../../../server/docs/materials.md#an-llm-call).
 
 ## Gateway and models
 
@@ -18,7 +18,7 @@ builds a `ChatClient`.
 
 ## The calls
 
-Settings are under `hestia.*` in `server/src/main/resources/application.yml`. UI tier names are
+Settings are under `hestia.*` in `server/src/main/resources/application.yml` and `modules/materials.yml` (at the repository root). UI tier names are
 used here; the code calls the Skill tier "capability" and the Sub-skill tier "skill".
 
 | Call | Class | When | Model setting | Temperature | Reply |

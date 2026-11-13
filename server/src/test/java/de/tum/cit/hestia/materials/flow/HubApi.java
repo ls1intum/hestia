@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,20 +16,14 @@ import java.util.Map;
 
 /**
  * The one place that knows how a flow test reaches the server: where the API lives
- * ({@link #BASE_PATH}) and how a request authenticates ({@link #authenticate}). Moving the API under
+ * ({@link #BASE_PATH}) and how a client logs in ({@link #loggedIn}). Moving the API under
  * a module prefix or replacing the login changes this class (and the property setup in
  * {@code HttpFlowTestBase}), not the tests.
  */
 final class HubApi {
 
     /** Prefix of every API path. */
-    static final String BASE_PATH = "/api";
-
-    /**
-     * The shared service key the tests configure (see {@code HttpFlowTestBase}) and send as a header;
-     * a made-up value for this test only, not a secret.
-     */
-    static final String TEST_API_KEY = "http-flow-test-key";
+    static final String BASE_PATH = "/learninggoalhub/api";
 
     /** A status code, the raw body and the body parsed as JSON (a missing node when there is none). */
     record Response(int status, String raw, JsonNode json) {
@@ -35,30 +31,34 @@ final class HubApi {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    /** Keeps the session cookie, so a login of this client counts for its later requests. */
+    private final HttpClient client = HttpClient.newBuilder()
+            .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
     private final String origin;
-    private final boolean authenticated;
 
-    private HubApi(int port, boolean authenticated) {
+    private HubApi(int port) {
         this.origin = "http://localhost:" + port;
-        this.authenticated = authenticated;
     }
 
-    /** A client that sends the credentials the server accepts. */
+    /**
+     * A client with a session of a logged-in user. The application has no password login, so the
+     * test setup ({@link FlowLoginConfiguration}) offers a login request that exists only in tests.
+     */
     static HubApi loggedIn(int port) {
-        return new HubApi(port, true);
+        HubApi api = new HubApi(port);
+        Response login = api.send(HttpRequest.newBuilder(URI.create(api.origin + FlowLoginConfiguration.LOGIN_PATH))
+                .POST(HttpRequest.BodyPublishers.noBody()));
+        if (login.status() != 204) {
+            throw new IllegalStateException("The test login failed with status " + login.status());
+        }
+        return api;
     }
 
     /** A client that sends no credentials at all. */
     static HubApi anonymous(int port) {
-        return new HubApi(port, false);
-    }
-
-    /** Adds the authentication to a request. */
-    private void authenticate(HttpRequest.Builder request) {
-        if (authenticated) {
-            request.header("X-Api-Key", TEST_API_KEY);
-        }
+        return new HubApi(port);
     }
 
     Response get(String path) {
@@ -102,7 +102,6 @@ final class HubApi {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(origin + BASE_PATH + path))
                 .timeout(Duration.ofSeconds(60))
                 .header("Accept", "application/json");
-        authenticate(request);
         return request;
     }
 

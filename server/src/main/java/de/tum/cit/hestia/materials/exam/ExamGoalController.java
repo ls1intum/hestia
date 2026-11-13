@@ -58,7 +58,7 @@ public class ExamGoalController {
                 .toList();
     }
 
-    private static void validate(GenerateExamGoalsRequest request) {
+    static void validate(GenerateExamGoalsRequest request) {
         if (request == null || request.blocks() == null || request.blocks().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "blocks must not be empty");
         }

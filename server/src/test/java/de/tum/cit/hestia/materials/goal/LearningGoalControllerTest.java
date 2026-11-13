@@ -17,7 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
 import de.tum.cit.hestia.materials.document.Document;
@@ -58,10 +59,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-class LearningGoalControllerTest {
+class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Autowired
     private MockMvc mockMvc;
@@ -109,7 +110,7 @@ class LearningGoalControllerTest {
         goalSourceRepository.save(new GoalSource(tdd, exercise, "...red-green-refactor..."));
         goalSourceRepository.save(new GoalSource(refactor, lecture, "...small steps..."));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(2))
@@ -142,7 +143,7 @@ class LearningGoalControllerTest {
         goalSourceRepository.save(GoalSource.figure(goal, document, 3));
         pageDescriptionRepository.save(new PageDescription(document, 3, "A diagram shows the data flow.", "vision"));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId()).param("size", "10"))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId()).param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].sources[0].evidenceKind").value("FIGURE"))
                 .andExpect(jsonPath("$.content[0].sources[0].page").value(3))
@@ -176,7 +177,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.save(new GoalRelationship(
                 unitTests, tdd, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].text").value("Apply TDD."))
@@ -202,7 +203,7 @@ class LearningGoalControllerTest {
             goalRepository.save(new LearningGoal(course, "Goal " + i, GoalKind.EXPLICIT));
         }
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("page", "1")
                         .param("size", "2"))
                 .andExpect(status().isOk())
@@ -222,13 +223,13 @@ class LearningGoalControllerTest {
         goalRepository.save(approved);
         goalRepository.save(new LearningGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("status", "APPROVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].text").value("Apply TDD."));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("status", "PENDING"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
@@ -246,13 +247,13 @@ class LearningGoalControllerTest {
         goalRepository.save(knowledge);
         goalRepository.save(new LearningGoal(course, "Legacy goal.", GoalKind.IMPLICIT));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
                         .param("role", "KNOWLEDGE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].role").value("KNOWLEDGE"));
 
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
                         .param("role", "SKILL"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].goals[0].role").value("SKILL"));
@@ -280,7 +281,7 @@ class LearningGoalControllerTest {
         goalRepository.save(new LearningGoal(course, "Unlinked.", GoalKind.IMPLICIT));
 
         // groups follow node creation order (module root first), the node-less bucket comes last
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(3)))
                 .andExpect(jsonPath("$[0].nodeId").value(module.getId().intValue()))
@@ -298,7 +299,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$[2].goals[0].text").value("Unlinked."));
 
         // the status filter drops empty groups entirely
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
                         .param("status", "APPROVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
@@ -324,7 +325,7 @@ class LearningGoalControllerTest {
         goalRepository.save(new LearningGoal(course, "Unlinked.", GoalKind.IMPLICIT));
 
         // nodeId narrows to exactly that node's group, dropping the other node and the node-less bucket
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
                         .param("nodeId", session.getId().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
@@ -333,7 +334,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$[0].goals[0].text").value("Apply TDD."));
 
         // an unknown nodeId yields an empty list rather than an error
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
                         .param("nodeId", "999999"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(0)));
@@ -341,13 +342,13 @@ class LearningGoalControllerTest {
 
     @Test
     void listBySessionUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void unknownCourseErrorBodyHasCodeAndMessage() throws Exception {
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/by-session", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("999999")));
@@ -355,7 +356,7 @@ class LearningGoalControllerTest {
 
     @Test
     void unknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", 999999L))
                 .andExpect(status().isNotFound());
     }
 
@@ -389,7 +390,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.save(new GoalRelationship(sessionGoal, topic, RelationshipType.CONTRIBUTES_TO,
                 1.0, RelationshipOrigin.SYNTHESIS));
 
-        String csv = mockMvc.perform(get("/api/courses/{id}/learning-goals/export.csv", course.getId()))
+        String csv = mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(header().string("Content-Disposition",
@@ -414,7 +415,7 @@ class LearningGoalControllerTest {
 
     @Test
     void exportCsvUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/api/courses/{id}/learning-goals/export.csv", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", 999999L))
                 .andExpect(status().isNotFound());
     }
 
@@ -425,7 +426,7 @@ class LearningGoalControllerTest {
         goal.setShortLabel("Test-Driven Development");
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  Apply test-driven development.  \"}"))
                 .andExpect(status().isOk())
@@ -443,19 +444,19 @@ class LearningGoalControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originalText").doesNotExist());
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originalText").value("Apply TDD."));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Practise test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -470,7 +471,7 @@ class LearningGoalControllerTest {
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -482,7 +483,7 @@ class LearningGoalControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isOk())
@@ -490,7 +491,7 @@ class LearningGoalControllerTest {
                 // status-only updates keep the text untouched
                 .andExpect(jsonPath("$.text").value("Apply TDD."));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"PENDING\"}"))
                 .andExpect(status().isOk())
@@ -504,7 +505,7 @@ class LearningGoalControllerTest {
         goal.setBloomLevel(BloomLevel.UNDERSTAND);
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bloomLevel\": \"APPLY\", \"soloLevel\": \"RELATIONAL\"}"))
                 .andExpect(status().isOk())
@@ -514,7 +515,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.text").value("Apply TDD."));
 
         // a text-only update keeps the levels untouched
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -527,7 +528,7 @@ class LearningGoalControllerTest {
         Course course = courseRepository.save(new Course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -539,7 +540,7 @@ class LearningGoalControllerTest {
         Course other = courseRepository.save(new Course("Databases"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isNotFound());
@@ -557,12 +558,12 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.save(new GoalRelationship(
                 unitTests, tdd, RelationshipType.SUPPORTS, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), tdd.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), tdd.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(tdd.getId())).isEmpty();
         // the surviving goal no longer reports a relationship to the deleted one
-        mockMvc.perform(get("/api/courses/{id}/learning-goals", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.content[0].relationships", Matchers.hasSize(0)));
@@ -574,7 +575,7 @@ class LearningGoalControllerTest {
         Course other = courseRepository.save(new Course("Databases"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId()))
                 .andExpect(status().isNotFound());
 
         assertThat(goalRepository.findById(goal.getId())).isPresent();
@@ -584,7 +585,7 @@ class LearningGoalControllerTest {
     void createTerminalSkillPersistsUserCreatedTerminalUnderCompetencyRoot() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  Design a REST API.  \"}"))
                 .andExpect(status().isCreated())
@@ -596,7 +597,7 @@ class LearningGoalControllerTest {
                 .andExpect(jsonPath("$.hierarchy").exists());
 
         // a second skill reuses the same lazily created COMPETENCY root instead of creating another
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Secure a web application.\"}"))
                 .andExpect(status().isCreated());
@@ -611,7 +612,7 @@ class LearningGoalControllerTest {
     void manualTopicCreationGeneratesNothingBeneathIt() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andExpect(status().isCreated())
@@ -633,7 +634,7 @@ class LearningGoalControllerTest {
     void createTerminalSkillLeavesTaxonomyLevelsUnset() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isCreated())
@@ -648,7 +649,7 @@ class LearningGoalControllerTest {
     void createTerminalSkillBlankTextReturns400() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -658,12 +659,12 @@ class LearningGoalControllerTest {
     void createTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  design a rest api.  \"}"))
                 .andExpect(status().isConflict());
@@ -671,7 +672,7 @@ class LearningGoalControllerTest {
 
     @Test
     void createTerminalSkillUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal", 999999L)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", 999999L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isNotFound());
@@ -691,7 +692,7 @@ class LearningGoalControllerTest {
             return List.of();
         });
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andExpect(status().isCreated());
@@ -714,7 +715,7 @@ class LearningGoalControllerTest {
         });
         when(taxonomyService.classifyBatch(anyList(), any())).thenReturn(List.of());
         Callable<Integer> request = () -> mockMvc.perform(
-                        post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+                        post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andReturn().getResponse().getStatus();
@@ -751,7 +752,7 @@ class LearningGoalControllerTest {
                 new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL),
                 new TaxonomyClassification(BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL)));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\","
                                 + "\"shortLabel\": \"Secure Deployment Automation\"}"))
@@ -820,7 +821,7 @@ class LearningGoalControllerTest {
     void generatedTerminalSkillBlankTextReturns400() throws Exception {
         Course course = courseRepository.save(new Course("Software Engineering"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -833,7 +834,7 @@ class LearningGoalControllerTest {
         existing.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(existing);
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  automate SECURE deployments.  \"}"))
                 .andExpect(status().isConflict());
@@ -847,7 +848,7 @@ class LearningGoalControllerTest {
         when(taxonomyService.classifyBatch(anyList(), any()))
                 .thenThrow(new IllegalStateException("taxonomy unavailable"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate deployments.\"}"))
                 .andExpect(status().isCreated());
@@ -865,7 +866,7 @@ class LearningGoalControllerTest {
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), terminal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Review deployment risks.\","
@@ -904,7 +905,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), subSkill.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Explain pipeline stages.\"}"))
@@ -934,7 +935,7 @@ class LearningGoalControllerTest {
         }
         goalRelationshipRepository.flush();
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), terminal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"A sixth skill.\", \"role\": \"SKILL\"}"))
@@ -953,7 +954,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), extracted.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Identify release criteria.\"}"))
@@ -985,7 +986,7 @@ class LearningGoalControllerTest {
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         // Knowledge takes no children, so a child here would never render in any view.
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), knowledge.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Name the stage order.\"}"))
@@ -1000,7 +1001,7 @@ class LearningGoalControllerTest {
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.USER_CREATED));
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), topic.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\", \"role\": \"SKILL\"}"))
@@ -1025,7 +1026,7 @@ class LearningGoalControllerTest {
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         // The sub-skill sits two tiers below the topic, which the three-tier rule used to refuse.
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), subSkill.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Explain pipeline stages.\", \"role\": \"KNOWLEDGE\"}"))
@@ -1046,7 +1047,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 knowledge, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(post("/api/courses/{courseId}/learning-goals/{goalId}/children",
+        mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
                         course.getId(), knowledge.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Name the stage order.\"}"))
@@ -1082,7 +1083,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), terminal.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), terminal.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(terminal.getId())).isEmpty();
@@ -1104,7 +1105,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), subSkill.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), subSkill.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
@@ -1136,7 +1137,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 directSubSkill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
@@ -1162,7 +1163,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), skill.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), skill.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(topic.getId())).isPresent();
@@ -1187,7 +1188,7 @@ class LearningGoalControllerTest {
         goalRelationshipRepository.saveAndFlush(new GoalRelationship(
                 knowledge, shared, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(topic.getId())).isEmpty();

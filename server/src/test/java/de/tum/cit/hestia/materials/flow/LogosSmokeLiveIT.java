@@ -17,7 +17,7 @@ import org.springframework.test.context.DynamicPropertySource;
  *
  * <p>Gated on {@code RUN_LIVE_LOGOS=1}, so it never runs in the normal build. Run with:
  * <pre>
- * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... ./gradlew :apps:learninggoalhub:server:test --tests '*LogosSmokeLiveIT'
+ * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... ./gradlew :server:test --tests '*LogosSmokeLiveIT'
  * </pre>
  * Optional: {@code LOGOS_BASE_URL} (default: the TUM AET gateway).
  */

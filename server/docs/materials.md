@@ -1,16 +1,19 @@
-# LearningGoalHub Server
+# Materials module (LearningGoalHub)
 
-Spring Boot 3.5 on Java 21, with Spring AI for model calls, PostgreSQL through Spring Data JPA, and
-Flyway for the schema. To run it locally, see the [app README](../README.md#run-locally).
+The `materials` module of the hestia server (Spring Boot 3.5 on Java 21, Spring AI for model calls,
+PostgreSQL through Spring Data JPA, Flyway for the schema). Its controllers are served under
+`/learninggoalhub`, its tables live in the `materials` schema, and its settings are in
+`src/main/resources/modules/materials.yml`. To run it locally, see the
+[app README](../../apps/learninggoalhub/README.md#run-locally).
 
 ```bash
-./gradlew :apps:learninggoalhub:server:test      # from the repository root; needs Docker
-./gradlew :apps:learninggoalhub:server:bootRun   # needs the env vars from the app README
+./gradlew :server:test --tests 'de.tum.cit.hestia.materials.*'   # from the repository root; needs a container runtime
+./gradlew :server:bootRun                                          # needs the env vars from the app README
 ```
 
 ## Packages
 
-Everything lives under `de.tum.cit.hestia.learninggoalhub`. Each package owns its entities,
+Everything lives under `de.tum.cit.hestia.materials`. Each package owns its entities,
 repositories, services and controllers. The packages form layers, and `PackageCycleTest` (ArchUnit)
 fails the build when two of them depend on each other.
 
@@ -21,20 +24,20 @@ fails the build when two of them depend on each other.
 | `document` | upload, PDF parsing (Tika, PDFBox), sessions from bookmarks, language detection, figure descriptions, highlight geometry | `DocumentService`, `DocumentParser`, `DocumentStructureService`, `PageDescriptionService` |
 | `hierarchy` | the module → session → exercise nodes goals hang off | `HierarchyNode`, `HierarchyNodeController` |
 | `taxonomy` | Bloom and SOLO levels; the classification call for goals created outside extraction (edits, exam goals, Topic tree) | `TaxonomyService` |
-| `goal` | learning goals, sources, relationships; the read, edit and CSV endpoints | `LearningGoalController`, `LearningGoalQueryService`, `LearningGoalEditService` |
+| `goal` | learning goals, sources, relationships; the read, edit and CSV endpoints; the `GoalDirectory` port | `LearningGoalController`, `LearningGoalQueryService`, `LearningGoalEditService`, `GoalDirectoryService` |
 | `topictree` | builds the Topic tree from the extracted goals and places exam goals in it | `TopicTreeService`, `TopicTreeSynthesizer`, `ExamGoalPlacer` |
 | `extraction` | the asynchronous pipeline, progress tracking, run audit, "Find in the slides" | `ExtractionRunner`, `UnitExtractor`, `SessionExtractionService`, `TopicSearchService` |
-| `exam` | the ExamLens endpoint: goals for exam tasks | `ExamGoalController`, `ExamGoalService`, `ExamGoalGenerator` |
-| `config` | security (SAML, service keys) and the LLM rate limit | `SecurityConfig`, `ServiceApiKeyFilter`, `LlmRateLimitFilter` |
+| `exam` | the endpoint and the `ExamGoalDerivation` port: goals for exam tasks | `ExamGoalController`, `ExamGoalDerivationService`, `ExamGoalService`, `ExamGoalGenerator` |
+| `config` | the module's security chain, the LLM rate limit, the OpenAPI group | `SecurityConfig`, `LlmRateLimitFilter`, `MaterialsOpenApiConfig` |
 | `web` | the `{code, message}` error body | `GlobalExceptionHandler` |
 
 The Topic tree is called the competency tree in older code and in the API
 (`POST /competency-tree`, `HierarchyLevel.COMPETENCY`, `CompetencyTreeResult`).
-[docs/api.md](../docs/api.md#topic-tree) maps the API values to the UI tiers.
+[docs/api.md](../../apps/learninggoalhub/docs/api.md#topic-tree) maps the API values to the UI tiers.
 
 ## An extraction run
 
-`POST /api/courses/{id}/extract` returns `202` and hands the work to `ExtractionRunner.runForCourse`
+`POST /learninggoalhub/api/courses/{id}/extract` returns `202` and hands the work to `ExtractionRunner.runForCourse`
 on a background thread:
 
 1. **Read** the course and its documents in a short transaction and record an `extraction_run` row.
@@ -62,7 +65,7 @@ comparable across prompt changes.
   `GlobalExceptionHandler` turns every exception into `{code, message}`; an unhandled one becomes a
   logged `500`. Do not catch and swallow: log a degraded result and count it (see
   `extraction_run.dropped_outcomes`).
-- **Schema changes** go into a new `src/main/resources/db/migration/V<n>__<name>.sql`. Hibernate only
+- **Schema changes** go into a new `src/main/resources/db/migration/V<n>__materials_<name>.sql` (one Flyway history for all modules; take the next free version). Hibernate only
   validates the schema (`ddl-auto: validate`), so an entity change without a migration fails at
   startup. Never edit a migration that has been merged.
 - **Open-in-view is off**, in production and in the tests. Load what a response needs inside the
@@ -76,14 +79,16 @@ comparable across prompt changes.
    request, call a service, map to a response record.
 2. Keep the logic in a service of the same package. If you need a class from a higher layer, move
    the shared piece down instead; `PackageCycleTest` tells you when you got it wrong.
-3. If the endpoint starts model calls, add its path to `SecurityConfig.LLM_REQUESTS` so the rate
-   limit covers it. If only consuming servers call it, add it to `SERVICE_ONLY` too.
-4. Write a `@SpringBootTest` + `MockMvc` test with `@Import(TestcontainersConfiguration.class)` and
+3. If the endpoint starts model calls, add its path (with the `/learninggoalhub` prefix) to
+   `SecurityConfig.LLM_REQUESTS` so the rate limit covers it. Every endpoint needs a login; there
+   are no service keys. Other modules call `materials` through the ports in `core.spi`, not over HTTP.
+4. Write a `@SpringBootTest` + `MockMvc` test with `@Import(MaterialsTestConfiguration.class)`, extend `MaterialsTestBase` (the shared test database), use the prefixed path, and
    mock the model-calling bean with `@MockitoBean`, as `ExamGoalControllerTest` does.
-5. Regenerate the client types (see [client/README.md](../client/README.md#api-client)) and commit
+5. Regenerate the client types (see [client/README.md](../../apps/learninggoalhub/client/README.md#api-client)) and commit
    `openapi.json` and `schema.d.ts` with the change. For endpoints other apps use, update
-   [docs/api.md](../docs/api.md). Prefer additive changes there; ExamLens and Workshopper depend
-   on the current shapes.
+   [docs/api.md](../../apps/learninggoalhub/docs/api.md). The materials OpenAPI document is
+   `/v3/api-docs/materials` (paths without the module prefix). Prefer additive changes there; the
+   ports in `core.spi` and the other modules depend on the current shapes.
 
 ### an LLM call
 
@@ -108,9 +113,9 @@ prompt, bump its `PROMPT_VERSION` so stored runs show which prompt produced them
 
 ## Tests
 
-- Unit and integration tests run against a real Postgres in Testcontainers
-  (`pgvector/pgvector:pg16`), so Docker must be running. SAML is mocked in
-  `TestcontainersConfiguration`, and the tests need no key pair.
+- Unit and integration tests run against the one real Postgres in Testcontainers that
+  `de.tum.cit.hestia.TestDatabase` starts for the whole test run, so a container runtime must be
+  running. SAML is mocked in `MaterialsTestConfiguration`, and the tests need no key pair.
 - No automated test calls a model. `*LiveIT` classes run only with `RUN_LIVE_LOGOS=1` and a
   `LOGOS_API_KEY`; each class's Javadoc gives its command.
 - Gradle caches test results. If a run finishes within seconds, add `--rerun-tasks`.

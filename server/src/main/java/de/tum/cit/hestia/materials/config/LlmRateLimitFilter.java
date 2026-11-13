@@ -14,8 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -27,8 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p>Clients are counted by address (the forwarded client address behind the proxies). Spring takes
  * the leftmost {@code X-Forwarded-For} entry, which a client could set itself; it holds only because
  * Traefik replaces client-sent forwarded headers and nothing reaches the server around it (see
- * DEPLOY.md, Notes). Requests authenticated with a service key are not counted: the consuming apps
- * are trusted, and their users would otherwise share one address and one allowance.
+ * DEPLOY.md, Notes).
  */
 final class LlmRateLimitFilter extends OncePerRequestFilter {
 
@@ -56,7 +53,7 @@ final class LlmRateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (!llmRequests.matches(request) || isService()) {
+        if (!llmRequests.matches(request)) {
             chain.doFilter(request, response);
             return;
         }
@@ -88,11 +85,5 @@ final class LlmRateLimitFilter extends OncePerRequestFilter {
             return 0;
         }
         return Math.max(1, (window.start() + windowMillis - now + 999) / 1000);
-    }
-
-    private static boolean isService() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(authority -> ("ROLE_" + ServiceApiKeyFilter.ROLE).equals(authority.getAuthority()));
     }
 }

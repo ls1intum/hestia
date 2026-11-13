@@ -14,7 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
-import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
@@ -62,10 +63,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-class TopicSearchControllerTest {
+class TopicSearchControllerTest extends MaterialsTestBase {
 
     private static final String TOPIC = "Random forests";
 
@@ -115,7 +116,7 @@ class TopicSearchControllerTest {
 
         String proposal = search(course, lecture, 1, 4);
         String proposalId = JsonPath.read(proposal, "$.proposalId");
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\", \"s1\", \"s2\", \"s3\"]}"))
                 .andExpect(status().isCreated())
@@ -179,7 +180,7 @@ class TopicSearchControllerTest {
             return List.of("Build forests");
         });
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/pages", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/pages", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\"}"))
                 .andExpect(status().isOk());
@@ -207,7 +208,7 @@ class TopicSearchControllerTest {
                 nullable(String.class))).thenReturn(List.of(-1, -1, -1, 0));
 
         // The topic is read off the stored tree between the model calls, outside the request's reads.
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": 1, \"endPage\": 4}]}"))
@@ -230,7 +231,7 @@ class TopicSearchControllerTest {
             return inv.callRealMethod();
         }).when(unitExtractor).persistSource(any(), any(), any(), any());
         Callable<Integer> accept = () -> mockMvc.perform(
-                        post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+                        post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"subSkillKeys\": [\"s0\"]}"))
                 .andReturn().getResponse().getStatus();
@@ -254,7 +255,7 @@ class TopicSearchControllerTest {
         Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
 
         String proposalId = JsonPath.read(search(course, lecture, 1, 4), "$.proposalId");
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\", \"s2\"]}"))
                 .andExpect(status().isCreated());
@@ -276,7 +277,7 @@ class TopicSearchControllerTest {
         existing.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(existing);
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\"]}"))
                 .andExpect(status().isConflict());
@@ -286,7 +287,7 @@ class TopicSearchControllerTest {
     void anUnknownProposalIsNotFound() throws Exception {
         Course course = courseRepository.save(new Course("Machine Learning"));
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(),
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(),
                         "00000000-0000-0000-0000-000000000000")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\"]}"))
@@ -300,7 +301,7 @@ class TopicSearchControllerTest {
         java.util.Arrays.fill(pages, "Random forests");
         Document lecture = document(course, pages);
 
-        mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": 1, \"endPage\": 81}]}"))
@@ -337,7 +338,7 @@ class TopicSearchControllerTest {
     }
 
     private String search(Course course, Document lecture, int startPage, int endPage) throws Exception {
-        return mockMvc.perform(post("/api/courses/{id}/learning-goals/topic-search", course.getId())
+        return mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": " + startPage + ", \"endPage\": " + endPage + "}]}"))

@@ -20,24 +20,24 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * The client's types are generated from {@code client/openapi/openapi.json}. This test fails when
- * that snapshot no longer matches the server's {@code /v3/api-docs}, so a changed request or
+ * that snapshot no longer matches the server's {@code /v3/api-docs/materials}, so a changed request or
  * response cannot reach {@code main} with the client typed against the old shape.
  *
  * <p>To update the snapshot after an API change, from the repository root:
  * <pre>
- * UPDATE_OPENAPI_SNAPSHOT=1 ./gradlew :apps:learninggoalhub:server:test --tests '*OpenApiSnapshotTest' --rerun-tasks
+ * UPDATE_OPENAPI_SNAPSHOT=1 ./gradlew :server:test --tests '*OpenApiSnapshotTest' --rerun-tasks
  * cd apps/learninggoalhub/client &amp;&amp; npm run generate:api
  * </pre>
  * The comparison ignores key order and {@code servers}, which names the host the document was
  * fetched from.
  */
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-class OpenApiSnapshotTest {
+class OpenApiSnapshotTest extends MaterialsTestBase {
 
     /** Gradle runs the tests in the server project directory. */
-    private static final Path SNAPSHOT = Path.of("../client/openapi/openapi.json");
+    private static final Path SNAPSHOT = Path.of("../apps/learninggoalhub/client/openapi/openapi.json");
 
     @Autowired
     private MockMvc mockMvc;
@@ -47,7 +47,7 @@ class OpenApiSnapshotTest {
 
     @Test
     void clientSnapshotMatchesTheServersApiDocument() throws Exception {
-        String body = mockMvc.perform(get("/v3/api-docs"))
+        String body = mockMvc.perform(get("/v3/api-docs/materials"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         ObjectNode live = (ObjectNode) objectMapper.readTree(body);

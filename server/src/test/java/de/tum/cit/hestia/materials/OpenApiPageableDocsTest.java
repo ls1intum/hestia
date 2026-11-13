@@ -19,10 +19,10 @@ import org.springframework.test.web.servlet.MockMvc;
 // a single nested `pageable` object. Swagger UI's "Try it out" pre-fills a nested object's sort with
 // the placeholder ["string"], which submits sort=string and makes Spring Data 500 on an unknown
 // property. Flat params start empty, so the default sort is used and the call succeeds.
-@Import(TestcontainersConfiguration.class)
+@Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-class OpenApiPageableDocsTest {
+class OpenApiPageableDocsTest extends MaterialsTestBase {
 
     @Autowired
     private MockMvc mockMvc;
@@ -32,7 +32,7 @@ class OpenApiPageableDocsTest {
 
     @Test
     void pageableEndpointsDocumentFlatPageSizeSortParams() throws Exception {
-        String body = mockMvc.perform(get("/v3/api-docs"))
+        String body = mockMvc.perform(get("/v3/api-docs/materials"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode paths = objectMapper.readTree(body).get("paths");
