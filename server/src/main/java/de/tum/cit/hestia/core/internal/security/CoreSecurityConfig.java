@@ -49,9 +49,17 @@ class CoreSecurityConfig {
     @PostConstruct
     void validateProfiles() {
         List<String> active = Arrays.asList(env.getActiveProfiles());
-        if (active.contains("local") && active.contains("prod")) {
+        if (!active.contains("local")) {
+            return;
+        }
+        if (active.contains("prod")) {
             throw new IllegalStateException(
                     "CRITICAL SECURITY ERROR: 'local' and 'prod' profiles cannot be active simultaneously.");
+        }
+        // Catch a deployed environment where 'local' is active alone
+        if (System.getenv("KUBERNETES_SERVICE_HOST") != null || System.getenv("FLY_APP_NAME") != null) {
+            throw new IllegalStateException(
+                    "CRITICAL SECURITY ERROR: 'local' profile is active in a deployed environment!");
         }
     }
 
