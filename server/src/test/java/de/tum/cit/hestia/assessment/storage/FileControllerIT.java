@@ -31,6 +31,9 @@ class FileControllerIT extends AbstractIntegrationTest {
     @Autowired ExaminationRepository exams;
     @Autowired SignedUrls signedUrls;
 
+    /** Signed URLs are relative to the client's API base, which is the module prefix. */
+    private static final String MODULE = "/examlense";
+
     private Examination ownExamination() {
         Examination e = new Examination();
         e.setOwnerId(DefaultUser.ID);
@@ -45,7 +48,7 @@ class FileControllerIT extends AbstractIntegrationTest {
         byte[] pdf = "%PDF-1.4 fake".getBytes();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", pdf);
 
-        String storagePath = extractPath(mvc.perform(multipart("/api/exams/" + exam.getId() + "/pdf")
+        String storagePath = extractPath(mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf")
                 .file(file)
                 .header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk())
@@ -55,7 +58,7 @@ class FileControllerIT extends AbstractIntegrationTest {
         String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
 
         // Public route — no token, signature does the gating.
-        mvc.perform(get(signed))
+        mvc.perform(get(MODULE + signed))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.APPLICATION_PDF))
             .andExpect(content().bytes(pdf));
@@ -66,7 +69,7 @@ class FileControllerIT extends AbstractIntegrationTest {
         Examination exam = ownExamination();
         // Must be a real PDF (magic bytes) or the upload is rejected before we get a path.
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "%PDF-1.4 x".getBytes());
-        String storagePath = extractPath(mvc.perform(multipart("/api/exams/" + exam.getId() + "/pdf")
+        String storagePath = extractPath(mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf")
                 .file(file)
                 .header("Authorization", "Bearer " + TEST_TOKEN))
             .andReturn().getResponse().getContentAsString());
@@ -74,7 +77,7 @@ class FileControllerIT extends AbstractIntegrationTest {
         String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
         String tampered = signed.replaceAll("sig=.*$", "sig=forged");
 
-        mvc.perform(get(tampered)).andExpect(status().isForbidden());
+        mvc.perform(get(MODULE + tampered)).andExpect(status().isForbidden());
     }
 
     @Test
@@ -82,8 +85,20 @@ class FileControllerIT extends AbstractIntegrationTest {
         Examination exam = ownExamination();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
-        mvc.perform(multipart("/api/exams/" + exam.getId() + "/pdf").file(file))
+        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file))
             .andExpect(status().isUnauthorized());
+    }
+
+    /** The server-wide multipart limit is 100 MB; this module still accepts 10 MB, as before. */
+    @Test
+    void uploadAbove10MbIsRejectedWith413() throws Exception {
+        Examination exam = ownExamination();
+        byte[] tooBig = new byte[10 * 1024 * 1024 + 1];
+        MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", tooBig);
+
+        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file)
+                .header("Authorization", "Bearer " + TEST_TOKEN))
+            .andExpect(status().isPayloadTooLarge());
     }
 
     /** storage_path is {userId}/{examId}.pdf — pull it out of the JSON body. */

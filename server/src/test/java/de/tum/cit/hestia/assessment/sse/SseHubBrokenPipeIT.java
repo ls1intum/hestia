@@ -57,7 +57,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
     private void openThenKillSseStream() throws Exception {
         Socket socket = new Socket("localhost", port);
         OutputStream out = socket.getOutputStream();
-        out.write(("GET /api/exams/events?token=" + TEST_TOKEN + " HTTP/1.1\r\n"
+        out.write(("GET /examlense/api/exams/events?token=" + TEST_TOKEN + " HTTP/1.1\r\n"
             + "Host: localhost:" + port + "\r\n"
             + "Accept: text/event-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -90,7 +90,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
         // still surface — otherwise this "fix" just blinds us.
         try (Socket socket = new Socket("localhost", port)) {
             socket.getOutputStream().write(
-                ("GET /api/__boom HTTP/1.1\r\nHost: localhost:" + port + "\r\n"
+                ("GET /examlense/api/__boom HTTP/1.1\r\nHost: localhost:" + port + "\r\n"
                     + "Authorization: Bearer " + TEST_TOKEN + "\r\n\r\n")
                     .getBytes(StandardCharsets.UTF_8));
             socket.getOutputStream().flush();

@@ -25,21 +25,21 @@ class HealthSmokeTest extends AbstractIntegrationTest {
 
     @Test
     void healthzIsPublicAndReportsOk() throws Exception {
-        mvc.perform(get("/api/healthz"))
+        mvc.perform(get("/examlense/api/healthz"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("ok"));
     }
 
     @Test
     void meReturnsThePrincipalWithAValidToken() throws Exception {
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value("00000000-0000-0000-0000-000000000001"));
     }
 
     @Test
     void meIsRejectedWithoutAToken() throws Exception {
-        mvc.perform(get("/api/me"))
+        mvc.perform(get("/examlense/api/me"))
             .andExpect(status().isUnauthorized());
     }
 }

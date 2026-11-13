@@ -67,7 +67,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     void ownerCanReadTheirOwnExamination() throws Exception {
         Examination mine = seedExamination(alice.id(), "mine");
 
-        mvc.perform(asAlice(get("/api/exams/" + mine.getId())))
+        mvc.perform(asAlice(get("/examlense/api/exams/" + mine.getId())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(mine.getId().toString()));
     }
@@ -76,7 +76,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     void readingAnotherUsersExaminationIsForbidden() throws Exception {
         Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(asBob(get("/api/exams/" + foreign.getId())))
+        mvc.perform(asBob(get("/examlense/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
@@ -84,7 +84,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     void patchingAnotherUsersExaminationIsForbidden() throws Exception {
         Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(asBob(patch("/api/exams/" + foreign.getId()))
+        mvc.perform(asBob(patch("/examlense/api/exams/" + foreign.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"hijacked\"}"))
             .andExpect(status().isForbidden());
@@ -94,7 +94,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     void deletingAnotherUsersExaminationIsForbidden() throws Exception {
         Examination foreign = seedExamination(alice.id(), "alice's");
 
-        mvc.perform(asBob(delete("/api/exams/" + foreign.getId())))
+        mvc.perform(asBob(delete("/examlense/api/exams/" + foreign.getId())))
             .andExpect(status().isForbidden());
     }
 
@@ -103,13 +103,13 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         Examination foreign = seedExamination(alice.id(), "alice's");
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
-        mvc.perform(asBob(multipart("/api/exams/" + foreign.getId() + "/pdf").file(file)))
+        mvc.perform(asBob(multipart("/examlense/api/exams/" + foreign.getId() + "/pdf").file(file)))
             .andExpect(status().isForbidden());
     }
 
     @Test
     void unknownExaminationIsNotFound() throws Exception {
-        mvc.perform(asBob(get("/api/exams/" + UUID.randomUUID())))
+        mvc.perform(asBob(get("/examlense/api/exams/" + UUID.randomUUID())))
             .andExpect(status().isNotFound());
     }
 
@@ -118,7 +118,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         Examination alices = seedExamination(alice.id(), "alice-" + UUID.randomUUID());
         Examination bobs = seedExamination(bob.id(), "bob-" + UUID.randomUUID());
 
-        mvc.perform(asBob(get("/api/exams")))
+        mvc.perform(asBob(get("/examlense/api/exams")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[?(@.id == '" + bobs.getId() + "')]").exists())
             .andExpect(jsonPath("$[?(@.id == '" + alices.getId() + "')]").doesNotExist());
@@ -135,19 +135,19 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         seedExamination(alice.id(), "alice-" + UUID.randomUUID());
         TestUser newcomer = createUser("newcomer-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + newcomer.token()))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + newcomer.token()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$").isEmpty());
     }
 
     @Test
     void noTokenIsUnauthorized() throws Exception {
-        mvc.perform(get("/api/exams")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/examlense/api/exams")).andExpect(status().isUnauthorized());
     }
 
     @Test
     void unknownTokenIsUnauthorized() throws Exception {
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer exl_not-a-real-token"))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer exl_not-a-real-token"))
             .andExpect(status().isUnauthorized());
     }
 }

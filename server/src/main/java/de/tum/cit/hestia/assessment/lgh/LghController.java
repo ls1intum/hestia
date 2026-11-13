@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.lgh;
 
 import de.tum.cit.hestia.assessment.shared.Access;
+import de.tum.cit.hestia.core.spi.GoalDirectory;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
@@ -45,11 +46,13 @@ public class LghController {
 
     public record LearningGoalDto(long id, String text, String bloom_level, String solo_level, String status) {}
 
-    private final LearningGoalHubClient client;
+    private static final int PAGE_SIZE = 100;
+
+    private final GoalDirectory client;
     private final Access access;
     private final TaskBlockRepository taskRepository;
 
-    public LghController(LearningGoalHubClient client, Access access, TaskBlockRepository taskRepository) {
+    public LghController(GoalDirectory client, Access access, TaskBlockRepository taskRepository) {
         this.client = client;
         this.access = access;
         this.taskRepository = taskRepository;
@@ -61,7 +64,7 @@ public class LghController {
     @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @GetMapping("/lgh/courses")
     public List<CourseDto> courses(@CurrentUser String userId) {
-        return viaLgh("list LGH courses", () -> client.listCourses().stream()
+        return viaLgh("list LGH courses", () -> listAllCourses().stream()
             .map(c -> new CourseDto(c.id(), c.name()))
             .toList());
     }
@@ -114,10 +117,23 @@ public class LghController {
         // Note: fetches ALL goals of the course (paged) and filters — O(course
         // size), fine at current scale.
         return viaLgh("resolve LGH goals for exam " + exam.getId(),
-            () -> client.listGoals(exam.getLghCourseId()).stream()
+            () -> client.goals(exam.getLghCourseId()).stream()
                 .filter(g -> taskGoalIds.contains(g.id()))
                 .map(g -> new LearningGoalDto(g.id(), g.text(), g.bloomLevel(), g.soloLevel(), g.status()))
                 .toList());
+    }
+
+    /** Pages through all courses, like the former HTTP client did. */
+    private List<GoalDirectory.Course> listAllCourses() {
+        List<GoalDirectory.Course> all = new java.util.ArrayList<>();
+        int totalPages = 1;
+        for (int page = 0; page < totalPages; page++) {
+            GoalDirectory.Page<GoalDirectory.Course> res = client.listCourses(page, PAGE_SIZE);
+            if (res == null || res.content() == null) break;
+            all.addAll(res.content());
+            totalPages = res.totalPages();
+        }
+        return all;
     }
 
     /** Run an LGH call, mapping any failure to a 502 the UI degrades on. */

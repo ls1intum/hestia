@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code GET /api/me} is what the client trusts to decide whether to offer the
+ * {@code GET /examlense/api/me} is what the client trusts to decide whether to offer the
  * admin area at all, so its {@code is_admin} has to match what the server will
  * actually authorize. The two can drift: the bootstrap admin token grants admin
  * without setting {@code users.is_admin} on any row.
@@ -26,7 +26,7 @@ class MeControllerIT extends AbstractIntegrationTest {
     void reportsTheEnrolledUsersIdentityAndQuota() throws Exception {
         TestUser user = createUser("me-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + user.token()))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + user.token()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(user.id().toString()))
             .andExpect(jsonPath("$.is_admin").value(false))
@@ -37,7 +37,7 @@ class MeControllerIT extends AbstractIntegrationTest {
     void reportsAdminForAPromotedAccount() throws Exception {
         TestUser admin = createAdmin("me-admin-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + admin.token()))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + admin.token()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.is_admin").value(true));
     }
@@ -48,7 +48,7 @@ class MeControllerIT extends AbstractIntegrationTest {
      */
     @Test
     void theSharedTokenDoesNotReportAdmin() throws Exception {
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value("00000000-0000-0000-0000-000000000001"))
             .andExpect(jsonPath("$.is_admin").value(false));
@@ -61,7 +61,7 @@ class MeControllerIT extends AbstractIntegrationTest {
      */
     @Test
     void theAdminBootstrapTokenReportsAdminEvenThoughNoRowCarriesTheFlag() throws Exception {
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + TEST_ADMIN_TOKEN))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + TEST_ADMIN_TOKEN))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value("00000000-0000-0000-0000-000000000001"))
             .andExpect(jsonPath("$.is_admin").value(true));
@@ -69,6 +69,6 @@ class MeControllerIT extends AbstractIntegrationTest {
 
     @Test
     void requiresAToken() throws Exception {
-        mvc.perform(get("/api/me")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/examlense/api/me")).andExpect(status().isUnauthorized());
     }
 }

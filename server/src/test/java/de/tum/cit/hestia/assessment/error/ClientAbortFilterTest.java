@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.error;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -81,5 +82,29 @@ class ClientAbortFilterTest {
         b.other = a;
 
         assertThat(ClientAbortFilter.isClientDisconnect(a)).isFalse();
+    }
+
+    private static boolean skipped(MockHttpServletRequest request) {
+        return new ClientAbortFilter() {
+            boolean check() { return shouldNotFilter(request); }
+        }.check();
+    }
+
+    @Test
+    void actsOnlyOnTheAssessmentModulesRequests() {
+        assertThat(skipped(new MockHttpServletRequest("GET", "/examlense/api/exams"))).isFalse();
+        assertThat(skipped(new MockHttpServletRequest("GET", "/learninggoalhub/api/courses"))).isTrue();
+        assertThat(skipped(new MockHttpServletRequest("GET", "/workshopper/api/x"))).isTrue();
+    }
+
+    @Test
+    void errorDispatchesAreJudgedByTheOriginalPath() {
+        MockHttpServletRequest own = new MockHttpServletRequest("GET", "/error");
+        own.setAttribute("jakarta.servlet.error.request_uri", "/examlense/api/exams/1/events");
+        assertThat(skipped(own)).isFalse();
+
+        MockHttpServletRequest other = new MockHttpServletRequest("GET", "/error");
+        other.setAttribute("jakarta.servlet.error.request_uri", "/learninggoalhub/api/courses");
+        assertThat(skipped(other)).isTrue();
     }
 }

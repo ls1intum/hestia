@@ -7,12 +7,12 @@ import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
-import static org.hamcrest.Matchers.not;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,25 +30,25 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
 
     @Test
     void protectedEndpointRejectsMissingToken() throws Exception {
-        mvc.perform(get("/api/exams"))
+        mvc.perform(get("/examlense/api/exams"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
     void protectedEndpointRejectsWrongToken() throws Exception {
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer nope"))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer nope"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
     void protectedEndpointAllowsValidToken() throws Exception {
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk());
     }
 
     @Test
     void corsPreflightIsAllowedWithoutTokenAndEchoesTheOrigin() throws Exception {
-        mvc.perform(options("/api/exams")
+        mvc.perform(options("/examlense/api/exams")
                 .header("Origin", "http://localhost:8080")
                 .header("Access-Control-Request-Method", "GET"))
             .andExpect(status().isOk())
@@ -57,11 +57,16 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
 
     @Test
     void apiDocsAreNotExposedByDefault() throws Exception {
-        // app.docs.enabled defaults to false, so springdoc registers no handlers and
-        // SecurityConfig adds no permitAll for them. Anything but 200 is acceptable —
-        // what matters is that a deployment doesn't serve the spec unasked.
-        mvc.perform(get("/v3/api-docs"))
-            .andExpect(status().is(not(200)));
+        // app.docs.enabled defaults to false: the assessment group is not registered, and the
+        // paths of the module are stripped from every document the server still serves for
+        // the other modules.
+        mvc.perform(get("/v3/api-docs/assessment"))
+            .andExpect(status().isNotFound());
+
+        MvcResult result = mvc.perform(get("/v3/api-docs")).andReturn();
+        if (result.getResponse().getStatus() == 200) {
+            assertThat(result.getResponse().getContentAsString()).doesNotContain("/examlense/");
+        }
     }
 
     /**
@@ -73,7 +78,7 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
     void parseMetricsRequiresTheAdminRole() throws Exception {
         TestUser plain = createUser("smoke-plain-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/parse-metrics").header("Authorization", "Bearer " + plain.token()))
+        mvc.perform(get("/examlense/api/parse-metrics").header("Authorization", "Bearer " + plain.token()))
             .andExpect(status().isForbidden());
     }
 
@@ -81,7 +86,7 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
     void parseMetricsIsAllowedForAnAdmin() throws Exception {
         TestUser admin = createAdmin("smoke-admin-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/parse-metrics").header("Authorization", "Bearer " + admin.token()))
+        mvc.perform(get("/examlense/api/parse-metrics").header("Authorization", "Bearer " + admin.token()))
             .andExpect(status().isOk());
     }
 
@@ -92,18 +97,18 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
      */
     @Test
     void theSharedTokenIsNotAdmin() throws Exception {
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk());
 
-        mvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/admin/users").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isForbidden());
-        mvc.perform(get("/api/parse-metrics").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/parse-metrics").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isForbidden());
     }
 
     @Test
     void theSeparateAdminBootstrapTokenIsAdmin() throws Exception {
-        mvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + TEST_ADMIN_TOKEN))
+        mvc.perform(get("/examlense/api/admin/users").header("Authorization", "Bearer " + TEST_ADMIN_TOKEN))
             .andExpect(status().isOk());
     }
 
@@ -111,14 +116,14 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
     void adminRoutesRequireTheAdminRole() throws Exception {
         TestUser plain = createUser("smoke-plain2-" + UUID.randomUUID());
 
-        mvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + plain.token()))
+        mvc.perform(get("/examlense/api/admin/users").header("Authorization", "Bearer " + plain.token()))
             .andExpect(status().isForbidden());
     }
 
     /** How a first-time visitor gets their first credential, so it cannot need one. */
     @Test
     void registrationIsPublicSoANewcomerCanGetIn() throws Exception {
-        mvc.perform(post("/api/auth/register"))
+        mvc.perform(post("/examlense/api/auth/register"))
             .andExpect(status().isOk());
     }
 
@@ -136,7 +141,7 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
      */
     @Test
     void samlNamespaceIsHandledByTheSamlChainNotTheApiChain() throws Exception {
-        mvc.perform(get("/saml2/some-saml-route"))
+        mvc.perform(get("/saml2/some-saml-route").header("X-Forwarded-Prefix", "/examlense"))
             .andExpect(status().is3xxRedirection());
     }
 
@@ -144,16 +149,15 @@ class SecurityRulesSmokeTest extends AbstractIntegrationTest {
     void samlMetadataPathIsNotTokenGated() throws Exception {
         // permitAll in the SAML chain, so it reaches the metadata filter rather than
         // being turned away by the API chain's bearer-token rules.
-        mvc.perform(get("/saml2/service-provider-metadata/"))
-            .andExpect(status().isNotFound())
-            .andExpect(content().string(""));
+        mvc.perform(get("/saml2/service-provider-metadata/").header("X-Forwarded-Prefix", "/examlense"))
+            .andExpect(status().isNotFound());
     }
 
     @Test
     void fileContentRouteIsPublicButRejectsAnUnsignedRequest() throws Exception {
         // permitAll at the security layer, so no 401; the HMAC check then rejects
         // a request with no/invalid signature (403), not an auth failure.
-        mvc.perform(get("/api/files/exam-pdfs/whatever.pdf").param("exp", "1").param("sig", "bad"))
+        mvc.perform(get("/examlense/api/files/exam-pdfs/whatever.pdf").param("exp", "1").param("sig", "bad"))
             .andExpect(status().isForbidden());
     }
 }

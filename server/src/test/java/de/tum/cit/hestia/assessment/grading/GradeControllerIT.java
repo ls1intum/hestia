@@ -33,7 +33,7 @@ class GradeControllerIT extends AbstractIntegrationTest {
         TaskBlock task = task(exam);
         AIAnswer answer = answer(exam, task);
 
-        mvc.perform(put("/api/task-grades")
+        mvc.perform(put("/examlense/api/task-grades")
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(request(task, exam)))
@@ -49,7 +49,7 @@ class GradeControllerIT extends AbstractIntegrationTest {
         Examination exam = examination();
         TaskBlock task = task(exam);
 
-        mvc.perform(put("/api/task-grades")
+        mvc.perform(put("/examlense/api/task-grades")
                 .header("Authorization", "Bearer " + TEST_TOKEN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(request(task, exam)))

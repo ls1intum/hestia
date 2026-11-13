@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.assessment.lgh;
 
 import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
+import de.tum.cit.hestia.core.spi.GoalDirectory;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.section.SectionBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
@@ -46,7 +48,8 @@ public class TaskBlockGoalGenerationService {
     private final SectionRepository sectionRepository;
     private final SectionBlockRepository sectionBlockRepository;
     private final TaskBlockRepository taskRepository;
-    private final LearningGoalHubClient client;
+    private final GoalDirectory goalDirectory;
+    private final ExamGoalDerivation derivation;
     private final TransactionTemplate txTemplate;
     private final SseHub sse;
 
@@ -55,7 +58,8 @@ public class TaskBlockGoalGenerationService {
         SectionRepository sectionRepository,
         SectionBlockRepository sectionBlockRepository,
         TaskBlockRepository taskRepository,
-        LearningGoalHubClient client,
+        GoalDirectory goalDirectory,
+        ExamGoalDerivation derivation,
         PlatformTransactionManager txManager,
         SseHub sse
     ) {
@@ -63,7 +67,8 @@ public class TaskBlockGoalGenerationService {
         this.sectionRepository = sectionRepository;
         this.sectionBlockRepository = sectionBlockRepository;
         this.taskRepository = taskRepository;
-        this.client = client;
+        this.goalDirectory = goalDirectory;
+        this.derivation = derivation;
         this.txTemplate = new TransactionTemplate(txManager);
         this.sse = sse;
     }
@@ -83,7 +88,7 @@ public class TaskBlockGoalGenerationService {
     public void dispatchCleanup(long courseId, List<Long> goalIds) {
         for (Long goalId : goalIds) {
             try {
-                client.deleteGoal(courseId, goalId);
+                goalDirectory.deleteGoal(courseId, goalId);
             } catch (RuntimeException e) {
                 log.warn("Could not delete LGH goal {} of course {}: {}", goalId, courseId, e.getMessage());
             }
@@ -118,7 +123,7 @@ public class TaskBlockGoalGenerationService {
                 if (old != null) {
                     for (Long goalId : old) {
                         try {
-                            client.deleteGoal(courseId, goalId);
+                            goalDirectory.deleteGoal(courseId, goalId);
                         } catch (RuntimeException e) {
                             log.warn("Could not delete stale LGH goal {}: {}", goalId, e.getMessage());
                         }
@@ -130,16 +135,16 @@ public class TaskBlockGoalGenerationService {
                 taskRepository.saveAll(tasks);
             });
 
-            List<LghDtos.ExamBlock> blocks = buildBlocks(sectionId, tasks);
-            List<LghDtos.ExamTaskGoals> result = client.generateExamGoals(courseId, blocks);
+            List<ExamGoalDerivation.ExamTask> blocks = buildBlocks(sectionId, tasks);
+            List<ExamGoalDerivation.TaskGoals> result = derivation.derive(courseId, blocks);
 
             // If the user unconfirmed mid-run the content may change again —
             // drop the result and compensate by deleting the fresh goals.
             if (!isConfirmed(sectionId)) {
-                for (LghDtos.ExamTaskGoals entry : result) {
-                    for (LghDtos.LearningGoal g : entry.goals()) {
+                for (ExamGoalDerivation.TaskGoals entry : result) {
+                    for (GoalDirectory.Goal g : entry.goals()) {
                         try {
-                            client.deleteGoal(courseId, g.id());
+                            goalDirectory.deleteGoal(courseId, g.id());
                         } catch (RuntimeException e) {
                             log.warn("Could not delete orphaned LGH goal {}: {}", g.id(), e.getMessage());
                         }
@@ -152,10 +157,10 @@ public class TaskBlockGoalGenerationService {
             for (TaskBlock t : tasks) byId.put(t.getId().toString(), t);
             txTemplate.executeWithoutResult(s -> {
                 List<TaskBlock> changed = new ArrayList<>();
-                for (LghDtos.ExamTaskGoals entry : result) {
+                for (ExamGoalDerivation.TaskGoals entry : result) {
                     TaskBlock t = byId.get(entry.blockId());
                     if (t == null || entry.goals() == null) continue;
-                    t.setLearningGoalIds(entry.goals().stream().map(LghDtos.LearningGoal::id).toList());
+                    t.setLearningGoalIds(entry.goals().stream().map(GoalDirectory.Goal::id).toList());
                     changed.add(t);
                 }
                 taskRepository.saveAll(changed);
@@ -179,18 +184,18 @@ public class TaskBlockGoalGenerationService {
      * attaches every context block to the task blocks after it, so order
      * matters. Figure blocks and blank context are skipped.
      */
-    private List<LghDtos.ExamBlock> buildBlocks(UUID sectionId, List<TaskBlock> tasks) {
-        record Positioned(int position, LghDtos.ExamBlock block) {}
+    private List<ExamGoalDerivation.ExamTask> buildBlocks(UUID sectionId, List<TaskBlock> tasks) {
+        record Positioned(int position, ExamGoalDerivation.ExamTask block) {}
         List<Positioned> items = new ArrayList<>();
         for (SectionBlock b : sectionBlockRepository.findBySectionIdOrderByPositionAsc(sectionId)) {
             if (!"context".equals(b.getKind())) continue;
             if (b.getContent() == null || b.getContent().isBlank()) continue;
             items.add(new Positioned(b.getPosition(),
-                new LghDtos.ExamBlock(b.getId().toString(), "context", null, b.getContent())));
+                new ExamGoalDerivation.ExamTask(b.getId().toString(), "context", null, b.getContent())));
         }
         for (TaskBlock t : tasks) {
             items.add(new Positioned(t.getPosition(),
-                new LghDtos.ExamBlock(t.getId().toString(), "task", taskTypeLabel(t.getType()), taskDescription(t))));
+                new ExamGoalDerivation.ExamTask(t.getId().toString(), "task", taskTypeLabel(t.getType()), taskDescription(t))));
         }
         items.sort((a, b) -> Integer.compare(a.position(), b.position()));
         return items.stream().map(Positioned::block).toList();
