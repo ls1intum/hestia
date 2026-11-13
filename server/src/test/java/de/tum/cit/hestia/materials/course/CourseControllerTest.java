@@ -1,0 +1,370 @@
+package de.tum.cit.hestia.materials.course;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.tum.cit.hestia.materials.TestcontainersConfiguration;
+import de.tum.cit.hestia.materials.document.Document;
+import de.tum.cit.hestia.materials.document.DocumentRepository;
+import de.tum.cit.hestia.materials.goal.GoalCreationProvenance;
+import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.materials.goal.GoalOrigin;
+import de.tum.cit.hestia.materials.goal.GoalRelationship;
+import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.materials.goal.GoalRole;
+import de.tum.cit.hestia.materials.goal.LearningGoal;
+import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
+import de.tum.cit.hestia.materials.goal.RelationshipType;
+import java.util.ArrayList;
+import java.util.List;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+// GET /api/courses lists every course, and these @SpringBootTest classes share one committed
+// Testcontainers DB, so assertions key on the ids created here rather than on absolute totals.
+@Import(TestcontainersConfiguration.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+class CourseControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private CourseRepository courseRepository;
+
+    @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
+    private LearningGoalRepository goalRepository;
+
+    @Autowired
+    private GoalRelationshipRepository relationshipRepository;
+
+    @Test
+    void exposesDocumentAndGoalCountsPerCourse() throws Exception {
+        Course empty = courseRepository.save(new Course("Empty Course"));
+
+        Course withDocs = courseRepository.save(new Course("Course With Documents"));
+        documentRepository.save(new Document(withDocs, "lecture.pdf", "application/pdf", "lecture"));
+        documentRepository.save(new Document(withDocs, "exercise.pdf", "application/pdf", "exercise"));
+
+        Course analyzed = courseRepository.save(new Course("Analyzed Course"));
+        documentRepository.save(new Document(analyzed, "slides.pdf", "application/pdf", "slides"));
+        goalRepository.save(new LearningGoal(analyzed, "Apply TDD.", GoalKind.EXPLICIT));
+        goalRepository.save(new LearningGoal(analyzed, "Value refactoring.", GoalKind.IMPLICIT));
+        goalRepository.save(new LearningGoal(analyzed, "Understand testing.", GoalKind.EXPLICIT));
+
+        mockMvc.perform(get("/api/courses").param("size", "200"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == %d)].name", analyzed.getId())
+                        .value(Matchers.contains("Analyzed Course")))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].documentCount", analyzed.getId())
+                        .value(Matchers.contains(1)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].goalCount", analyzed.getId())
+                        .value(Matchers.contains(3)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].createdAt", analyzed.getId())
+                        .value(Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].figuresEnabled", analyzed.getId())
+                        .value(Matchers.contains(false)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].documentCount", withDocs.getId())
+                        .value(Matchers.contains(2)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].goalCount", withDocs.getId())
+                        .value(Matchers.contains(0)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].documentCount", empty.getId())
+                        .value(Matchers.contains(0)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].goalCount", empty.getId())
+                        .value(Matchers.contains(0)));
+    }
+
+    @Test
+    void getCourseReturnsNameAndCounts() throws Exception {
+        Course course = courseRepository.save(new Course("Single Course"));
+        documentRepository.save(new Document(course, "slides.pdf", "application/pdf", "slides"));
+        goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        goalRepository.save(new LearningGoal(course, "Understand testing.", GoalKind.EXPLICIT));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(course.getId()))
+                .andExpect(jsonPath("$.name").value("Single Course"))
+                .andExpect(jsonPath("$.figuresEnabled").value(false))
+                .andExpect(jsonPath("$.documentCount").value(1))
+                .andExpect(jsonPath("$.goalCount").value(2))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+    }
+
+    @Test
+    void countsTopicsAndSkillsFromTheTopicTree() throws Exception {
+        Course course = courseRepository.save(new Course("Tree Course"));
+        LearningGoal topicA = goal(course, "Testing", GoalOrigin.TERMINAL, null);
+        LearningGoal topicB = goal(course, "Design", GoalOrigin.TERMINAL, null);
+        // A skill: a topic child whose own children include a SKILL-role goal.
+        LearningGoal skill = goal(course, "Write unit tests", GoalOrigin.SYNTHESIZED, null);
+        contributes(skill, topicA);
+        contributes(goal(course, "Apply mocking", GoalOrigin.EXTRACTED, GoalRole.SKILL), skill);
+        // Also a skill: hand-added under a topic with the SKILL role, still childless.
+        LearningGoal manual = goal(course, "Review a design", GoalOrigin.EXTRACTED, GoalRole.SKILL);
+        manual.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
+        contributes(goalRepository.save(manual), topicB);
+        // Not a skill: a topic child with only knowledge beneath it.
+        LearningGoal loose = goal(course, "Explain coupling", GoalOrigin.EXTRACTED, GoalRole.SKILL);
+        contributes(loose, topicB);
+        contributes(goal(course, "Define coupling", GoalOrigin.EXTRACTED, GoalRole.KNOWLEDGE), loose);
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topicCount").value(2))
+                .andExpect(jsonPath("$.skillCount").value(2));
+        mockMvc.perform(get("/api/courses").param("size", "200"))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].topicCount", course.getId())
+                        .value(Matchers.contains(2)))
+                .andExpect(jsonPath("$.content[?(@.id == %d)].skillCount", course.getId())
+                        .value(Matchers.contains(2)));
+    }
+
+    private LearningGoal goal(Course course, String text, GoalOrigin origin, GoalRole role) {
+        LearningGoal goal = new LearningGoal(course, text, GoalKind.EXPLICIT);
+        goal.setOrigin(origin);
+        goal.setRole(role);
+        return goalRepository.save(goal);
+    }
+
+    private void contributes(LearningGoal child, LearningGoal parent) {
+        relationshipRepository.save(new GoalRelationship(
+                child, parent, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+    }
+
+    @Test
+    void getCourseReturns404WhenMissing() throws Exception {
+        mockMvc.perform(get("/api/courses/{id}", 999_999_999L))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updatesAndExposesOutputLanguage() throws Exception {
+        Course course = courseRepository.save(new Course("Language Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":\"de\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputLanguage").value(Matchers.nullValue()));
+    }
+
+    @Test
+    void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
+        Course course = new Course("Language Course");
+        course.setOutputLanguage("de");
+        course = courseRepository.save(course);
+
+        // Like the document PATCH: an omitted field is left alone, an explicit null clears it.
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed"))
+                .andExpect(jsonPath("$.outputLanguage").value("de"));
+    }
+
+    @Test
+    void createsPatchesAndReadsFiguresSetting() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Figures Course\",\"figuresEnabled\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        Course course = courseRepository.save(new Course("Patch Figures Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(true));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuresEnabled").value(false));
+    }
+
+    @Test
+    void renamesCourseAndLeavesTheNameAloneWhenOmitted() throws Exception {
+        Course course = courseRepository.save(new Course("Old Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  New Name  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("New Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"figuresEnabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("New Name"));
+    }
+
+    @Test
+    void rejectsBlankCourseName() throws Exception {
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Keeps Its Name"));
+    }
+
+    @Test
+    void rejectsACourseNameLongerThanTheColumn() throws Exception {
+        String tooLong = "x".repeat(256);
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+
+        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void rejectsSortingByAnUnknownProperty() throws Exception {
+        mockMvc.perform(get("/api/courses").param("sort", "nope,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void rejectsUnknownOutputLanguage() throws Exception {
+        Course course = courseRepository.save(new Course("Language Course"));
+
+        mockMvc.perform(patch("/api/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"outputLanguage\":\"fr\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("outputLanguage")));
+    }
+
+    @Test
+    void deleteRemovesCourseAndCascadesToDocumentsAndGoals() throws Exception {
+        Course course = courseRepository.save(new Course("Disposable Course"));
+        Document document =
+                documentRepository.save(new Document(course, "slides.pdf", "application/pdf", "slides"));
+        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+
+        mockMvc.perform(delete("/api/courses/{id}", course.getId()))
+                .andExpect(status().isNoContent());
+
+        assertThat(courseRepository.existsById(course.getId())).isFalse();
+        assertThat(documentRepository.existsById(document.getId())).isFalse();
+        assertThat(goalRepository.existsById(goal.getId())).isFalse();
+        mockMvc.perform(get("/api/courses/{id}", course.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteReturns404WhenMissing() throws Exception {
+        mockMvc.perform(delete("/api/courses/{id}", 999_999_999L))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void invalidCreateReturnsStructuredBadRequest() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
+    }
+
+    @Test
+    void createPersistsOutputLanguage() throws Exception {
+        // The override has to take at create time: the extraction runs immediately after the
+        // materials upload that follows this call, so there is no later moment to set it.
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"German Course\",\"outputLanguage\":\"de\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outputLanguage").value("de"))
+                .andExpect(jsonPath("$.figuresEnabled").value(false));
+    }
+
+    @Test
+    void createRejectsUnknownOutputLanguage() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Course\",\"outputLanguage\":\"fr\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("outputLanguage")));
+    }
+
+    @Test
+    void sortsNewestFirst() throws Exception {
+        // The three most recently created courses must occupy the first three positions
+        // (default sort createdAt DESC), regardless of older courses left by other tests.
+        Course older = courseRepository.save(new Course("Older"));
+        Course newer = courseRepository.save(new Course("Newer"));
+        Course newest = courseRepository.save(new Course("Newest"));
+
+        String body = mockMvc.perform(get("/api/courses").param("size", "200"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Long> ids = new ArrayList<>();
+        objectMapper.readTree(body).get("content").forEach(node -> ids.add(node.get("id").asLong()));
+
+        assertThat(ids.subList(0, 3))
+                .containsExactlyInAnyOrder(newest.getId(), newer.getId(), older.getId());
+    }
+}

@@ -1,0 +1,33 @@
+package de.tum.cit.hestia.assessment.parse;
+
+import de.tum.cit.hestia.assessment.ai.AiProvider;
+import java.util.UUID;
+
+/**
+ * Mutable per-parse accumulator. {@link ParseExaminationService#runAsync} creates one
+ * at the top of the pipeline and populates fields as it progresses; a
+ * try/finally hands it to {@link ParseMetricsRecorder} on every exit path so
+ * exactly one {@code parse_metrics} row is written per parse (success or failure).
+ */
+class ParseAttempt {
+    final UUID examId;
+    final String ownerId;
+    // parserModel / pdfMode are set in the constructor but restamped if the parse
+    // falls back to another model, so the single metrics row reflects what served.
+    String parserModel;
+    String pdfMode;
+
+    Integer pageCount;
+    Long llmMs;
+    AiProvider.Usage usage;
+    long durationMs;
+    boolean success;
+    String error;
+
+    ParseAttempt(UUID examId, String ownerId, String parserModel, String pdfMode) {
+        this.examId = examId;
+        this.ownerId = ownerId;
+        this.parserModel = parserModel;
+        this.pdfMode = pdfMode;
+    }
+}

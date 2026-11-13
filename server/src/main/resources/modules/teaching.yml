@@ -1,0 +1,13 @@
+# Settings of the teaching module (formerly the Workshopper server).
+
+llm:
+  secondary-model: ${LLM_SECONDARY_MODEL:}
+
+logging:
+  level:
+    de.tum.cit.hestia.teaching: INFO
+
+# LearningGoalHub, read for the goal import (until the in-process port replaces the HTTP call).
+learninggoalhub:
+  base-url: ${LGH_BASE_URL:http://localhost:8080/learninggoalhub}
+  api-key: ${LGH_API_KEY:}

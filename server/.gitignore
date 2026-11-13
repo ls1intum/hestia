@@ -1,0 +1,4 @@
+# Local-FS storage (uploaded PDFs/figures) and the local .env
+data/
+.env
+.env.local

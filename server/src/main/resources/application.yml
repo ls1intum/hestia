@@ -1,0 +1,107 @@
+# The one Hestia server. Settings shared by all modules live here; each module's own settings are in
+# modules/<module>.yml (imported below). Module controllers are served under their client's prefix:
+# /learninggoalhub (materials), /workshopper (teaching), /examlense (assessment).
+server:
+  port: ${PORT:8080}
+  # Behind the clients' nginx: honour X-Forwarded-* (scheme, host, the client's path prefix) so
+  # generated URLs (SAML, OpenAPI, signed file links) carry the external address.
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # The login cookie is not sent with requests started by other sites
+        same-site: lax
+        http-only: true
+
+spring:
+  application:
+    name: hestia-server
+  config:
+    import:
+      - classpath:modules/materials.yml
+      - classpath:modules/teaching.yml
+      - classpath:modules/assessment.yml
+
+  # compose.prod.yaml sets the deploy target (Staging/Production) as the profile when no
+  # SPRING_PROFILES_ACTIVE is given. hestia-test is unknown to TUM login, so Staging runs `local`
+  # (development login); Production runs `prod`.
+  profiles:
+    group:
+      Staging: local
+      Production: prod
+
+  security:
+    saml2:
+      relyingparty:
+        registration:
+          tum:
+            signing:
+              credentials:
+                - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
+                  certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
+            decryption:
+              credentials:
+                - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
+                  certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
+            assertingparty:
+              entity-id: https://tumidp.lrz.de/idp/shibboleth
+              metadata-uri: https://login.tum.de/idp/shibboleth
+
+  # One database, one schema per module. The application connects as hestia_app (read and write
+  # rows); Flyway migrates as hestia_owner, which owns the schemas. Both roles are created by
+  # infra/postgres/init/01-roles.sql.
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:hestia}
+    username: hestia_app
+    password: ${HESTIA_APP_PASSWORD:hestia_app}
+  flyway:
+    user: hestia_owner
+    password: ${HESTIA_OWNER_PASSWORD:hestia_owner}
+    locations: classpath:db/migration
+    # One history for all modules, in public; migrations name their module first (V7__teaching_...).
+    default-schema: public
+    schemas: core,ai,materials,teaching,assessment
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that entities and tables match.
+      ddl-auto: validate
+    open-in-view: false
+
+  servlet:
+    multipart:
+      # The largest upload is a whole course's slides in materials; the other modules check
+      # their own, smaller limits.
+      max-file-size: 100MB
+      max-request-size: 500MB
+
+  ai:
+    # Nothing embeds, so no embedding model is configured.
+    model:
+      embedding: none
+    openai:
+      # Chat and vision run on the TUM AET Logos gateway (the shared-llm default).
+      api-key: ${LOGOS_API_KEY:}
+    # The gateway rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
+    # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff
+    # so the hundreds of extraction/classification/synthesis calls in one run spread out under the limit.
+    retry:
+      # 5xx responses are transient provider failures. Retry them alongside rate limiting; the
+      # application supplies randomized exponential backoff so concurrent workers do not retry in lockstep.
+      on-http-codes: [429, 500, 502, 503, 504]
+      # Eight attempts across a ladder capped at a minute rides out roughly two minutes of throttling.
+      # It cannot ride out an exhausted hourly quota, for which the only remedy is making fewer calls.
+      max-attempts: 8
+      backoff:
+        initial-interval: 1s
+        multiplier: 2
+        max-interval: 60s
+
+# Sorted keys make the OpenAPI documents byte-stable, so a stored snapshot can be compared with them.
+springdoc:
+  writer-with-order-by-keys: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
