@@ -1,11 +1,11 @@
 # Server Architecture & Database Schema
 
-The Workshopper server is a Spring Boot 3.5 application (Java 21, Gradle module `:apps:workshopper:server`). It provides the REST API for the client, runs the AI generation through the TUM AET Logos gateway (`libs:shared-llm`), and builds the PDF and PPTX exports. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the layering rules and [API.md](./API.md) for the endpoints.
+The Workshopper server is a Spring Boot 3.5 application (Java 21). It is the `teaching` module of the one Hestia server (Gradle module `:server`); its endpoints are served under `/workshopper`, e.g. `/workshopper/api/workshop/sessions`. It provides the REST API for the client, runs the AI generation through the TUM AET Logos gateway (`libs:shared-llm`), and builds the PDF and PPTX exports. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the layering rules and [API.md](./API.md) for the endpoints.
 
 ## Packages
 
 ```
-server/src/main/java/com/workshopper/
+/server/src/main/java/de/tum/cit/hestia/teaching/
 ├── controller/   WorkshopController (sessions, generation, export), CourseController (courses),
 │                 ApiExceptionHandler (turns exceptions into 403/404/409/500 answers)
 ├── facade/       WorkshopSessionFacade: ownership checks, generation orchestration, course ZIP;
@@ -15,21 +15,22 @@ server/src/main/java/com/workshopper/
 │                 ActivityRecommender, TemplateBranding, PptxTextFit
 ├── service/      LlmService (prompt rendering + LLM calls), WorkshopService (persistence,
 │                 drafts, templates), PdfExportService (PDFBox)
-├── config/       SecurityConfig (SAML, profile gate), DevAuthFilter (local profile), AuthContext
+├── config/       SecurityConfig (chain for `/workshopper/**`; SAML login and profile gate are in core), AuthContext
 ├── dto/          request/response records (JSON contract with the client)
 ├── model/        JPA entities: WorkshopSessionEntity, CourseEntity, SlideTemplateEntity
 ├── repository/   Spring Data repositories
 ├── exception/    SessionLockedException (409)
 └── util/         FileNames: download names from session/course titles ("<Title> - Slides.pptx")
 
-server/src/main/resources/
-├── application.yml, application-local.yml, application-test.yml
+/server/src/main/resources/
+├── modules/teaching.yml                settings of this module (the shared ones are in application.yml)
 ├── prompts/*.st                        LLM prompt templates (see AI-INTEGRATION.md)
-├── templates/workshopper-default.pptx  the default slide design (one template slide per layout)
-└── db/migration/V1__…–V8__…            Flyway migrations
+└── templates/workshopper-default.pptx  the default slide design (one template slide per layout)
+
+Database migrations of all modules: /server/src/main/resources/db/migration (V3__teaching_baseline.sql and later `V<n>__teaching_…`).
 ```
 
-## Database Schema (PostgreSQL, Flyway V1–V8)
+## Database Schema (PostgreSQL schema `teaching`, Flyway)
 
 Migrations run on startup. Never edit a migration that has run anywhere; add a new `V<n>__description.sql` instead. Hibernate only validates the schema (`ddl-auto: validate`).
 
@@ -74,7 +75,7 @@ An uploaded template never replaces the default design. `AssemblePptxUseCase` al
 From the repository root:
 
 ```bash
-./gradlew :apps:workshopper:server:test
+./gradlew :server:test --tests 'de.tum.cit.hestia.teaching.*'
 ```
 
-`WorkshopSessionRepositoryTest` starts PostgreSQL with Testcontainers and needs Docker; the other tests run without a database (MockMvc, Mockito, plain unit tests).
+The repository and flow tests start the shared test PostgreSQL (`TestDatabase`, Testcontainers) and need Docker; the other tests run without a database (MockMvc, Mockito, plain unit tests).

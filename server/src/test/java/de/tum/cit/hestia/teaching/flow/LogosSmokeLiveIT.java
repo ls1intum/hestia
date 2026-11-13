@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Gated on {@code RUN_LIVE_LOGOS=1}, so it never runs in the normal build. Run with:
  * <pre>
- * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... ./gradlew :apps:workshopper:server:test --tests '*LogosSmokeLiveIT'
+ * RUN_LIVE_LOGOS=1 LOGOS_API_KEY=... ./gradlew :server:test --tests '*LogosSmokeLiveIT'
  * </pre>
  * Optional: {@code LOGOS_BASE_URL} (default: the TUM AET gateway).
  */
@@ -33,7 +33,7 @@ class LogosSmokeLiveIT extends FlowApplication {
         registry.add("spring.ai.openai.base-url",
                 () -> System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"));
         registry.add("spring.ai.openai.api-key", () -> System.getenv("LOGOS_API_KEY"));
-        registry.add("spring.ai.retry.max-attempts", () -> "3");
+        registry.add("teaching.llm.retry.max-attempts", () -> "3");
     }
 
     @Test

@@ -3,8 +3,8 @@ package de.tum.cit.hestia.teaching.flow;
 /** The ONLY place that knows the URL layout of the Workshopper API (e.g. a later module prefix). */
 final class FlowPaths {
 
-    /** Prefix of every API path; becomes "/workshopper/api" after the merge. */
-    static final String API = "/api";
+    /** Prefix of every API path; the teaching module is served under /workshopper. */
+    static final String API = "/workshopper/api";
 
     static final String COURSES = API + "/workshop/courses";
     static final String COURSE_DRAFT = COURSES + "/draft";

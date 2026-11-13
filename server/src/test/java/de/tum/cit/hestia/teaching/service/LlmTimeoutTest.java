@@ -15,7 +15,10 @@ import org.springframework.boot.autoconfigure.web.client.RestClientAutoConfigura
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
+import org.springframework.core.io.DefaultResourceLoader;
+
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -25,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * A model call that hangs must fail instead of blocking a request (and its session's generation
- * lock) for good. Uses the real application.yml and a fake model server that never answers.
+ * lock) for good. Uses the real application.yml (with the teaching module settings) and a fake model server that never answers.
  */
 class LlmTimeoutTest {
 
@@ -72,18 +75,20 @@ class LlmTimeoutTest {
     void theConfiguredLimitsAreSet() {
         app().run(context -> {
             var env = context.getEnvironment();
-            assertEquals("90s", env.getProperty("spring.http.client.read-timeout"));
-            assertEquals("10s", env.getProperty("spring.http.client.connect-timeout"));
-            assertEquals("2", env.getProperty("spring.ai.retry.max-attempts"));
+            assertEquals("90s", env.getProperty("teaching.llm.read-timeout"));
+            assertEquals("10s", env.getProperty("teaching.llm.connect-timeout"));
+            assertEquals("2", env.getProperty("teaching.llm.retry.max-attempts"));
         });
     }
 
     @Test
     void aHangingModelCallFailsAfterTheTimeoutAndOneRetry() {
-        app().withPropertyValues("spring.http.client.read-timeout=1s").run(context -> {
-            ChatModel chatModel = context.getBean(ChatModel.class);
+        app().withPropertyValues("teaching.llm.read-timeout=1s").run(context -> {
+            // The shared chat model keeps the application-wide limits; teaching derives its own.
+            LlmService llm = new LlmService(context.getBean(ChatModel.class), new DefaultResourceLoader(),
+                    context.getEnvironment());
             long start = System.nanoTime();
-            assertThrows(Exception.class, () -> chatModel.call("Hello"));
+            assertThrows(Exception.class, () -> llm.fixGoalsGrammar(List.of("students can explan recursion")));
             Duration took = Duration.ofNanos(System.nanoTime() - start);
 
             assertEquals(2, requests.get(), "one call and one retry");

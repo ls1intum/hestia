@@ -1,26 +1,32 @@
 package de.tum.cit.hestia.teaching.flow;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import de.tum.cit.hestia.TestDatabase;
+import de.tum.cit.hestia.core.spi.GoalDirectory;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mockito;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * The application under test, without a model: the real server on a random port, a real Postgres
- * (Testcontainers, Flyway migrations) and a local fake of LearningGoalHub. Which model answers is
+ * The application under test, without a model: the real server on a random port, the shared test Postgres
+ * ({@link TestDatabase}, Flyway migrations) and a stub of the materials module's goal directory. Which model answers is
  * decided by the subclass: {@link FlowTestSupport} wires the fake, {@link LogosSmokeLiveIT} the real
  * gateway. (A subclass cannot re-point a property its superclass already registered, so neither
  * of them does.)
@@ -30,31 +36,26 @@ import java.util.concurrent.atomic.AtomicReference;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 abstract class FlowApplication {
 
-    /** Started once per JVM and shared by all flow test classes (Ryuk removes it at the end). */
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
-
-    static final FakeHttpService FAKE_LEARNING_GOAL_HUB = new FakeHttpService();
-
-    static {
-        POSTGRES.start();
-    }
+    static final FakeGoalDirectory FAKE_LEARNING_GOAL_HUB = new FakeGoalDirectory();
 
     @DynamicPropertySource
     static void application(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.flyway.enabled", () -> "true");
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
-
-        // LearningGoalHub: fake
-        registry.add("learninggoalhub.base-url", FAKE_LEARNING_GOAL_HUB::baseUrl);
-        registry.add("learninggoalhub.api-key", () -> "flow-test-dummy-key");
+        TestDatabase.register(registry);
     }
 
     /** The production SAML setup would fetch the university IdP's metadata on startup. */
     @MockitoBean
     RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
+
+    /** The materials module is not under test here: teaching reads courses and goals through this port. */
+    @MockitoBean
+    GoalDirectory goalDirectory;
+
+    @BeforeEach
+    void stubGoalDirectory() {
+        Mockito.when(goalDirectory.listCourses(Mockito.anyInt(), Mockito.anyInt()))
+                .thenAnswer(call -> FAKE_LEARNING_GOAL_HUB.courses(call.getArgument(0), call.getArgument(1)));
+    }
 
     @LocalServerPort
     int port;
@@ -62,6 +63,26 @@ abstract class FlowApplication {
     FlowClient signedIn() { return FlowClient.signedIn(port); }
 
     FlowClient anonymous() { return FlowClient.anonymous(port); }
+
+    /** Answers the goal directory with the courses of one canned JSON body ({@code content: [{id, name}]}). */
+    static final class FakeGoalDirectory {
+        final List<String> requests = new CopyOnWriteArrayList<>();
+        private final AtomicReference<String> body = new AtomicReference<>("{}");
+
+        void respondWith(String json) { body.set(json); }
+
+        GoalDirectory.Page<GoalDirectory.Course> courses(int page, int size) {
+            requests.add("GET courses?page=" + page + "&size=" + size);
+            try {
+                JsonNode content = new ObjectMapper().readTree(body.get()).path("content");
+                List<GoalDirectory.Course> courses = new ArrayList<>();
+                content.forEach(c -> courses.add(new GoalDirectory.Course(c.path("id").asLong(), c.path("name").asText())));
+                return new GoalDirectory.Page<>(courses, page, size, courses.size(), 1);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
 
     /** A tiny local HTTP server that answers every request with one canned JSON body. */
     static final class FakeHttpService {

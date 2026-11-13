@@ -23,7 +23,7 @@ import java.util.Map;
  *   <li>anything else → 500 {@code {"error": "..."}}, logged with the request</li>
  * </ul>
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "de.tum.cit.hestia.teaching")
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);

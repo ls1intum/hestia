@@ -30,6 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Only the web layer is loaded — no DB, no real services.
  * Verifies HTTP status codes, routing, and basic error handling.
  */
+@org.springframework.test.context.ContextConfiguration(classes = TeachingWebMvcTestConfig.class)
+@org.springframework.context.annotation.Import(WorkshopController.class)
 @WebMvcTest(
     value = WorkshopController.class,
     excludeAutoConfiguration = {
@@ -71,7 +73,7 @@ class WorkshopControllerTest {
     @Test
     @DisplayName("GET /api/workshop/health returns 200 OK")
     void healthReturns200() throws Exception {
-        mvc.perform(get("/api/workshop/health"))
+        mvc.perform(get("/workshopper/api/workshop/health"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("OK"));
     }
@@ -86,7 +88,7 @@ class WorkshopControllerTest {
             
             when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
 
-            mvc.perform(get("/api/workshop/sessions"))
+            mvc.perform(get("/workshopper/api/workshop/sessions"))
                     .andExpect(status().isOk())
                     .andExpect(content().json("[]"));
         }
@@ -98,7 +100,7 @@ class WorkshopControllerTest {
             
             when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(summary));
 
-            mvc.perform(get("/api/workshop/sessions"))
+            mvc.perform(get("/workshopper/api/workshop/sessions"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$[0].id").value("abc123"))
                     .andExpect(jsonPath("$[0].title").value("My Session"));
@@ -117,7 +119,7 @@ class WorkshopControllerTest {
             when(workshopService.getSession("nonexistent"))
                     .thenReturn(java.util.Optional.empty());
 
-            mvc.perform(get("/api/workshop/sessions/nonexistent"))
+            mvc.perform(get("/workshopper/api/workshop/sessions/nonexistent"))
                     .andExpect(status().isNotFound());
         }
 
@@ -128,7 +130,7 @@ class WorkshopControllerTest {
             when(workshopService.getSession("abc123"))
                     .thenReturn(java.util.Optional.of(detail));
 
-            mvc.perform(get("/api/workshop/sessions/abc123"))
+            mvc.perform(get("/workshopper/api/workshop/sessions/abc123"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value("abc123"))
                     .andExpect(jsonPath("$.title").value("My Session"));
@@ -142,7 +144,7 @@ class WorkshopControllerTest {
     void deleteSessionReturns204() throws Exception {
         doNothing().when(workshopService).deleteSession("abc123");
 
-        mvc.perform(delete("/api/workshop/sessions/abc123"))
+        mvc.perform(delete("/workshopper/api/workshop/sessions/abc123"))
                 .andExpect(status().isNoContent());
 
         verify(workshopService).deleteSession("abc123");
@@ -158,7 +160,7 @@ class WorkshopControllerTest {
 
         RefineGoalRequestDto body = new RefineGoalRequestDto("A vague goal", null);
 
-        mvc.perform(post("/api/workshop/refine-goal")
+        mvc.perform(post("/workshopper/api/workshop/refine-goal")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isInternalServerError());
@@ -169,7 +171,7 @@ class WorkshopControllerTest {
     @Test
     @DisplayName("PUT /api/workshop/sessions/{id}/rename returns 400 when title is blank")
     void renameSessionBlankTitleReturns400() throws Exception {
-        mvc.perform(put("/api/workshop/sessions/abc123/rename")
+        mvc.perform(put("/workshopper/api/workshop/sessions/abc123/rename")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"\"}"))
                 .andExpect(status().isBadRequest());
@@ -180,7 +182,7 @@ class WorkshopControllerTest {
     void renameSessionReturns200() throws Exception {
         doNothing().when(workshopService).renameSession("abc123", "New Title");
 
-        mvc.perform(put("/api/workshop/sessions/abc123/rename")
+        mvc.perform(put("/workshopper/api/workshop/sessions/abc123/rename")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"New Title\"}"))
                 .andExpect(status().isOk());
@@ -199,7 +201,7 @@ class WorkshopControllerTest {
                 .thenThrow(new org.springframework.security.access.AccessDeniedException("not your session"));
 
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                    .post("/api/workshop/session")
+                    .post("/workshopper/api/workshop/session")
                     .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                     .content("{}"))
                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
@@ -211,7 +213,7 @@ class WorkshopControllerTest {
             when(facade.generateAndSaveSession(any()))
                 .thenThrow(new de.tum.cit.hestia.teaching.exception.SessionLockedException("already running"));
 
-            mvc.perform(post("/api/workshop/session")
+            mvc.perform(post("/workshopper/api/workshop/session")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{}"))
                .andExpect(status().isConflict())
@@ -226,7 +228,7 @@ class WorkshopControllerTest {
                 org.springframework.http.HttpStatus.NOT_FOUND, "Course not found"))
             .when(facade).verifyCourseOwnership("nope");
 
-        mvc.perform(get("/api/workshop/export/course/nope/zip"))
+        mvc.perform(get("/workshopper/api/workshop/export/course/nope/zip"))
             .andExpect(status().isNotFound());
     }
 

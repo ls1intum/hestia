@@ -10,7 +10,17 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.retry.TransientAiException;
+import org.springframework.boot.convert.DurationStyle;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
+import org.springframework.core.env.Environment;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.Resource;
@@ -19,6 +29,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -33,9 +44,45 @@ public class LlmService {
     @Value("${llm.secondary-model:}")
     private String secondaryModel;
 
-    public LlmService(ChatModel chatModel, ResourceLoader resourceLoader) {
-        this.chatModel = chatModel;
+    public LlmService(ChatModel sharedChatModel, ResourceLoader resourceLoader, Environment env) {
+        this.chatModel = withTeachingLimits(sharedChatModel, env);
         this.resourceLoader = resourceLoader;
+    }
+
+    /**
+     * A model call that hangs must fail instead of holding a session's generation lock, and a failing
+     * call is retried once. The application-wide chat model has other limits (set for the long
+     * extraction runs of materials), so teaching derives its own copy: same model, options and
+     * credentials, its own read timeout and retry ladder. Limits: {@code teaching.llm.*}.
+     */
+    private static ChatModel withTeachingLimits(ChatModel shared, Environment env) {
+        if (!(shared instanceof OpenAiChatModel openAi)) {
+            return shared;
+        }
+        Duration connect = duration(env, "teaching.llm.connect-timeout", "10s");
+        Duration read = duration(env, "teaching.llm.read-timeout", "90s");
+        int attempts = env.getProperty("teaching.llm.retry.max-attempts", Integer.class, 2);
+
+        RestClient.Builder restClient = RestClient.builder().requestFactory(
+                ClientHttpRequestFactoryBuilder.detect().build(ClientHttpRequestFactorySettings.defaults()
+                        .withConnectTimeout(connect).withReadTimeout(read)));
+        OpenAiApi api = OpenAiApi.builder()
+                .baseUrl(env.getProperty("spring.ai.openai.base-url", "https://api.openai.com"))
+                .apiKey(env.getProperty("spring.ai.openai.api-key", ""))
+                .completionsPath(env.getProperty("spring.ai.openai.chat.completions-path", "/v1/chat/completions"))
+                .restClientBuilder(restClient)
+                .build();
+        RetryTemplate retry = RetryTemplate.builder()
+                .maxAttempts(attempts)
+                .retryOn(TransientAiException.class)
+                .retryOn(ResourceAccessException.class)
+                .exponentialBackoff(Duration.ofSeconds(2), 2, Duration.ofSeconds(10))
+                .build();
+        return openAi.mutate().openAiApi(api).retryTemplate(retry).build();
+    }
+
+    private static Duration duration(Environment env, String key, String fallback) {
+        return DurationStyle.detectAndParse(env.getProperty(key, fallback));
     }
 
     private String readTemplate(String name) {

@@ -7,7 +7,11 @@ logging:
   level:
     de.tum.cit.hestia.teaching: INFO
 
-# LearningGoalHub, read for the goal import (until the in-process port replaces the HTTP call).
-learninggoalhub:
-  base-url: ${LGH_BASE_URL:http://localhost:8080/learninggoalhub}
-  api-key: ${LGH_API_KEY:}
+# A model call that hangs must fail instead of holding a session's generation lock: teaching's own
+# read timeout and one retry, independent of the application-wide chat model (see LlmService).
+teaching:
+  llm:
+    connect-timeout: 10s
+    read-timeout: ${LLM_READ_TIMEOUT:90s}
+    retry:
+      max-attempts: 2
