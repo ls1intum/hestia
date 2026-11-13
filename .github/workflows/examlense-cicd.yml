@@ -2,9 +2,9 @@ name: examlense CI/CD
 
 # Build the two app images and (outside of PRs) deploy them, using the shared ls1intum
 # reusable workflows. Scoped to examlense via paths so other apps in the monorepo are
-# unaffected. Unlike learninggoalhub/workshopper, the examlense server is a STANDALONE
-# Gradle project, so its build context is apps/examlense/server (not the repo root) and
-# it has no dependency on libs/ or the root Gradle files.
+# unaffected. The server is a project of the root Gradle build (:apps:examlense:server),
+# so it also rebuilds when the root Gradle files change, and its image is built from the
+# repository root.
 #
 #   PR                -> build images (pr-<N> tags), no deploy   [validation]
 #   push to main      -> build (sha-<commit>) + deploy to Staging
@@ -20,10 +20,20 @@ on:
     branches: [main]
     paths:
       - "apps/examlense/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
       - ".github/workflows/examlense-cicd.yml"
   pull_request:
     paths:
       - "apps/examlense/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
       - ".github/workflows/examlense-cicd.yml"
   release:
     types: [published]
@@ -60,8 +70,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Run server tests
-        working-directory: apps/examlense/server
-        run: ./gradlew test --no-daemon
+        run: ./gradlew --no-daemon :apps:examlense:server:test
 
   build-server:
     # Don't build/push a server image that fails its tests.
@@ -70,8 +79,8 @@ jobs:
     with:
       image-name: ${{ github.repository }}/examlense/server
       docker-file: apps/examlense/server/Dockerfile
-      # Standalone Gradle project: build from the server directory itself.
-      docker-context: apps/examlense/server
+      # Root multi-module Gradle build: the context is the repository root.
+      docker-context: .
       tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   build-client:

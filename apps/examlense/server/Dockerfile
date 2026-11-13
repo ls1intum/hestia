@@ -1,18 +1,26 @@
 # Multi-stage build for the ExamLense Spring Boot server (JDK 21).
-# The server is a standalone Gradle project, so the build context is this directory
-# (apps/examlense/server) — no monorepo root or libs/ dependency.
+# Build context is the repository root, because the server is a project of the root
+# multi-module Gradle build (:apps:examlense:server).
 
 # ---- build stage ----
 FROM eclipse-temurin:21-jdk AS build
-WORKDIR /app
-COPY . .
-RUN chmod +x ./gradlew && ./gradlew clean bootJar --no-daemon
+WORKDIR /workspace
+# Keep the Gradle build memory modest so it fits the small (≈4 GB) deploy VM.
+ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx1024m"
+
+# Gradle wrapper + root build scripts first so dependency layers cache across source-only changes.
+COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
+COPY gradle gradle
+# Module sources (.dockerignore strips build/, node_modules/, dist/).
+COPY libs libs
+COPY apps apps
+
+RUN ./gradlew --no-daemon :apps:examlense:server:bootJar -x test
 
 # ---- run stage ----
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-# The executable boot jar (the -plain.jar is not matched by this pinned name).
-COPY --from=build /app/build/libs/examlense-server-0.1.0.jar app.jar
+COPY --from=build /workspace/apps/examlense/server/build/libs/examlense-server.jar app.jar
 # Serves on server.port=${PORT:8081}; the web (nginx) container proxies to server:8081.
 EXPOSE 8081
 # Heap is sized from the container mem_limit (set in compose.prod.yaml). JAVA_OPTS is read

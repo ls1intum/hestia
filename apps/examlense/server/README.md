@@ -27,7 +27,7 @@ hand here, so it cannot drift from the code:
 - **Swagger UI** — [`/swagger-ui.html`](http://localhost:8081/swagger-ui.html)
 
 Both are **off by default** and enabled by the `local` profile, so a normal
-`SPRING_PROFILES_ACTIVE=local ./gradlew bootRun` has them. Deployments serve
+`SPRING_PROFILES_ACTIVE=local ../../../gradlew bootRun` has them. Deployments serve
 neither. To browse them on a deployed instance, set `API_DOCS_ENABLED=true` —
 note they are unauthenticated when enabled (Swagger UI can't present a bearer
 token on its initial page load), and the frontend's `nginx.conf` would need a
@@ -52,7 +52,9 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
 - JDK 21 (e.g. `brew install openjdk@21` or `sdk install java 21-tem`)
 - Docker — for PostgreSQL (`docker compose up -d postgres` from `apps/examlense/`)
   and for the test suite, which uses Testcontainers.
-- The Gradle wrapper (`./gradlew`, Gradle 8.10) — do not install Gradle separately.
+- The Gradle wrapper at the repository root (`../../../gradlew` from this directory, Gradle 9.4.1) —
+  do not install Gradle separately. This server is the project `:apps:examlense:server` of the
+  root Gradle build.
 
 ## Configure
 
@@ -98,7 +100,7 @@ docker compose up -d postgres
 
 cd server
 set -a; source .env; set +a
-SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local ../../../gradlew bootRun
 ```
 
 Server listens on `http://localhost:8081` (override with `PORT`). The Vite dev
@@ -132,7 +134,7 @@ Under the `local` profile you can also browse the whole API at
 ## Tests
 
 ```bash
-./gradlew test     # needs a running Docker daemon
+../../../gradlew test     # needs a running Docker daemon
 ```
 
 This is the same suite CI runs as a hard gate (`.github/workflows/examlense-cicd.yml`);
@@ -147,7 +149,7 @@ There is **no unit-only task**, and filtering by name doesn't cleanly separate t
 the `Test` suffix. If you must skip the container tests, list them explicitly with
 `--tests`, but the honest answer is to start Docker.
 
-`./gradlew check` is equivalent to `./gradlew test` — no Checkstyle, Spotless, or SpotBugs
+`check` is equivalent to `test` — no Checkstyle, Spotless, or SpotBugs
 is configured.
 
 ## Client wiring
@@ -166,8 +168,7 @@ every request, and `client/src/lib/api/sse.ts` opens the SSE streams.
 
 ```
 server/
-├── build.gradle.kts
-├── settings.gradle.kts
+├── build.gradle.kts            # project :apps:examlense:server of the root build
 ├── src/main/java/app/          # package-by-feature: each domain slice owns its
 │   ├── ApiApplication.java     #   controller + service + entity + repository + DTOs
 │   │

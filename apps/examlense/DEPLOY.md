@@ -49,9 +49,9 @@ your user is in the `docker` group.
 
 Images are `ghcr.io/ls1intum/hestia/examlense/{server,client}:<tag>` (nested under
 `examlense/`, matching the learninggoalhub convention). The `server` is a
-**standalone Gradle project**, so its image is built from `apps/examlense/server` (not the
-repo root, and with no dependency on `libs/` or the root Gradle files); the `client`
-is built from its own directory.
+project of the root Gradle build (`:apps:examlense:server`), so its image is built from the
+repository root with `apps/examlense/server/Dockerfile`; the `client` is built from its own
+directory.
 
 | Trigger | Images built | Deploy |
 | --- | --- | --- |

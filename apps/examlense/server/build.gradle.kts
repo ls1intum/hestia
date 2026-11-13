@@ -1,27 +1,15 @@
 plugins {
-    java
-    id("org.springframework.boot") version "3.3.4"
-    id("io.spring.dependency-management") version "1.1.6"
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
 }
 
-group = "app"
-version = "0.1.0"
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+tasks.bootJar {
+    archiveBaseName.set("examlense-server")
 }
 
-repositories {
-    mavenCentral()
-    maven { url = uri("https://build.shibboleth.net/nexus/content/repositories/releases/") }
+tasks.jar {
+    archiveBaseName.set("examlense-server")
 }
-
-// Spring Boot's dependency management pins Testcontainers (1.19.8 for Boot 3.3.4) and wins over
-// the BOM below; this property is what actually sets the version. 1.21.4 works with the
-// Docker Engine on current GitHub-hosted runners.
-extra["testcontainers.version"] = "1.21.4"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -30,10 +18,8 @@ dependencies {
     implementation("org.springframework.security:spring-security-saml2-service-provider")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
-    // OpenAPI spec + Swagger UI. Pinned to the 2.6.x line, which targets Spring Boot
-    // 3.3.x — apps/learninggoalhub is on springdoc 2.8.17 because it runs Boot 3.5.x.
-    // Do not "align" the two versions without bumping this module's Boot version first.
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+    // OpenAPI spec + Swagger UI.
+    implementation(libs.springdoc.webmvc.ui)
 
     // Persistence: JPA + Postgres + Flyway (migration off Supabase PostgREST → local Postgres)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
@@ -42,26 +28,26 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     // PDFBox: page rasterization (vision strategies) + per-page text stripping (TEXT_ONLY strategy)
-    implementation("org.apache.pdfbox:pdfbox:3.0.3")
+    implementation(libs.pdfbox)
 
     // docx4j + Apache FOP: convert uploaded Word .docx to PDF at upload time so the
     // rest of the (PDF-only) parse pipeline is unchanged. Pure-Java, no system package.
     // docx4j-JAXB-ReferenceImpl bundles a JAXB impl (not in the JDK on 21).
-    implementation("org.docx4j:docx4j-JAXB-ReferenceImpl:11.4.9")
-    implementation("org.docx4j:docx4j-export-fo:11.4.9")
+    implementation(libs.docx4j.jaxb.referenceimpl)
+    implementation(libs.docx4j.export.fo)
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
 
     // Testcontainers: a real Postgres for the boot/migration/DB-integrity/isolation
     // tests. The pure unit tests don't touch it. Requires a Docker daemon locally
-    // and in CI (GitHub-hosted runners provide one).
-    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
+    // and in CI (GitHub-hosted runners provide one). Version managed by Spring Boot.
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.test {
+tasks.withType<Test> {
     useJUnitPlatform()
 }
