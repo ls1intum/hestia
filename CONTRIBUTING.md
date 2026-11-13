@@ -21,6 +21,14 @@ The hook requires [gitleaks](https://github.com/gitleaks/gitleaks) (e.g. `brew i
 
 ## Local Setup
 
-See the `README.md` (or `AGENTS.md`) in each `apps/` directory for how to run and test that app. Most apps consist of a `server/` (Spring Boot) and a `client/` (React) part.
+The three apps share one Spring Boot server in `server/` (modules `materials`, `teaching` and `assessment` for LearningGoalHub, Workshopper and ExamLense) and one Postgres; each app keeps its own React client in `apps/<app>/client`.
+
+```bash
+docker compose up -d            # the Postgres for local development (compose.yaml)
+./gradlew testAll               # all server tests (needs Docker for Testcontainers)
+./gradlew :server:bootRun       # the server on http://localhost:8080
+```
+
+See the `README.md` (or `AGENTS.md`) in each `apps/` directory for how to run and test that app's client and what its module does.
 
 Thank you for contributing!

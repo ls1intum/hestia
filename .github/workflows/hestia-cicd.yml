@@ -1,0 +1,249 @@
+name: hestia CI/CD
+
+# The one pipeline of the Hestia application: all tests, then one server image and the three
+# client images, then (outside of PRs) the deployment, using the shared ls1intum reusable workflows.
+#
+#   PR                -> all tests + build images (pr-<N> tags), no deploy   [validation]
+#   push to main      -> all tests + build (sha-<commit>) + deploy to Staging + smoke check
+#   workflow_dispatch -> all tests + build + deploy to Staging (optionally an existing image tag)
+#                        + smoke check
+#
+# Production is not deployed from here yet: it keeps running the three former servers until the
+# single login is released. There is therefore no release trigger and no Production target.
+#
+# Images are only built once every test passes, so a red test never deploys. No job needs a real
+# model key: model calls in the tests are answered by fakes.
+#
+# Everything runs on GitHub-hosted runners. The VMs sit behind the LRZ VPN, so the deploy
+# reusable reaches them over SSH through the chair's shared deployment gateway/bastion
+# (DEPLOYMENT_GATEWAY_* — org-level secrets/vars, pulled in via `secrets: inherit`).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: "Image tag to deploy to Staging (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
+        type: string
+        default: ""
+
+concurrency:
+  group: hestia-cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEPLOY_PATH: /opt/hestia/app
+
+jobs:
+  # Server and shared-llm test suites: unit, Testcontainers-Postgres integration, HTTP flow tests
+  # and the module boundary test. GitHub-hosted runners provide the Docker daemon.
+  test-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run the tests of the server and the shared libraries
+        run: ./gradlew --no-daemon testAll
+      - name: Keep the test reports of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-reports
+          path: |
+            server/build/reports/tests/test/
+            libs/*/build/reports/tests/test/
+          retention-days: 7
+
+  test-clients:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [examlense, learninggoalhub, workshopper]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22" # same as the client Dockerfiles
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/client/package-lock.json
+      - run: npm ci
+      - if: matrix.app == 'learninggoalhub'
+        run: npm run lint && npm run typecheck
+      - run: npm test
+
+  # LearningGoalHub browser tests: the built server against a Postgres service and a fake model
+  # (client/e2e/fake-llm.mjs), driven through the Vite dev server by Playwright.
+  test-e2e:
+    # Pinned: Playwright cannot install its browser on ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: hestia
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d hestia"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      HESTIA_OWNER_PASSWORD: e2e-owner
+      HESTIA_APP_PASSWORD: e2e-app
+    defaults:
+      run:
+        working-directory: apps/learninggoalhub/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/learninggoalhub/client/package-lock.json
+      - name: Create the database roles
+        working-directory: .
+        run: psql -v ON_ERROR_STOP=1 -f infra/postgres/init/01-roles.sql
+        env:
+          PGHOST: localhost
+          PGPORT: "5433"
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: hestia
+      - name: Build the server jar
+        working-directory: .
+        run: ./gradlew --no-daemon :server:bootJar
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - name: Keep the Playwright report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: learninggoalhub-playwright-report
+          path: |
+            apps/learninggoalhub/client/playwright-report
+            apps/learninggoalhub/client/test-results
+          retention-days: 7
+
+  build-server:
+    needs: [test-server, test-clients, test-e2e]
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    with:
+      image-name: ${{ github.repository }}/server
+      docker-file: server/Dockerfile
+      # Repo root: the server is a multi-project Gradle build (depends on :libs:shared-llm).
+      docker-context: .
+      tags: type=sha,format=long
+
+  build-clients:
+    needs: [test-server, test-clients, test-e2e]
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [examlense, learninggoalhub, workshopper]
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    with:
+      image-name: ${{ github.repository }}/${{ matrix.app }}/client
+      docker-file: apps/${{ matrix.app }}/client/Dockerfile
+      docker-context: apps/${{ matrix.app }}/client
+      tags: type=sha,format=long
+
+  # The deploy reusable copies only the compose file. The postgres container creates the two
+  # database roles from infra/postgres/init on its first start, so that folder goes next to it.
+  copy-db-init:
+    needs: [build-server, build-clients]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: Staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy the database init scripts to the VM
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ vars.VM_HOST }}
+          username: ${{ vars.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          proxy_host: ${{ vars.DEPLOYMENT_GATEWAY_HOST }}
+          proxy_username: ${{ vars.DEPLOYMENT_GATEWAY_USER }}
+          proxy_key: ${{ secrets.DEPLOYMENT_GATEWAY_SSH_KEY }}
+          proxy_port: ${{ vars.DEPLOYMENT_GATEWAY_PORT }}
+          source: infra/postgres/init/01-roles.sql
+          target: ${{ env.DEPLOY_PATH }}
+
+  deploy:
+    needs: [build-server, build-clients, copy-db-init]
+    # PRs only validate the build; everything else deploys to Staging.
+    if: github.event_name != 'pull_request'
+    # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment gateway.
+    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
+    with:
+      environment: Staging
+      docker-compose-file: compose.prod.yaml
+      main-image-name: ${{ github.repository }}/server
+      image-tag: ${{ (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
+      deployment-base-path: /opt/hestia/app
+    # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME, VM_SSH_PRIVATE_KEY,
+    # DEPLOYMENT_GATEWAY_*) and the app secrets/vars (HESTIA_POSTGRES_PASSWORD,
+    # HESTIA_OWNER_PASSWORD, HESTIA_APP_PASSWORD, HESTIA_LOGOS_API_KEY, EXAMLENSE_*, APP_HOST, ...).
+    # The reusable workflow writes them into .env on the VM next to IMAGE_TAG, then runs
+    # docker compose pull && up -d.
+    secrets: inherit
+
+  # `up -d` returns before the new containers are serving. Check on the VM that the server turns
+  # healthy and that each client's core path answers: nginx serves the client, proxies /api to
+  # the server, and the server reaches the database; then the public routes through Traefik.
+  smoke-test:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: Staging
+    steps:
+      - name: Check the deployed application over SSH
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ vars.VM_HOST }}
+          username: ${{ vars.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          proxy_host: ${{ vars.DEPLOYMENT_GATEWAY_HOST }}
+          proxy_username: ${{ vars.DEPLOYMENT_GATEWAY_USER }}
+          proxy_key: ${{ secrets.DEPLOYMENT_GATEWAY_SSH_KEY }}
+          proxy_port: ${{ vars.DEPLOYMENT_GATEWAY_PORT }}
+          script: |
+            set -eu
+            for i in $(seq 1 60); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' hestia-server)
+              [ "$status" = healthy ] && break
+              sleep 5
+            done
+            if [ "$status" != healthy ]; then
+              echo "hestia-server is $status after 5 minutes"
+              docker logs --tail 100 hestia-server
+              exit 1
+            fi
+            docker exec hestia-learninggoalhub-web curl -fsS -o /dev/null http://localhost/
+            docker exec hestia-learninggoalhub-web curl -fsS -o /dev/null "http://localhost/api/courses?size=1"
+            docker exec hestia-workshopper-web curl -fsS -o /dev/null http://localhost/api/workshop/health
+            docker exec hestia-examlense-web curl -fsS -o /dev/null http://localhost/api/healthz
+            for prefix in learninggoalhub workshopper examlense; do
+              curl -fsS -o /dev/null --resolve "${{ vars.APP_HOST }}:443:127.0.0.1" \
+                "https://${{ vars.APP_HOST }}/$prefix/"
+            done
+            echo "hestia is up"
