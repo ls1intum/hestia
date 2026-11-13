@@ -95,7 +95,8 @@ jobs:
   # Browser tests: the built server against a Postgres service and a fake model
   # (client/e2e/fake-llm.mjs), driven through the Vite dev server by Playwright.
   test-e2e:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright cannot install its browser on ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: pgvector/pgvector:pg16

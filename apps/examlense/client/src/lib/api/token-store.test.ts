@@ -12,10 +12,14 @@ describe("token-store", () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
+    // The value normally comes from the gitignored client/.env; stub it so a
+    // fresh checkout (CI) sees the same dev fallback.
+    vi.stubEnv("VITE_API_AUTH_TOKEN", "dev-local-token");
   });
 
   afterEach(() => {
     localStorage.clear();
+    vi.unstubAllEnvs();
   });
 
   const load = () => import("./token-store");
