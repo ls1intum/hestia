@@ -10,7 +10,7 @@
 # to target a locally-running LGH instead, override with LGH_BASE_URL and don't
 # activate this profile (or edit the value here).
 #
-# Activate with:  SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+# Activate with:  SPRING_PROFILES_ACTIVE=local ../../../gradlew bootRun  (from apps/examlense/server)
 learninggoalhub:
   base-url: https://hestia-test.aet.cit.tum.de/learninggoalhub
 

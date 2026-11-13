@@ -1,11 +1,11 @@
 plugins {
-    id("org.springframework.boot") version "3.5.14"
-    id("io.spring.dependency-management") version "1.1.7"
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
 }
 
 dependencyManagement {
     imports {
-        mavenBom("org.springframework.ai:spring-ai-bom:1.1.6")
+        mavenBom(libs.spring.ai.bom.get().toString())
     }
 }
 
@@ -25,14 +25,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
+    implementation(libs.springdoc.webmvc.ui)
     implementation("org.flywaydb:flyway-core")
-    implementation("org.apache.tika:tika-core:3.3.2")
-    implementation("org.apache.tika:tika-langdetect-optimaize:3.3.2")
-    implementation("org.apache.tika:tika-parsers-standard-package:3.3.2")
+    implementation(libs.tika.core)
+    implementation(libs.tika.langdetect.optimaize)
+    implementation(libs.tika.parsers.standard)
     // Used directly for PDF bookmark/outline extraction (session boundaries); also a transitive Tika dep.
-    implementation("org.apache.pdfbox:pdfbox:3.0.8")
-    implementation("com.opencsv:opencsv:5.9")
+    implementation(libs.pdfbox)
+    implementation(libs.opencsv)
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
@@ -41,7 +41,7 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    testImplementation(libs.archunit.junit5)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

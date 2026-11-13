@@ -1,6 +1,6 @@
 # Local infrastructure: the self-hosted PostgreSQL the server runs against.
 # Brings up PostgreSQL; run the server separately with
-# `cd server && set -a; source .env; set +a; ./gradlew bootRun`
+# `cd server && set -a; source .env; set +a; ../../../gradlew bootRun`
 # (its application.yml datasource defaults already point at localhost:5433).
 services:
   postgres:

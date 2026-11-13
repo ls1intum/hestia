@@ -1,12 +1,12 @@
 plugins {
     `java-library`
-    id("io.spring.dependency-management") version "1.1.7"
+    alias(libs.plugins.spring.dependency.management)
 }
 
 dependencyManagement {
     imports {
-        mavenBom("org.springframework.boot:spring-boot-dependencies:3.5.14")
-        mavenBom("org.springframework.ai:spring-ai-bom:1.1.6")
+        mavenBom(libs.spring.boot.dependencies.get().toString())
+        mavenBom(libs.spring.ai.bom.get().toString())
     }
 }
 

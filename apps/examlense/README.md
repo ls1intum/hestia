@@ -18,7 +18,7 @@ React 18 + TypeScript SPA for **exam authoring, AI-powered parsing, solving, gra
 | JDK | 21 | the Spring Boot server |
 | Node | 22 | the Vite client |
 | Docker | any recent | local Postgres **and** the server test suite (Testcontainers) |
-| Gradle | 8.10 | bundled as `server/gradlew` — do not install it separately |
+| Gradle | 9.4.1 | the wrapper at the repository root (`../../gradlew` from here) — do not install it separately |
 
 Ports in use: **8081** server, **8080** Vite dev server, **5433** Postgres (5432 is often taken by another local Postgres).
 
@@ -39,7 +39,7 @@ Flyway applies the schema automatically when the server boots.
 ```bash
 cd server
 set -a; source .env; set +a   # Spring Boot does not auto-read .env
-./gradlew bootRun             # http://localhost:8081
+../../../gradlew bootRun      # root wrapper; http://localhost:8081
 ```
 
 With the `local` profile the whole API is browsable at
@@ -100,17 +100,20 @@ npm run test:watch   # Vitest watch mode
 npm run preview      # preview production build
 ```
 
-From `server/`:
+From `server/` (the server is part of the root Gradle build, so use the root wrapper):
 
 ```bash
-./gradlew bootRun    # start the server on :8081 (source .env first)
-./gradlew test       # full test suite — requires a running Docker daemon
-./gradlew bootJar    # build the executable jar
+../../../gradlew bootRun    # start the server on :8081 (source .env first)
+../../../gradlew test       # full test suite — requires a running Docker daemon
+../../../gradlew bootJar    # build the executable jar
 ```
+
+From the repository root the same tasks are `./gradlew :apps:examlense:server:<task>`;
+`./gradlew build` builds and tests all servers.
 
 ## Testing
 
-`./gradlew test` is the same gate CI runs, and a red run blocks every deploy.
+`../../../gradlew test` (from `server/`) is the same gate CI runs, and a red run blocks every deploy.
 
 Eight of the server test classes extend `AbstractIntegrationTest`, which starts a real
 `postgres:16` container through Testcontainers, so **Docker must be running**. The rest are
@@ -118,7 +121,7 @@ plain unit tests. There is no unit-only Gradle task, and you cannot filter by na
 three of the Docker-backed classes end in `Test` rather than `IT` (`SmokeContextTest`,
 `SecurityRulesSmokeTest`, `HealthSmokeTest`).
 
-`./gradlew check` is equivalent to `./gradlew test`; the server has no linter configured.
+`check` is equivalent to `test`; the server has no linter configured.
 Client tests run under Vitest + jsdom with `npm run test`.
 
 ## Key features
