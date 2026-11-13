@@ -29,9 +29,11 @@ on:
         type: string
         default: ""
 
+# A newer push to a pull request cancels its older run. Runs on main are never cancelled: one may
+# be in the middle of a deploy; the next one waits for it instead.
 concurrency:
   group: hestia-cicd-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
