@@ -61,4 +61,8 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // The three modules' tests share one JVM, and Spring keeps every distinct test context cached;
+    // Gradle's default of 512 MB runs out. A smaller cache also closes idle contexts' DB pools.
+    maxHeapSize = "2g"
+    systemProperty("spring.test.context.cache.maxSize", "16")
 }
