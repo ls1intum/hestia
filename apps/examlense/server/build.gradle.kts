@@ -18,6 +18,11 @@ repositories {
     maven { url = uri("https://build.shibboleth.net/nexus/content/repositories/releases/") }
 }
 
+// Spring Boot's dependency management pins Testcontainers (1.19.8 for Boot 3.3.4) and wins over
+// the BOM below; this property is what actually sets the version. 1.21.4 works with the
+// Docker Engine on current GitHub-hosted runners.
+extra["testcontainers.version"] = "1.21.4"
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
@@ -51,7 +56,7 @@ dependencies {
     // Testcontainers: a real Postgres for the boot/migration/DB-integrity/isolation
     // tests. The pure unit tests don't touch it. Requires a Docker daemon locally
     // and in CI (GitHub-hosted runners provide one).
-    testImplementation(platform("org.testcontainers:testcontainers-bom:1.20.4"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
