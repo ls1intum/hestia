@@ -116,7 +116,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
 
         // The frontend reads ExaminationListItem = Examination fields + counts at the top level,
         // so the counts must sit next to `id`/`status`, not nested.
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[?(@.id == '" + e.getId() + "')].status").value("grading"))
             .andExpect(jsonPath("$[?(@.id == '" + e.getId() + "')].task_count").value(1))

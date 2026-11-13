@@ -26,6 +26,15 @@ public class DevAuthFilter extends OncePerRequestFilter {
         this.userService = userService;
     }
 
+    /**
+     * Only for the ExamLense client: its nginx sends X-Forwarded-Prefix /examlense, which becomes
+     * the context path. Requests of the other clients are left to the shared development login.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return !"/examlense".equals(request.getContextPath());
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {

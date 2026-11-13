@@ -87,7 +87,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         String auth = "Bearer " + TEST_TOKEN;
 
         // Before: the block is the empty "upload a screenshot" placeholder.
-        mvc.perform(get("/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
+        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(0));
 
@@ -109,17 +109,17 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         assertThat(ImageIO.read(new ByteArrayInputStream(stored))).isNotNull();
 
         // And the editor's own endpoints now serve it.
-        mvc.perform(get("/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
+        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
             .andExpect(jsonPath("$[0].source").value("pdf"));
 
         String signed = com.jayway.jsonpath.JsonPath.read(
-            mvc.perform(get("/api/figures/" + row.getId() + "/signed-url").header("Authorization", auth))
+            mvc.perform(get("/examlense/api/figures/" + row.getId() + "/signed-url").header("Authorization", auth))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(), "$.signed_url");
 
-        byte[] served = mvc.perform(get(signed))
+        byte[] served = mvc.perform(get("/examlense" + signed))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsByteArray();
         assertThat(served).isEqualTo(stored);

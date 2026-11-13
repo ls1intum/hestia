@@ -67,8 +67,8 @@ public class FileController {
             `multipart/form-data` with a single `file` part. Accepts a PDF, or a Word \
             `.docx` which is converted to PDF server-side so the PDF-only parse pipeline is \
             unchanged. The format is detected by magic bytes, not by filename or content \
-            type — legacy `.doc` and everything else is rejected. Spring caps the request at \
-            12 MB.
+            type — legacy `.doc` and everything else is rejected. The file may be \
+            at most 10 MB (413 otherwise).
 
             Stores the PDF, records it on the exam, and returns `{ storage_path }` — pass \
             that straight to `POST /api/parse-exam-pdf`.""")
@@ -87,6 +87,7 @@ public class FileController {
                                          MultipartFile file,
                                          @CurrentUser String userId) throws IOException {
         Examination exam = access.requireExamination(Access.id(examId), userId);
+        UploadLimit.check(file);
         byte[] bytes = file.getBytes();
         byte[] pdfBytes;
         // ZIP is matched first by its exact byte-0 magic (PK\x03\x04); the PDF check

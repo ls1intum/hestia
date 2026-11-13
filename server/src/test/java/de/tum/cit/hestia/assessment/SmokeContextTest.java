@@ -28,16 +28,14 @@ class SmokeContextTest extends AbstractIntegrationTest {
     @Test
     void flywayMigratedTheCoreSchema() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        Integer migrations = jdbc.queryForObject(
-            "select count(*) from flyway_schema_history where success = true", Integer.class);
-        assertThat(migrations).isGreaterThanOrEqualTo(4); // V1–V4
-
+        // (The Flyway history is owned by hestia_owner; the application role cannot read it.
+        // A successful boot already means every migration ran and the entities match.)
         // The tables the app depends on exist.
         for (String table : new String[]{"exams", "sections", "tasks", "task_answers", "task_grades"}) {
             Integer exists = jdbc.queryForObject(
-                "select count(*) from information_schema.tables where table_name = ?",
+                "select count(*) from information_schema.tables where table_schema = 'assessment' and table_name = ?",
                 Integer.class, table);
-            assertThat(exists).as("table %s exists", table).isEqualTo(1);
+            assertThat(exists).as("table assessment.%s exists", table).isEqualTo(1);
         }
     }
 }

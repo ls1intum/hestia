@@ -78,8 +78,3 @@ app:
 logging:
   level:
     org.springframework.security: INFO
-
-# LearningGoalHub (until the in-process port replaces the HTTP call).
-learninggoalhub:
-  base-url: ${LGH_BASE_URL:http://localhost:8080/learninggoalhub}
-  api-key: ${LGH_API_KEY:}

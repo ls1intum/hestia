@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
 
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "de.tum.cit.hestia.assessment")
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)

@@ -18,6 +18,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -45,15 +48,17 @@ import static org.springframework.security.config.Customizer.withDefaults;
  * require {@code ROLE_ADMIN}, which comes from {@code users.is_admin} or from the
  * separate {@code app.auth.admin-token} bootstrap secret.
  *
- * <p>Public endpoints: {@code /api/healthz} (liveness probe), CORS preflight, the
- * signature-gated file endpoint, {@code /api/auth/register} (how a caller gets
- * their first credential), SP metadata, and — only when {@code app.docs.enabled}
- * is set — the OpenAPI spec and Swagger UI.
+ * <p>All paths below are under the module prefix {@code /examlense}. Public endpoints:
+ * {@code /api/healthz} (liveness probe), CORS preflight, the signature-gated file endpoint,
+ * {@code /api/auth/register} (how a caller gets their first credential) and SP metadata.
  */
 @Configuration
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    /** URL prefix of this module; every API path below is served under it. */
+    static final String PREFIX = "/examlense";
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -92,19 +97,6 @@ public class SecurityConfig {
     @Value("${app.ratelimit.trusted-proxy-hops:2}")
     private int trustedProxyHops;
 
-    /**
-     * Whether to open the OpenAPI spec / Swagger UI paths. Same switch that
-     * enables springdoc itself (see application.yml), so the two cannot drift.
-     * With docs off these fall through to {@code anyRequest().authenticated()}
-     * and answer 401 — the filter chain runs before the servlet would 404, so
-     * the spec's absence is not distinguishable from any other protected path.
-     *
-     * Swagger UI needs them unauthenticated when they are on: the browser page
-     * cannot present the bearer token on its initial load.
-     */
-    @Value("${app.docs.enabled:false}")
-    private boolean docsEnabled;
-
     private final TokenPrincipalResolver principalResolver;
 
     public SecurityConfig(TokenPrincipalResolver principalResolver) {
@@ -140,14 +132,27 @@ public class SecurityConfig {
     @Autowired(required = false)
     private DevAuthFilter devAuthFilter;
 
+    /** The development login runs inside the SAML chain only, not as a servlet filter of every request. */
+    @Bean
+    @org.springframework.context.annotation.Profile("local")
+    public org.springframework.boot.web.servlet.FilterRegistrationBean<DevAuthFilter> assessmentDevAuthFilterRegistration(
+            DevAuthFilter filter) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
     @Bean
     @Order(SecurityChainOrder.SAML_MODULE)
     public SecurityFilterChain assessmentSamlFilterChain(HttpSecurity http, Saml2AuthenticationSuccessHandler successHandler) throws Exception {
         http
             // Only for the ExamLense client: nginx passes its prefix in X-Forwarded-Prefix, which
             // becomes the context path. The other clients use the shared SAML chain in core.
-            .securityMatcher(request -> "/examlense".equals(request.getContextPath())
-                && (request.getServletPath().startsWith("/saml2/") || request.getServletPath().startsWith("/login/saml2/")))
+            .securityMatcher(new AndRequestMatcher(
+                request -> PREFIX.equals(request.getContextPath()),
+                new OrRequestMatcher(
+                    PathPatternRequestMatcher.withDefaults().matcher("/saml2/**"),
+                    PathPatternRequestMatcher.withDefaults().matcher("/login/saml2/**"))))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
@@ -172,36 +177,26 @@ public class SecurityConfig {
             rateLimitRequests, rateLimitWindowSeconds, behindProxy, trustedProxyHops);
 
         http
-            .securityMatcher("/examlense/**")
+            .securityMatcher(PREFIX + "/**")
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> {
-                auth
-                    .requestMatchers("/api/healthz").permitAll()
-                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    .requestMatchers("/api/files/**").permitAll() // signed-URL file content (validated by HMAC in 2b)
-                    // How a first-time visitor obtains their first credential, so it
-                    // cannot require one. Abuse is bounded by the per-IP registration
-                    // cap in UserService plus the request limiter in front of it.
-                    .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
-                    // Container-generated error dispatch. An SSE stream that ends
-                    // abnormally (client disconnect) is re-dispatched to /error after
-                    // the response is already committed; without permitting it here the
-                    // AuthorizationFilter denies (no principal on the error dispatch),
-                    // and ExceptionTranslationFilter logs a noisy "response already
-                    // committed" ServletException. The real endpoints stay authenticated.
-                    .requestMatchers("/error").permitAll();
-                if (docsEnabled) {
-                    auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
-                }
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(PREFIX + "/api/healthz").permitAll()
+                .requestMatchers(HttpMethod.OPTIONS, PREFIX + "/**").permitAll()
+                .requestMatchers(PREFIX + "/api/files/**").permitAll() // signed-URL file content (validated by HMAC)
+                // How a first-time visitor obtains their first credential, so it
+                // cannot require one. Abuse is bounded by the per-IP registration
+                // cap in UserService plus the request limiter in front of it.
+                .requestMatchers(HttpMethod.POST, PREFIX + "/api/auth/register").permitAll()
                 // Cross-user surfaces. Everything else is scoped to the caller's own
                 // rows by the controllers, but these two aggregate or administer
                 // across users, so they need the role rather than just a principal.
-                auth.requestMatchers("/api/parse-metrics").hasRole("ADMIN");
-                auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
-                auth.anyRequest().authenticated();
-            })
+                // (The container's /error dispatch and the OpenAPI documents are outside
+                // this chain; core's fallback chain permits them.)
+                .requestMatchers(PREFIX + "/api/parse-metrics").hasRole("ADMIN")
+                .requestMatchers(PREFIX + "/api/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated())
             // 401 (not the default 403) when no/invalid token is presented.
             .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
                 res.setStatus(401);

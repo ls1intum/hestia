@@ -1,8 +1,13 @@
-# Examlense Spring Boot server
+# Examlense (assessment module of the hestia server)
 
-The single service behind Examlense. It owns **everything**: CRUD + ownership
-checks, the AI parse/solve pipeline, file storage, realtime, and parse metrics —
-talking to a plain **PostgreSQL** database. (Supabase has been fully removed.)
+The `assessment` module of the one hestia Spring Boot server (`server/`, package
+`de.tum.cit.hestia.assessment`) is the backend of Examlense. It owns **everything** of the app:
+CRUD + ownership checks, the AI parse/solve pipeline, file storage, realtime, and parse
+metrics — in its own schema `assessment` of the shared **PostgreSQL** database. All its
+endpoints are served under the URL prefix `/examlense` (`/examlense/api/...`); the paths in
+this document are relative to that prefix unless they carry it. Course lookup and goal
+derivation use the `GoalDirectory` / `ExamGoalDerivation` ports of the materials module,
+in process.
 
 - **Auth** — a static bearer token (`API_AUTH_TOKEN`) plus a per-IP rate
   limiter. Single-user for now: `owner_id`/`user_id`/`graded_by` and storage
@@ -23,21 +28,23 @@ talking to a plain **PostgreSQL** database. (Supabase has been fully removed.)
 The endpoint surface is documented by a generated OpenAPI spec rather than by
 hand here, so it cannot drift from the code:
 
-- **Spec** — `GET /v3/api-docs`
-- **Swagger UI** — [`/swagger-ui.html`](http://localhost:8081/swagger-ui.html)
+- **Spec** — `GET /v3/api-docs/assessment` (springdoc group `assessment`; it holds only the
+  `/examlense/...` paths)
+- **Swagger UI** — [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html), group `assessment`
 
-Both are **off by default** and enabled by the `local` profile, so a normal
-`SPRING_PROFILES_ACTIVE=local ../../../gradlew bootRun` has them. Deployments serve
-neither. To browse them on a deployed instance, set `API_DOCS_ENABLED=true` —
-note they are unauthenticated when enabled (Swagger UI can't present a bearer
-token on its initial page load), and the frontend's `nginx.conf` would need a
+Both are **off by default** for this module and enabled by the `local` profile, so a normal
+`SPRING_PROFILES_ACTIVE=local ./gradlew :server:bootRun` has them. With docs off, the
+assessment paths are removed from every OpenAPI document the server still serves for the other
+modules, and the `assessment` group does not exist. To browse them on a deployed instance, set
+`API_DOCS_ENABLED=true` — note they are unauthenticated when enabled (Swagger UI can't present
+a bearer token on its initial page load), and the frontend's `nginx.conf` would need a
 `location` block for `/v3/api-docs` and `/swagger-ui` to route them at all.
 
 Click **Authorize** in Swagger UI and paste the value of `API_AUTH_TOKEN` to
 make "Try it out" work. To grab a point-in-time copy of the spec:
 
 ```bash
-curl -s http://localhost:8081/v3/api-docs -o openapi.json
+curl -s http://localhost:8080/v3/api-docs/assessment -o openapi.json
 ```
 
 `OpenApiDocsTest` keeps the spec honest — every operation must carry a summary
@@ -50,15 +57,14 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
 ## Requirements
 
 - JDK 21 (e.g. `brew install openjdk@21` or `sdk install java 21-tem`)
-- Docker — for PostgreSQL (`docker compose up -d postgres` from `apps/examlense/`)
-  and for the test suite, which uses Testcontainers.
-- The Gradle wrapper at the repository root (`../../../gradlew` from this directory, Gradle 9.4.1) —
-  do not install Gradle separately. This server is the project `:apps:examlense:server` of the
-  root Gradle build.
+- Docker — for PostgreSQL 16 (database `hestia` with the roles from
+  `infra/postgres/init/01-roles.sql`) and for the test suite, which uses Testcontainers.
+- The Gradle wrapper at the repository root (`./gradlew`, Gradle 9.4.1) — do not install Gradle
+  separately. The server is the project `:server` of the root Gradle build.
 
 ## Configure
 
-1. Copy `.env.example` to `.env` and fill in the AI provider values you want to
+1. Copy `server/.env.example` to `server/.env` and fill in the AI provider values you want to
    use. GPT strategies use `OPENAI_API_KEY`; Claude strategies use
    `ANTHROPIC_API_KEY`; Gemini strategies use `GEMINI_API_KEY`. `API_AUTH_TOKEN` defaults to
    `dev-local-token` and must match the client's `VITE_API_AUTH_TOKEN`.
@@ -77,13 +83,13 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
    boot** — it fails with `Private key location 'class path resource
    [certs/private-key.pem]' does not exist`. The real credentials are secrets and
    the paths are gitignored, so generate a throwaway self-signed pair for local
-   work:
+   work (from the repository root):
 
    ```bash
-   mkdir -p src/main/resources/certs
+   mkdir -p server/src/main/resources/certs
    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-     -keyout src/main/resources/certs/private-key.pem \
-     -out    src/main/resources/certs/certificate.crt \
+     -keyout server/src/main/resources/certs/private-key.pem \
+     -out    server/src/main/resources/certs/certificate.crt \
      -subj "/CN=examlense-local"
    ```
 
@@ -95,33 +101,29 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
 ## Run locally
 
 ```bash
-# from the repo root: start Postgres first
-docker compose up -d postgres
-
-cd server
-set -a; source .env; set +a
-SPRING_PROFILES_ACTIVE=local ../../../gradlew bootRun
+# from the repo root, with Postgres running (see Requirements)
+set -a; source server/.env; set +a
+SPRING_PROFILES_ACTIVE=local ./gradlew :server:bootRun
 ```
 
-Server listens on `http://localhost:8081` (override with `PORT`). The Vite dev
-server uses `:8080`, so they coexist without a port clash. The DB connection
-defaults to `localhost:5433` (the Docker Postgres host port).
+The one server listens on `http://localhost:8080` (override with `PORT`); the Vite dev
+server of the client uses `:5173`. The DB connection defaults to `localhost:5432`, database
+`hestia` (`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`).
 
-The `local` profile (`application-local.yml`) points LearningGoalHub at its
-public web URL instead of the Docker-internal hostname used on the shared VM, so
-goal derivation works from a host `bootRun` (on the TUM VPN — the deployed LGH is
-VPN-only). Omit `SPRING_PROFILES_ACTIVE=local` and the app falls back to the
-`LGH_BASE_URL` env var / default.
+The `local` profile (`application-local.yml`) turns on the API docs and the development
+login (it signs in as `dev-local-user`, bypassing SAML — never use it in production).
+Learning goals come from the materials module of the same server; there are no
+LearningGoalHub settings any more.
 
 ### Smoke test
 
 ```bash
 # Public — no token needed
-curl http://localhost:8081/api/healthz
+curl http://localhost:8080/examlense/api/healthz
 # => {"status":"ok","time":"..."}
 
 # Protected — static bearer token (matches API_AUTH_TOKEN)
-curl -H "Authorization: Bearer dev-local-token" http://localhost:8081/api/exams
+curl -H "Authorization: Bearer dev-local-token" http://localhost:8080/examlense/api/exams
 # => []   (empty list on a fresh DB)
 ```
 
@@ -129,20 +131,20 @@ A 401 means the `Authorization` header is missing or the token doesn't match
 `API_AUTH_TOKEN`.
 
 Under the `local` profile you can also browse the whole API at
-<http://localhost:8081/swagger-ui.html> — see [API documentation](#api-documentation).
+<http://localhost:8080/swagger-ui.html> (group `assessment`) — see [API documentation](#api-documentation).
 
 ## Tests
 
 ```bash
-../../../gradlew test     # needs a running Docker daemon
+./gradlew :server:test --tests 'de.tum.cit.hestia.assessment.*'   # needs a running Docker daemon
 ```
 
 This is the same suite CI runs as a hard gate (`.github/workflows/examlense-cicd.yml`);
 a red run blocks every deploy.
 
-Eight classes extend `AbstractIntegrationTest`, which starts a real `postgres:16` container
-via Testcontainers (one singleton container reused across the whole suite) — hence the Docker
-requirement. Everything else is plain JUnit 5 unit tests.
+The classes that extend `AbstractIntegrationTest` use `TestDatabase`: a real `postgres:16`
+container via Testcontainers (one container for the whole JVM run, set up like production) —
+hence the Docker requirement. Everything else is plain JUnit 5 unit tests.
 
 There is **no unit-only task**, and filtering by name doesn't cleanly separate the two:
 `SmokeContextTest`, `SecurityRulesSmokeTest`, and `HealthSmokeTest` all need Docker despite
@@ -157,7 +159,7 @@ is configured.
 The Vite project's `.env` (or `.env.local`) needs:
 
 ```
-VITE_API_BASE_URL=http://localhost:8081
+VITE_API_BASE_URL=http://localhost:8080/examlense
 VITE_API_AUTH_TOKEN=dev-local-token
 ```
 
@@ -168,9 +170,10 @@ every request, and `client/src/lib/api/sse.ts` opens the SSE streams.
 
 ```
 server/
-├── build.gradle.kts            # project :apps:examlense:server of the root build
-├── src/main/java/app/          # package-by-feature: each domain slice owns its
-│   ├── ApiApplication.java     #   controller + service + entity + repository + DTOs
+├── build.gradle.kts            # project :server of the root build (all modules)
+├── src/main/java/de/tum/cit/hestia/assessment/   # this module; package-by-feature: each
+│                               #   domain slice owns its controller + service + entity +
+│                               #   repository + DTOs (the paths below are relative to it)
 │   │
 │   │   # ── domain feature slices ──
 │   ├── exam/            # ExamController, ExamService (duplication), ExamProgressService,
@@ -236,7 +239,7 @@ mirrored in Java in `ExamController`. `updated_at` is trigger-maintained on `exa
 
 ## AI provider configuration
 
-Parser/solver strategies in `src/main/java/app/ai/ParserStrategies.java` and
+Parser/solver strategies in `server/src/main/java/de/tum/cit/hestia/assessment/ai/ParserStrategies.java` and
 `SolverStrategies.java` pin a provider transport. Configure only the providers
 you want to use; selecting a model without its key returns a clear provider
 configuration error.
@@ -272,8 +275,7 @@ fallback the exam's `parser_model` is updated to the serving model too.
 
 ## Deploying
 
-This service is deployed as the `server` container on the chair Hestia VMs (Docker image
-`ghcr.io/ls1intum/hestia/examlense/server`, built by CI). The local-FS storage directory
+This module is deployed as part of the `hestia-server` container (one image for all modules, built by CI). The local-FS storage directory
 (`STORAGE_LOCAL_BASE_PATH`) is backed by a named Docker volume and Postgres runs as a sibling
 container; provider keys, `API_AUTH_TOKEN`, and `DB_*` come from the deploy `.env`.
 See the app-level **[`../DEPLOY.md`](../DEPLOY.md)** for the full pipeline.

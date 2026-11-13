@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import de.tum.cit.hestia.assessment.storage.UploadLimit;
 
 @RestController
 @RequestMapping("/api")
@@ -88,6 +89,7 @@ public class FigureController {
                                  @CurrentUser String userId) throws IOException {
         UUID bid = Access.id(blockId);
         SectionBlock block = requireBlock(bid, userId);
+        UploadLimit.check(file);
 
         String ext = extensionFor(file);
         if (ext.isEmpty() || !ext.matches("png|jpg|jpeg|webp|gif")) {

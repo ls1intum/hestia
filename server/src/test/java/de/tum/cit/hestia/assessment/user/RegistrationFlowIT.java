@@ -39,7 +39,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
     }
 
     private String registerFrom(String ip) throws Exception {
-        String json = mvc.perform(post("/api/auth/register").with(r -> {
+        String json = mvc.perform(post("/examlense/api/auth/register").with(r -> {
                 r.setRemoteAddr(ip);
                 return r;
             }))
@@ -52,7 +52,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
     void aFirstTimeVisitorGetsAnAccountWithoutBeingInvited() throws Exception {
         String token = registerFrom(uniqueIp());
 
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + token))
+        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.is_admin").value(false))
             // No TUM ID yet — a generated handle stands in until they link one.
@@ -63,7 +63,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
 
     @Test
     void registrationNeedsNoCredentialOfItsOwn() throws Exception {
-        mvc.perform(post("/api/auth/register").with(r -> {
+        mvc.perform(post("/examlense/api/auth/register").with(r -> {
                 r.setRemoteAddr(uniqueIp());
                 return r;
             }))
@@ -78,7 +78,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         String second = registerFrom(ip);
 
         String firstId = JsonPath.read(
-            mvc.perform(get("/api/me").header("Authorization", "Bearer " + first))
+            mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + first))
                 .andReturn().getResponse().getContentAsString(), "$.id");
 
         Examination theirs = new Examination();
@@ -88,10 +88,10 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         theirs.setStatus("draft");
         exams.save(theirs);
 
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + second))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + second))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$").isEmpty());
-        mvc.perform(get("/api/exams/" + theirs.getId()).header("Authorization", "Bearer " + second))
+        mvc.perform(get("/examlense/api/exams/" + theirs.getId()).header("Authorization", "Bearer " + second))
             .andExpect(status().isForbidden());
     }
 
@@ -107,7 +107,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         registerFrom(ip);
         registerFrom(ip);
 
-        mvc.perform(post("/api/auth/register").with(r -> {
+        mvc.perform(post("/examlense/api/auth/register").with(r -> {
                 r.setRemoteAddr(ip);
                 return r;
             }))
@@ -121,7 +121,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         registerFrom(exhausted);
         registerFrom(exhausted);
 
-        mvc.perform(post("/api/auth/register").with(r -> {
+        mvc.perform(post("/examlense/api/auth/register").with(r -> {
                 r.setRemoteAddr(exhausted);
                 return r;
             }))
@@ -152,7 +152,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         String token = registerFrom(uniqueIp());
         String tumId = "link" + UUID.randomUUID().toString().substring(0, 6);
 
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + token)
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(linkBody(tumId.toUpperCase() + "@tum.de")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.external_id").value(tumId))
@@ -167,11 +167,11 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
     @Test
     void aTumIdAlreadyLinkedElsewhereIsRefused() throws Exception {
         String tumId = "taken" + UUID.randomUUID().toString().substring(0, 6);
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
                 .contentType(MediaType.APPLICATION_JSON).content(linkBody(tumId)))
             .andExpect(status().isOk());
 
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
                 .contentType(MediaType.APPLICATION_JSON).content(linkBody(tumId)))
             .andExpect(status().isConflict());
     }
@@ -181,17 +181,17 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
         String token = registerFrom(uniqueIp());
         String tumId = "same" + UUID.randomUUID().toString().substring(0, 6);
 
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + token)
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(linkBody(tumId)))
             .andExpect(status().isOk());
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + token)
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(linkBody(tumId)))
             .andExpect(status().isOk());
     }
 
     @Test
     void anAnonHandleCannotBeLinkedAsIfItWereATumId() throws Exception {
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + registerFrom(uniqueIp()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(linkBody(UserService.ANON_PREFIX + "abcdef")))
             .andExpect(status().isBadRequest());
@@ -199,7 +199,7 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
 
     @Test
     void linkingRequiresAToken() throws Exception {
-        mvc.perform(patch("/api/me").contentType(MediaType.APPLICATION_JSON).content(linkBody("ab12cde")))
+        mvc.perform(patch("/examlense/api/me").contentType(MediaType.APPLICATION_JSON).content(linkBody("ab12cde")))
             .andExpect(status().isUnauthorized());
     }
 
@@ -207,10 +207,10 @@ class RegistrationFlowIT extends AbstractIntegrationTest {
     void linkingKeepsTheAccountAndItsExaminations() throws Exception {
         String token = registerFrom(uniqueIp());
         String id = JsonPath.read(
-            mvc.perform(get("/api/me").header("Authorization", "Bearer " + token))
+            mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + token))
                 .andReturn().getResponse().getContentAsString(), "$.id");
 
-        mvc.perform(patch("/api/me").header("Authorization", "Bearer " + token)
+        mvc.perform(patch("/examlense/api/me").header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(linkBody("keep" + UUID.randomUUID().toString().substring(0, 6))))
             .andExpect(status().isOk())

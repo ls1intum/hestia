@@ -49,6 +49,17 @@ public class ClientAbortFilter extends OncePerRequestFilter {
         return false;
     }
 
+    /**
+     * The filter is registered for all requests (an error dispatch goes to {@code /error}), but
+     * only acts on this module's: the path of the original request decides.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        Object errorUri = request.getAttribute("jakarta.servlet.error.request_uri");
+        String uri = errorUri instanceof String s ? s : request.getRequestURI();
+        return uri == null || !uri.startsWith("/examlense/");
+    }
+
     @Override
     protected void doFilterInternal(
         HttpServletRequest request, HttpServletResponse response, FilterChain chain

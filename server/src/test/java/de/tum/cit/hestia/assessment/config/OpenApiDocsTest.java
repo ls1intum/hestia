@@ -38,7 +38,7 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
     MockMvc mvc;
 
     private JsonNode spec() throws Exception {
-        String json = mvc.perform(get("/v3/api-docs"))
+        String json = mvc.perform(get("/v3/api-docs/assessment"))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
         return new ObjectMapper().readTree(json);
@@ -51,7 +51,16 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
         // A floor, not an exact count: this should not need editing when an endpoint
         // is added, only if the spec silently stops being generated.
         assertThat(paths.size()).isGreaterThan(20);
-        assertThat(paths.has("/api/exams")).isTrue();
+        assertThat(paths.has("/examlense/api/exams")).isTrue();
+    }
+
+    @Test
+    void groupHoldsOnlyAssessmentPaths() throws Exception {
+        List<String> foreign = new ArrayList<>();
+        spec().get("paths").fieldNames().forEachRemaining(p -> {
+            if (!p.startsWith("/examlense/")) foreign.add(p);
+        });
+        assertThat(foreign).as("the assessment group must not contain other modules' paths").isEmpty();
     }
 
     @Test
@@ -88,7 +97,7 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
         assertThat(schemes.path("bearerAuth").path("scheme").asText()).isEqualTo("bearer");
         assertThat(spec.path("security").toString()).contains("bearerAuth");
 
-        assertOptsOutOfAuth(operation(spec, "/api/healthz", "get"), "the liveness probe");
+        assertOptsOutOfAuth(operation(spec, "/examlense/api/healthz", "get"), "the liveness probe");
         assertOptsOutOfAuth(operation(spec, signedFilePath(spec), "get"), "the signed file endpoint");
     }
 
@@ -98,33 +107,33 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
         assertThat(spec.path("components").path("schemas").has("ErrorResponse")).isTrue();
 
         // 401 is synthesized for every authenticated operation...
-        JsonNode listExaminations = operation(spec, "/api/exams", "get").path("responses");
+        JsonNode listExaminations = operation(spec, "/examlense/api/exams", "get").path("responses");
         assertThat(listExaminations.has("401")).isTrue();
         assertThat(listExaminations.path("401").toString()).contains("ErrorResponse");
 
         // ...and a controller-declared code gets the same body filled in.
-        assertThat(operation(spec, "/api/exams/{id}", "patch").path("responses").path("409").toString())
+        assertThat(operation(spec, "/examlense/api/exams/{id}", "patch").path("responses").path("409").toString())
             .contains("ErrorResponse");
     }
 
     @Test
     void publicEndpointsAreNotGivenA401() throws Exception {
         JsonNode spec = spec();
-        assertThat(operation(spec, "/api/healthz", "get").path("responses").has("401"))
+        assertThat(operation(spec, "/examlense/api/healthz", "get").path("responses").has("401"))
             .as("an endpoint that needs no token cannot answer 401")
             .isFalse();
     }
 
     @Test
     void asyncParseIsDocumentedAs202() throws Exception {
-        JsonNode responses = operation(spec(), "/api/parse-exam-pdf", "post").path("responses");
+        JsonNode responses = operation(spec(), "/examlense/api/parse-exam-pdf", "post").path("responses");
         assertThat(responses.has("202")).as("the parse endpoint returns 202, not 200").isTrue();
         assertThat(responses.has("200")).as("a leftover default 200 would contradict the 202").isFalse();
     }
 
     @Test
     void sseEndpointAdvertisesAnEventStream() throws Exception {
-        JsonNode ok = operation(spec(), "/api/exams/{examId}/events", "get").path("responses").path("200");
+        JsonNode ok = operation(spec(), "/examlense/api/exams/{examId}/events", "get").path("responses").path("200");
         assertThat(ok.path("content").has("text/event-stream")).isTrue();
     }
 
@@ -134,7 +143,7 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
         // mapping declares `consumes` — which would render a JSON editor instead of a file
         // picker in Swagger UI.
         JsonNode spec = spec();
-        for (String path : List.of("/api/exams/{examId}/pdf", "/api/blocks/{blockId}/figures")) {
+        for (String path : List.of("/examlense/api/exams/{examId}/pdf", "/examlense/api/blocks/{blockId}/figures")) {
             JsonNode content = operation(spec, path, "post").path("requestBody").path("content");
             assertThat(content.has("multipart/form-data")).as(path).isTrue();
             assertThat(content.path("multipart/form-data").path("schema").path("properties").has("file"))
@@ -156,7 +165,7 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
     private static String signedFilePath(JsonNode spec) {
         List<String> matches = new ArrayList<>();
         spec.path("paths").fieldNames().forEachRemaining(p -> {
-            if (p.startsWith("/api/files/")) matches.add(p);
+            if (p.startsWith("/examlense/api/files/")) matches.add(p);
         });
         assertThat(matches).as("the signed file download endpoint").hasSize(1);
         return matches.get(0);

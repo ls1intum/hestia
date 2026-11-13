@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.assessment.lgh;
 
 import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
+import de.tum.cit.hestia.core.spi.GoalDirectory;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.section.SectionBlockRepository;
 import de.tum.cit.hestia.assessment.section.SectionRepository;
@@ -33,12 +35,13 @@ class TaskBlockGoalGenerationServiceTest {
     private final SectionRepository sections = mock(SectionRepository.class);
     private final SectionBlockRepository blocks = mock(SectionBlockRepository.class);
     private final TaskBlockRepository tasks = mock(TaskBlockRepository.class);
-    private final LearningGoalHubClient client = mock(LearningGoalHubClient.class);
+    private final GoalDirectory client = mock(GoalDirectory.class);
+    private final ExamGoalDerivation derivation = mock(ExamGoalDerivation.class);
     private final PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
     private final SseHub sse = mock(SseHub.class);
 
     private final TaskBlockGoalGenerationService service =
-        new TaskBlockGoalGenerationService(exams, sections, blocks, tasks, client, txManager, sse);
+        new TaskBlockGoalGenerationService(exams, sections, blocks, tasks, client, derivation, txManager, sse);
 
     @Test
     void cleanupSwallowsClientFailuresAndStillAttemptsEveryGoal() {
@@ -60,7 +63,7 @@ class TaskBlockGoalGenerationServiceTest {
 
         service.dispatchGenerate(examId, sectionId);
 
-        verify(client, never()).generateExamGoals(anyLong(), anyList());
+        verify(derivation, never()).derive(anyLong(), anyList());
     }
 
     @Test
@@ -70,6 +73,6 @@ class TaskBlockGoalGenerationServiceTest {
 
         service.dispatchGenerate(examId, UUID.randomUUID());
 
-        verify(client, never()).generateExamGoals(anyLong(), anyList());
+        verify(derivation, never()).derive(anyLong(), anyList());
     }
 }

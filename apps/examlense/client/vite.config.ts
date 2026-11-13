@@ -7,11 +7,11 @@ export default defineConfig(({ mode }) => ({
   // In production the app is served under /examlense/ (the shared Traefik proxy routes
   // /examlense/* to this app and strips the prefix). `base` makes Vite emit asset URLs
   // under it and drives the router basename (import.meta.env.BASE_URL). Local dev stays at
-  // "/" so `npm run dev` and the http://localhost:8081 server behave exactly as before.
+  // "/" so `npm run dev` and the http://localhost:8080/examlense server (the one hestia server) behave exactly as before.
   base: mode === "production" ? "/examlense/" : "/",
   server: {
     host: "::",
-    port: 8080,
+    port: 5173,
     hmr: {
       overlay: false,
     },

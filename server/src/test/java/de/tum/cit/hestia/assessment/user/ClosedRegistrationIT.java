@@ -24,14 +24,14 @@ class ClosedRegistrationIT extends AbstractIntegrationTest {
 
     @Test
     void newAccountsAreRefused() throws Exception {
-        mvc.perform(post("/api/auth/register")).andExpect(status().isForbidden());
+        mvc.perform(post("/examlense/api/auth/register")).andExpect(status().isForbidden());
     }
 
     @Test
     void existingTokenHoldersAreUnaffected() throws Exception {
         TestUser existing = createUser("closed-reg-user");
 
-        mvc.perform(get("/api/exams").header("Authorization", "Bearer " + existing.token()))
+        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + existing.token()))
             .andExpect(status().isOk());
     }
 }
