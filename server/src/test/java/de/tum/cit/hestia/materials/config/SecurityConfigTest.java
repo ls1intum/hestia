@@ -60,4 +60,15 @@ class SecurityConfigTest extends MaterialsTestBase {
                         .content("{\"blocks\":[]}"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void anotherModulesCorsRulesDoNotApply() throws Exception {
+        // A browser sends its Origin on a POST. The dev server and nginx proxy it unchanged; the
+        // assessment module's allowed origins must not turn it into a 403 here.
+        mockMvc.perform(post("/learninggoalhub/api/courses")
+                        .header("Origin", "http://localhost:5174")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Origin check\"}"))
+                .andExpect(status().isCreated());
+    }
 }

@@ -209,8 +209,9 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    // Not a bean: Spring Security applies a CorsConfigurationSource bean to every filter chain, so
+    // these origins would also govern the other modules' requests.
+    private CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
             .map(String::trim)
