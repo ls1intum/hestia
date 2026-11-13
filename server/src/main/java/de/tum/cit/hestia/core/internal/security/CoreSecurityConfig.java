@@ -8,8 +8,10 @@ import jakarta.annotation.PostConstruct;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
@@ -76,6 +78,18 @@ class CoreSecurityConfig {
             http.addFilterBefore(devAuthFilter, AnonymousAuthenticationFilter.class);
         }
         return http.build();
+    }
+
+    /**
+     * The development login runs only inside the security filter chains that add it. As a
+     * {@code @Component} filter Spring Boot would also register it for every request.
+     */
+    @Bean
+    @Profile("local")
+    FilterRegistrationBean<DevAuthFilter> coreDevAuthFilterRegistration(DevAuthFilter filter) {
+        FilterRegistrationBean<DevAuthFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     /** Everything outside the module prefixes and the SAML login. */
