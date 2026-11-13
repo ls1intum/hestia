@@ -8,8 +8,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Configuration of the teaching web tests. They name it with {@code @ContextConfiguration} instead of
- * starting from {@code HestiaApplication}, whose {@code @EnableJpaRepositories} would pull the
- * repositories (and so a database) into a web-layer slice. It repeats the module's URL prefix
+ * starting from {@code HestiaApplication}, so that the slice holds only teaching's web components and
+ * not the filters, advice and configurers of the other modules. It repeats the module's URL prefix
  * (see {@code ModulePaths}) and adds the exception handler; each test imports its controller.
  */
 @Configuration(proxyBeanMethods = false)
