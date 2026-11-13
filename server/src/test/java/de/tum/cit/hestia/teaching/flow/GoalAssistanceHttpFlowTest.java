@@ -47,12 +47,12 @@ class GoalAssistanceHttpFlowTest extends FlowTestSupport {
 
     @Test
     void goalImport_passesLearningGoalHubAnswerThrough() {
-        FAKE_LEARNING_GOAL_HUB.respondWith("{\"content\":[{\"id\":7,\"title\":\"Fake LGH Course\"}],\"totalElements\":1}");
+        FAKE_LEARNING_GOAL_HUB.respondWith("{\"content\":[{\"id\":7,\"name\":\"Fake LGH Course\"}],\"totalElements\":1}");
 
         FlowResponse response = signedIn().get(FlowPaths.LGH_COURSES);
 
         assertThat(response.status()).isEqualTo(200);
-        assertThat(response.json().path("content").get(0).path("title").asText()).isEqualTo("Fake LGH Course");
+        assertThat(response.json().path("content").get(0).path("name").asText()).isEqualTo("Fake LGH Course");
         assertThat(FAKE_LEARNING_GOAL_HUB.requests).anyMatch(r -> r.startsWith("GET ") && r.contains("courses"));
     }
 }

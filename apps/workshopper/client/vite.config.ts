@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 const BASE_PATH = "/workshopper";
-const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8081";
+const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8080";
 
 export default defineConfig({
   base: `${BASE_PATH}/`,
@@ -21,7 +21,6 @@ export default defineConfig({
         changeOrigin: true,
         timeout: 300000,
         proxyTimeout: 300000,
-        rewrite: (path) => path.replace(new RegExp(`^${BASE_PATH}`), ""),
       },
     },
   },

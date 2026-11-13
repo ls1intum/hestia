@@ -4,12 +4,12 @@ This document outlines the authentication architecture of Workshopper.
 
 ## 1. Overview
 Workshopper uses **SAML 2.0** against the Central TUM IT Identity Provider (`login.tum.de`).
-Authentication is enforced on every path under `/api/**`, except `GET /api/workshop/health` and the SAML service-provider metadata (`/saml2/service-provider-metadata/**`).
+Authentication is enforced on every path under `/workshopper/api/**` (the client's nginx maps `/api/` to it), except `GET /workshopper/api/workshop/health`. The SAML login and the service-provider metadata (`/saml2/service-provider-metadata/**`) belong to core and are shared by all modules.
 
 ## 2. The SAML Flow
 1. The user opens the client.
 2. The client calls the API, e.g. `GET /api/workshop/sessions` for the dashboard.
-3. If the user is not logged in, Spring Security answers `401 Unauthorized` (`HttpStatusEntryPoint` for `/api/**`).
+3. If the user is not logged in, Spring Security answers `401 Unauthorized` (`HttpStatusEntryPoint` for `/workshopper/api/**`).
 4. The client's `handleAuthError` (`api.ts`) catches the 401 and redirects the browser to `<base>/saml2/authenticate/tum` (e.g. `/workshopper/saml2/authenticate/tum` behind the reverse proxy). On the dashboard it shows a "Log in with TUM" screen instead of redirecting straight away.
 5. Spring Boot builds the SAML AuthNRequest and redirects to TUM IT.
 6. The user logs in. TUM IT posts the assertion back to `/login/saml2/sso/tum`.
@@ -24,7 +24,7 @@ To avoid needing the TUM VPN and live SAML certificates locally, there is `DevAu
 
 * **How it works:** when the `local` profile is active, the filter signs every request in as `dev-local-user` (a `UsernamePasswordAuthenticationToken` with `ROLE_USER`).
 * **How to use it:** start the server with `SPRING_PROFILES_ACTIVE=local` (see the README). There is no default profile, so the bypass is never on by accident.
-* **Security:** `SecurityConfig.java` refuses to start (`IllegalStateException`) if `local` is active together with `prod`, or inside Kubernetes or Fly.io.
+* **Security:** core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`. `DevAuthFilter` is in core.
 
 ## 4. Environment Variables
 In deployment (`compose.prod.yaml`), the server expects:

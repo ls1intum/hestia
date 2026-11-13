@@ -19,7 +19,7 @@ abstract class FlowTestSupport extends FlowApplication {
         // Language model: fake OpenAI-compatible endpoint and a dummy key (never the real one from the environment)
         registry.add("spring.ai.openai.api-key", () -> "flow-test-dummy-key");
         registry.add("spring.ai.openai.base-url", FAKE_MODEL::baseUrl);
-        registry.add("spring.ai.retry.max-attempts", () -> "1");
+        registry.add("teaching.llm.retry.max-attempts", () -> "1");
     }
 
     /** Makes the fake model answer every chat call with this text as the assistant message. */

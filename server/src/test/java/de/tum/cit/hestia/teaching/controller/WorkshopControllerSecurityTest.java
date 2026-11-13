@@ -33,13 +33,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * when no credentials are present — both are "not authenticated/not authorised"
  * and either confirms the endpoint is not publicly reachable.
  */
-@org.springframework.context.annotation.Import(de.tum.cit.hestia.teaching.config.SecurityConfig.class)@WebMvcTest(
+@org.springframework.test.context.ContextConfiguration(classes = TeachingWebMvcTestConfig.class)
+@org.springframework.context.annotation.Import({de.tum.cit.hestia.teaching.config.SecurityConfig.class, WorkshopController.class})
+@WebMvcTest(
     value = WorkshopController.class,
     excludeAutoConfiguration = {
         org.springframework.boot.autoconfigure.security.saml2.Saml2RelyingPartyAutoConfiguration.class
     }
 )
-@org.springframework.test.context.ActiveProfiles("test")
 @DisplayName("SecurityConfig — write endpoints require authentication")
 class WorkshopControllerSecurityTest {
 
@@ -57,7 +58,7 @@ class WorkshopControllerSecurityTest {
     @Test
     @DisplayName("Anonymous POST /api/workshop/session → 4xx (not 200: system-fallback bypass is closed)")
     void anonymousPostToSessionIsRejected() throws Exception {
-        mvc.perform(post("/api/workshop/session")
+        mvc.perform(post("/workshopper/api/workshop/session")
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{}"))
            .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
@@ -67,7 +68,7 @@ class WorkshopControllerSecurityTest {
     @Test
     @DisplayName("Anonymous PUT /api/workshop/sessions/{id}/rename → 4xx")
     void anonymousPutIsRejected() throws Exception {
-        mvc.perform(put("/api/workshop/sessions/some-id/rename")
+        mvc.perform(put("/workshopper/api/workshop/sessions/some-id/rename")
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"hacked\"}"))
            .andExpect(status().is4xxClientError());
@@ -76,7 +77,7 @@ class WorkshopControllerSecurityTest {
     @Test
     @DisplayName("Anonymous DELETE /api/workshop/sessions/{id} → 4xx")
     void anonymousDeleteIsRejected() throws Exception {
-        mvc.perform(delete("/api/workshop/sessions/some-id"))
+        mvc.perform(delete("/workshopper/api/workshop/sessions/some-id"))
            .andExpect(status().is4xxClientError());
     }
 
@@ -84,7 +85,7 @@ class WorkshopControllerSecurityTest {
     @org.springframework.security.test.context.support.WithAnonymousUser
     @DisplayName("Anonymous POST /api/workshop/session → 401 (HttpStatusEntryPoint returns UNAUTHORIZED, not redirect)")
     void anonymousPostReturnsUnauthorized() throws Exception {
-        mvc.perform(post("/api/workshop/session")
+        mvc.perform(post("/workshopper/api/workshop/session")
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{}"))
            .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print()).andExpect(status().isUnauthorized());
@@ -98,7 +99,7 @@ class WorkshopControllerSecurityTest {
         doThrow(new AccessDeniedException("User other-user is not allowed to access this session"))
                 .when(facade).verifyOwnership(anyString());
 
-        mvc.perform(get("/api/workshop/sessions/some-session-id"))
+        mvc.perform(get("/workshopper/api/workshop/sessions/some-session-id"))
            .andExpect(status().isForbidden());
     }
 
@@ -106,7 +107,7 @@ class WorkshopControllerSecurityTest {
     @org.springframework.security.test.context.support.WithAnonymousUser
     @DisplayName("Anonymous GET /api/workshop/sessions → 401 (not 200 with anonymous identity)")
     void anonymousListSessionsReturnsUnauthorized() throws Exception {
-        mvc.perform(get("/api/workshop/sessions"))
+        mvc.perform(get("/workshopper/api/workshop/sessions"))
            .andExpect(status().isUnauthorized());
     }
 }
