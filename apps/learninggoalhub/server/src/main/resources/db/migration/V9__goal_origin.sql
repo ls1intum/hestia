@@ -1,3 +1,0 @@
-ALTER TABLE learning_goal
-    ADD COLUMN origin VARCHAR(16) NOT NULL DEFAULT 'EXTRACTED'
-        CHECK (origin IN ('EXTRACTED', 'SYNTHESIZED'));

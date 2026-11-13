@@ -1,0 +1,37 @@
+package de.tum.cit.hestia.teaching.usecase;
+
+import de.tum.cit.hestia.teaching.dto.GoalSuggestionDto;
+import de.tum.cit.hestia.teaching.dto.RefineGoalRequestDto;
+import de.tum.cit.hestia.teaching.service.LlmService;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Collections;
+import java.util.Map;
+
+@Component
+public class RefineLearningGoalUseCase {
+
+    private final LlmService llmService;
+
+    public RefineLearningGoalUseCase(LlmService llmService) {
+        this.llmService = llmService;
+    }
+
+    public List<GoalSuggestionDto> execute(RefineGoalRequestDto request) throws Exception {
+        var ctx = request.context() != null ? request.context() : Map.of();
+        String sessionType = ctx.getOrDefault("sessionType", "workshop").toString();
+        String background = ctx.getOrDefault("studentBackground", "").toString();
+
+        @SuppressWarnings("unchecked")
+        List<String> subSkills = (List<String>) ctx.getOrDefault("subSkills", Collections.emptyList());
+        String subSkillsContext = "";
+        if (!subSkills.isEmpty()) {
+            subSkillsContext = "\nAdditionally, this goal is supported by the following granular sub-skills:\n- " 
+                    + String.join("\n- ", subSkills)
+                    + "\n\nIf the learning goal text above is a broad 'Terminal Competency' that combines many concepts, use these sub-skills as a strong hint for how to split it into distinct, actionable Workshop goals. You can combine closely related sub-skills into a single goal, or elevate major sub-skills into their own goals.";
+        }
+
+        return llmService.refineGoal(request, sessionType, background, subSkillsContext);
+    }
+}

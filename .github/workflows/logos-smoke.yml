@@ -37,13 +37,12 @@ jobs:
       - name: Run the Logos smoke tests
         run: >-
           ./gradlew --no-daemon
-          :apps:learninggoalhub:server:test --tests '*LogosSmokeLiveIT'
-          :apps:workshopper:server:test --tests '*LogosSmokeLiveIT'
+          :server:test --tests '*LogosSmokeLiveIT'
           --continue
       - name: Keep the test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: logos-smoke-reports
-          path: apps/*/server/build/reports/tests/test/
+          path: server/build/reports/tests/test/
           retention-days: 7

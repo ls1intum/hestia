@@ -1,0 +1,215 @@
+# Deployment of the Hestia application: one Postgres, one server, the three clients' nginx
+# containers and a daily backup. Only the web containers are reachable from outside (via the
+# shared Traefik proxy, infra/traefik); postgres and the server stay on the private network.
+#
+# Images are built and pushed to GHCR by CI (.github/workflows/hestia-cicd.yml) and deployed by
+# tag; this file references them by ${IMAGE_TAG}, it does NOT build. Manual deploy/refresh on the
+# VM (CI does the same via the reusable deploy workflow):
+#
+#   docker compose -f compose.prod.yaml --env-file .env pull
+#   docker compose -f compose.prod.yaml --env-file .env up -d
+#
+# For local development (database only) use compose.yaml instead.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: hestia-postgres
+    environment:
+      POSTGRES_DB: hestia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${HESTIA_POSTGRES_PASSWORD:?set HESTIA_POSTGRES_PASSWORD in .env}
+      # Read by infra/postgres/init/01-roles.sql on the first start (empty data directory).
+      HESTIA_OWNER_PASSWORD: ${HESTIA_OWNER_PASSWORD:?set HESTIA_OWNER_PASSWORD in .env}
+      HESTIA_APP_PASSWORD: ${HESTIA_APP_PASSWORD:?set HESTIA_APP_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hestia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  hestia-server:
+    image: ghcr.io/ls1intum/hestia/server:${IMAGE_TAG:-latest}
+    container_name: hestia-server
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: hestia
+      HESTIA_OWNER_PASSWORD: ${HESTIA_OWNER_PASSWORD:?set HESTIA_OWNER_PASSWORD in .env}
+      HESTIA_APP_PASSWORD: ${HESTIA_APP_PASSWORD:?set HESTIA_APP_PASSWORD in .env}
+      # Defaults to the deploy target the CI deploy writes into .env (Staging/Production);
+      # application.yml maps Staging to `local` (development login) and Production to `prod`.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-${ENVIRONMENT:-prod}}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+      SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
+      SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
+      # TUM AET Logos gateway (materials and teaching). One key for the whole server.
+      LOGOS_API_KEY: ${HESTIA_LOGOS_API_KEY:?set HESTIA_LOGOS_API_KEY in .env}
+      # assessment: AI providers. Each key is optional; without it the matching strategies are off.
+      OPENAI_API_KEY: ${EXAMLENSE_OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      ANTHROPIC_API_KEY: ${EXAMLENSE_ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      GEMINI_API_KEY: ${EXAMLENSE_GEMINI_API_KEY:-}
+      # assessment: interim token login (until a single login replaces it). SHARED bootstrap
+      # token, baked into the ExamLense client build; it authenticates as the seeded legacy user.
+      # `-` not `:-` on purpose: an empty value must switch it off instead of falling back.
+      API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN-dev-local-token}
+      # Separate secret that grants ADMIN as the legacy user; no default.
+      ADMIN_BOOTSTRAP_TOKEN: ${EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN:-}
+      OPEN_REGISTRATION: ${EXAMLENSE_OPEN_REGISTRATION:-true}
+      REGISTRATIONS_PER_IP_PER_DAY: ${EXAMLENSE_REGISTRATIONS_PER_IP_PER_DAY:-5}
+      QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-20}
+      QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-20}
+      QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-200}
+      QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-200}
+      # HMAC key for signed file URLs. Required: without it the server falls back to the shared
+      # token, which ships in the client bundle, so anyone could mint file URLs.
+      FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:?set EXAMLENSE_FILES_SIGNING_SECRET in .env}
+      # Behind Traefik and nginx: trust X-Forwarded-For for the per-IP limits, two hops
+      # (Traefik appends the client's address, then nginx appends Traefik's).
+      API_RATELIMIT_BEHIND_PROXY: ${API_RATELIMIT_BEHIND_PROXY:-true}
+      API_RATELIMIT_TRUSTED_PROXY_HOPS: ${API_RATELIMIT_TRUSTED_PROXY_HOPS:-2}
+      CORS_ALLOWED_ORIGINS: https://${APP_HOST}
+      # assessment: uploaded files live on a named volume (survives redeploys).
+      STORAGE_LOCAL_BASE_PATH: /app/data/storage
+    volumes:
+      - storage:/app/data
+      - /opt/hestia/secrets/saml:/app/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Actuator health covers the database connection. The start period leaves room for boot
+    # (Flyway, Tika); the CI smoke test waits on this status after a deploy.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    # Cap memory on the shared ≈4 GB VM; heap is 70% of this (see server/Dockerfile).
+    mem_limit: 2500m
+    restart: unless-stopped
+
+  # The three clients. Each nginx serves its static files and proxies /api/ to
+  # http://hestia-server:8080/<prefix>/api/ and the SAML paths to the server.
+  # Traefik strips the prefix and sends it as X-Forwarded-Prefix.
+  learninggoalhub-web:
+    image: ghcr.io/ls1intum/hestia/learninggoalhub/client:${IMAGE_TAG:-latest}
+    container_name: hestia-learninggoalhub-web
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      hestia-server:
+        condition: service_healthy
+    networks:
+      - default        # private: reach hestia-server
+      - hestia-edge    # shared: receive traffic from Traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      - "traefik.http.routers.learninggoalhub.rule=Host(`${APP_HOST}`) && PathPrefix(`/learninggoalhub`)"
+      - "traefik.http.routers.learninggoalhub.entrypoints=websecure"
+      - "traefik.http.routers.learninggoalhub.tls=true"
+      - "traefik.http.routers.learninggoalhub.middlewares=learninggoalhub-strip"
+      - "traefik.http.middlewares.learninggoalhub-strip.stripprefix.prefixes=/learninggoalhub"
+      - "traefik.http.services.learninggoalhub.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+  workshopper-web:
+    image: ghcr.io/ls1intum/hestia/workshopper/client:${IMAGE_TAG:-latest}
+    container_name: hestia-workshopper-web
+    expose:
+      - "80"
+    depends_on:
+      hestia-server:
+        condition: service_healthy
+    networks:
+      - default
+      - hestia-edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      - "traefik.http.routers.workshopper.rule=Host(`${APP_HOST}`) && PathPrefix(`/workshopper`)"
+      - "traefik.http.routers.workshopper.entrypoints=websecure"
+      - "traefik.http.routers.workshopper.tls=true"
+      - "traefik.http.routers.workshopper.middlewares=workshopper-strip"
+      - "traefik.http.middlewares.workshopper-strip.stripprefix.prefixes=/workshopper"
+      - "traefik.http.services.workshopper.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+  examlense-web:
+    image: ghcr.io/ls1intum/hestia/examlense/client:${IMAGE_TAG:-latest}
+    container_name: hestia-examlense-web
+    expose:
+      - "80"
+    depends_on:
+      hestia-server:
+        condition: service_healthy
+    networks:
+      - default
+      - hestia-edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=hestia-edge"
+      # The prefix matches the client build (vite `base` + .env.production).
+      - "traefik.http.routers.examlense.rule=Host(`${APP_HOST}`) && PathPrefix(`/examlense`)"
+      - "traefik.http.routers.examlense.entrypoints=websecure"
+      - "traefik.http.routers.examlense.tls=true"
+      - "traefik.http.routers.examlense.middlewares=examlense-strip"
+      - "traefik.http.middlewares.examlense-strip.stripprefix.prefixes=/examlense"
+      - "traefik.http.services.examlense.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+  # Daily pg_dump of the whole database into a host directory, outside the postgres volume.
+  # Keeps BACKUP_KEEP_DAYS days of dumps. Same image as postgres, so pg_dump matches.
+  backup:
+    image: postgres:16
+    container_name: hestia-backup
+    environment:
+      PGHOST: postgres
+      PGDATABASE: hestia
+      PGUSER: postgres
+      PGPASSWORD: ${HESTIA_POSTGRES_PASSWORD:?set HESTIA_POSTGRES_PASSWORD in .env}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ${BACKUP_DIR:-/opt/hestia/backups/hestia}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          file=/backups/hestia-$$(date +%Y%m%d-%H%M%S).dump
+          # Old dumps are pruned only after a new one was written, so a run of failures never
+          # deletes the last good backups.
+          if pg_dump -Fc -f "$$file.partial"; then
+            mv "$$file.partial" "$$file"
+            echo "backup written: $$file"
+            find /backups -name 'hestia-*.dump' -mtime +$$BACKUP_KEEP_DAYS -delete
+          else
+            rm -f "$$file.partial"
+            echo "backup FAILED" >&2
+          fi
+          sleep 86400
+        done
+    restart: unless-stopped
+
+networks:
+  # Shared, created once on the VM: `docker network create hestia-edge`.
+  hestia-edge:
+    external: true
+
+volumes:
+  postgres-data:
+  storage:

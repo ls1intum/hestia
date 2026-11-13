@@ -1,0 +1,11 @@
+package de.tum.cit.hestia.materials.hierarchy;
+
+public enum HierarchyLevel {
+    MODULE,
+    SESSION,
+    EXERCISE,
+    /** Root holding a course's exam-task goals (ExamLens integration), alongside the MODULE root. */
+    EXAM,
+    /** Root holding a course's topics (the Topic tree, alongside MODULE). */
+    COMPETENCY
+}

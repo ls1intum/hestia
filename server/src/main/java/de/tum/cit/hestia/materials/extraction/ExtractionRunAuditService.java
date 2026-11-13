@@ -1,0 +1,66 @@
+package de.tum.cit.hestia.materials.extraction;
+
+import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.course.ExtractionStatus;
+import de.tum.cit.hestia.materials.course.ExtractionStatusLookup;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Persists extraction audit state independently of the extraction transaction. */
+@Service
+public class ExtractionRunAuditService implements ExtractionStatusLookup {
+
+    private final CourseRepository courseRepository;
+    private final ExtractionRunRepository extractionRunRepository;
+
+    public ExtractionRunAuditService(CourseRepository courseRepository,
+                                     ExtractionRunRepository extractionRunRepository) {
+        this.courseRepository = courseRepository;
+        this.extractionRunRepository = extractionRunRepository;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Long start(Long courseId, String model, String promptVersion, String params) {
+        Course course = courseRepository.findById(courseId).orElseThrow();
+        return extractionRunRepository.saveAndFlush(new ExtractionRun(course, model, promptVersion, params)).getId();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void finish(Long runId, ExtractionStatus status, String error, Integer goalsCreated,
+                       Integer failedSessions, Integer droppedOutcomes, String promptVersion) {
+        ExtractionRun run = extractionRunRepository.findById(runId).orElseThrow();
+        run.finish(status, error, goalsCreated, failedSessions, droppedOutcomes, promptVersion);
+        extractionRunRepository.saveAndFlush(run);
+    }
+
+    /** Marks a failed extraction complete after its already-committed goals gained a tree on retry. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void finishTreeRetry(Long courseId) {
+        extractionRunRepository.findFirstByCourseIdOrderByStartedAtDesc(courseId)
+                .filter(run -> run.getStatus() == ExtractionStatus.FAILED)
+                .filter(run -> run.getGoalsCreated() != null)
+                .ifPresent(run -> {
+                    run.finish(ExtractionStatus.SUCCEEDED, null, run.getGoalsCreated(),
+                            run.getFailedSessions(), run.getDroppedOutcomes(), run.getPromptVersion());
+                    extractionRunRepository.saveAndFlush(run);
+                });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, ExtractionStatus> latestByCourse(List<Long> courseIds) {
+        Map<Long, ExtractionStatus> statuses = new LinkedHashMap<>();
+        if (courseIds.isEmpty()) {
+            return statuses;
+        }
+        for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
+            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
+        }
+        return statuses;
+    }
+}

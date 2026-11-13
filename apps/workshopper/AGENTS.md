@@ -15,9 +15,9 @@ Core Workshopper concepts:
 - session persistence, draft management and unsaved-changes protection in the wizard
 
 ## Technical Direction
-- server: Spring Boot 3.5 (Java 21), Gradle module `:apps:workshopper:server`
-- LLM integration: Spring AI via Hestia's `libs:shared-llm` module (TUM AET Logos gateway, key `WORKSHOPPER_LOGOS_API_KEY`); prompts are `.st` files in `server/src/main/resources/prompts`
-- database: PostgreSQL with Flyway migrations (`server/src/main/resources/db/migration`, V1–V8); never edit an applied migration, add a new one
+- server: Spring Boot 3.5 (Java 21), package `de.tum.cit.hestia.teaching` of the one server (Gradle module `:server`, `/workshopper` URL prefix)
+- LLM integration: Spring AI via Hestia's `libs:shared-llm` module (TUM AET Logos gateway, key `LOGOS_API_KEY`); prompts are `.st` files in `/server/src/main/resources/prompts`
+- database: PostgreSQL with Flyway migrations (`/server/src/main/resources/db/migration`, one history for all modules, schema `teaching`); never edit an applied migration, add a new one
 - client: React, Vite, Tailwind CSS; wizard state lives in `client/src/hooks/useWizardState.ts` (plain React state)
 - build system: Gradle (multi-module)
 
@@ -27,7 +27,7 @@ Core Workshopper concepts:
 
 ### 1. Evidence-Backed Verification (The "Grep Rule")
 **Never claim a task is "verified", "complete", or "fully migrated" based on assumption.**
-If you say a migration is complete, prove it by showing the `grep` results that confirm zero remaining old references. If you say a bug is fixed, prove it with passing test output (`./gradlew :apps:workshopper:server:test` from the repository root, or `npm test` and `npx tsc --noEmit` in `client/`).
+If you say a migration is complete, prove it by showing the `grep` results that confirm zero remaining old references. If you say a bug is fixed, prove it with passing test output (`./gradlew :server:test` from the repository root, or `npm test` and `npx tsc --noEmit` in `client/`).
 *Do not let an unverified claim into your output.*
 
 ### 2. Contract Mismatch Awareness

@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# Starts the built server jar for the browser tests: against the fake model on FAKE_LLM_PORT and
-# the Postgres on E2E_POSTGRES_PORT, with a throwaway SAML key pair (the server refuses to start
-# without one). Build the jar first: ./gradlew :apps:learninggoalhub:server:bootJar
+# Starts the built Hestia server jar for the browser tests: against the fake model on FAKE_LLM_PORT
+# and the Postgres on E2E_POSTGRES_PORT (database hestia with the roles from
+# infra/postgres/init/01-roles.sql), with a throwaway SAML key pair (the server refuses to start
+# without one). Build the jar first: ./gradlew :server:bootJar
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-jar="$here/../../server/build/libs/learninggoalhub-server.jar"
+jar="$here/../../../../server/build/libs/hestia-server.jar"
 keys="$(mktemp -d)"
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=localhost" \
   -keyout "$keys/saml-key.pem" -out "$keys/saml-cert.crt" 2>/dev/null
 
 export SERVER_PORT="${E2E_SERVER_PORT:-8090}"
 export POSTGRES_PORT="${E2E_POSTGRES_PORT:-5433}"
+# The role passwords the database was set up with; the defaults match compose.yaml.
+export HESTIA_OWNER_PASSWORD="${HESTIA_OWNER_PASSWORD:-hestia_owner}"
+export HESTIA_APP_PASSWORD="${HESTIA_APP_PASSWORD:-hestia_app}"
 export LOGOS_API_KEY=fake
 export SPRING_AI_OPENAI_BASE_URL="http://localhost:${FAKE_LLM_PORT:-4010}"
 # One skill per 40 characters, so the short fixture lines may each become a skill.

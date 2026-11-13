@@ -1,15 +1,15 @@
 # Security
 
 What protects LearningGoalHub today and what is still open.
-The configuration lives in `server/src/main/java/.../config/` (`SecurityConfig`,
-`ServiceApiKeyFilter`, `LlmRateLimitFilter`) and in `client/nginx.conf`.
+The configuration lives in `server/src/main/java/de/tum/cit/hestia/materials/config/` (`SecurityConfig`,
+`LlmRateLimitFilter`), in `core/internal/security/` (the shared SAML login) and in `client/nginx.conf`.
 
 ## At a glance
 
 | Area | State |
 | --- | --- |
-| Browser login | TUM login (SAML) required on `/api/**`; hestia-test and local runs use a dev user instead. |
-| Service-only endpoints | One `X-Api-Key` per consuming server, required in deployments (`ENFORCE_SERVICE_KEYS`). |
+| Browser login | TUM login (SAML) required on `/learninggoalhub/**`; hestia-test and local runs use a dev user instead. |
+| Other modules | `assessment` and `teaching` call `materials` in-process (ports in `core.spi`); there is no service key. |
 | Model calls | At most 60 requests that start model calls per client address and 10 minutes. |
 | Uploads | PDF only, checked by extension and file signature; page and text limits. |
 | ExamLens input | At most 100 blocks per request and 20,000 characters per block description. |
@@ -42,31 +42,14 @@ CSRF protection is still off. A CSRF attack makes a logged-in user's browser sen
 carries their session cookie, for example a form on another site that posts to the API. Browsers
 that treat cookies without a `SameSite` attribute as `Lax` do not send the session cookie on such
 cross-site posts, but not every browser does. Turn it on as the next step: a cookie token
-(`CookieCsrfTokenRepository`) that the client echoes in an `X-XSRF-TOKEN` header on every write,
-with requests carrying a service key exempt because their callers are servers.
-
-## Service keys
-
-ExamLens and Workshopper each get their own key, stored as a deployment secret on both sides.
-`ServiceApiKeyFilter` compares the `X-Api-Key` header against every configured key in constant
-time and, on a match, treats the request as that caller for this request only. A blank key is
-never configured, so an unset secret cannot match an empty header. The two service-only
-endpoints, the rollout and the error codes are in [api.md](api.md#service-keys).
-
-A valid key also passes the login check on every other `/api/**` endpoint, because the consuming
-servers have no browser session (Workshopper lists the courses this way). `ENFORCE_SERVICE_KEYS`
-defaults to `true` in `compose.prod.yaml`: the service-only endpoints then accept only a key, not
-a TUM login. With it off, any logged-in caller reaches them and the log shows `Would reject ...`.
-A key is a server secret and must never end up in a browser bundle.
+(`CookieCsrfTokenRepository`) that the client echoes in an `X-XSRF-TOKEN` header on every write.
 
 ## Rate limit on model calls
 
 Every model call spends the deployment's shared inference quota and can run for minutes.
 `LlmRateLimitFilter` counts the requests in `SecurityConfig.LLM_REQUESTS` (extraction, Topic
 tree rebuild, upload, exam goals, "Find in the slides", "Generate with AI") per client address
-and answers the 61st within 10 minutes with `429` and a `Retry-After` header. Requests with a
-valid service key are not counted, because all users of a consuming app share its server's
-address.
+and answers the 61st within 10 minutes with `429` and a `Retry-After` header.
 
 The client address comes from the forwarded headers
 (`server.forward-headers-strategy: framework`), so the count is only as reliable as the proxy
@@ -102,7 +85,7 @@ only stop files that would occupy the parser and the extraction for a long time.
 
 ## Secrets and data
 
-- The Logos API key, the database password and the service keys are GitHub Actions secrets. The
+- The Logos API key, the database password are GitHub Actions secrets. The
   deploy workflow writes them to a `.env` file on the VM; nothing in the repository or the client
   bundle contains them. See [DEPLOY.md](../DEPLOY.md#cicd).
 - The SAML key pair is mounted read-only from `/opt/hestia/secrets/saml`.

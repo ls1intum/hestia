@@ -33,9 +33,8 @@ apps tune them differently. LearningGoalHub keeps them in its `llm` package.
 
 ```bash
 ./gradlew :libs:shared-llm:test                       # unit tests, no Docker needed
-./gradlew :apps:learninggoalhub:server:test :apps:workshopper:server:test   # the consumers
+./gradlew :server:test                                # the consumer (materials and teaching modules)
 ```
 
-Any change under `libs/**` triggers both apps' pipelines (`learninggoalhub-cicd.yml` and
-`workshopper-cicd.yml`), and merging it to `main` redeploys both apps to staging. The LearningGoalHub
-pipeline also runs `:libs:shared-llm:test`.
+Every change runs the one pipeline (`hestia-cicd.yml`, which also runs `:libs:shared-llm:test`), and
+merging it to `main` redeploys the server to staging.

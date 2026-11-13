@@ -19,7 +19,7 @@ All of these come from `ApiExceptionHandler`, so the controllers themselves have
 * Storage: 500 sessions and 100 courses per user, titles up to 300 characters, drafts up to 2 MB and slides up to 5 MB of JSON.
 * Uploads: templates up to 20 MB, checked to open as a PowerPoint file.
 
-Request and response bodies are the DTOs in `server/src/main/java/com/workshopper/dto`; their TypeScript counterparts are in `client/src/lib/workshop-generator.ts`.
+Request and response bodies are the DTOs in `/server/src/main/java/de/tum/cit/hestia/teaching/dto`; their TypeScript counterparts are in `client/src/lib/workshop-generator.ts`.
 
 ## Generation
 

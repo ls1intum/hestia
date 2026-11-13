@@ -1,0 +1,30 @@
+# Local development: the one Postgres of the Hestia server, set up like the deployment (database
+# hestia, roles hestia_owner and hestia_app from infra/postgres/init). Start the server with
+# `./gradlew :server:bootRun` against it. The full deployment is compose.prod.yaml.
+#
+#   docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: hestia-dev-postgres
+    environment:
+      POSTGRES_DB: hestia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Development passwords; application.yml uses the same defaults.
+      HESTIA_OWNER_PASSWORD: hestia_owner
+      HESTIA_APP_PASSWORD: hestia_app
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hestia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
