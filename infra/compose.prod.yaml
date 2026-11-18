@@ -51,6 +51,12 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
+      # Identity provider of the SAML login (the server has no default). TUM's unless .env says otherwise.
+      SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-https://tumidp.lrz.de/idp/shibboleth}
+      SAML_IDP_METADATA_URI: ${SAML_IDP_METADATA_URI:-https://login.tum.de/idp/shibboleth}
+      # Platform admins (eduPersonPrincipalName, comma-separated): ROLE_ADMIN for ExamLense's
+      # parse metrics, no additional data access.
+      HESTIA_PLATFORM_ADMINS: ${HESTIA_PLATFORM_ADMINS:-}
       # TUM AET Logos gateway (materials and teaching). One key for the whole server.
       LOGOS_API_KEY: ${HESTIA_LOGOS_API_KEY:?set HESTIA_LOGOS_API_KEY in .env}
       # assessment: AI providers. Each key is optional; without it the matching strategies are off.

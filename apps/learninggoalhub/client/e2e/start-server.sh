@@ -22,6 +22,22 @@ export SPRING_AI_OPENAI_BASE_URL="http://localhost:${FAKE_LLM_PORT:-4010}"
 export HESTIA_EXTRACTION_SKILL_TARGET_CHARS=40
 export SAML_PRIVATE_KEY_LOCATION="file:$keys/saml-key.pem"
 export SAML_CERTIFICATE_LOCATION="file:$keys/saml-cert.crt"
+# The identity provider comes only from configuration; the browser tests never log in through
+# it (the local profile does), but the server reads its metadata at startup. A throwaway one:
+cert_body="$(sed '/-----/d' "$keys/saml-cert.crt" | tr -d '
+')"
+cat > "$keys/idp-metadata.xml" <<XML
+<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://idp.e2e.invalid">
+  <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <KeyDescriptor use="signing">
+      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#"><X509Data><X509Certificate>$cert_body</X509Certificate></X509Data></KeyInfo>
+    </KeyDescriptor>
+    <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.e2e.invalid/sso"/>
+  </IDPSSODescriptor>
+</EntityDescriptor>
+XML
+export SAML_IDP_ENTITY_ID="https://idp.e2e.invalid"
+export SAML_IDP_METADATA_URI="file:$keys/idp-metadata.xml"
 # /api/** needs a login; the local profile signs every request in as a dev user.
 export SPRING_PROFILES_ACTIVE=local
 exec java -jar "$jar"
