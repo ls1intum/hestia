@@ -12,6 +12,8 @@ server:
         # The login cookie is not sent with requests started by other sites
         same-site: lax
         http-only: true
+        # One login for all three clients, which live under different path prefixes
+        path: /
 
 spring:
   application:
@@ -43,9 +45,11 @@ spring:
               credentials:
                 - private-key-location: ${SAML_PRIVATE_KEY_LOCATION:classpath:certs/private-key.pem}
                   certificate-location: ${SAML_CERTIFICATE_LOCATION:classpath:certs/certificate.crt}
+            # The identity provider comes only from the environment (compose file, .env); there is
+            # deliberately no default here.
             assertingparty:
-              entity-id: https://tumidp.lrz.de/idp/shibboleth
-              metadata-uri: https://login.tum.de/idp/shibboleth
+              entity-id: ${SAML_IDP_ENTITY_ID}
+              metadata-uri: ${SAML_IDP_METADATA_URI}
 
   # One database, one schema per module. The application connects as hestia_app (read and write
   # rows); Flyway migrates as hestia_owner, which owns the schemas. Both roles are created by
@@ -95,6 +99,12 @@ spring:
         initial-interval: 1s
         multiplier: 2
         max-interval: 60s
+
+hestia:
+  security:
+    # External ids (eduPersonPrincipalName) of the platform admins, comma-separated. They get
+    # ROLE_ADMIN (ExamLense's admin and parse-metrics endpoints) and no additional data access.
+    platform-admins: ${HESTIA_PLATFORM_ADMINS:}
 
 # Sorted keys make the OpenAPI documents byte-stable, so a stored snapshot can be compared with them.
 springdoc:

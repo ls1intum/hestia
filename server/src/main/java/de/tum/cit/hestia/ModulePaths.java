@@ -13,12 +13,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration(proxyBeanMethods = false)
 class ModulePaths implements WebMvcConfigurer {
 
+    static final String CORE = "/core";
     static final String MATERIALS = "/learninggoalhub";
     static final String TEACHING = "/workshopper";
     static final String ASSESSMENT = "/examlense";
 
     @Override
     public void configurePathMatch(PathMatchConfigurer configurer) {
+        configurer.addPathPrefix(CORE, HandlerTypePredicate.forBasePackage("de.tum.cit.hestia.core"));
         configurer.addPathPrefix(MATERIALS, HandlerTypePredicate.forBasePackage("de.tum.cit.hestia.materials"));
         configurer.addPathPrefix(TEACHING, HandlerTypePredicate.forBasePackage("de.tum.cit.hestia.teaching"));
         configurer.addPathPrefix(ASSESSMENT, HandlerTypePredicate.forBasePackage("de.tum.cit.hestia.assessment"));

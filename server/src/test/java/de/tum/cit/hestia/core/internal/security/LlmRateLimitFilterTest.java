@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.materials.config;
+package de.tum.cit.hestia.core.internal.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

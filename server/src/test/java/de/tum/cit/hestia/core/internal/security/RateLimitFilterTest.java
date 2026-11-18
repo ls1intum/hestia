@@ -1,4 +1,4 @@
-package de.tum.cit.hestia.assessment.security;
+package de.tum.cit.hestia.core.internal.security;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
