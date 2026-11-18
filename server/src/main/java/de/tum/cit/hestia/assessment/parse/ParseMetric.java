@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.parse;
 
 import jakarta.persistence.Column;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -11,7 +12,7 @@ import org.hibernate.generator.EventType;
 
 @Entity
 @Table(schema = "assessment", name = "parse_metrics")
-public class ParseMetric {
+public class ParseMetric extends OrgScoped {
 
     @Id
     private UUID id = UUID.randomUUID();

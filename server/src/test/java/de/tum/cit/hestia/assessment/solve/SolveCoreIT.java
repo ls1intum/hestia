@@ -1,11 +1,11 @@
 package de.tum.cit.hestia.assessment.solve;
 
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
+import de.tum.cit.hestia.core.OrgContext;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.grading.Grade;
 import de.tum.cit.hestia.assessment.grading.GradeRepository;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
@@ -52,10 +52,10 @@ class SolveCoreIT extends AbstractIntegrationTest {
         Examination exam = examination();
         TaskBlock task = task(exam, 0);
 
-        CompletableFuture<Void> first = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "first"))));
-        CompletableFuture<Void> second = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "second"))));
+        CompletableFuture<Void> first = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "first")))));
+        CompletableFuture<Void> second = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "second")))));
         CompletableFuture.allOf(first, second).join();
 
         assertThat(answers.findByTaskId(task.getId())).isPresent();
@@ -68,10 +68,10 @@ class SolveCoreIT extends AbstractIntegrationTest {
         TaskBlock firstTask = task(exam, 0);
         TaskBlock secondTask = task(exam, 1);
 
-        CompletableFuture<Void> first = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, firstTask, "first"))));
-        CompletableFuture<Void> second = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, secondTask, "second"))));
+        CompletableFuture<Void> first = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, firstTask, "first")))));
+        CompletableFuture<Void> second = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, secondTask, "second")))));
         CompletableFuture.allOf(first, second).join();
 
         assertThat(answers.findByTaskId(firstTask.getId())).isPresent();
@@ -81,7 +81,7 @@ class SolveCoreIT extends AbstractIntegrationTest {
 
     private Examination examination() {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("manual");
         exam.setStatus("grading");
         return exams.save(exam);

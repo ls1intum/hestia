@@ -18,10 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Two ceilings apply, and both must pass. The per-user quota is about
  * fairness — one person cannot crowd everyone else out. The instance-wide ceiling
  * is about the provider bill, and it exists because the per-user quota alone
- * bounds nothing: registration is open, so anyone can trade a used-up account for
- * a fresh allowance, and the per-IP registration cap that slows this down is only
- * as trustworthy as the proxy headers it reads. The global count is derived from
- * actual usage, so neither churning accounts nor forging a header moves it.
+ * bounds nothing: the per-user quota alone is a fairness control, not a spend cap. The global
+ * count is derived from actual usage across all users and organisations.
  *
  * <p>Counts are kept in the database rather than in memory so a restart does not
  * reset everyone's quota, and so the numbers stay correct if the service is ever
@@ -63,7 +61,7 @@ public class LlmQuotaService {
      * than execution.
      */
     @Transactional
-    public void checkAndRecord(String userId, String kind) {
+    public void checkAndRecord(UUID userId, String kind) {
         check(userId, kind);
         record(userId, kind);
     }
@@ -76,11 +74,11 @@ public class LlmQuotaService {
      * happen before that rather than after, or a rejected call would leave the
      * exam wiped and mid-flight.
      */
-    public void check(String userId, String kind) {
+    public void check(UUID userId, String kind) {
         OffsetDateTime since = windowStart();
 
         int limit = limitFor(kind);
-        long used = usage.countSince(UUID.fromString(userId), kind, since);
+        long used = usage.countSince(userId, kind, since);
         if (used >= limit) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS,
                 "Daily %s limit reached (%d per day). Try again tomorrow.".formatted(kind, limit));
@@ -105,15 +103,15 @@ public class LlmQuotaService {
      * than enforcing a hard cap.
      */
     @Transactional
-    public void record(String userId, String kind) {
+    public void record(UUID userId, String kind) {
         LlmUsage row = new LlmUsage();
-        row.setUserId(UUID.fromString(userId));
+        row.setUserId(userId);
         row.setKind(kind);
         usage.save(row);
     }
 
-    public QuotaResponse remainingFor(String userId) {
-        UUID id = UUID.fromString(userId);
+    public QuotaResponse remainingFor(UUID userId) {
+        UUID id = userId;
         OffsetDateTime since = windowStart();
         long parseUsed = usage.countSince(id, KIND_PARSE, since);
         long solveUsed = usage.countSince(id, KIND_SOLVE, since);

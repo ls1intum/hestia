@@ -65,20 +65,12 @@ services:
       ANTHROPIC_API_KEY: ${EXAMLENSE_ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
       GEMINI_API_KEY: ${EXAMLENSE_GEMINI_API_KEY:-}
-      # assessment: interim token login (until a single login replaces it). SHARED bootstrap
-      # token, baked into the ExamLense client build; it authenticates as the seeded legacy user.
-      # `-` not `:-` on purpose: an empty value must switch it off instead of falling back.
-      API_AUTH_TOKEN: ${EXAMLENSE_API_AUTH_TOKEN-dev-local-token}
-      # Separate secret that grants ADMIN as the legacy user; no default.
-      ADMIN_BOOTSTRAP_TOKEN: ${EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN:-}
-      OPEN_REGISTRATION: ${EXAMLENSE_OPEN_REGISTRATION:-true}
-      REGISTRATIONS_PER_IP_PER_DAY: ${EXAMLENSE_REGISTRATIONS_PER_IP_PER_DAY:-5}
       QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-20}
       QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-20}
       QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-200}
       QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-200}
-      # HMAC key for signed file URLs. Required: without it the server falls back to the shared
-      # token, which ships in the client bundle, so anyone could mint file URLs.
+      # HMAC key for signed file URLs. Required: without it the server signs with a random key
+      # per start, so every file URL stops working after a restart.
       FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:?set EXAMLENSE_FILES_SIGNING_SECRET in .env}
       # Behind Traefik and nginx: trust X-Forwarded-For for the per-IP limits, two hops
       # (Traefik appends the client's address, then nginx appends Traefik's).

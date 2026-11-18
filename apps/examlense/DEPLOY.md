@@ -96,13 +96,9 @@ apps' secrets in the shared environment (learninggoalhub does the same with `LEA
 - **Secrets (required):** `VM_HOST`, `VM_USERNAME`, `VM_SSH_PRIVATE_KEY` (SSH access to that
   VM — these stay generic), `EXAMLENSE_POSTGRES_PASSWORD`,
   `EXAMLENSE_FILES_SIGNING_SECRET` (dedicated HMAC key for signed
-  file URLs — a fresh random value, unrelated to the auth token; see **Security model** below
+  file URLs — a fresh random value; see **Security model** below
   for why leaving it unset is not safe in production).
-- **Secrets (recommended):** `EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN` — a long random value that
-  grants admin; leave unset once a real admin exists (see **Enrolling users**)
-- **Secrets (optional):** `EXAMLENSE_API_AUTH_TOKEN` (must match the token baked into the
-  client build, see below),
-  and any native-provider keys you want to enable: `EXAMLENSE_OPENAI_API_KEY` (gpt-* strategies),
+- **Secrets (optional):** any native-provider keys you want to enable: `EXAMLENSE_OPENAI_API_KEY` (gpt-* strategies),
   `EXAMLENSE_ANTHROPIC_API_KEY` (claude-*), `EXAMLENSE_GEMINI_API_KEY` (gemini-* PDF parsers).
   Omit a provider key to disable its strategies.
 - **Secret (shared with LearningGoalHub):** `LEARNINGGOALHUB_API_KEY_EXAMLENSE` — the key ExamLense
@@ -122,17 +118,6 @@ The `DEPLOYMENT_GATEWAY_*` gateway secrets/variables are shared org-level config
 here; the one with no default (`EXAMLENSE_POSTGRES_PASSWORD`) will fail the deploy if
 missing.
 
-> **The client and server tokens no longer have to match.** Production builds ignore
-> `VITE_API_AUTH_TOKEN` entirely (`src/lib/api/token-store.ts` gates it on `import.meta.env.DEV`),
-> because honouring a value compiled into the bundle would mean every visitor arrived
-> pre-authenticated as the shared user. It is not in the production bundle at all — but it *is*
-> committed in this public repo, so treat the value as published.
->
-> A practical consequence: you can set `EXAMLENSE_API_AUTH_TOKEN` to any random value without
-> rebuilding the client, and paste that instead. Worth doing if you want the legacy user's
-> pre-existing exams protected while you set up. Blank it entirely once you are done (see
-> **First-run setup** below).
-
 ## Security model
 
 Know what actually protects this deployment before you touch it. ExamLense is a thesis
@@ -144,80 +129,25 @@ none of it should come as a surprise later.
 `/api/` to the server, so `https://<APP_HOST>/examlense/api/...` resolves for anyone who can
 reach the VM. The "Verify a deploy" step below uses exactly that path.
 
-**Identity is per-user, but interim and open.** A first-time visitor is given their own
-account automatically — no invite, nothing asked — and their own long-lived token;
-`owner_id` is stamped from it, so each person sees only their own exams. This is a stand-in
-until TUM SAML is live — see
+**Identity is the Hestia session login.** ExamLense has no logins of its own: a visitor signs in
+through TUM SAML (`/saml2/authenticate/tum`) and gets the session cookie of the whole server.
+Every `/examlense/api/**` call except `healthz` needs that session, and non-GET calls carry the
+CSRF header `X-XSRF-TOKEN`. All data is scoped to the user's organisation (Hibernate filter and
+Postgres RLS). An exam with a course follows the course roles of the core module; an exam
+without a course is visible to its creator only. Admin (the parse-metrics dashboard) comes from
+`hestia.security.platform-admins` (env `HESTIA_PLATFORM_ADMINS`). See
 [`docs/auth-and-saml-cutover.md`](docs/auth-and-saml-cutover.md).
-
-**Anyone who can reach the host can get an account.** That is the intended trade behind the
-VPN, but it is the whole security boundary: there is no approval step and no allowlist. Set
-`OPEN_REGISTRATION=false` to freeze the instance to existing token holders if that ever stops
-being acceptable.
-
-**AI spend is bounded by two limits, and the global one is the real cap.**
-`QUOTA_PARSE_PER_DAY` / `QUOTA_SOLVE_PER_DAY` (20 each) are per user, which is a fairness
-control: one person cannot crowd out the rest. They bound the bill only in combination with
-`REGISTRATIONS_PER_IP_PER_DAY` (default 5), because open registration otherwise lets anyone
-trade a used-up account for a fresh allowance — the effective per-address ceiling is roughly
-`(1 + 5) × 20`. `QUOTA_GLOBAL_PARSE_PER_DAY` / `QUOTA_GLOBAL_SOLVE_PER_DAY` (200 each) cap
-usage across *all* accounts, counted from actual usage, so neither churning accounts nor
-forging a proxy header moves them. **That is the limit to set if you care about the invoice.**
-Only a SHA-256 of the registering address is stored, never the address.
-
-**`X-Forwarded-For` parsing is topology-dependent.** Every proxy appends the address it
-received the request from, so the header reaching the server reads
-`[whatever the client sent] , real-client-ip , traefik-ip`. `API_RATELIMIT_TRUSTED_PROXY_HOPS`
-(default 2 — Traefik, then this app's nginx) says how many trailing entries our own
-infrastructure added; the client's address is the first of those. Set it too low and every
-per-IP limit is evadable with one header; too high and it reads our own proxy's address,
-which is the same for everyone and turns the per-IP caps into global ones. **Revisit it if
-the edge topology changes**, and note that neither failure mode produces an error.
-
-**IP is a poor proxy for "person" in both directions.** Several testers behind one campus NAT
-address share the 3/day registration budget, so the fourth is refused; equally, one person on
-several networks gets several budgets. Accepted for a temporary scheme; the global ceiling is
-what makes it tolerable.
-
-**A stolen token is a full account takeover.** Tokens live in `localStorage`, there is no
-second factor, and nothing detects reuse from another machine. Revocation
-(`DELETE /api/admin/users/{id}/tokens`, or the button in `/admin`) is the only remedy.
-Accepted knowingly for a temporary scheme; it is the main reason not to let this off the VPN.
-
-**TUM IDs are optional and self-declared.** Accounts start with a generated `anon-…` handle;
-users may link their TUM ID from the account menu, and only linked accounts survive the SAML
-cutover with their exams. Linking refuses an identifier another account already holds, but
-nothing verifies that it is really yours — check the `/admin` roster before cutover.
-
-**The shared bootstrap token bypasses all of that.** While `API_AUTH_TOKEN` is set, anyone
-presenting it authenticates as the seeded legacy user and sees that user's exams. Treat the
-value as **public**: it is committed to this repository (`client/.env.production`,
-`.env.example`), which is a public monorepo. It is *not* in the production JavaScript bundle —
-the client only honours it in dev builds — but the repo is the bigger exposure anyway. The
-server logs a warning on every boot while it is set. **Blank it once users are enrolled**; that
-is the step that actually ends shared access.
-
-**Admin is a separate secret.** `ADMIN_BOOTSTRAP_TOKEN` (GitHub secret
-`EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN`) is what grants `ROLE_ADMIN` via a token, and it has **no
-default** — unset means the only route to admin is the `users.is_admin` flag. It is deliberately
-not the shared token: putting user administration behind a value published in a public
-repository would let anyone on the VPN promote themselves and revoke other people's access. Use it
-once to enrol and promote your real account from `/admin`, then unset it. Rotate it by changing
-the secret and redeploying; the server refuses to treat it as admin if it equals
-`API_AUTH_TOKEN`, and logs an error in that case.
 
 **AI spend is metered per user.** `QUOTA_PARSE_PER_DAY` / `QUOTA_SOLVE_PER_DAY` (20 each by
 default) cap LLM jobs per user over a rolling 24h window. The per-IP request limiter
 (300 requests / 10 s) is still there and still useful: it runs *before* authentication, so it
-is the only thing that can cheaply absorb unauthenticated floods, including of the registration endpoint.
+is the only thing that can cheaply absorb unauthenticated floods, including of the login endpoints.
 
-**Endpoints reachable without a token:** `/api/healthz`, `OPTIONS /**`, `/error`,
-`POST /api/auth/register` (how a visitor gets their first credential), and
-`/api/files/**`. The last one is not open — it is gated by an HMAC signature and expiry
-instead of the bearer token. That signature is keyed by `FILES_SIGNING_SECRET`, and **when
-that is unset the server falls back to the auth token** — the same value that ships in the
-bundle — which would let anyone mint valid file URLs for arbitrary storage paths. That is
-why it is listed as required above.
+**Endpoints reachable without a login:** `/api/healthz`, `OPTIONS /**` and `/error`.
+`/api/files/**` is not open either: it needs a login whose organisation matches the path prefix
+`<org_id>/`, plus an HMAC signature and expiry. The signature is keyed by `FILES_SIGNING_SECRET`;
+when that is unset the server uses a random key per start, so file URLs break on every restart,
+which is why it is listed as required above.
 
 **The LRZ VPN is the real boundary.** The shared Traefik proxy has no authentication, no IP
 allowlist, and no forward-auth middleware. CORS is correctly scoped to `https://${APP_HOST}`,
@@ -225,44 +155,13 @@ but CORS is a browser control and does nothing against a non-browser client. Per
 [`SECURITY.md`](../../SECURITY.md), these prototypes are for VPN-internal or local academic
 use — do not put this on a public IP without the auth layer first.
 
-**Known caveat:** SSE passes the session token as a `?token=` query parameter, because
-`EventSource` cannot set headers. Query strings land in the `examlense-web` nginx access log
-and in browser history in a way an `Authorization` header does not — so with per-user tokens a
-leaked log line is an account takeover, not just shared access.
+SSE streams are authenticated by the session cookie; no credential travels in the URL.
 
 ### First-run setup
 
-Users need nothing from you — they open the app and get an account. This is only about
-getting *yourself* admin and taking over the pre-existing exams.
-
-1. Set the GitHub secret `EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN` to a long random value
-   (`openssl rand -base64 32`) and deploy. This is your temporary admin credential — do not
-   reuse `EXAMLENSE_API_AUTH_TOKEN`, which is public.
-2. Open the app. You'll be given an ordinary account automatically; use **Account → Add your
-   TUM ID** to name it, and note its id from `GET /api/me`.
-3. Sign out, then paste the bootstrap value into the **Access key** box to become admin.
-4. Take over the pre-existing exams, which all belong to the legacy user:
-
-   ```sql
-   update exams set owner_id = '<your-new-user-id>'
-    where owner_id = '00000000-0000-0000-0000-000000000001';
-   ```
-
-   Your id is in `GET /api/me`, or in the `/admin` roster.
-5. Still signed in as the bootstrap identity, open `/admin` and hit **Make admin** on your
-   TUM ID. (You cannot change your own flag, which is why this is done from the bootstrap
-   identity rather than your own account.)
-6. Sign back in with your own access key. **Unset `EXAMLENSE_ADMIN_BOOTSTRAP_TOKEN` and
-   redeploy** — admin now comes only from `users.is_admin`.
-7. **Set `EXAMLENSE_API_AUTH_TOKEN` to an empty value and redeploy.** Until this is done,
-   anyone who reads the token out of this repository can sign in as the legacy user.
-
-The admin actions are also available over HTTP: `GET /api/admin/users`,
-`PATCH /api/admin/users/{id}` (`{"is_admin":true}`), `DELETE /api/admin/users/{id}/tokens`.
-
-Revoking someone: the **Revoke** button in `/admin`, or
-`DELETE /api/admin/users/{id}/tokens`. Takes effect immediately — the principal cache is
-cleared on revoke — and leaves their exams intact.
+1. Set `EXAMLENSE_FILES_SIGNING_SECRET` and the database password, then deploy.
+2. Sign in through TUM SAML. Put your external id into `HESTIA_PLATFORM_ADMINS` if you want the
+   parse-metrics dashboard.
 
 ### VM setup (one-time, per VM)
 
@@ -367,7 +266,7 @@ only `server` + `web` (whose images changed); **`postgres` and its data volume a
 | `permission denied … /var/run/docker.sock` (manual) | Your user isn't in the `docker` group — use `sudo` for **every** docker command (login included; root and your user have separate credential stores). |
 | `pull` says `denied` / `unauthorized` (manual) | GHCR login expired or wrong. `sudo docker login ghcr.io` with a **classic PAT** (scope `read:packages`), and authorize it for the `ls1intum` org if SSO prompts. |
 | `server` restarting after deploy | Almost always a Flyway migration error or a bad `.env` value — `logs server` says which. |
-| SPA loads but every API call 401s | The client's baked `VITE_API_AUTH_TOKEN` and the server's `API_AUTH_TOKEN` don't match. |
+| SPA loads but every API call 401s | No session: the browser should have been sent to `/saml2/authenticate/tum`. Check the SAML settings of the hestia server. |
 | `/examlense/api/lgh/courses` returns 502 | ExamLense reached its own server, but the server could not complete its LGH call. Check `LGH_BASE_URL` first: on the VM it should normally be unset or `http://learninggoalhub-web`. Then smoke-test from the server container with `curl http://learninggoalhub-web/api/courses` and inspect `logs server` for the underlying client error. |
 | `403` on SSE in `logs server` (stack through `asyncDispatch`) | Cosmetic teardown noise, not user-facing. Harmless. |
 | `parse_metrics …_fkey` FK `WARN` | An exam was deleted/truncated while a parse was still in flight. Best-effort metrics only — harmless. Quiesce the server before truncating/importing to avoid it. |

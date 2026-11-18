@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.examination;
 
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.section.SectionBlock;
 import de.tum.cit.hestia.assessment.section.SectionFigure;
@@ -49,7 +48,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
 
     private Examination seedExaminationWithContent() {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("manual");
         exam.setTitle("Original");
         exam.setStatus("ready");
@@ -96,7 +95,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         fig.setPosition(0);
         fig.setSource("upload");
         fig.setCaption("Diagram 1");
-        String path = DefaultUser.ID + "/" + exam.getId() + "/" + fig.getId() + ".png";
+        String path = orgId() + "/" + exam.getId() + "/" + fig.getId() + ".png";
         fig.setStoragePath(path);
         figures.save(fig);
         if (bytes != null) storage.store(FIGURE_BUCKET, path, bytes);
@@ -110,12 +109,12 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         byte[] imageBytes = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
         SectionFigure srcFig = addFigure(src, srcSection, imageBytes);
 
-        Examination copy = examService.duplicateExamination(src, DefaultUser.ID.toString(), null, null);
+        Examination copy = examService.duplicateExamination(src, userId("alice"), null, null);
 
         assertThat(copy.getId()).isNotEqualTo(src.getId());
         assertThat(copy.getTitle()).isEqualTo("Original (Copy)");
         assertThat(copy.getStatus()).isEqualTo("draft");
-        assertThat(copy.getOwnerId()).isEqualTo(DefaultUser.ID);
+        assertThat(copy.getCreatedBy()).isEqualTo(userId("alice"));
         // Solver model carries over so the copy solves with the same model.
         assertThat(copy.getSolverModel()).isEqualTo("openai:gpt-5.5");
 
@@ -149,7 +148,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         Examination src = seedExaminationWithContent();
 
         Examination copy = examService.duplicateExamination(
-            src, DefaultUser.ID.toString(), "  Retry on Claude  ", "anthropic:claude-sonnet-5");
+            src, userId("alice"), "  Retry on Claude  ", "anthropic:claude-sonnet-5");
 
         assertThat(copy.getTitle()).isEqualTo("Retry on Claude"); // trimmed, no " (Copy)" suffix
         assertThat(copy.getSolverModel()).isEqualTo("anthropic:claude-sonnet-5");
@@ -162,7 +161,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         // Figure row exists but its image object was never stored.
         addFigure(src, srcSection, null);
 
-        Examination copy = examService.duplicateExamination(src, DefaultUser.ID.toString(), null, null);
+        Examination copy = examService.duplicateExamination(src, userId("alice"), null, null);
 
         // The figure block is still copied...
         SectionBlock copiedFigBlock = blocks.findByExamIdOrderByPositionAsc(copy.getId()).stream()

@@ -16,10 +16,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * The instance-wide ceiling on language-model usage.
  *
- * <p>It exists because per-user quotas bound nothing on their own: registration is
- * open, so a used-up account can be traded for a fresh allowance, and the per-IP
- * registration cap that slows that down depends on proxy headers. This ceiling is
- * counted from actual usage, so it holds regardless of how many accounts appear.
+ * <p>Per-user quotas are a fairness control. This ceiling is counted from actual usage of the
+ * whole organisation (rows of other organisations are invisible), so it holds regardless of
+ * how many accounts appear.
  */
 @TestPropertySource(properties = {
     "app.quota.parse-per-day=100", "app.quota.solve-per-day=100",
@@ -40,8 +39,8 @@ class GlobalLlmCeilingIT extends AbstractIntegrationTest {
         usage.deleteAll();
     }
 
-    private String freshUser() {
-        return createUser("global-" + UUID.randomUUID()).id().toString();
+    private UUID freshUser() {
+        return userId("global-" + UUID.randomUUID());
     }
 
     /** The property this whole control exists for. */
@@ -52,7 +51,7 @@ class GlobalLlmCeilingIT extends AbstractIntegrationTest {
         quota.checkAndRecord(freshUser(), LlmQuotaService.KIND_PARSE);
         quota.checkAndRecord(freshUser(), LlmQuotaService.KIND_PARSE);
 
-        String yetAnother = freshUser();
+        UUID yetAnother = freshUser();
         assertThatThrownBy(() -> quota.checkAndRecord(yetAnother, LlmQuotaService.KIND_PARSE))
             .isInstanceOf(ApiException.class)
             .satisfies(e -> assertThat(((ApiException) e).status())
@@ -97,7 +96,7 @@ class GlobalLlmCeilingIT extends AbstractIntegrationTest {
     /** check() must stay non-consuming, or the solve path would charge twice. */
     @Test
     void checkAloneDoesNotConsumeTheGlobalAllowance() {
-        String user = freshUser();
+        UUID user = freshUser();
         quota.check(user, LlmQuotaService.KIND_PARSE);
         quota.check(user, LlmQuotaService.KIND_PARSE);
         quota.check(user, LlmQuotaService.KIND_PARSE);

@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.grading;
 import de.tum.cit.hestia.assessment.shared.Access;
 
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,8 +37,8 @@ public class GradeController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/grades")
-    public List<GradeDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public List<GradeDto> list(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return gradeRepository.findByExamId(Access.id(examId))
             .stream().map(GradeDto::from).toList();
     }
@@ -64,8 +63,8 @@ public class GradeController {
     @ApiResponse(responseCode = "404", description = "No such task, or `task_id` is not a valid UUID.")
     @ApiResponse(responseCode = "409", description = "The exam is not in `grading`, or the task has no AI answer.")
     @PutMapping("/task-grades")
-    public GradeDto upsert(@RequestBody UpsertGradeRequest req, @CurrentUser String userId) {
+    public GradeDto upsert(@RequestBody UpsertGradeRequest req) {
         return GradeDto.from(gradeService.upsert(
-            req.task_id(), req.score(), req.auto_graded(), userId));
+            req.task_id(), req.score(), req.auto_graded()));
     }
 }

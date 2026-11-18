@@ -15,7 +15,7 @@ public final class ExaminationDtos {
     private ExaminationDtos() {}
 
     public record ExaminationDto(
-        UUID id, UUID owner_id, String title, String course,
+        UUID id, UUID created_by, UUID course_id, String title, String course,
         String source,
         String source_file_url, String status, String parse_error, String parse_phase,
         String parser_model, String solver_model,
@@ -24,7 +24,7 @@ public final class ExaminationDtos {
         OffsetDateTime created_at, OffsetDateTime updated_at
     ) {
         public static ExaminationDto from(Examination e) {
-            return new ExaminationDto(e.getId(), e.getOwnerId(), e.getTitle(), e.getCourse(),
+            return new ExaminationDto(e.getId(), e.getCreatedBy(), e.getCourseId(), e.getTitle(), e.getCourse(),
                 e.getSource(),
                 e.getSourceFileUrl(), e.getStatus(), e.getParseError(), e.getParsePhase(),
                 e.getParserModel(), e.getSolverModel(),

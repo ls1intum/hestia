@@ -32,9 +32,9 @@ class HealthSmokeTest extends AbstractIntegrationTest {
 
     @Test
     void meReturnsThePrincipalWithAValidToken() throws Exception {
-        mvc.perform(get("/examlense/api/me").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/me").with(as("alice")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.id").value("00000000-0000-0000-0000-000000000001"));
+            .andExpect(jsonPath("$.id").value(userId("alice").toString()));
     }
 
     @Test

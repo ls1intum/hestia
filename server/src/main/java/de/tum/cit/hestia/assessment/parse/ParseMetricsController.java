@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * GET /api/parse-metrics — aggregate parsing metrics for the admin dashboard.
- * Requires an authenticated caller (enforced by the security filter chain).
+ * Requires a platform admin (enforced by the security filter chain).
  */
 @RestController
 @RequestMapping("/api")

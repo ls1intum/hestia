@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.assessment.sse;
 
-import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
+import de.tum.cit.hestia.core.OrgContext;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
@@ -21,10 +21,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  *   exam:{examId}   — status/phase changes + evaluation progress for one exam
  *   exams:{ownerId} — list-level fan-out for one user's own exams
  *
- * The list topic is per owner, not shared. A single `exams` topic would tell
- * every signed-in client the id of every exam anyone touched, and have all of
- * them refetch whenever anyone did anything. Resolving the owner costs one
- * indexed lookup per publish, which is cheap next to the work that triggered it.
+ * The list topic is per organisation and carries only an exam id as a refetch signal; the list
+ * endpoint itself filters by what the caller may see. Publishes happen on background threads, which
+ * carry the organisation ({@link OrgContext}).
  *
  * All publish-side methods are guaranteed never to throw: a dead client socket
  * is evicted and logged at debug, so callers don't need defensive try/catch.
@@ -35,12 +34,6 @@ public class SseHub {
     private static final Logger log = LoggerFactory.getLogger(SseHub.class);
 
     private final Map<String, Set<SseEmitter>> topics = new ConcurrentHashMap<>();
-
-    private final ExaminationRepository exams;
-
-    public SseHub(ExaminationRepository exams) {
-        this.exams = exams;
-    }
 
     public SseEmitter register(String topic) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — long-lived stream
@@ -131,20 +124,8 @@ public class SseHub {
         publish("exam:" + examId, "tasks", Map.of("exam_id", examId.toString()));
     }
 
-    /**
-     * Route a list-level event to the owning user's stream only.
-     *
-     * <p>Swallows a missing exam rather than throwing: publishes run on background
-     * threads after parse/solve work, the exam may have been deleted in the
-     * meantime, and every publish path on this class is documented as never
-     * throwing.
-     */
+    /** Route a list-level event to the organisation's stream; no-op without an organisation. */
     private void publishToOwnerList(UUID examId, Map<String, Object> data) {
-        try {
-            exams.findOwnerIdById(examId)
-                .ifPresent(ownerId -> publish("exams:" + ownerId, "exam", data));
-        } catch (Exception e) {
-            log.debug("could not resolve owner for exam {}: {}", examId, e.getMessage());
-        }
+        OrgContext.current().ifPresent(orgId -> publish("exams:" + orgId, "exam", data));
     }
 }

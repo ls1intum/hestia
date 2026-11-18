@@ -1,15 +1,14 @@
 /**
- * Typed client for the Spring Boot backend (see `server/`). This is now the
- * single transport for all data, storage, and admin operations — Supabase is
- * gone. Auth is a per-user bearer token held in `token-store.ts`; a user obtains
- * one by claiming an enrolment invite.
+ * Typed client for the Spring Boot backend (see `server/`), the single transport for all data
+ * and storage calls. Auth is the session login of the hestia server (TUM SAML): the session
+ * cookie travels with every request (`credentials: "include"`) and non-GET requests echo the
+ * `XSRF-TOKEN` cookie in the `X-XSRF-TOKEN` header. A 401 sends the browser to the SAML login.
  *
  * Base URL comes from `VITE_API_BASE_URL` (default http://localhost:8081).
  */
 import type { Examination, Section, SectionBlock, SectionFigure, TaskBlock } from "@/lib/exam/exam-helpers";
 import type { AIAnswer, Grade } from "@/lib/grading/grading";
 import type { BloomLevel, LearningGoalResponse, LghCourse, SoloLevel } from "@/lib/learning-goals/learning-goals";
-import { clearToken, getToken, setToken } from "@/lib/api/token-store";
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "") || "http://localhost:8081";
@@ -18,14 +17,18 @@ export function apiBaseUrl(): string {
   return BASE_URL;
 }
 
-/**
- * The single read point for the credential — `sse.ts` uses it too, for the
- * `?token=` query param an `EventSource` needs (it cannot set headers). Reading
- * through the store on every call is what lets sign-in and sign-out take effect
- * without a page reload.
- */
-export function apiToken(): string {
-  return getToken();
+/** Where core serves its own endpoints (SAML login, logout): the origin of the API, not its /examlense prefix. */
+function coreUrl(path: string): string {
+  return /^https?:\/\//.test(BASE_URL) ? new URL(path, BASE_URL).href : `${BASE_URL}${path}`;
+}
+
+/** The SAML login the browser is sent to when there is no session. */
+export const loginUrl = () => coreUrl("/saml2/authenticate/tum");
+
+/** Value of the `XSRF-TOKEN` cookie, which the server expects back in `X-XSRF-TOKEN` on writes. */
+export function xsrfToken(): string | undefined {
+  const match = /(?:^|;\s*)XSRF-TOKEN=([^;]*)/.exec(document.cookie);
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 export class ApiClientNotConfiguredError extends Error {
@@ -50,18 +53,13 @@ export function isApiClientConfigured(): boolean {
   return BASE_URL.length > 0;
 }
 
-function authHeader(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body"> {
   /** JSON body — will be stringified and Content-Type set automatically. */
   json?: unknown;
   /** Raw body for non-JSON requests (FormData, blobs, ...). Content-Type is left to the browser. */
   body?: BodyInit;
   headers?: Record<string, string>;
-  /** Skip auth header injection (only for unauthenticated probes). */
+  /** Do not redirect to the login on 401 (only for probes that expect it). */
   skipAuth?: boolean;
 }
 
@@ -70,10 +68,11 @@ export async function apiRequest<T = unknown>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { json, body, headers, skipAuth, ...rest } = options;
-  const sentToken = getToken();
+  const method = (rest.method ?? "GET").toUpperCase();
+  const csrf = method === "GET" || method === "HEAD" ? undefined : xsrfToken();
   const finalHeaders: Record<string, string> = {
     Accept: "application/json",
-    ...(skipAuth ? {} : (sentToken ? { Authorization: `Bearer ${sentToken}` } : {})),
+    ...(csrf ? { "X-XSRF-TOKEN": csrf } : {}),
     ...(headers ?? {}),
   };
 
@@ -85,6 +84,7 @@ export async function apiRequest<T = unknown>(
 
   const resp = await fetch(`${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`, {
     ...rest,
+    credentials: "include",
     headers: finalHeaders,
     body: finalBody,
   });
@@ -98,14 +98,10 @@ export async function apiRequest<T = unknown>(
     } catch {
       /* not json */
     }
-    // A rejected credential is unrecoverable for this session, so drop it and let
-    // the gate take over rather than leaving every subsequent call to fail too.
-    // `skipAuth` calls are unauthenticated by nature and say nothing about it.
-    // IMPORTANT: Only clear if the token hasn't changed while the request was in flight!
+    // No (or an expired) session: the only way forward is the login. `skipAuth` calls say
+    // nothing about it.
     if (resp.status === 401 && !skipAuth) {
-      if (getToken() === sentToken) {
-        clearToken();
-      }
+      window.location.assign(loginUrl());
     }
     throw new ApiError(resp.status, text, message);
   }
@@ -117,7 +113,7 @@ export async function apiRequest<T = unknown>(
 }
 
 // ---------------------------------------------------------------------------
-// Identity and enrolment
+// Identity
 // ---------------------------------------------------------------------------
 
 export interface Quota {
@@ -129,67 +125,25 @@ export interface Quota {
 
 export interface Me {
   id: string;
-  /** The TUM ID, or a generated `anon-…` handle if the user hasn't linked one. */
-  external_id: string;
   display_name: string | null;
+  /** Platform admin: may see the parse-metrics dashboard. */
   is_admin: boolean;
   quota: Quota;
-  /** False until a TUM ID is linked; unlinked accounts don't survive the SAML cutover. */
-  has_tum_id: boolean;
 }
 
-/** Doubles as the token-validity probe: a 200 means the stored token works. */
+/** Doubles as the session probe: a 200 means the user is signed in. */
 export const getMe = () => apiRequest<Me>("/api/me");
 
-export interface Registration {
-  token: string;
-  user: Me;
-}
-
-/**
- * Create an account for a visitor who has none, and store its token.
- *
- * `skipAuth` because the caller has no credential yet — that is the whole point of
- * the endpoint. On success the token is persisted, so subsequent calls authenticate
- * normally.
- */
-export async function register(): Promise<Registration> {
-  const result = await apiRequest<Registration>("/api/auth/register", {
+/** End the session (server answers 204), then reload so the app starts from the login. */
+export async function signOut(): Promise<void> {
+  const csrf = xsrfToken();
+  await fetch(coreUrl("/api/logout"), {
     method: "POST",
-    skipAuth: true,
+    credentials: "include",
+    headers: csrf ? { "X-XSRF-TOKEN": csrf } : {},
   });
-  setToken(result.token);
-  return result;
+  window.location.reload();
 }
-
-/**
- * Attach a TUM ID to the signed-in account. Optional, but it is what carries the
- * account's exams across the eventual switch to TUM sign-in.
- */
-export const linkTumId = (externalId: string) =>
-  apiRequest<Me>("/api/me", { method: "PATCH", json: { external_id: externalId } });
-
-export function signOut(): void {
-  clearToken();
-}
-
-// --- Admin: users and invites -----------------------------------------------
-
-export interface AdminUser {
-  id: string;
-  external_id: string;
-  display_name: string | null;
-  is_admin: boolean;
-  has_active_token: boolean;
-}
-
-export const listAdminUsers = () => apiRequest<AdminUser[]>("/api/admin/users");
-
-export const setUserAdmin = (id: string, isAdmin: boolean) =>
-  apiRequest<AdminUser>(`/api/admin/users/${id}`, { method: "PATCH", json: { is_admin: isAdmin } });
-
-export const revokeUserTokens = (id: string) =>
-  apiRequest<void>(`/api/admin/users/${id}/tokens`, { method: "DELETE" });
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------

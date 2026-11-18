@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.assessment.examination;
 
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,20 +11,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface ExaminationRepository extends JpaRepository<Examination, UUID> {
 
-    List<Examination> findByOwnerIdOrderByCreatedAtDesc(UUID ownerId);
+    /** The caller's own exams without a course. */
+    List<Examination> findByCourseIdIsNullAndCreatedByOrderByCreatedAtDesc(UUID createdBy);
 
-    Optional<Examination> findByIdAndOwnerId(UUID id, UUID ownerId);
-
-    /**
-     * Just the owner, for routing realtime events to that user's list stream
-     * without loading the whole row. Empty when the exam has been deleted.
-     */
-    @Query("select e.ownerId from Examination e where e.id = :id")
-    Optional<UUID> findOwnerIdById(@Param("id") UUID id);
+    List<Examination> findByCourseIdInOrderByCreatedAtDesc(Collection<UUID> courseIds);
 
     // --- Targeted control-plane updates (touch only the named columns) ---
-    // Ownership is verified up-front in the services before these run, and
-    // owner_id is immutable for the life of a parse/solve, so these filter by
+    // Access is verified up-front in the services before these run (they also
+    // run on background threads, filtered by organisation like every query), so these filter by
     // id only. Each runs in its own transaction so it commits independently
     // (matching the previous fire-and-forget PostgREST update semantics).
 

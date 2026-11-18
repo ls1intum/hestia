@@ -6,13 +6,13 @@ import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.parse.DocxToPdfConverter;
 import de.tum.cit.hestia.assessment.parse.PdfPageCounter;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
+import de.tum.cit.hestia.core.CurrentUser;
+import de.tum.cit.hestia.core.OrgContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -43,10 +43,13 @@ public class FileController {
     private final SignedUrls signedUrls;
     private final DocxToPdfConverter docxConverter;
     private final PdfPageCounter pageCounter;
+    private final CurrentUser currentUser;
 
     public FileController(StorageService storage, ExaminationRepository examRepository,
                           Access access, SignedUrls signedUrls,
-                          DocxToPdfConverter docxConverter, PdfPageCounter pageCounter) {
+                          DocxToPdfConverter docxConverter, PdfPageCounter pageCounter,
+                          CurrentUser currentUser) {
+        this.currentUser = currentUser;
         this.storage = storage;
         this.examRepository = examRepository;
         this.access = access;
@@ -56,7 +59,7 @@ public class FileController {
     }
 
     /**
-     * Upload the exam source file; stores a PDF at exam-pdfs/{userId}/{examId}.pdf and records
+     * Upload the exam source file; stores a PDF at exam-pdfs/{orgId}/{examId}.pdf and records
      * source_file_url. Accepts a PDF directly, or a Word .docx which is converted to PDF here so
      * the rest of the (PDF-only) parse pipeline is unchanged. Detected by magic bytes: %PDF for
      * PDF, PK\x03\x04 (ZIP) for .docx. Legacy .doc and other formats are rejected.
@@ -84,9 +87,8 @@ public class FileController {
     public Map<String, Object> uploadPdf(@PathVariable String examId,
                                          @RequestParam("file")
                                          @Parameter(description = "The exam PDF or Word .docx.")
-                                         MultipartFile file,
-                                         @CurrentUser String userId) throws IOException {
-        Examination exam = access.requireExamination(Access.id(examId), userId);
+                                         MultipartFile file) throws IOException {
+        Examination exam = access.requireExaminationForWrite(Access.id(examId));
         UploadLimit.check(file);
         byte[] bytes = file.getBytes();
         byte[] pdfBytes;
@@ -114,7 +116,7 @@ public class FileController {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                 "Unsupported file. Please upload a PDF or a Word .docx file.");
         }
-        String path = userId + "/" + examId + ".pdf";
+        String path = OrgContext.require() + "/" + examId + ".pdf";
         storage.store(PDF_BUCKET, path, pdfBytes);
         exam.setSourceFileUrl(path);
         // Document metadata used by the frontend for a page-count-based parsing
@@ -151,9 +153,8 @@ public class FileController {
             URL from `GET /api/figures/{id}/signed-url` instead of assembling one by hand.
 
             `path` is a wildcard and may contain slashes (objects are keyed \
-            `{userId}/{examId}...`). The response `Content-Type` is inferred from the file \
+            `{orgId}/{examId}...`). The response `Content-Type` is inferred from the file \
             extension.""")
-    @SecurityRequirements
     @ApiResponse(responseCode = "200", description = "The object's bytes.",
         content = @Content(schema = @Schema(type = "string", format = "binary")))
     @ApiResponse(responseCode = "403", description = "Signature invalid or expired.", content = @Content)
@@ -165,6 +166,11 @@ public class FileController {
         @RequestParam @Parameter(description = "Expiry as a Unix epoch second.") long exp,
         @RequestParam @Parameter(description = "HMAC signature over bucket, path, and expiry.") String sig) {
         String clean = path.startsWith("/") ? path.substring(1) : path;
+        // The signature proves the URL was issued; the login and the org prefix keep it from
+        // being used outside the organisation it was issued in.
+        if (!clean.startsWith(currentUser.orgId() + "/")) {
+            return ResponseEntity.notFound().build();
+        }
         if (!signedUrls.verify(bucket, clean, exp, sig)) {
             return ResponseEntity.status(403).build();
         }

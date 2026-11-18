@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -43,8 +42,8 @@ public class SolveTaskBlockController {
     @ApiResponse(responseCode = "429", description = "Per-IP rate limit exceeded, or the AI provider throttled us.")
     @ApiResponse(responseCode = "502", description = "The AI provider failed or returned unusable output.")
     @PostMapping("/solve-task")
-    public Map<String, Object> solve(@Valid @RequestBody SolveTaskBlockRequest req, @CurrentUser String userId) {
-        service.solve(req.task_id(), userId);
+    public Map<String, Object> solve(@Valid @RequestBody SolveTaskBlockRequest req) {
+        service.solve(req.task_id());
         return Map.of("ok", true);
     }
 }

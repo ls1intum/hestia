@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.storage;
 
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import java.util.UUID;
@@ -12,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -36,7 +36,7 @@ class FileControllerIT extends AbstractIntegrationTest {
 
     private Examination ownExamination() {
         Examination e = new Examination();
-        e.setOwnerId(DefaultUser.ID);
+        e.setCreatedBy(userId("alice"));
         e.setSource("pdf");
         e.setStatus("draft");
         return exams.save(e);
@@ -50,15 +50,15 @@ class FileControllerIT extends AbstractIntegrationTest {
 
         String storagePath = extractPath(mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf")
                 .file(file)
-                .header("Authorization", "Bearer " + TEST_TOKEN))
+                .with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.storage_path").exists())
             .andReturn().getResponse().getContentAsString());
 
         String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
 
-        // Public route — no token, signature does the gating.
-        mvc.perform(get(MODULE + signed))
+        // The session login and the signature both gate the download.
+        mvc.perform(get(MODULE + signed).with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.APPLICATION_PDF))
             .andExpect(content().bytes(pdf));
@@ -71,21 +71,45 @@ class FileControllerIT extends AbstractIntegrationTest {
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "%PDF-1.4 x".getBytes());
         String storagePath = extractPath(mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf")
                 .file(file)
-                .header("Authorization", "Bearer " + TEST_TOKEN))
+                .with(as("alice")))
             .andReturn().getResponse().getContentAsString());
 
         String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
         String tampered = signed.replaceAll("sig=.*$", "sig=forged");
 
-        mvc.perform(get(MODULE + tampered)).andExpect(status().isForbidden());
+        mvc.perform(get(MODULE + tampered).with(as("alice"))).andExpect(status().isForbidden());
     }
 
     @Test
-    void uploadRequiresAToken() throws Exception {
+    void fetchRequiresALoginEvenWithAValidSignature() throws Exception {
+        String signed = signedUrls.buildUrl("exam-pdfs", orgId() + "/x.pdf", 300);
+
+        mvc.perform(get(MODULE + signed)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aUserOfAnotherOrganisationCannotFetchAFileEvenWithAValidSignature() throws Exception {
+        Examination exam = ownExamination();
+        MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "%PDF-1.4 x".getBytes());
+        String storagePath = extractPath(mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf")
+                .file(file)
+                .with(as("alice")))
+            .andReturn().getResponse().getContentAsString());
+        assertThat(storagePath).startsWith(orgId() + "/");
+
+        String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
+
+        mvc.perform(get(MODULE + signed).with(asIn("other-" + uni, "mallory")))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void uploadRequiresALogin() throws Exception {
         Examination exam = ownExamination();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
-        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file))
+        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file)
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
             .andExpect(status().isUnauthorized());
     }
 
@@ -97,11 +121,11 @@ class FileControllerIT extends AbstractIntegrationTest {
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", tooBig);
 
         mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file)
-                .header("Authorization", "Bearer " + TEST_TOKEN))
+                .with(as("alice")))
             .andExpect(status().isPayloadTooLarge());
     }
 
-    /** storage_path is {userId}/{examId}.pdf — pull it out of the JSON body. */
+    /** storage_path is {orgId}/{examId}.pdf — pull it out of the JSON body. */
     private static String extractPath(String json) {
         return json.replaceAll(".*\"storage_path\"\\s*:\\s*\"([^\"]+)\".*", "$1");
     }

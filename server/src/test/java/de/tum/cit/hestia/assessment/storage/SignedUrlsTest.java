@@ -12,7 +12,7 @@ class SignedUrlsTest {
 
     private static final Pattern URL = Pattern.compile("^/api/files/([^/]+)/(.+)\\?exp=(\\d+)&sig=([\\w-]+)$");
 
-    private final SignedUrls signer = new SignedUrls("test-signing-secret", "unused-token");
+    private final SignedUrls signer = new SignedUrls("test-signing-secret");
 
     private record Parsed(String bucket, String path, long exp, String sig) {}
 
@@ -50,16 +50,17 @@ class SignedUrlsTest {
 
     @Test
     void differentSecretsDontCrossVerify() {
-        SignedUrls other = new SignedUrls("another-secret", "unused-token");
+        SignedUrls other = new SignedUrls("another-secret");
         Parsed p = parse(signer.buildUrl("exam-figures", "fig.png", 60));
         assertThat(other.verify("exam-figures", "fig.png", p.exp(), p.sig())).isFalse();
     }
 
     @Test
-    void fallsBackToAuthTokenWhenSigningSecretUnset() {
-        SignedUrls fallback = new SignedUrls("", "the-token");
-        SignedUrls explicit = new SignedUrls("the-token", "whatever");
-        Parsed p = parse(fallback.buildUrl("exam-figures", "fig.png", 60));
-        assertThat(explicit.verify("exam-figures", "fig.png", p.exp(), p.sig())).isTrue();
+    void withoutASigningSecretARandomKeyIsUsedPerInstance() {
+        SignedUrls first = new SignedUrls("");
+        SignedUrls second = new SignedUrls("");
+        Parsed p = parse(first.buildUrl("exam-figures", "fig.png", 60));
+        assertThat(first.verify("exam-figures", "fig.png", p.exp(), p.sig())).isTrue();
+        assertThat(second.verify("exam-figures", "fig.png", p.exp(), p.sig())).isFalse();
     }
 }

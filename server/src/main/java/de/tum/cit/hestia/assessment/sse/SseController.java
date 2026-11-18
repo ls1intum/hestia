@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.assessment.sse;
 
 import de.tum.cit.hestia.assessment.shared.Access;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
+import de.tum.cit.hestia.core.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -14,8 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * SSE subscription endpoints (replace the Supabase realtime channels). Note:
- * the browser EventSource API cannot set an Authorization header, so callers
- * pass the token as a {@code ?token=} query param (honored by UserTokenAuthFilter).
+ * the browser EventSource sends the session cookie, so no token is needed.
  */
 @RestController
 @RequestMapping("/api")
@@ -29,8 +28,10 @@ public class SseController {
 
     private final SseHub hub;
     private final Access access;
+    private final CurrentUser currentUser;
 
-    public SseController(SseHub hub, Access access) {
+    public SseController(SseHub hub, Access access, CurrentUser currentUser) {
+        this.currentUser = currentUser;
         this.hub = hub;
         this.access = access;
     }
@@ -51,8 +52,8 @@ public class SseController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/events")
-    public SseEmitter examEvents(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public SseEmitter examEvents(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return hub.register("exam:" + examId);
     }
 
@@ -67,7 +68,7 @@ public class SseController {
     @ApiResponse(responseCode = "200", description = "Event stream opened.",
         content = @Content(mediaType = "text/event-stream"))
     @GetMapping("/exams/events")
-    public SseEmitter listEvents(@CurrentUser String userId) {
-        return hub.register("exams:" + userId);
+    public SseEmitter listEvents() {
+        return hub.register("exams:" + currentUser.orgId());
     }
 }
