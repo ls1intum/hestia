@@ -199,7 +199,9 @@ jobs:
     uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
     with:
       environment: Staging
-      docker-compose-file: compose.prod.yaml
+      # Not at the repository root: the deploy reusable copies the file to the root first and
+      # fails when source and target are the same file.
+      docker-compose-file: infra/compose.prod.yaml
       main-image-name: ${{ github.repository }}/server
       image-tag: ${{ (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
       deployment-base-path: /opt/hestia/app
