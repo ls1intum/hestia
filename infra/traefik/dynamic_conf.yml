@@ -5,8 +5,9 @@
 # The cert's SAN covers BOTH aetvm66.cit.tum.de and hestia-test.aet.cit.tum.de, so Traefik serves
 # it by SNI for either name. Filenames contain colons (RBG naming) — keep them quoted.
 #
-# On renewal `rbg-cert` repoints live/ to the new timestamped dir; `--providers.file.watch=true`
-# makes Traefik reload it without a restart.
+# On renewal `rbg-cert` repoints live/ to the new timestamped dir. `--providers.file.watch=true`
+# only notices changes to this file, not to the certificate behind the symlinks, so the hook
+# cert.d/50-restart-traefik restarts Traefik after each renewal (see README.md).
 tls:
   certificates:
     - certFile: "/var/lib/rbg-cert/live/host:f:aetvm66.cit.tum.de.fullchain.pem"
