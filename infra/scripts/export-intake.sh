@@ -36,7 +36,7 @@ while IFS='|' read -r submission folder; do
   dir="$TARGET/$folder"
   mkdir -p "$dir"
   psql -c "select json_build_object(
-              'id', id, 'submitter_id', submitter_id, 'course_title', course_title,
+              'id', id, 'org_id', org_id, 'submitter_id', submitter_id, 'course_title', course_title,
               'contact_email', contact_email, 'note', note,
               'terms_version', terms_version, 'terms_sha256', terms_sha256,
               'confirmed_terms', confirmed_terms, 'consent_research', consent_research,

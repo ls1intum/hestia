@@ -62,7 +62,7 @@ These are the mistakes the compilers and most tests do not catch.
    `PageDescriptionService.FIGURE_PROMPT_VERSION` when you change those prompts, so stored runs show
    which prompt produced them.
 7. **Endpoints that start model calls are rate-limited by path.** Add a new one to
-   `SecurityConfig.LLM_REQUESTS`.
+   `core.internal.security.CoreSecurityConfig.LLM_REQUESTS` (the security chain and the rate limit live in `core`).
 8. **Package layers are enforced.** `PackageCycleTest` (ArchUnit) fails on a dependency cycle
    between packages. Move the shared piece down instead of importing upward.
 9. **Migrations are append-only.** Add `V<next>__<name>.sql`; never edit a merged one. Hibernate
