@@ -24,6 +24,7 @@ class SamlLogin implements AuthenticationProvider {
     static final String SCHAC_HOME_ORGANIZATION = "urn:oid:1.3.6.1.4.1.25178.1.2.9";
     static final String EDU_PERSON_PRINCIPAL_NAME = "urn:oid:1.3.6.1.4.1.5923.1.1.1.6";
     static final String DISPLAY_NAME = "urn:oid:2.16.840.1.113730.3.1.241";
+    static final String MAIL = "urn:oid:0.9.2342.19200300.100.1.3";
 
     private final OpenSaml4AuthenticationProvider assertions = new OpenSaml4AuthenticationProvider();
     private final IdentityService identities;
@@ -41,11 +42,16 @@ class SamlLogin implements AuthenticationProvider {
         HestiaPrincipal principal = principal(saml.getName(),
                 saml.getFirstAttribute(SCHAC_HOME_ORGANIZATION),
                 saml.getFirstAttribute(EDU_PERSON_PRINCIPAL_NAME),
-                saml.getFirstAttribute(DISPLAY_NAME));
+                saml.getFirstAttribute(DISPLAY_NAME),
+                saml.getFirstAttribute(MAIL));
         return new HestiaAuthentication(principal);
     }
 
     HestiaPrincipal principal(String nameId, Object schacHome, Object eppn, Object displayName) {
+        return principal(nameId, schacHome, eppn, displayName, null);
+    }
+
+    HestiaPrincipal principal(String nameId, Object schacHome, Object eppn, Object displayName, Object mail) {
         String principalName = text(eppn).orElse(null);
         String organisation = text(schacHome)
                 .or(() -> Optional.ofNullable(principalName)
@@ -54,7 +60,7 @@ class SamlLogin implements AuthenticationProvider {
                 .orElseThrow(() -> rejected("The identity provider sent no organisation"));
         String externalId = Optional.ofNullable(principalName).or(() -> text(nameId))
                 .orElseThrow(() -> rejected("The identity provider sent no user id"));
-        return identities.login(organisation, externalId, text(displayName).orElse(null));
+        return identities.login(organisation, externalId, text(displayName).orElse(null), text(mail).orElse(null));
     }
 
     private static Optional<String> text(Object value) {

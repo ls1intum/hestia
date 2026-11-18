@@ -38,4 +38,9 @@ class SecurityCurrentUser implements CurrentUser {
     public String displayName() {
         return principal().displayName();
     }
+
+    @Override
+    public String email() {
+        return principal().email();
+    }
 }

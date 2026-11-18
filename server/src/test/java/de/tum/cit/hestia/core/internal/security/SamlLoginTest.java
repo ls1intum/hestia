@@ -19,27 +19,33 @@ class SamlLoginTest {
     private final SamlLogin login = new SamlLogin(identities);
 
     SamlLoginTest() {
-        when(identities.login(any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
-                UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false));
+        when(identities.login(any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
+                UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false, i.getArgument(3)));
     }
 
     @Test
     void organisationComesFromSchacHomeOrganization() {
         HestiaPrincipal p = login.principal("name-id", "tum.de", "ab12cde@tum.de", "Ada");
-        verify(identities).login("tum.de", "ab12cde@tum.de", "Ada");
+        verify(identities).login("tum.de", "ab12cde@tum.de", "Ada", null);
         assertThat(p.externalId()).isEqualTo("ab12cde@tum.de");
     }
 
     @Test
     void fallsBackToTheScopeOfThePrincipalName() {
         login.principal("name-id", null, "ab12cde@mytum.de", null);
-        verify(identities).login("mytum.de", "ab12cde@mytum.de", null);
+        verify(identities).login("mytum.de", "ab12cde@mytum.de", null, null);
     }
 
     @Test
     void fallsBackToTheNameIdForTheUser() {
         login.principal("name-id", "tum.de", null, null);
-        verify(identities).login("tum.de", "name-id", null);
+        verify(identities).login("tum.de", "name-id", null, null);
+    }
+
+    @Test
+    void passesTheMailAttributeOn() {
+        HestiaPrincipal p = login.principal("name-id", "tum.de", "ab12cde@tum.de", "Ada", "ada@example.test");
+        assertThat(p.email()).isEqualTo("ada@example.test");
     }
 
     @Test

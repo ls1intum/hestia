@@ -41,6 +41,11 @@ public class IdentityService {
      * @param externalId            eduPersonPrincipalName, fallback the SAML NameID
      */
     public HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName) {
+        return login(schacHomeOrganization, externalId, displayName, null);
+    }
+
+    /** As {@link #login(String, String, String)}, with the login's e-mail attribute (kept in the session only). */
+    public HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName, String email) {
         String org = schacHomeOrganization.trim().toLowerCase(Locale.ROOT);
         UUID orgId = retryOnce(() -> tx.execute(status -> organisations.findBySchacHomeOrganization(org)
                 .orElseGet(() -> organisations.save(new Organisation(org))))).getId();
@@ -52,7 +57,7 @@ public class IdentityService {
                 return u;
             }));
             return new HestiaPrincipal(user.getId(), orgId, externalId, displayName,
-                    platformAdmins.contains(externalId));
+                    platformAdmins.contains(externalId), email);
         } finally {
             OrgContext.set(previous);
         }

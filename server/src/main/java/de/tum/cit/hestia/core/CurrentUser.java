@@ -17,4 +17,7 @@ public interface CurrentUser {
 
     /** Name shown in the clients; may be null. */
     String displayName();
+
+    /** The e-mail address the login sent (SAML attribute mail), as a suggestion; never stored. May be null. */
+    String email();
 }
