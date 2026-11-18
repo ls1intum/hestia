@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.taskblock;
 import de.tum.cit.hestia.assessment.shared.Access;
 
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,8 +30,8 @@ public class AIAnswerController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/answers")
-    public List<TaskBlockDtos.AnswerDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public List<TaskBlockDtos.AnswerDto> list(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return answerRepository.findByExamId(Access.id(examId))
             .stream().map(TaskBlockDtos.AnswerDto::from).toList();
     }

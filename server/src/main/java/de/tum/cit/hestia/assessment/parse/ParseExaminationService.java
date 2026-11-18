@@ -13,6 +13,7 @@ import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService;
 import de.tum.cit.hestia.assessment.storage.StorageService;
+import de.tum.cit.hestia.core.CurrentUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -30,7 +31,7 @@ import java.util.UUID;
  * extract → persist rows ({@link ParsedExaminationPersister}) → finalize status.
  * Progress/failure reporting lives in {@link ParseProgress}.
  *
- * Ownership is verified up-front in the controller. The actual work runs on
+ * Access is verified up-front in {@link #preflight}. The actual work runs on
  * the `solverExecutor` pool so the HTTP POST returns immediately (202).
  */
 @Service
@@ -55,6 +56,8 @@ public class ParseExaminationService {
     private final ParseProgress progress;
     private final FigureExtractionService figureExtraction;
     private final LlmQuotaService quota;
+    private final Access access;
+    private final CurrentUser currentUser;
 
     public ParseExaminationService(
         ExaminationRepository examRepository,
@@ -66,8 +69,12 @@ public class ParseExaminationService {
         ParseMetricsRecorder metricsRecorder,
         ParseProgress progress,
         FigureExtractionService figureExtraction,
-        LlmQuotaService quota
+        LlmQuotaService quota,
+        Access access,
+        CurrentUser currentUser
     ) {
+        this.access = access;
+        this.currentUser = currentUser;
         this.examRepository = examRepository;
         this.storage = storage;
         this.providerFactory = providerFactory;
@@ -91,13 +98,9 @@ public class ParseExaminationService {
      * against a re-parse producing duplicate rows lives where it belongs: the
      * persister is transactional and clears prior parse artifacts before insert.
      */
-    public ParserStrategy preflight(String examId, String userId, String parserModelId) {
+    public ParserStrategy preflight(String examId, String parserModelId) {
         UUID examUuid = Access.id(examId);
-        Examination exam = examRepository.findById(examUuid)
-            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found"));
-        if (!exam.getOwnerId().toString().equals(userId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Forbidden");
-        }
+        Examination exam = access.requireExaminationForWrite(examUuid);
         ParserStrategy strategy = ParserStrategies.resolve(parserModelId);
         // Only a re-parse of an old exam can name a withdrawn model — new ones pick
         // from the catalog. Refuse here rather than in the background run: the user
@@ -111,7 +114,7 @@ public class ParseExaminationService {
         // the PDF is rasterized and dispatched, and once queued the spend is
         // committed. Deliberately after the ownership and retired-model checks so
         // neither of those costs anyone a run.
-        quota.checkAndRecord(userId, LlmQuotaService.KIND_PARSE);
+        quota.checkAndRecord(currentUser.userId(), LlmQuotaService.KIND_PARSE);
 
         exam.setStatus("parsing");
         exam.setParseError(null);
@@ -256,7 +259,7 @@ public class ParseExaminationService {
         // from whatever input the parser was shown.
         if (persisted.ok() && !persisted.figureBlocks().isEmpty()) {
             figureExtraction.extractAsync(
-                examId, attempt.ownerId, storagePath, persisted.figureBlocks());
+                examId, storagePath, persisted.figureBlocks());
         }
     }
 

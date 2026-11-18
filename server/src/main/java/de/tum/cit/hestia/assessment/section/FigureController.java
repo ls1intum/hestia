@@ -3,13 +3,13 @@ import de.tum.cit.hestia.assessment.shared.Patch;
 import de.tum.cit.hestia.assessment.shared.Access;
 
 import de.tum.cit.hestia.assessment.error.ApiException;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import de.tum.cit.hestia.assessment.storage.SignedUrls;
 import de.tum.cit.hestia.assessment.storage.StorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import de.tum.cit.hestia.core.OrgContext;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -63,8 +63,8 @@ public class FigureController {
     @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such block, or `blockId` is not a valid UUID.")
     @GetMapping("/blocks/{blockId}/figures")
-    public List<SectionDtos.FigureDto> list(@PathVariable String blockId, @CurrentUser String userId) {
-        requireBlock(Access.id(blockId), userId);
+    public List<SectionDtos.FigureDto> list(@PathVariable String blockId) {
+        requireBlock(Access.id(blockId), false);
         return figureRepository.findByBlockIdOrderByPositionAsc(Access.id(blockId))
             .stream().map(SectionDtos.FigureDto::from).toList();
     }
@@ -85,10 +85,9 @@ public class FigureController {
     public SectionDtos.FigureDto upload(@PathVariable String blockId,
                                  @RequestParam("file")
                                  @Parameter(description = "PNG, JPEG, WebP, or GIF image.")
-                                 MultipartFile file,
-                                 @CurrentUser String userId) throws IOException {
+                                 MultipartFile file) throws IOException {
         UUID bid = Access.id(blockId);
-        SectionBlock block = requireBlock(bid, userId);
+        SectionBlock block = requireBlock(bid, true);
         UploadLimit.check(file);
 
         String ext = extensionFor(file);
@@ -101,7 +100,7 @@ public class FigureController {
         fig.setSource("upload");
         fig.setPosition(0);
 
-        String path = userId + "/" + block.getExamId() + "/" + fig.getId() + "." + ext;
+        String path = OrgContext.require() + "/" + block.getExamId() + "/" + fig.getId() + "." + ext;
         fig.setStoragePath(path);
 
         // A figure block holds exactly one image, so an upload replaces whatever
@@ -136,9 +135,8 @@ public class FigureController {
     @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @PatchMapping("/figures/{id}")
-    public SectionDtos.FigureDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
-                                @CurrentUser String userId) {
-        SectionFigure fig = loadFigure(id, userId);
+    public SectionDtos.FigureDto patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        SectionFigure fig = loadFigure(id, true);
         if (Patch.has(body, "caption")) fig.setCaption(Patch.str(body.get("caption")));
         return SectionDtos.FigureDto.from(figureRepository.save(fig));
     }
@@ -150,8 +148,8 @@ public class FigureController {
     @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @DeleteMapping("/figures/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
-        SectionFigure fig = loadFigure(id, userId);
+    public ResponseEntity<Void> delete(@PathVariable String id) {
+        SectionFigure fig = loadFigure(id, true);
         figureCleanup.deleteFigure(fig);
         return ResponseEntity.noContent().build();
     }
@@ -161,26 +159,27 @@ public class FigureController {
         summary = "Get a signed URL for a figure",
         description = """
             Returns `{ signed_url }` — an absolute, HMAC-signed `/api/files/**` URL valid for \
-            one hour. It needs no bearer token, so it can go straight into an `<img src>`.""")
+            one hour. The session cookie authenticates it, so it can go straight into an `<img src>`.""")
     @ApiResponse(responseCode = "403", description = "The figure's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such figure, or `id` is not a valid UUID.")
     @GetMapping("/figures/{id}/signed-url")
-    public Map<String, Object> signedUrl(@PathVariable String id, @CurrentUser String userId) {
-        SectionFigure fig = loadFigure(id, userId);
+    public Map<String, Object> signedUrl(@PathVariable String id) {
+        SectionFigure fig = loadFigure(id, false);
         return Map.of("signed_url", signedUrls.buildUrl(FIGURE_BUCKET, fig.getStoragePath(), SIGNED_URL_TTL_SECONDS));
     }
 
-    private SectionBlock requireBlock(UUID blockId, String userId) {
+    private SectionBlock requireBlock(UUID blockId, boolean write) {
         SectionBlock block = blockRepository.findById(blockId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Block not found"));
-        access.requireExamination(block.getExamId(), userId);
+        if (write) access.requireExaminationForWrite(block.getExamId());
+        else access.requireExamination(block.getExamId());
         return block;
     }
 
-    private SectionFigure loadFigure(String id, String userId) {
+    private SectionFigure loadFigure(String id, boolean write) {
         SectionFigure fig = figureRepository.findById(Access.id(id))
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Figure not found"));
-        requireBlock(fig.getBlockId(), userId);
+        requireBlock(fig.getBlockId(), write);
         return fig;
     }
 

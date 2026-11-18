@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.user;
 
 import jakarta.persistence.Column;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** One admitted LLM job, so a per-user quota is a count over a time window. */
 @Entity
 @Table(schema = "assessment", name = "llm_usage")
-public class LlmUsage {
+public class LlmUsage extends OrgScoped {
 
     @Id
     private UUID id = UUID.randomUUID();

@@ -43,10 +43,10 @@ public class SolveTaskBlockService {
         this.core = core;
     }
 
-    public void solve(String taskId, String userId) {
+    public void solve(String taskId) {
         TaskBlock task = taskRepository.findById(Access.id(taskId))
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Task not found"));
-        Examination exam = access.requireExamination(task.getExamId(), userId);
+        Examination exam = access.requireExaminationForWrite(task.getExamId());
 
         SolverStrategy strategy = SolverStrategies.resolve(exam.getSolverModel());
         SolveCore.PromptContext ctx =

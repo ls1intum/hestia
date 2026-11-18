@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,8 +44,8 @@ public class SolveSectionController {
     @ApiResponse(responseCode = "429", description = "Per-IP rate limit exceeded, or the AI provider throttled us.")
     @ApiResponse(responseCode = "502", description = "The AI provider failed or returned unusable output.")
     @PostMapping("/solve-section")
-    public Map<String, Object> solve(@Valid @RequestBody SolveSectionRequest req, @CurrentUser String userId) {
-        SolveSectionService.Result result = service.solve(req.exam_id(), req.section_id(), userId);
+    public Map<String, Object> solve(@Valid @RequestBody SolveSectionRequest req) {
+        SolveSectionService.Result result = service.solve(req.exam_id(), req.section_id());
         Map<String, Object> body = new HashMap<>();
         body.put("ok", true);
         body.put("status", result.status());

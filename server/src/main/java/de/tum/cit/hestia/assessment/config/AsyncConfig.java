@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.assessment.config;
 
+import de.tum.cit.hestia.core.OrgContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -25,6 +26,7 @@ public class AsyncConfig {
         exec.setMaxPoolSize(10);
         exec.setQueueCapacity(50);
         exec.setThreadNamePrefix("solver-");
+        exec.setTaskDecorator(OrgContext.taskDecorator());
         exec.initialize();
         return exec;
     }
@@ -42,6 +44,7 @@ public class AsyncConfig {
         exec.setMaxPoolSize(2);
         exec.setQueueCapacity(20);
         exec.setThreadNamePrefix("figure-");
+        exec.setTaskDecorator(OrgContext.taskDecorator());
         exec.initialize();
         return exec;
     }
@@ -58,6 +61,7 @@ public class AsyncConfig {
         exec.setMaxPoolSize(4);
         exec.setQueueCapacity(50);
         exec.setThreadNamePrefix("lgh-");
+        exec.setTaskDecorator(OrgContext.taskDecorator());
         exec.initialize();
         return exec;
     }

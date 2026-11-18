@@ -9,6 +9,7 @@ import de.tum.cit.hestia.assessment.section.SectionRepository;
 import de.tum.cit.hestia.assessment.storage.StorageService;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
+import de.tum.cit.hestia.core.OrgContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,9 +57,10 @@ public class ExaminationService {
      * object is missing is skipped rather than left as a dangling row.
      */
     @Transactional
-    public Examination duplicateExamination(Examination src, String userId, String titleOverride, String solverOverride) {
+    public Examination duplicateExamination(Examination src, UUID userId, String titleOverride, String solverOverride) {
         Examination copy = new Examination();
-        copy.setOwnerId(UUID.fromString(userId));
+        copy.setCreatedBy(userId);
+        copy.setCourseId(src.getCourseId());
         copy.setTitle((titleOverride != null && !titleOverride.isBlank())
             ? titleOverride.trim()
             : (src.getTitle() == null ? "" : src.getTitle()) + " (Copy)");
@@ -69,7 +71,7 @@ public class ExaminationService {
             ? solverOverride : src.getSolverModel());
         copy.setLghCourseId(src.getLghCourseId());
         exams.save(copy);
-        copy.setSourceFileUrl(copyPdf(src.getSourceFileUrl(), userId, copy.getId()));
+        copy.setSourceFileUrl(copyPdf(src.getSourceFileUrl(), copy.getId()));
 
         Map<UUID, UUID> sectionIdMap = new HashMap<>();
         List<Section> newSections = new ArrayList<>();
@@ -96,7 +98,7 @@ public class ExaminationService {
             blockIdMap.put(b.getId(), nb.getId());
         }
         blocks.saveAll(newBlocks);
-        copyFigures(blockIdMap, userId, copy.getId());
+        copyFigures(blockIdMap, copy.getId());
 
         List<TaskBlock> newTaskBlocks = new ArrayList<>();
         for (TaskBlock t : tasks.findByExamIdOrderByPositionAsc(src.getId())) {
@@ -127,7 +129,7 @@ public class ExaminationService {
      * to copy is skipped, so no row is persisted pointing at bytes that don't
      * exist. The rest of the duplication still succeeds.
      */
-    private void copyFigures(Map<UUID, UUID> blockIdMap, String userId, UUID newExamId) {
+    private void copyFigures(Map<UUID, UUID> blockIdMap, UUID newExamId) {
         List<SectionFigure> newFigures = new ArrayList<>();
         for (Map.Entry<UUID, UUID> e : blockIdMap.entrySet()) {
             for (SectionFigure f : figures.findByBlockIdOrderByPositionAsc(e.getKey())) {
@@ -139,7 +141,7 @@ public class ExaminationService {
                 String ext = f.getStoragePath().contains(".")
                     ? f.getStoragePath().substring(f.getStoragePath().lastIndexOf('.'))
                     : "";
-                String newPath = userId + "/" + newExamId + "/" + nf.getId() + ext;
+                String newPath = OrgContext.require() + "/" + newExamId + "/" + nf.getId() + ext;
                 if (!copyFigureObject(f.getStoragePath(), newPath)) continue;
                 nf.setStoragePath(newPath);
                 newFigures.add(nf);
@@ -169,7 +171,7 @@ public class ExaminationService {
      * Returns the new path, or null when there is nothing to copy (or the
      * source object is gone) — the copy is still usable without its PDF.
      */
-    private String copyPdf(String sourcePath, String userId, UUID newExamId) {
+    private String copyPdf(String sourcePath, UUID newExamId) {
         if (sourcePath == null || sourcePath.isBlank()) return null;
         try {
             byte[] bytes = storage.download(PDF_BUCKET, sourcePath);
@@ -177,7 +179,7 @@ public class ExaminationService {
             String ext = sourcePath.contains(".")
                 ? sourcePath.substring(sourcePath.lastIndexOf('.'))
                 : ".pdf";
-            String newPath = userId + "/" + newExamId + ext;
+            String newPath = OrgContext.require() + "/" + newExamId + ext;
             storage.store(PDF_BUCKET, newPath, bytes);
             return newPath;
         } catch (RuntimeException e) {

@@ -2,6 +2,7 @@ package de.tum.cit.hestia.assessment.grading;
 
 import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import jakarta.persistence.Column;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
@@ -16,7 +17,7 @@ import org.hibernate.generator.EventType;
 
 @Entity
 @Table(schema = "assessment", name = "task_grades")
-public class Grade {
+public class Grade extends OrgScoped {
 
     @Id
     private UUID id = UUID.randomUUID();

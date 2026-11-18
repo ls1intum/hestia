@@ -7,6 +7,7 @@ import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
+import de.tum.cit.hestia.core.CurrentUser;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -20,9 +21,11 @@ public class GradeService {
     private final AIAnswerRepository answers;
     private final TaskBlockRepository tasks;
     private final Access access;
+    private final CurrentUser currentUser;
 
     public GradeService(GradeRepository grades, AIAnswerRepository answers,
-                        TaskBlockRepository tasks, Access access) {
+                        TaskBlockRepository tasks, Access access, CurrentUser currentUser) {
+        this.currentUser = currentUser;
         this.grades = grades;
         this.answers = answers;
         this.tasks = tasks;
@@ -31,11 +34,11 @@ public class GradeService {
 
     /** Upsert the grade for the task's current answer under the same lock used by answer replacement. */
     @Transactional
-    public Grade upsert(String rawTaskId, BigDecimal score, boolean autoGraded, String userId) {
+    public Grade upsert(String rawTaskId, BigDecimal score, boolean autoGraded) {
         UUID taskId = Access.id(rawTaskId);
         TaskBlock task = tasks.findByIdForUpdate(taskId)
             .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Task not found"));
-        Examination exam = access.requireExamination(task.getExamId(), userId);
+        Examination exam = access.requireExaminationForWrite(task.getExamId());
         if (!"grading".equals(exam.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT,
                 "Grades can only be changed while the exam is being graded.");
@@ -48,7 +51,7 @@ public class GradeService {
         grade.setAnswer(answer);
         grade.setScore(score);
         grade.setAutoGraded(autoGraded);
-        grade.setGradedBy(UUID.fromString(userId));
+        grade.setGradedBy(currentUser.userId());
         return grades.save(grade);
     }
 }

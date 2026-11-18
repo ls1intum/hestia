@@ -3,7 +3,6 @@ import de.tum.cit.hestia.assessment.shared.Patch;
 import de.tum.cit.hestia.assessment.shared.Access;
 
 import de.tum.cit.hestia.assessment.error.ApiException;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -49,8 +48,8 @@ public class SectionBlockController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/blocks")
-    public List<SectionDtos.BlockDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public List<SectionDtos.BlockDto> list(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return blockRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
             .stream().map(SectionDtos.BlockDto::from).toList();
     }
@@ -61,9 +60,9 @@ public class SectionBlockController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or an id is not a valid UUID.")
     @PostMapping("/blocks")
-    public SectionDtos.BlockDto create(@RequestBody CreateBlockRequest req, @CurrentUser String userId) {
+    public SectionDtos.BlockDto create(@RequestBody CreateBlockRequest req) {
         UUID examId = Access.id(req.exam_id());
-        access.requireExamination(examId, userId);
+        access.requireExaminationForWrite(examId);
         SectionBlock b = new SectionBlock();
         b.setExamId(examId);
         b.setSectionId(Access.id(req.section_id()));
@@ -84,9 +83,8 @@ public class SectionBlockController {
     @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such block, or `id` is not a valid UUID.")
     @PatchMapping("/blocks/{id}")
-    public SectionDtos.BlockDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
-                               @CurrentUser String userId) {
-        SectionBlock b = load(id, userId);
+    public SectionDtos.BlockDto patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        SectionBlock b = load(id, true);
         if (Patch.has(body, "content")) b.setContent(Patch.str(body.get("content")));
         if (Patch.has(body, "kind")) b.setKind(Patch.str(body.get("kind")));
         if (Patch.has(body, "position")) b.setPosition(Patch.intVal(body.get("position")));
@@ -104,8 +102,8 @@ public class SectionBlockController {
     @ApiResponse(responseCode = "403", description = "The block's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such block, or `id` is not a valid UUID.")
     @DeleteMapping("/blocks/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
-        SectionBlock b = load(id, userId);
+    public ResponseEntity<Void> delete(@PathVariable String id) {
+        SectionBlock b = load(id, true);
         sectionService.deleteBlock(b);
         return ResponseEntity.noContent().build();
     }
@@ -120,14 +118,13 @@ public class SectionBlockController {
     public ResponseEntity<Void> deleteBySection(@PathVariable String examId,
                                                  @RequestParam("section_id")
                                                  @Parameter(description = "Section whose blocks are removed.")
-                                                 String sectionId,
-                                                 @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+                                                 String sectionId) {
+        access.requireExaminationForWrite(Access.id(examId));
         sectionService.deleteBlocks(Access.id(examId), Access.id(sectionId));
         return ResponseEntity.noContent().build();
     }
 
-    private SectionBlock load(String id, String userId) {
-        return access.requireOwnedChild(blockRepository, id, userId, SectionBlock::getExamId, "Block");
+    private SectionBlock load(String id, boolean write) {
+        return access.requireChild(blockRepository, id, write, SectionBlock::getExamId, "Block");
     }
 }
