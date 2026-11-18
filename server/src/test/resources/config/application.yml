@@ -9,3 +9,6 @@ hestia:
   rate-limit:
     # Test classes share one context and one client address; the limiter has its own tests.
     llm-requests: 100000
+  security:
+    # The material intake's admin in tests.
+    platform-admins: intake-admin

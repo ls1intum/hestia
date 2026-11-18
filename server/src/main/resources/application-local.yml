@@ -12,3 +12,8 @@ springdoc:
 app:
   docs:
     enabled: true
+
+# The development login is a platform admin, so the material intake's admin list can be tried.
+hestia:
+  security:
+    platform-admins: dev-local-user

@@ -96,6 +96,12 @@ spring:
         multiplier: 2
         max-interval: 60s
 
+hestia:
+  security:
+    # External ids (eduPersonPrincipalName) of the platform admins, comma separated. For now they
+    # list and download the material intake; package 4 gives them ROLE_ADMIN.
+    platform-admins: ${HESTIA_PLATFORM_ADMINS:}
+
 # Sorted keys make the OpenAPI documents byte-stable, so a stored snapshot can be compared with them.
 springdoc:
   writer-with-order-by-keys: true
