@@ -7,13 +7,12 @@ sibling thesis projects that integrate against this service.
   - deployed (test): `https://hestia-test.aet.cit.tum.de/learninggoalhub`
   - local dev: `http://localhost:8080`
 - The deployed service runs over HTTPS (trusted RBG/GÉANT certificate) behind a shared
-  reverse proxy, under the `/learninggoalhub` path prefix. The proxy strips the prefix before
-  the server sees it, so every endpoint below is reached at `<base>/api/...` — e.g.
+  reverse proxy, under the `/learninggoalhub` path prefix. The app's nginx forwards `/api/...` to the
+  hestia server's `/learninggoalhub/api/...`, so every endpoint below is reached at `<base>/api/...` — e.g.
   `https://hestia-test.aet.cit.tum.de/learninggoalhub/api/courses`.
-- The machine-readable contract lives at `<base>/v3/api-docs` (OpenAPI 3, also browsable via
-  `<base>/swagger-ui.html`); a checked-in snapshot is at `client/openapi/openapi.json`.
-- Authentication: a consuming server sends its key in an `X-Api-Key` header (see
-  [Service keys](#service-keys)). The other endpoints have no authentication yet.
+- The machine-readable contract lives at `<base>/v3/api-docs` (OpenAPI 3; the server itself serves it
+  as `/v3/api-docs/materials`, with the paths without the module prefix); a checked-in snapshot is at `client/openapi/openapi.json`.
+- Authentication: every endpoint needs a TUM login (SAML session); an unauthenticated request gets `401`.
 - All endpoints speak JSON unless noted. Breaking changes are treated as expensive
   (see `AGENTS.md`); additions are favoured over shape changes.
 
@@ -246,31 +245,17 @@ human-readable `message`:
   on it rather than parsing `message`.
 - The HTTP status line carries the same status, so consumers can also key on that.
 
-- `401 UNAUTHORIZED` — no TUM login and no valid service key.
-- `403 FORBIDDEN` — a service-only endpoint was called with a login but without a valid key.
+- `401 UNAUTHORIZED` — no TUM login.
 - `429 TOO_MANY_REQUESTS` — too many requests that start model calls from one client address
-  (default 60 per 10 minutes). The `Retry-After` header gives the seconds to wait. Requests with a
-  valid service key are not counted.
+  (default 60 per 10 minutes). The `Retry-After` header gives the seconds to wait.
 
-## Service keys
+## Other modules of the server
 
-Each consuming server gets its own key, set as a deployment secret on both sides (see
-`DEPLOY.md`), and sends it on every request:
-
-```http
-X-Api-Key: <key>
-```
-
-The server logs each keyed request with the caller's name. The key also works on every other
-`/api/**` endpoint, which otherwise needs a TUM login. These endpoints are for consuming servers
-only and require the key:
-
-- `POST /api/courses/{courseId}/exam-tasks/learning-goals` (ExamLens)
-- `GET /api/courses/{courseId}/learning-goals/by-session` (Workshopper)
-
-Deployments enforce this (`hestia.security.enforce-service-keys`, on by default in
-`compose.prod.yaml`). With it off, any logged-in caller reaches them and a missing key is only
-logged as `Would reject ...`. A key is a server-side secret: never put it in a browser bundle.
+The `assessment` and `teaching` modules run in the same server process and do not call these
+endpoints. They use the ports `de.tum.cit.hestia.core.spi.GoalDirectory` (courses, goals, goals by
+session, delete a goal) and `de.tum.cit.hestia.core.spi.ExamGoalDerivation` (goals for exam tasks),
+which `materials` implements with the services behind the endpoints below. The endpoints
+stay for the browser client and for external API consumers; every one of them needs a login.
 
 ## Consuming from Java (Spring Boot)
 

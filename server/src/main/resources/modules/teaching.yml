@@ -1,0 +1,17 @@
+# Settings of the teaching module (formerly the Workshopper server).
+
+llm:
+  secondary-model: ${LLM_SECONDARY_MODEL:}
+
+logging:
+  level:
+    de.tum.cit.hestia.teaching: INFO
+
+# A model call that hangs must fail instead of holding a session's generation lock: teaching's own
+# read timeout and one retry, independent of the application-wide chat model (see LlmService).
+teaching:
+  llm:
+    connect-timeout: 10s
+    read-timeout: ${LLM_READ_TIMEOUT:90s}
+    retry:
+      max-attempts: 2

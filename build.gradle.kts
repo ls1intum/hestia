@@ -21,15 +21,13 @@ subprojects {
     }
 }
 
-// One command for the tests of all servers and shared libraries: `./gradlew testAll`.
-// `./gradlew build` runs the same tests and also assembles every server.
+// One command for the tests of the server and the shared libraries: `./gradlew testAll`.
+// `./gradlew build` runs the same tests and also assembles the server.
 tasks.register("testAll") {
     group = "verification"
-    description = "Runs the tests of all servers and shared libraries."
+    description = "Runs the tests of the server and the shared libraries."
     dependsOn(
         ":libs:shared-llm:test",
-        ":apps:learninggoalhub:server:test",
-        ":apps:workshopper:server:test",
-        ":apps:examlense:server:test",
+        ":server:test",
     )
 }

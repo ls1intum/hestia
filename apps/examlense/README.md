@@ -18,9 +18,9 @@ React 18 + TypeScript SPA for **exam authoring, AI-powered parsing, solving, gra
 | JDK | 21 | the Spring Boot server |
 | Node | 22 | the Vite client |
 | Docker | any recent | local Postgres **and** the server test suite (Testcontainers) |
-| Gradle | 9.4.1 | the wrapper at the repository root (`../../gradlew` from here) — do not install it separately |
+| Gradle | 9.4.1 | the wrapper at the repository root (`./gradlew`) — do not install it separately |
 
-Ports in use: **8081** server, **8080** Vite dev server, **5433** Postgres (5432 is often taken by another local Postgres).
+Ports in use: **8080** server (the one hestia server; ExamLense is served under `/examlense`), **5173** Vite dev server, **5432** Postgres.
 
 ## Running locally
 
@@ -28,52 +28,49 @@ The full local stack is **three processes**:
 
 ### 1. PostgreSQL (Docker)
 
-```bash
-docker compose up -d postgres   # Postgres 16 on host port 5433; data in a named volume
-```
-
+A PostgreSQL 16 with the database `hestia` and the roles from `infra/postgres/init/01-roles.sql`
+(host port 5432 by default; `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` override).
 Flyway applies the schema automatically when the server boots.
 
 ### 2. Server
 
 ```bash
-cd server
-set -a; source .env; set +a   # Spring Boot does not auto-read .env
-../../../gradlew bootRun      # root wrapper; http://localhost:8081
+# from the repository root
+set -a; source server/.env; set +a   # Spring Boot does not auto-read .env
+SPRING_PROFILES_ACTIVE=local ./gradlew :server:bootRun   # http://localhost:8080/examlense
 ```
 
-With the `local` profile the whole API is browsable at
-<http://localhost:8081/swagger-ui.html> — see [API documentation](#api-documentation) below.
-See [`server/README.md`](server/README.md) for configuration and a smoke test.
+With the `local` profile the API is browsable at
+<http://localhost:8080/swagger-ui.html> (group `assessment`) — see [API documentation](#api-documentation) below.
+See [`server/docs/assessment.md`](../../server/docs/assessment.md) for configuration and a smoke test.
 
 ### 3. Client
 
 ```bash
 cd client
 npm install                   # .npmrc already sets legacy-peer-deps
-npm run dev                   # http://localhost:8080
+npm run dev                   # http://localhost:5173
 ```
 
-### LearningGoalHub is optional
+### Learning goals are optional
 
-Learning goals are derived by the separate **LearningGoalHub** service, and the deployed
-instance is reachable only on the LRZ VPN. Linking an LGH course when you create an exam is
-optional, and nothing breaks without it: the course picker shows "LearningGoalHub is
+Learning goals come from the **materials** module of the same server (in process, no separate
+service or settings). Linking a course when you create an exam is optional, and nothing breaks
+without it: if the course lookup fails, the course picker shows "LearningGoalHub is
 unreachable — you can continue without a course", section confirmation still succeeds, and
-`/api/lgh/courses` returns 502 while the rest of the app works normally. You only lose the
-goal insights in the grading and results views. Point `LGH_BASE_URL` at a local LGH if you
-are running one.
+`/examlense/api/lgh/courses` returns 502 while the rest of the app works normally. You only lose
+the goal insights in the grading and results views.
 
 ## API documentation
 
-The server API is documented by a generated **OpenAPI spec** — spec at `/v3/api-docs`,
+The server API is documented by a generated **OpenAPI spec** — spec at `/v3/api-docs/assessment`,
 Swagger UI at `/swagger-ui.html`. Both are enabled by the `local` profile and off in
 deployments, so run the server with `SPRING_PROFILES_ACTIVE=local` and open
-<http://localhost:8081/swagger-ui.html>. Click **Authorize** and paste your `API_AUTH_TOKEN`
+<http://localhost:8080/swagger-ui.html> (group `assessment`). Click **Authorize** and paste your `API_AUTH_TOKEN`
 to make "Try it out" work.
 
 Full details — how to enable it elsewhere, and how the spec is kept honest — live in
-**[`server/README.md` → API documentation](server/README.md#api-documentation)**.
+**[`server/docs/assessment.md` → API documentation](../../server/docs/assessment.md#api-documentation)**.
 
 ## Environment variables
 
@@ -81,7 +78,7 @@ Client lives in `client/`; Vite loads `client/.env.local` with priority over `cl
 
 | Variable | Purpose |
 |---|---|
-| `VITE_API_BASE_URL` | Spring Boot server base URL (default `http://localhost:8081`). |
+| `VITE_API_BASE_URL` | ExamLense API base: the hestia server under its prefix (default `http://localhost:8080/examlense`). |
 | `VITE_API_AUTH_TOKEN` | Static bearer token; must match the server's `API_AUTH_TOKEN` (default `dev-local-token`). |
 
 Server secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `API_AUTH_TOKEN`, optional `FILES_SIGNING_SECRET`) live in `server/.env` (gitignored). The client `.env` holds only the non-secret dev defaults above.
@@ -91,7 +88,7 @@ Server secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `API_AU
 From `client/`:
 
 ```bash
-npm run dev          # Vite dev server at http://localhost:8080
+npm run dev          # Vite dev server at http://localhost:5173
 npm run build        # production build → dist/
 npm run build:dev    # development build with source maps
 npm run lint         # ESLint
@@ -100,24 +97,23 @@ npm run test:watch   # Vitest watch mode
 npm run preview      # preview production build
 ```
 
-From `server/` (the server is part of the root Gradle build, so use the root wrapper):
+From the repository root (the server is the project `:server` of the root Gradle build, shared by all modules):
 
 ```bash
-../../../gradlew bootRun    # start the server on :8081 (source .env first)
-../../../gradlew test       # full test suite — requires a running Docker daemon
-../../../gradlew bootJar    # build the executable jar
+./gradlew :server:bootRun    # start the server on :8080 (source server/.env first)
+./gradlew :server:test --tests 'de.tum.cit.hestia.assessment.*'   # this module's tests — requires a running Docker daemon
+./gradlew :server:bootJar    # build the executable jar
 ```
 
-From the repository root the same tasks are `./gradlew :apps:examlense:server:<task>`;
-`./gradlew build` builds and tests all servers.
+`./gradlew build` builds and tests the whole server.
 
 ## Testing
 
-`../../../gradlew test` (from `server/`) is the same gate CI runs, and a red run blocks every deploy.
+`./gradlew :server:test` (from the repository root) is the same gate CI runs, and a red run blocks every deploy.
 
-Eight of the server test classes extend `AbstractIntegrationTest`, which starts a real
-`postgres:16` container through Testcontainers, so **Docker must be running**. The rest are
-plain unit tests. There is no unit-only Gradle task, and you cannot filter by name reliably —
+The server test classes that extend `AbstractIntegrationTest` use a real `postgres:16`
+container through Testcontainers (`TestDatabase`), so **Docker must be running**. The rest are
+plain unit tests. You cannot filter by name reliably —
 three of the Docker-backed classes end in `Test` rather than `IT` (`SmokeContextTest`,
 `SecurityRulesSmokeTest`, `HealthSmokeTest`).
 
@@ -130,7 +126,7 @@ Client tests run under Vitest + jsdom with `npm run test`.
 - **From-scratch authoring** with a drag-and-drop editor (dnd-kit).
 - **Solver model** selected at exam creation and locked for the run.
 - **AI grading** with manual override; auto-grading for choice questions.
-- **Learning Goals** — derived automatically per task by the **LearningGoalHub** service: link an LGH course at exam creation, and confirming a section sends its tasks to LGH's goal-derivation endpoint. Goals show read-only in grading and roll up per goal (with Bloom/SOLO) on the results screen. Server integration in `server/src/main/java/app/lgh/` (`LGH_BASE_URL` env).
+- **Learning Goals** — derived automatically per task by the **LearningGoalHub** functionality of the materials module: link an LGH course at exam creation, and confirming a section passes its tasks to the goal derivation of the materials module. Goals show read-only in grading and roll up per goal (with Bloom/SOLO) on the results screen. Server integration in `server/src/main/java/de/tum/cit/hestia/assessment/lgh/` (in-process ports to the materials module).
 - **Results dashboard** — overall score, learning goals, per-question-type and per-task breakdowns (Recharts).
 
 ## Architecture & conventions

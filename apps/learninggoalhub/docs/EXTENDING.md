@@ -2,10 +2,10 @@
 
 Checklists for changes that cross the server and the client. Each lists every place that has to
 change, so nothing is half-wired. The basics of a single endpoint, LLM call or prompt are in
-[server/README.md](../server/README.md#how-to-add-); start there if your change stays on the server.
+[server/docs/materials.md](../../../server/docs/materials.md#how-to-add-); start there if your change stays on the server.
 
 To find the component behind a part of the UI, see [CLIENT.md](CLIENT.md). Server paths below
-are relative to `server/src/main/java/de/tum/cit/hestia/learninggoalhub/`, client paths to
+are relative to `server/src/main/java/de/tum/cit/hestia/materials/` (at the repository root), client paths to
 `client/src/`.
 
 ## Add a field to a learning goal
@@ -14,9 +14,9 @@ Example: a new attribute that is stored, shown in the Topic tree and editable, l
 
 **Server**
 
-1. A migration `server/src/main/resources/db/migration/V<next>__<name>.sql` that adds the column.
+1. A migration `server/src/main/resources/db/migration/V<next>__materials_<name>.sql` (at the repository root) that adds the column.
    Hibernate only validates the schema, so the server will not start without it. Find the highest
-   number with `ls server/src/main/resources/db/migration | sort -V | tail -1`; a plain `ls` sorts
+   number with `ls server/src/main/resources/db/migration | sort -V | tail -1` (at the repository root); a plain `ls` sorts
    `V9` after `V42`.
 2. `goal/LearningGoal.java`: the field with its getter and setter.
 3. `goal/LearningGoalResponse.java`: add it to the record and to `from(...)`. Records are positional,
@@ -41,7 +41,7 @@ Example: a new attribute that is stored, shown in the Topic tree and editable, l
    `LearningGoalControllerTest.exportCsvReturnsAllGoalsWithHierarchyAndSources`.
    Add the column to the list under `export.csv` in [api.md](api.md) too.
 6. If extraction or the Topic tree should fill it, see
-   [server/README.md](../server/README.md#an-llm-call) and bump the prompt's `PROMPT_VERSION`.
+   [server/docs/materials.md](../../../server/docs/materials.md#an-llm-call) and bump the prompt's `PROMPT_VERSION`.
 
 **Contract**
 
@@ -125,7 +125,7 @@ The progress bar and the phase list follow `ExtractionProgressTracker.Phase`.
    must still run from 0 to 100.
 2. `extraction/ExtractionRunner.java`: call `run.phase(Phase.<NEW>, total)` where the step starts
    and `run.increment()` as it completes work, like the existing phases. No model call inside a
-   transaction ([conventions](../server/README.md#conventions)).
+   transaction ([conventions](../../../server/docs/materials.md#conventions)).
 3. Regenerate the client types; the phase is an enum in the `Snapshot` schema.
 4. `lib/extraction.ts`: an entry in `EXTRACTION_PHASES` with a `label` for the progress dialog and
    a `short` label that fits the courses list.
@@ -149,7 +149,7 @@ The progress bar and the phase list follow `ExtractionProgressTracker.Phase`.
 From the repository root:
 
 ```bash
-./gradlew :apps:learninggoalhub:server:test                               # needs Docker
+./gradlew :server:test --tests 'de.tum.cit.hestia.materials.*'           # needs a container runtime
 (cd apps/learninggoalhub/client && npm run lint && npm run typecheck && npm test)
 (cd apps/learninggoalhub/client && npm run e2e)                            # after a workflow change
 ```

@@ -20,14 +20,14 @@ Workshopper integrates with TUM Central IT via SAML 2.0. Developing locally agai
 
 * **`DevAuthFilter`**: active *only* when the `local` Spring profile is active. It signs every request in as `dev-local-user`.
 * **No default profile**: `application.yml` sets no profile, so `local` must always be chosen explicitly (`SPRING_PROFILES_ACTIVE=local`).
-* **The Profile Gate**: `SecurityConfig.java` refuses to start (`IllegalStateException`) if `local` is active together with `prod`, or inside Kubernetes or Fly.io (`KUBERNETES_SERVICE_HOST`, `FLY_APP_NAME`).
+* **The Profile Gate**: core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`. The SAML login itself is also core's; Workshopper's `SecurityConfig` only protects `/workshopper/**`.
 * **Environments**:
   * Laptop: `SPRING_PROFILES_ACTIVE=local`, SAML bypassed.
   * `hestia-test` (VM, VPN-only): the deploy writes `ENVIRONMENT=Staging` into `.env`, and `application.yml` maps the `Staging` profile to `local`, so SAML is bypassed, because SAML access was only requested for production. `Production` maps to `prod`. Every tester is the same `dev-local-user` and sees the same sessions.
   * Production: `compose.prod.yaml` defaults to `prod`, real SAML enforced.
 
 ## 3. API Authorization & Error Handling
-All `/api/**` endpoints except `GET /api/workshop/health` (and the SAML metadata endpoint) require an authenticated user. An unauthenticated request gets `401 Unauthorized`; the client (`handleAuthError` in `api.ts`) then redirects the browser to `<base>/saml2/authenticate/tum`, which starts the SAML login.
+All `/workshopper/api/**` endpoints (the client's nginx maps `/api/` to it) except `GET /workshopper/api/workshop/health` require an authenticated user. An unauthenticated request gets `401 Unauthorized`; the client (`handleAuthError` in `api.ts`) then redirects the browser to `<base>/saml2/authenticate/tum`, which starts the SAML login.
 
 **Per-resource authorization (IDOR protection):** Spring Security checks that a user is logged in, not that they own a resource. Every endpoint that reads, changes or deletes a session by ID calls `facade.verifyOwnership(id)`; every endpoint that refers to a course (including moving a session into one, or saving a draft with a `courseId`) calls `facade.verifyCourseOwnership(id)`, which also returns `404` for unknown courses. Ownership failures throw `AccessDeniedException`, which `ApiExceptionHandler` turns into `403 Forbidden`.
 

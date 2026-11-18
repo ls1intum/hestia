@@ -1,0 +1,56 @@
+package de.tum.cit.hestia.materials.goal;
+
+import de.tum.cit.hestia.JpaRepositoriesConfig;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
+import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.materials.goal.GoalRelationship;
+import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
+import de.tum.cit.hestia.materials.goal.LearningGoal;
+import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
+import de.tum.cit.hestia.materials.goal.RelationshipType;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
+
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
+class GoalRelationshipRepositoryTest extends MaterialsTestBase {
+
+    @Autowired
+    private CourseRepository courseRepository;
+
+    @Autowired
+    private LearningGoalRepository goalRepository;
+
+    @Autowired
+    private GoalRelationshipRepository relationshipRepository;
+
+    @Test
+    void relationshipsCanBePersistedAndQueriedBySource() {
+        Course course = courseRepository.save(new Course("Software Engineering"));
+        LearningGoal a = goalRepository.save(new LearningGoal(course, "Understand TDD basics.", GoalKind.EXPLICIT));
+        LearningGoal b = goalRepository.save(new LearningGoal(course, "Apply red-green-refactor.", GoalKind.EXPLICIT));
+        LearningGoal c = goalRepository.save(new LearningGoal(course, "Design test suites.", GoalKind.IMPLICIT));
+
+        relationshipRepository.save(new GoalRelationship(a, b, RelationshipType.PREREQUISITE_OF, 0.9, RelationshipOrigin.LLM));
+        relationshipRepository.save(new GoalRelationship(a, c, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+
+        List<GoalRelationship> fromA = relationshipRepository.findBySourceId(a.getId());
+
+        assertThat(fromA).hasSize(2);
+        assertThat(fromA).extracting(r -> r.getTarget().getText())
+                .containsExactlyInAnyOrder("Apply red-green-refactor.", "Design test suites.");
+        assertThat(fromA).extracting(GoalRelationship::getType)
+                .containsExactlyInAnyOrder(RelationshipType.PREREQUISITE_OF, RelationshipType.CONTRIBUTES_TO);
+    }
+}

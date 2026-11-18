@@ -3,11 +3,11 @@
 LearningGoalHub reads a course's lecture slides and exercise sheets and extracts learning goals
 from them. Instructors review the result as a Topic tree (Topic → Skill → Sub-skill → Knowledge)
 in which goals carry Bloom and SOLO levels and point back to the slide they came from. The
-sibling Hestia apps (ExamLens, Workshopper) read the goals through a REST API.
+sibling Hestia modules (assessment, teaching) read the goals in-process through the `core.spi.GoalDirectory` and `ExamGoalDerivation` ports.
 
 | Part | What it is | Docs |
 | --- | --- | --- |
-| `server/` | Spring Boot 3.5 + Spring AI server, PostgreSQL, Flyway | [server/README.md](server/README.md) |
+| `../../server/` | the `materials` module of the hestia server (Spring Boot 3.5 + Spring AI, PostgreSQL, Flyway) | [server/docs/materials.md](../../server/docs/materials.md) |
 | `client/` | React 18 + TypeScript + Tailwind CSS, built with Vite | [client/README.md](client/README.md) |
 | `docs/CLIENT.md` | which component renders which part of the UI, data, styling | [docs/CLIENT.md](docs/CLIENT.md) |
 | `docs/ARCHITECTURE.md` | containers, client, data model, legacy values | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
@@ -45,13 +45,13 @@ All model calls go to the TUM AET Logos gateway (OpenAI-compatible). Defaults ar
 
 ```
 apps/learninggoalhub/
-├── server/src/main/java/de/tum/cit/hestia/learninggoalhub/
-│   ├── llm/  course/  document/  hierarchy/  taxonomy/   ← one package per concern, see server/README.md
+├── ../../server/src/main/java/de/tum/cit/hestia/materials/    ← the server code lives in the shared server/
+│   ├── llm/  course/  document/  hierarchy/  taxonomy/   ← one package per concern, see server/docs/materials.md
 │   ├── goal/  topictree/  extraction/  exam/
 │   └── config/  web/                                      ← security, rate limit, error body
-├── server/src/main/resources/
-│   ├── application.yml                                    ← every setting, with why it has its value
-│   └── db/migration/V<n>__*.sql                           ← Flyway, append-only
+├── ../../server/src/main/resources/
+│   ├── modules/materials.yml                              ← this module's settings, with why each has its value
+│   └── db/migration/V<n>__*.sql                           ← Flyway, one history for all modules, append-only
 ├── client/src/
 │   ├── pages/        ← the course list and the course page
 │   ├── components/   ← Topic tree grid (topicTree/), topic map (topicMap/), extraction and review (extractionProgress/)
@@ -78,9 +78,8 @@ Prompts are Java text blocks next to the class that sends them (see [docs/LLM.md
 All commands below run from the repository root unless a `cd` says otherwise.
 
 ```bash
-# 1. Database (pgvector/pgvector:pg16 on localhost:5432)
-cp apps/learninggoalhub/.env.example apps/learninggoalhub/.env   # then fill in LOGOS_API_KEY
-docker compose -f apps/learninggoalhub/compose.yaml up -d postgres
+# 1. Database (postgres:16 on localhost:5432, database hestia, roles from infra/postgres/init)
+docker compose up -d postgres
 
 # 2. A throwaway SAML key pair; any directory outside the repository works (see below)
 mkdir -p ~/.learninggoalhub-dev
@@ -91,20 +90,20 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" \
 LOGOS_API_KEY=<your key> \
 SAML_PRIVATE_KEY_LOCATION=file:$HOME/.learninggoalhub-dev/saml-key.pem \
 SAML_CERTIFICATE_LOCATION=file:$HOME/.learninggoalhub-dev/saml-cert.crt \
-  ./gradlew :apps:learninggoalhub:server:bootRun
+  ./gradlew :server:bootRun
 
 # 4. Client on http://localhost:5173/learninggoalhub/
 cd apps/learninggoalhub/client && npm install && npm run dev
 ```
 
-The server reads plain environment variables, not the `.env` file. Export the values you changed
-or pass them on the command line as above.
+The server reads plain environment variables, not a `.env` file. Export the values you need or
+pass them on the command line as above (the repository root's `.env.example` lists them).
 
 **Why the SAML pair.** The server is configured as a SAML service provider for TUM login, and Spring
 refuses to start without a signing key, which no clone contains. Any self-signed pair works locally.
-`/api/**` and Swagger UI (`/swagger-ui.html`) need a TUM login, which only works on production. Run the
+`/learninggoalhub/api/**` needs a TUM login, which only works on production. Run the
 server with `SPRING_PROFILES_ACTIVE=local` to sign every request in as a dev user (`DevAuthFilter`).
-The OpenAPI document at `/v3/api-docs` is public.
+The OpenAPI document of this module at `/v3/api-docs/materials` is public.
 
 **Database migrations.** Flyway applies new migrations on startup, so running a newer branch against
 your local database upgrades it, and the upgrade cannot be undone. To try a branch without touching
@@ -114,8 +113,8 @@ your data, start a second Postgres on another port and point the server at it wi
 ## Test and check
 
 ```bash
-./gradlew :apps:learninggoalhub:server:test            # server: JUnit + Testcontainers (Docker must be running)
-./gradlew :apps:learninggoalhub:server:test --rerun-tasks   # force a real run; a run that ends in seconds came from the build cache
+./gradlew :server:test --tests 'de.tum.cit.hestia.materials.*'   # server: JUnit + Testcontainers (a container runtime must be running)
+./gradlew :server:test --tests 'de.tum.cit.hestia.materials.*' --rerun-tasks   # force a real run; a run that ends in seconds came from the build cache
 
 cd apps/learninggoalhub/client
 npm run lint && npm run typecheck && npm test         # client: ESLint, tsc, Vitest
@@ -131,7 +130,7 @@ returns.
 
 ## Configuration
 
-Settings live in `server/src/main/resources/application.yml`, each with a comment on why it has
+Shared settings live in `server/src/main/resources/application.yml` and this module's in `server/src/main/resources/modules/materials.yml`, each with a comment on why it has
 its value. The ones you are most likely to change:
 
 | Environment variable | Default | Meaning |
@@ -139,11 +138,9 @@ its value. The ones you are most likely to change:
 | `LOGOS_API_KEY` | empty | Logos gateway key |
 | `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `localhost` / `5432` / `learninggoalhub` ×3 | database |
 | `SAML_PRIVATE_KEY_LOCATION` / `SAML_CERTIFICATE_LOCATION` | `classpath:certs/…` (absent) | SAML signing pair |
-| `API_KEY_EXAMLENSE` / `API_KEY_WORKSHOPPER` | empty | keys the consuming servers send in `X-Api-Key` |
-| `ENFORCE_SERVICE_KEYS` | `false` (`true` in `compose.prod.yaml`) | reject service-only calls without a key |
 | `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) turns off the TUM login |
 | `VITE_API_TARGET` (client dev server) | `http://localhost:8080` | where Vite proxies `/learninggoalhub/api` |
 
 Pipeline settings (parallelism, unit size, models, temperatures) are under `hestia.*` in
-`application.yml` and can be overridden the usual Spring way, for example
+`application.yml` and `modules/materials.yml` and can be overridden the usual Spring way, for example
 `HESTIA_EXTRACTION_PARALLELISM=4`.

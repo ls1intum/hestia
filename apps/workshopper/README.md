@@ -32,10 +32,10 @@ docker compose up -d
 From the repository root. The `local` profile has to be chosen explicitly; it skips the SAML login:
 
 ```bash
-SPRING_PROFILES_ACTIVE=local WORKSHOPPER_LOGOS_API_KEY="your-api-key-here" ./gradlew :apps:workshopper:server:bootRun
+SPRING_PROFILES_ACTIVE=local LOGOS_API_KEY="your-api-key-here" ./gradlew :server:bootRun
 ```
 
-The server starts on http://localhost:8081 and runs the Flyway migrations on startup. Spring does not read `.env` files; see `.env.example` for all variables.
+The one Hestia server (all modules) starts on http://localhost:8080; Workshopper is served under `/workshopper` (`/workshopper/api/...`). It runs the Flyway migrations on startup. Spring does not read `.env` files; see `.env.example` for all variables.
 
 ### 3. Start the client
 
@@ -45,15 +45,15 @@ npm install
 npm run dev
 ```
 
-The app opens at **http://localhost:5173/workshopper/**. The dev server proxies `/workshopper/api` to the server (`VITE_API_TARGET`, default `http://localhost:8081`). Importing goals from the Learning Goal Hub goes through the server, which reads LGH at `LGH_BASE_URL` (default `http://localhost:8080`) with the service key `LGH_API_KEY`.
+The app opens at **http://localhost:5173/workshopper/**. The dev server proxies `/workshopper/api` to the server (`VITE_API_TARGET`, default `http://localhost:8080`). Importing goals from the Learning Goal Hub goes through the server, which reads the materials module in the same process; there is no separate service to start or configure.
 
 ### Tests
 
 ```bash
-./gradlew :apps:workshopper:server:test
+./gradlew :server:test --tests 'de.tum.cit.hestia.teaching.*'
 ```
 
-Run from the repository root (this is what CI runs). The repository test starts a PostgreSQL container with Testcontainers, so Docker must be running.
+Run from the repository root (this is what CI runs). The database tests start a PostgreSQL container with Testcontainers, so Docker must be running.
 
 ```bash
 cd apps/workshopper/client && npm test && npm run build

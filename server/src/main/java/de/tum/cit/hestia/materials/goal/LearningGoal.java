@@ -1,0 +1,215 @@
+package de.tum.cit.hestia.materials.goal;
+
+import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.materials.exam.submission.SubmittedExamBlock;
+import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
+import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
+import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.time.OffsetDateTime;
+import org.hibernate.annotations.CreationTimestamp;
+
+/**
+ * One learning goal of a course: a topic, skill, sub-skill or knowledge item of its Topic tree.
+ *
+ * <p>The table still has the {@code embedding} column of an earlier prototype (V6). Nothing reads or
+ * writes it and the entity does not map it; it stays because older courses still hold vectors.
+ */
+@Entity
+@Table(schema = "materials", name = "learning_goal")
+public class LearningGoal {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "course_id", nullable = false)
+    private Course course;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String text;
+
+    /** The generated wording, kept on the first rename; null while the goal was never renamed. */
+    @Column(name = "original_text", columnDefinition = "TEXT")
+    private String originalText;
+
+    @Column(name = "short_label", columnDefinition = "TEXT")
+    private String shortLabel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private GoalKind kind;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", length = 16)
+    private GoalRole role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private GoalOrigin origin = GoalOrigin.EXTRACTED;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private GoalStatus status = GoalStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "creation_provenance", length = 32)
+    private GoalCreationProvenance creationProvenance;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hierarchy_node_id")
+    private HierarchyNode hierarchyNode;
+
+    /** The exam task an EXAM goal was derived from; null for every other goal. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exam_block_id")
+    private SubmittedExamBlock examBlock;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "bloom_level", length = 32)
+    private BloomLevel bloomLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "solo_level", length = 32)
+    private SoloLevel soloLevel;
+
+    /** Stable course-wide order derived from the goal's first appearance in the lecture material. */
+    @Column(name = "lecture_order")
+    private Integer lectureOrder;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    protected LearningGoal() {
+    }
+
+    public LearningGoal(Course course, String text, GoalKind kind) {
+        this.course = course;
+        this.text = text;
+        this.kind = kind;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Course getCourse() {
+        return course;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getOriginalText() {
+        return originalText;
+    }
+
+    public void setOriginalText(String originalText) {
+        this.originalText = originalText;
+    }
+
+    public String getShortLabel() {
+        return shortLabel;
+    }
+
+    public void setShortLabel(String shortLabel) {
+        this.shortLabel = shortLabel;
+    }
+
+    public GoalKind getKind() {
+        return kind;
+    }
+
+    public GoalRole getRole() {
+        return role;
+    }
+
+    public void setRole(GoalRole role) {
+        this.role = role;
+    }
+
+    public GoalOrigin getOrigin() {
+        return origin;
+    }
+
+    public void setOrigin(GoalOrigin origin) {
+        this.origin = origin;
+    }
+
+    public GoalStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(GoalStatus status) {
+        this.status = status;
+    }
+
+    public GoalCreationProvenance getCreationProvenance() {
+        return creationProvenance;
+    }
+
+    public void setCreationProvenance(GoalCreationProvenance creationProvenance) {
+        this.creationProvenance = creationProvenance;
+    }
+
+    public HierarchyNode getHierarchyNode() {
+        return hierarchyNode;
+    }
+
+    public void setHierarchyNode(HierarchyNode hierarchyNode) {
+        this.hierarchyNode = hierarchyNode;
+    }
+
+    public SubmittedExamBlock getExamBlock() {
+        return examBlock;
+    }
+
+    public void setExamBlock(SubmittedExamBlock examBlock) {
+        this.examBlock = examBlock;
+    }
+
+    public BloomLevel getBloomLevel() {
+        return bloomLevel;
+    }
+
+    public void setBloomLevel(BloomLevel bloomLevel) {
+        this.bloomLevel = bloomLevel;
+    }
+
+    public SoloLevel getSoloLevel() {
+        return soloLevel;
+    }
+
+    public void setSoloLevel(SoloLevel soloLevel) {
+        this.soloLevel = soloLevel;
+    }
+
+    public Integer getLectureOrder() {
+        return lectureOrder;
+    }
+
+    public void setLectureOrder(Integer lectureOrder) {
+        this.lectureOrder = lectureOrder;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+}

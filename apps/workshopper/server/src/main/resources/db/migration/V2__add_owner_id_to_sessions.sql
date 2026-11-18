@@ -1,1 +1,0 @@
-ALTER TABLE workshop_sessions ADD COLUMN IF NOT EXISTS owner_id VARCHAR(255);

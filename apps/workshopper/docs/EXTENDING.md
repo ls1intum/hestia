@@ -45,7 +45,7 @@ Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, 
 
 ## Change what the AI writes, or add an LLM call
 
-* **Change a prompt:** edit the `.st` file in `server/src/main/resources/prompts/`. `docs/AI-INTEGRATION.md` lists which file serves which feature.
+* **Change a prompt:** edit the `.st` file in `/server/src/main/resources/prompts/`. `docs/AI-INTEGRATION.md` lists which file serves which feature.
 * **New placeholder:** add the value to the model map in the calling Java code, and add a dummy value in `LlmTemplatesTest`.
 * **New LLM call:**
   1. Add `<name>-system.st` and `<name>-user.st`.
@@ -54,7 +54,7 @@ Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, 
 
 ## Add a slide layout
 
-1. Add a template slide to `server/src/main/resources/templates/workshopper-default.pptx` with `[Placeholder]` texts.
+1. Add a template slide to `/server/src/main/resources/templates/workshopper-default.pptx` with `[Placeholder]` texts.
 2. `AssemblePptxUseCase.getTemplateSlideIndex`: map the layout name to the slide index.
 3. `AssemblePptxUseCase.populateSlideBody`: add a `case` that fills the placeholders.
 4. Make the prompt or code that builds the slide produce that `layout` value.
@@ -74,14 +74,14 @@ Phases (`ARRIVE`, `ACTIVATE`, `LEARNING_CYCLE`, `BREAK`, `EVALUATE`, `SUMMARY`, 
 1. Add it to `WorkshopController` (or `CourseController`). Check ownership first: `facade.verifyOwnership(id)` or `facade.verifyCourseOwnership(id)`. Don't catch exceptions; `ApiExceptionHandler` turns them into the right status.
 2. Put the logic in the facade (generation) or `WorkshopService` (persistence).
 3. Add a function in `client/src/lib/api.ts` (built on its `get`/`post`/`postForBlob` helpers, which throw an `ApiError` for any failed answer), and document it in `docs/API.md`. Components never call `fetch` themselves; in a `catch`, call `handleAuthError(e)` first and show `errorMessage(e, fallback)` otherwise.
-4. Add a MockMvc test in `server/src/test/.../controller/` (see `WorkshopControllerTest` and `WorkshopControllerSecurityTest`).
+4. Add a MockMvc test in `/server/src/test/java/de/tum/cit/hestia/teaching/controller/` (see `WorkshopControllerTest` and `WorkshopControllerSecurityTest`).
 
 ## Checks before committing
 
 * **Server tests**, from the repository root (`WorkshopSessionRepositoryTest` needs Docker running):
 
   ```bash
-  ./gradlew :apps:workshopper:server:test
+  ./gradlew :server:test --tests 'de.tum.cit.hestia.teaching.*'
   ```
 
 * **Client tests, type-check and build**, from `apps/workshopper/client` (tests sit next to the code as `*.test.ts`; add one when you change logic in `src/lib` or `src/hooks`):

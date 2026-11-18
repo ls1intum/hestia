@@ -1,0 +1,14 @@
+# Local development profile (also active on Staging through the profile group `Staging: local`).
+# Activate with: SPRING_PROFILES_ACTIVE=local ./gradlew :server:bootRun
+#
+# WARNING: this profile bypasses SAML: the development login signs requests in as 'dev-local-user'.
+# It must never be active in production.
+
+# Browsable API docs of the assessment module while developing (off by default, see modules/assessment.yml).
+springdoc:
+  swagger-ui:
+    enabled: true
+
+app:
+  docs:
+    enabled: true

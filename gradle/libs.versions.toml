@@ -13,6 +13,7 @@ docx4j = "11.4.9"
 poi = "5.2.5"
 opencsv = "5.9"
 archunit = "1.3.0"
+spring-modulith = "1.4.14"
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -26,6 +27,7 @@ docx4j-jaxb-referenceimpl = { module = "org.docx4j:docx4j-JAXB-ReferenceImpl", v
 docx4j-export-fo = { module = "org.docx4j:docx4j-export-fo", version.ref = "docx4j" }
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 opencsv = { module = "com.opencsv:opencsv", version.ref = "opencsv" }
+spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "spring-modulith" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 
 [plugins]

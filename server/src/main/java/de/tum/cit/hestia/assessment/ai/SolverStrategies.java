@@ -1,0 +1,108 @@
+package de.tum.cit.hestia.assessment.ai;
+
+import java.util.List;
+import java.util.Optional;
+
+import static de.tum.cit.hestia.assessment.ai.ProviderKind.ANTHROPIC;
+import static de.tum.cit.hestia.assessment.ai.ProviderKind.GEMINI;
+import static de.tum.cit.hestia.assessment.ai.ProviderKind.OPENAI;
+import static de.tum.cit.hestia.assessment.ai.ProviderKind.RETIRED;
+
+public final class SolverStrategies {
+
+    public static final String DEFAULT_ID = "gpt-5.5";
+
+    private static final StrategyRegistry<SolverStrategy> REGISTRY =
+        new StrategyRegistry<>(SolverStrategy::id, DEFAULT_ID);
+
+    static {
+        REGISTRY.register(new SolverStrategy(
+            "gemini-3.5-flash",
+            "Gemini 3.5 Flash (Google)",
+            "Google Gemini model for fast exam solving.",
+            "gemini-3.5-flash",
+            GEMINI,
+            true,
+            // thinking_level defaults to medium (was high on Gemini 3 Flash Preview).
+            "medium"
+        ));
+        REGISTRY.register(new SolverStrategy(
+            "gpt-5.5",
+            "GPT-5.5 (OpenAI)",
+            "OpenAI frontier model for complex reasoning and tool-heavy work.",
+            "gpt-5.5",
+            OPENAI,
+            true,
+            // reasoning.effort defaults to medium.
+            "medium"
+        ));
+        REGISTRY.register(new SolverStrategy(
+            "claude-opus-4-8",
+            "Claude Opus 4.8 (Anthropic)",
+            "Anthropic flagship model for complex reasoning and long-context work.",
+            "claude-opus-4-8",
+            ANTHROPIC,
+            true,
+            // Omitting `thinking` on Opus 4.8 runs the model without it.
+            "off"
+        ));
+        // Retired models: exams created before the catalog change still
+        // reference these ids, so they stay resolvable but hidden. The GWDG
+        // entries are tombstones — the OpenAI-compatible transport they used is
+        // gone, so resolving one yields a label but calling it fails loudly.
+        REGISTRY.legacy(new SolverStrategy(
+            "qwen3.6-35b-a3b",
+            "Qwen 3.6 35B A3B (GWDG)",
+            "GWDG-hosted Qwen 3.6 mixture-of-experts model.",
+            "qwen3.6-35b-a3b",
+            RETIRED,
+            true,
+            null
+        ));
+        REGISTRY.legacy(new SolverStrategy(
+            "gemini-2.5-flash",
+            "Gemini 2.5 Flash (Google)",
+            "Google Gemini model for fast exam solving.",
+            "gemini-2.5-flash",
+            GEMINI,
+            true,
+            // Predates thinking_level: defaults to a self-adjusting budget.
+            "dynamic"
+        ));
+        REGISTRY.legacy(new SolverStrategy(
+            "mistral-large-3-675b-instruct-2512",
+            "Mistral Large 3 675B (GWDG)",
+            "GWDG-hosted large reasoning model.",
+            "mistral-large-3-675b-instruct-2512",
+            RETIRED,
+            true,
+            null
+        ));
+        REGISTRY.legacy(new SolverStrategy(
+            "gemma-4-31b-it",
+            "Gemma 4 31B Instruct (GWDG)",
+            "GWDG-hosted instruction-tuned model.",
+            "gemma-4-31b-it",
+            RETIRED,
+            false,
+            null
+        ));
+        REGISTRY.legacy(new SolverStrategy(
+            "qwen3.5-397b-a17b",
+            "Qwen 3.5 397B A17B (GWDG)",
+            "GWDG-hosted Qwen 3.5 large mixture-of-experts model.",
+            "qwen3.5-397b-a17b",
+            RETIRED,
+            false,
+            null
+        ));
+    }
+
+    private SolverStrategies() {}
+
+    public static List<SolverStrategy> all() { return REGISTRY.all(); }
+
+    public static SolverStrategy resolve(String id) { return REGISTRY.resolve(id); }
+
+    public static Optional<SolverStrategy> find(String id) { return REGISTRY.find(id); }
+}

@@ -1,5 +1,11 @@
 # Deploying ExamLense on the Hestia VMs
 
+> **Note (one server):** the three apps now run as one server. Staging is deployed from the
+> repository root: `compose.prod.yaml` (one Postgres with the roles from `infra/postgres/init`,
+> `hestia-server`, the three clients' nginx containers, backup) by `.github/workflows/hestia-cicd.yml`
+> into `/opt/hestia/app`. Production still runs the separate per-app deployment described below
+> until it is switched over; this document will be replaced by one guide for the whole application.
+
 ExamLense ships to the Hestia VMs through GitHub Actions: **CI builds the images, pushes
 them to GHCR, and deploys them onto the VM over SSH** via the shared ls1intum reusable
 workflows — the same setup the other chair apps use. A push to `main` auto-deploys to

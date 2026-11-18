@@ -1,0 +1,32 @@
+package de.tum.cit.hestia.materials;
+
+import static org.mockito.Mockito.mock;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+
+import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
+
+/** Test beans of the materials module's Spring tests; the database comes from {@link MaterialsTestBase}. */
+@TestConfiguration(proxyBeanMethods = false)
+public class MaterialsTestConfiguration {
+
+    /** The identity provider's metadata is fetched over the network; not needed to start. */
+    @Bean
+    @Primary
+    RelyingPartyRegistrationRepository relyingPartyRegistrationRepository() {
+        return mock(RelyingPartyRegistrationRepository.class);
+    }
+
+    /**
+     * /learninggoalhub/api/** needs a login. Every MockMvc request runs as a logged-in user unless the
+     * test says otherwise, e.g. {@code .with(anonymous())} to test what a caller without login gets.
+     */
+    @Bean
+    MockMvcBuilderCustomizer loggedInUser() {
+        return builder -> builder.defaultRequest(get("/").with(user("test-user")));
+    }
+}

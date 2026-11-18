@@ -20,7 +20,7 @@ APIs consumed by the related thesis projects ExamLens and Workshopper.
 | Before you … | read |
 | --- | --- |
 | run, test or configure anything | [README.md](README.md) |
-| change server code | [server/README.md](server/README.md): packages, conventions, how to add an endpoint, an LLM call or a prompt |
+| change server code | [../../server/docs/materials.md](../../server/docs/materials.md): packages, conventions, how to add an endpoint, an LLM call or a prompt |
 | change client code | [docs/CLIENT.md](docs/CLIENT.md): which component renders what, query keys, tier names, styling |
 | change something that spans server and client (a goal field, a course setting, an extraction phase, a page) | the checklist in [docs/EXTENDING.md](docs/EXTENDING.md) |
 | touch a model call or a prompt | [docs/LLM.md](docs/LLM.md) |
@@ -45,7 +45,7 @@ These are the mistakes the compilers and most tests do not catch.
 2. **No model call inside a database transaction.** A call can take minutes and holds row locks the
    whole time. Read in one transaction, call the model, write in another; take
    `CourseRepository.lockById` when two requests may write the same course
-   ([conventions](server/README.md#conventions)).
+   ([conventions](../../server/docs/materials.md#conventions)).
 3. **The client's API types come from a checked-in snapshot.** After changing a request or response
    record or an endpoint, regenerate `client/openapi/openapi.json` and `client/src/api/schema.d.ts`
    with the command in [client/README.md](client/README.md#api-client) and commit both;
@@ -62,7 +62,7 @@ These are the mistakes the compilers and most tests do not catch.
    `PageDescriptionService.FIGURE_PROMPT_VERSION` when you change those prompts, so stored runs show
    which prompt produced them.
 7. **Endpoints that start model calls are rate-limited by path.** Add a new one to
-   `SecurityConfig.LLM_REQUESTS`, and to `SERVICE_ONLY` if only consuming servers call it.
+   `SecurityConfig.LLM_REQUESTS`.
 8. **Package layers are enforced.** `PackageCycleTest` (ArchUnit) fails on a dependency cycle
    between packages. Move the shared piece down instead of importing upward.
 9. **Migrations are append-only.** Add `V<next>__<name>.sql`; never edit a merged one. Hibernate
@@ -174,7 +174,7 @@ Use this stack unless the project owner explicitly changes it:
 Say "server" and "client", not "backend" and "frontend".
 
 The SAML login is integrated separately and is out of scope unless a task asks for it (see
-[docs/SECURITY.md](docs/SECURITY.md)). Service keys and the LLM rate limit in `config/` are in
+[docs/SECURITY.md](docs/SECURITY.md)). The LLM rate limit in `config/` is in
 scope.
 
 Do not introduce a different client framework or styling system unless explicitly requested.
@@ -195,7 +195,7 @@ LLM extraction must be reproducible and evaluable.
 Before reporting work as done, run the narrowest relevant verification. Commands, from the
 repository root:
 
-- server: `./gradlew :apps:learninggoalhub:server:test` — needs a running Docker (Testcontainers). A run that ends within seconds came from the Gradle cache; add `--rerun-tasks`. If it stalls with no results, check that `docker ps` answers.
+- server: `./gradlew :server:test --tests 'de.tum.cit.hestia.materials.*'` — needs a running container runtime (Testcontainers). A run that ends within seconds came from the Gradle cache; add `--rerun-tasks`. If it stalls with no results, check that `docker ps` answers.
 - client: `cd apps/learninggoalhub/client && npm run lint && npm run typecheck && npm test`
 - browser tests: `cd apps/learninggoalhub/client && npm run e2e` — needs a Postgres on port 5433 and the built server jar (see `client/README.md#browser-tests`). Run them after changing a user workflow or a prompt's JSON shape.
 - API contract changes: update the client types (rule 3) and `docs/api.md` for endpoints other apps use.
