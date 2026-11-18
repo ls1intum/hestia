@@ -1,21 +1,24 @@
 package de.tum.cit.hestia.teaching.model;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(schema = "teaching", name = "slide_templates")
-public class SlideTemplateEntity {
+public class SlideTemplateEntity extends OrgScoped {
 
     @Id
     private String id;
 
-    @Column(name = "owner_id", length = 255, nullable = false)
-    private String ownerId;
+    /** The user who uploaded the template; it is deleted with the user. */
+    @Column(name = "owner_id", nullable = false, updatable = false)
+    private UUID ownerId;
 
     @Column(name = "file_name", length = 255)
     private String fileName;
@@ -29,8 +32,8 @@ public class SlideTemplateEntity {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getOwnerId() { return ownerId; }
-    public void setOwnerId(String ownerId) { this.ownerId = ownerId; }
+    public UUID getOwnerId() { return ownerId; }
+    public void setOwnerId(UUID ownerId) { this.ownerId = ownerId; }
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }

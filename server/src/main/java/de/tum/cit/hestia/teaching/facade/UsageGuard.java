@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.teaching.facade;
 
-import de.tum.cit.hestia.teaching.config.AuthContext;
+import de.tum.cit.hestia.core.CurrentUser;
+import java.util.UUID;
 import de.tum.cit.hestia.teaching.dto.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -41,13 +42,17 @@ public class UsageGuard {
     private final int maxConcurrent;
     private final int maxPerWindow;
     private final long windowMillis;
-    private final Map<String, Semaphore> running = new ConcurrentHashMap<>();
-    private final Map<String, Deque<Long>> recent = new ConcurrentHashMap<>();
+    private final Map<UUID, Semaphore> running = new ConcurrentHashMap<>();
+    private final Map<UUID, Deque<Long>> recent = new ConcurrentHashMap<>();
+
+    private final CurrentUser currentUser;
 
     public UsageGuard(
+            CurrentUser currentUser,
             @Value("${workshopper.limits.ai-concurrent-per-user:4}") int maxConcurrent,
             @Value("${workshopper.limits.ai-requests-per-window:120}") int maxPerWindow,
             @Value("${workshopper.limits.ai-window-minutes:10}") int windowMinutes) {
+        this.currentUser = currentUser;
         this.maxConcurrent = maxConcurrent;
         this.maxPerWindow = maxPerWindow;
         this.windowMillis = windowMinutes * 60_000L;
@@ -60,7 +65,7 @@ public class UsageGuard {
 
     /** Runs an AI request for the current user within their limits. */
     public <T> T runAi(AiCall<T> call) throws Exception {
-        String user = AuthContext.getCurrentUserId();
+        UUID user = currentUser.userId();
         countRequest(user);
         Semaphore slots = running.computeIfAbsent(user, u -> new Semaphore(maxConcurrent));
         if (!slots.tryAcquire()) {
@@ -73,7 +78,7 @@ public class UsageGuard {
         }
     }
 
-    private void countRequest(String user) {
+    private void countRequest(UUID user) {
         long now = System.currentTimeMillis();
         Deque<Long> times = recent.computeIfAbsent(user, u -> new ArrayDeque<>());
         synchronized (times) {

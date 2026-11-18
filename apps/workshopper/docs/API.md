@@ -3,8 +3,10 @@
 All endpoints live under `/api/workshop` and need a logged-in user (see [AUTH.md](AUTH.md)); the only exception is `GET /api/workshop/health`.
 
 Common responses:
-* `401` not logged in (the client redirects to the SAML login)
-* `403` the session or course belongs to someone else
+* `401` not logged in (the client redirects to the login)
+* `403` the user's role in the course is too small for the action (e.g. a `VIEWER` writing)
+* `404` the course or session does not exist or the user has no access to it (also another organisation's)
+* `403` also for a write without the CSRF token (`X-XSRF-TOKEN`, copied from the `XSRF-TOKEN` cookie)
 * `400` input over a limit (see below), or an uploaded template that is not a `.pptx`
 * `404` unknown session or course; also when saving a session or course that was deleted meanwhile (it is not re-created)
 * `409` a timetable generation for the same session is already running

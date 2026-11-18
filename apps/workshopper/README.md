@@ -97,10 +97,10 @@ workshopper/
 │   └── src/main/
 │       ├── java/com/workshopper/
 │       │   ├── controller/  ← REST endpoints (WorkshopController, CourseController)
-│       │   ├── facade/      ← WorkshopSessionFacade: ownership checks, generation orchestration
+│       │   ├── facade/      ← WorkshopSessionFacade: course-role checks, generation orchestration
 │       │   ├── usecase/     ← generation and PPTX building (see docs/SERVER.md)
 │       │   ├── service/     ← LlmService, WorkshopService (persistence, templates), PdfExportService
-│       │   ├── config/      ← SecurityConfig, DevAuthFilter, AuthContext
+│       │   ├── config/      ← (login and security are in core)
 │       │   ├── dto/  model/  repository/  exception/
 │       └── resources/       ← application*.yml, prompts/*.st, templates/, db/migration (V1–V8)
 ├── docs/                  ← architecture, API, auth, AI integration, client and server notes

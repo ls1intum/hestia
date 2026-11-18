@@ -2,7 +2,6 @@ package de.tum.cit.hestia.teaching.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.tum.cit.hestia.teaching.config.AuthContext;
 import de.tum.cit.hestia.teaching.dto.*;
 import de.tum.cit.hestia.teaching.facade.WorkshopSessionFacade;
 import de.tum.cit.hestia.teaching.service.PdfExportService;
@@ -32,7 +31,7 @@ import java.util.Map;
 
 /**
  * Sessions, generation and exports. Errors are turned into HTTP answers by {@link ApiExceptionHandler};
- * every endpoint that takes a session or course id checks ownership first.
+ * every endpoint that takes a session or course id checks the course role first.
  */
 @RestController
 @RequestMapping("/api/workshop")
@@ -127,7 +126,7 @@ public class WorkshopController {
     /** All finished sessions of a course as one ZIP of PDFs and PPTXs. */
     @GetMapping(value = "/export/course/{id}/zip", produces = "application/zip")
     public ResponseEntity<Resource> exportCourseZip(@PathVariable String id) throws Exception {
-        facade.verifyCourseOwnership(id);
+        facade.verifyCourseRead(id);
         String courseTitle = service.getCourse(id).map(SessionDetailDto::title).orElse(null);
         return file(facade.exportCourseZip(id), FileNames.course(courseTitle), MediaType.parseMediaType("application/zip"));
     }
@@ -137,13 +136,13 @@ public class WorkshopController {
     /** Lists the user's sessions (summaries, no blocks). */
     @GetMapping("/sessions")
     public List<SessionSummaryDto> listSessions() {
-        return service.listSessions(AuthContext.getCurrentUserId());
+        return service.listSessions();
     }
 
     /** The full session including its draft state, for resuming it. */
     @GetMapping("/sessions/{id}")
     public ResponseEntity<SessionDetailDto> getSession(@PathVariable String id) {
-        facade.verifyOwnership(id);
+        facade.verifyRead(id);
         return ResponseEntity.of(service.getSession(id));
     }
 
@@ -151,19 +150,19 @@ public class WorkshopController {
     @PostMapping("/sessions/draft")
     public Map<String, String> saveDraft(@RequestBody SaveDraftRequestDto request) {
         if (request.sessionId() != null && !request.sessionId().isBlank()) {
-            facade.verifyOwnership(request.sessionId());
+            facade.verifyWrite(request.sessionId());
         }
         if (request.courseId() != null && !request.courseId().isBlank()) {
-            facade.verifyCourseOwnership(request.courseId());
+            facade.verifyCourseWrite(request.courseId());
         }
-        return Map.of("id", service.saveDraft(request, AuthContext.getCurrentUserId()));
+        return Map.of("id", service.saveDraft(request));
     }
 
     /** Saves the generated slides of a session, keyed by block index. */
     @PostMapping("/sessions/{id}/slides")
     public Map<String, Boolean> saveSlides(@PathVariable String id,
                                            @RequestBody Map<Integer, List<Map<String, Object>>> slidesCache) throws Exception {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         service.saveSlides(id, slidesCache);
         return Map.of("success", true);
     }
@@ -171,14 +170,14 @@ public class WorkshopController {
     /** Marks a session as finished. */
     @PutMapping("/sessions/{id}/finish")
     public Map<String, Boolean> finishSession(@PathVariable String id) {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         service.finishSession(id);
         return Map.of("success", true);
     }
 
     @PutMapping("/sessions/{id}/rename")
     public ResponseEntity<Map<String, Object>> renameSession(@PathVariable String id, @RequestBody Map<String, String> body) {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         String newTitle = body.get("title");
         if (newTitle == null || newTitle.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Title is required"));
@@ -190,7 +189,7 @@ public class WorkshopController {
     /** Saves the dashboard order of the given sessions. */
     @PutMapping("/sessions/reorder")
     public Map<String, Boolean> reorderSessions(@RequestBody List<String> sessionIds) {
-        sessionIds.forEach(facade::verifyOwnership);
+        sessionIds.forEach(facade::verifyWrite);
         service.reorderSessions(sessionIds);
         return Map.of("success", true);
     }
@@ -198,13 +197,13 @@ public class WorkshopController {
     /** Moves a session into a course ({"courseId": "..."}), or back to the top level with an empty courseId. */
     @PutMapping("/sessions/{id}/move")
     public Map<String, Boolean> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         String courseId = body.get("courseId");
         if (courseId != null && courseId.isBlank()) {
             courseId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
         }
         if (courseId != null) {
-            facade.verifyCourseOwnership(courseId);
+            facade.verifyCourseWrite(courseId);
         }
         service.moveSession(id, courseId);
         return Map.of("success", true);
@@ -212,7 +211,7 @@ public class WorkshopController {
 
     @DeleteMapping("/sessions/{id}")
     public ResponseEntity<Void> deleteSession(@PathVariable String id) {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         service.deleteSession(id);
         return ResponseEntity.noContent().build();
     }
@@ -221,7 +220,7 @@ public class WorkshopController {
 
     @PostMapping(value = "/sessions/{id}/template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Boolean> uploadTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         service.saveTemplate(id, readTemplate(template), template.getOriginalFilename());
         return Map.of("success", true);
     }
@@ -229,21 +228,21 @@ public class WorkshopController {
     /** Removes the template from this session only (its own upload, and inheriting the course template). */
     @DeleteMapping("/sessions/{id}/template")
     public Map<String, Boolean> deleteTemplate(@PathVariable String id) {
-        facade.verifyOwnership(id);
+        facade.verifyWrite(id);
         service.deleteTemplate(id);
         return Map.of("success", true);
     }
 
     @PostMapping("/courses/{id}/template")
     public ResponseEntity<Void> uploadCourseTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
-        facade.verifyCourseOwnership(id);
+        facade.verifyCourseWrite(id);
         service.saveCourseTemplate(id, readTemplate(template), template.getOriginalFilename());
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/courses/{id}/template")
     public ResponseEntity<Void> deleteCourseTemplate(@PathVariable String id) {
-        facade.verifyCourseOwnership(id);
+        facade.verifyCourseWrite(id);
         service.deleteCourseTemplate(id);
         return ResponseEntity.noContent().build();
     }
@@ -265,7 +264,7 @@ public class WorkshopController {
                              List<Map<String, Object>> prebuiltSlides, MultipartFile uploadedTemplate) throws Exception {
         String sessionId = session != null ? session.id() : null;
         if (sessionId != null) {
-            facade.verifyOwnership(sessionId);
+            facade.verifyRead(sessionId);
         }
         if (uploadedTemplate != null) {
             return facade.assemblePptx(session, meta, prebuiltSlides, uploadedTemplate.getInputStream(), true);

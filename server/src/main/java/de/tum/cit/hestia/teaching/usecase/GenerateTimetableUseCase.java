@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import de.tum.cit.hestia.core.OrgContext;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -113,7 +115,7 @@ public class GenerateTimetableUseCase {
                 String cycleActivity = learningCycleActivity(block, goals, input.selectedActivities());
                 List<EvaluateSlot> evaluateSlots = evaluateSlots(block, goals, input);
 
-                Future<ActivityBlockDto> future = llmExecutor.submit(() -> {
+                Future<ActivityBlockDto> future = llmExecutor.submit(OrgContext.wrap((Callable<ActivityBlockDto>) () -> {
                     String rules = cycleActivity != null
                             ? buildLearningCycleRules(cycleActivity)
                             : buildEvaluateRules(evaluateSlots);
@@ -121,7 +123,7 @@ public class GenerateTimetableUseCase {
                     ActivityBlockDto restricted = restrictToSelections(hydrated, allowedActivities, materials);
                     if (cycleActivity != null) return withSingleMethod(restricted, cycleActivity);
                     return normalizeEvaluateSteps(restricted, evaluateSlots);
-                });
+                }));
                 blockFutures.add(future);
             }
             
