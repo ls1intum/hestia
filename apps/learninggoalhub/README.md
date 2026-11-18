@@ -90,6 +90,8 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" \
 LOGOS_API_KEY=<your key> \
 SAML_PRIVATE_KEY_LOCATION=file:$HOME/.learninggoalhub-dev/saml-key.pem \
 SAML_CERTIFICATE_LOCATION=file:$HOME/.learninggoalhub-dev/saml-cert.crt \
+SAML_IDP_ENTITY_ID=<entity id> SAML_IDP_METADATA_URI=<metadata URL> \
+SPRING_PROFILES_ACTIVE=local \
   ./gradlew :server:bootRun
 
 # 4. Client on http://localhost:5173/learninggoalhub/
@@ -138,7 +140,9 @@ its value. The ones you are most likely to change:
 | `LOGOS_API_KEY` | empty | Logos gateway key |
 | `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `localhost` / `5432` / `learninggoalhub` ×3 | database |
 | `SAML_PRIVATE_KEY_LOCATION` / `SAML_CERTIFICATE_LOCATION` | `classpath:certs/…` (absent) | SAML signing pair |
-| `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) turns off the TUM login |
+| `SAML_IDP_ENTITY_ID` / `SAML_IDP_METADATA_URI` | none (required) | the identity provider; the deployment's values are in `infra/compose.prod.yaml`, the browser tests generate a throwaway one (`client/e2e/start-server.sh`) |
+| `HESTIA_PLATFORM_ADMINS` | empty | external ids (eduPersonPrincipalName) with `ROLE_ADMIN` |
+| `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) replaces the SAML login by the development login (headers `X-Dev-User`/`X-Dev-Org` choose user and organisation) |
 | `VITE_API_TARGET` (client dev server) | `http://localhost:8080` | where Vite proxies `/learninggoalhub/api` |
 
 Pipeline settings (parallelism, unit size, models, temperatures) are under `hestia.*` in
