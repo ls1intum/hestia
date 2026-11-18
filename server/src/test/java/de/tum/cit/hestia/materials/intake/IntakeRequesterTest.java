@@ -1,33 +1,37 @@
 package de.tum.cit.hestia.materials.intake;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import java.util.List;
-import java.util.Map;
+import de.tum.cit.hestia.core.CurrentUser;
+import de.tum.cit.hestia.core.internal.identity.HestiaAuthentication;
+import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal;
-import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
 
 class IntakeRequesterTest {
 
-    private final IntakeRequester requester = new IntakeRequester();
+    private final CurrentUser currentUser = mock(CurrentUser.class);
+    private final IntakeRequester requester = new IntakeRequester(currentUser);
 
     @AfterEach
     void clear() {
         SecurityContextHolder.clearContext();
     }
 
+    private static void login(String externalId) {
+        SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(
+                new HestiaPrincipal(UUID.randomUUID(), UUID.randomUUID(), externalId, externalId, false, null)));
+    }
+
     @Test
-    void aSamlLoginIsIdentifiedByItsPrincipalNameAndSuggestsItsMail() {
-        var principal = new DefaultSaml2AuthenticatedPrincipal("transient-name-id", Map.of(
-                IntakeRequester.EPPN, List.<Object>of("ab12cde@tum.de"),
-                IntakeRequester.MAIL, List.<Object>of("teacher@tum.de")));
-        SecurityContextHolder.getContext().setAuthentication(
-                new Saml2Authentication(principal, "<saml/>", AuthorityUtils.createAuthorityList("ROLE_USER")));
+    void theExternalIdIsTheIdAndTheLoginMailIsTheSuggestion() {
+        login("ab12cde@tum.de");
+        when(currentUser.email()).thenReturn("teacher@tum.de");
 
         IntakeRequester.Identity identity = requester.current();
 
@@ -36,13 +40,17 @@ class IntakeRequesterTest {
     }
 
     @Test
-    void withoutSamlTheAuthenticationNameIsTheId() {
-        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                "dev-local-user", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
+    void withoutAMailThereIsNoSuggestion() {
+        login("dev-local-user");
 
         IntakeRequester.Identity identity = requester.current();
 
         assertThat(identity.id()).isEqualTo("dev-local-user");
         assertThat(identity.suggestedEmail()).isNull();
+    }
+
+    @Test
+    void withoutLoginItFails() {
+        assertThatThrownBy(requester::current).isInstanceOf(IllegalStateException.class);
     }
 }

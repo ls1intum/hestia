@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,7 +61,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalsCarryEnumNamesHierarchyAndRelationships() {
-        Course course = courseRepository.save(new Course("Directory: goals"));
+        Course course = courseRepository.save(TestTenant.course("Directory: goals"));
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
@@ -102,7 +103,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalsBySessionGroupsByNodeWithUngroupedLast() {
-        Course course = courseRepository.save(new Course("Directory: by session"));
+        Course course = courseRepository.save(TestTenant.course("Directory: by session"));
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Module"));
         HierarchyNode session = hierarchyRepository.save(
@@ -127,7 +128,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void deleteGoalRemovesItAndAGoneGoalIsNotAnError() {
-        Course course = courseRepository.save(new Course("Directory: delete"));
+        Course course = courseRepository.save(TestTenant.course("Directory: delete"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Delete me.", GoalKind.EXPLICIT));
 
         directory.deleteGoal(course.getId(), goal.getId());
@@ -138,8 +139,8 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalOfAnotherCourseCannotBeReadOrDeleted() {
-        Course course = courseRepository.save(new Course("Directory: mine"));
-        Course other = courseRepository.save(new Course("Directory: other"));
+        Course course = courseRepository.save(TestTenant.course("Directory: mine"));
+        Course other = courseRepository.save(TestTenant.course("Directory: other"));
         LearningGoal goal = goalRepository.save(new LearningGoal(other, "Not yours.", GoalKind.EXPLICIT));
 
         assertThatThrownBy(() -> directory.goal(course.getId(), goal.getId()))
@@ -160,7 +161,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void unknownGoalIsNoSuchElement() {
-        Course course = courseRepository.save(new Course("Directory: no goal"));
+        Course course = courseRepository.save(TestTenant.course("Directory: no goal"));
 
         assertThatThrownBy(() -> directory.goal(course.getId(), 987_654_321L))
                 .isInstanceOf(NoSuchElementException.class);

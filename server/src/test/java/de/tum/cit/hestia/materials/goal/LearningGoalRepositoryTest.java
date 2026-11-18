@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
-import de.tum.cit.hestia.JpaRepositoriesConfig;
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -12,13 +12,12 @@ import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
+@SpringBootTest
+@org.springframework.transaction.annotation.Transactional
+@Import(MaterialsTestConfiguration.class)
 class LearningGoalRepositoryTest extends MaterialsTestBase {
 
     @Autowired
@@ -29,8 +28,8 @@ class LearningGoalRepositoryTest extends MaterialsTestBase {
 
     @Test
     void persistsExplicitAndImplicitGoalsScopedToCourse() {
-        Course se = courseRepository.save(new Course("Software Engineering"));
-        Course db = courseRepository.save(new Course("Databases"));
+        Course se = courseRepository.save(TestTenant.course("Software Engineering"));
+        Course db = courseRepository.save(TestTenant.course("Databases"));
 
         goalRepository.save(new LearningGoal(se, "Students can apply TDD.", GoalKind.EXPLICIT));
         goalRepository.save(new LearningGoal(se, "Students recognise the value of refactoring.", GoalKind.IMPLICIT));
@@ -51,7 +50,7 @@ class LearningGoalRepositoryTest extends MaterialsTestBase {
 
     @Test
     void persistsBloomAndSoloLevelsWhenSet() {
-        Course se = courseRepository.save(new Course("Software Engineering"));
+        Course se = courseRepository.save(TestTenant.course("Software Engineering"));
 
         LearningGoal goal = new LearningGoal(se, "Students can apply TDD.", GoalKind.EXPLICIT);
         goal.setBloomLevel(BloomLevel.APPLY);

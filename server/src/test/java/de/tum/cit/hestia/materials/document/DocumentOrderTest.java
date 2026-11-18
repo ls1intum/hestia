@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class DocumentOrderTest {
 
-    private final Course course = new Course("Course");
+    private final Course course = new Course("Course", java.util.UUID.randomUUID());
 
     @Test
     void ordersNumberedLectureFilesNaturally() {

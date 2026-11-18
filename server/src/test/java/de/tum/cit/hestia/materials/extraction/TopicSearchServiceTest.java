@@ -66,7 +66,7 @@ class TopicSearchServiceTest {
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-16T10:00:00Z"));
 
     private TopicSearchService service(int maxPages) {
-        when(courseRepository.findOrThrow(COURSE_ID)).thenReturn(new Course("Machine Learning"));
+        when(courseRepository.findOrThrow(COURSE_ID)).thenReturn(new Course("Machine Learning", java.util.UUID.randomUUID()));
         UnitExtractor unitExtractor = new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class),
                 mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000, 3_000);
         return new TopicSearchService(courseRepository, documentRepository, sectionRepository,
