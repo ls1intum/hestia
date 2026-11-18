@@ -12,6 +12,6 @@ updates:
       github-actions:
         patterns: ["*"]
     ignore:
-      - dependency-name: ls1intum/.github
+      - dependency-name: "ls1intum/.github*" # the reusable workflows, whatever path Dependabot reports
     commit-message:
       prefix: ci
