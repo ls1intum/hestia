@@ -26,7 +26,11 @@ import de.tum.cit.hestia.teaching.repository.CourseRepository;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
-import org.springframework.security.access.AccessDeniedException;
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CourseRole;
+import de.tum.cit.hestia.core.CurrentUser;
+import java.util.UUID;
 
 @Service
 public class WorkshopService {
@@ -39,7 +43,16 @@ public class WorkshopService {
     private final SlideTemplateRepository templateRepo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopService(WorkshopSessionRepository repo, CourseRepository courseRepository, SlideTemplateRepository templateRepo) {
+    private final CourseApi courseApi;
+    private final CourseAccess courseAccess;
+    private final CurrentUser currentUser;
+
+    public WorkshopService(WorkshopSessionRepository repo, CourseRepository courseRepository,
+                           SlideTemplateRepository templateRepo, CourseApi courseApi,
+                           CourseAccess courseAccess, CurrentUser currentUser) {
+        this.courseApi = courseApi;
+        this.courseAccess = courseAccess;
+        this.currentUser = currentUser;
         this.repo = repo;
         this.courseRepository = courseRepository;
         this.templateRepo = templateRepo;
@@ -54,7 +67,7 @@ public class WorkshopService {
     private static final java.util.Set<String> STEPS_WITH_TIMETABLE =
             java.util.Set.of("result", "timeline", "prepare", "final-review", "finished");
 
-    public String saveDraft(SaveDraftRequestDto req, String ownerId) {
+    public String saveDraft(SaveDraftRequestDto req) {
         UsageGuard.checkTitle(req.title());
         UsageGuard.checkStoredSize("The session", req.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
         WorkshopSessionEntity entity = null;
@@ -64,9 +77,9 @@ public class WorkshopService {
                     HttpStatus.NOT_FOUND, "This session no longer exists. It may have been deleted."));
         }
         if (entity == null) {
-            UsageGuard.checkSessionCount(repo.countByOwnerId(ownerId));
+            UsageGuard.checkSessionCount(repo.countByCreatedBy(currentUser.userId()));
             entity = new WorkshopSessionEntity();
-            entity.setOwnerId(ownerId); // Bind the new draft to the creator
+            entity.setCreatedBy(currentUser.userId()); // Bind the new draft to the creator
         }
         if (req.title() != null)
             entity.setTitle(req.title());
@@ -119,7 +132,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
         SlideTemplateEntity template = new SlideTemplateEntity();
         template.setId(sessionId); // Tier 1: 1:1 with session
-        template.setOwnerId(entity.getOwnerId());
+        template.setOwnerId(currentUser.userId());
         template.setFileName(fileName);
         template.setFileData(templateData);
         templateRepo.save(template);
@@ -171,7 +184,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                 .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
         SlideTemplateEntity template = new SlideTemplateEntity();
         template.setId(courseId);
-        template.setOwnerId(course.getOwnerId());
+        template.setOwnerId(currentUser.userId());
         template.setFileName(fileName);
         template.setFileData(templateData);
         templateRepo.save(template);
@@ -231,8 +244,12 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     }
 
     /** Lightweight list for the dashboard (no blocks payload). */
-    public List<SessionSummaryDto> listSessions(String ownerId) {
-        return repo.findByOwnerIdOrdered(ownerId).stream()
+    public List<SessionSummaryDto> listSessions() {
+        List<UUID> courses = courseApi.idsMine(CourseRole.VIEWER);
+        List<WorkshopSessionEntity> visible = courses.isEmpty()
+                ? repo.findWithoutCourseOf(currentUser.userId())
+                : repo.findVisible(currentUser.userId(), courses);
+        return visible.stream()
                 .map(e -> new SessionSummaryDto(
                         e.getId(),
                         e.getTitle() != null ? e.getTitle() : "Workshop Session",
@@ -333,7 +350,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     }
 
     @Transactional
-    public String saveCourseDraft(SaveDraftRequestDto request, String ownerId) {
+    public String saveCourseDraft(SaveDraftRequestDto request) {
         UsageGuard.checkTitle(request.title());
         UsageGuard.checkStoredSize("The course", request.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
         CourseEntity course = null;
@@ -341,16 +358,14 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
             // Deleted in the meantime (e.g. in another tab): say so instead of re-creating it
             course = courseRepository.findById(request.sessionId()).orElseThrow(() -> new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted."));
-            if (!ownerId.equals(course.getOwnerId())) {
-                throw new AccessDeniedException("Not authorized");
-            }
+            courseAccess.requireWrite(course.getCoreCourseId());
         }
-        if (course == null) {
-            UsageGuard.checkCourseCount(courseRepository.countByOwnerId(ownerId));
+        boolean isNew = course == null;
+        if (isNew) {
+            List<UUID> owned = courseApi.idsMine(CourseRole.OWNER);
+            UsageGuard.checkCourseCount(owned.isEmpty() ? 0 : courseRepository.countByCoreCourseIdIn(owned));
             course = new CourseEntity();
-            course.setOwnerId(ownerId);
             course.setStatus("draft");
-            
         }
 
         // Only overwrite fields that were actually sent, so a partial save can't wipe the stored state.
@@ -362,19 +377,27 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         } else if (course.getTitle() == null) {
             course.setTitle("Workshop Course");
         }
-        
+        if (isNew) {
+            // The creator becomes the OWNER of the core course the teaching course hangs on
+            course.setCoreCourseId(courseApi.create(course.getTitle()).id());
+        } else if (request.title() != null && !request.title().isBlank()) {
+            courseApi.rename(course.getCoreCourseId(), course.getTitle());
+        }
+
         if (request.draftStateJson() != null) {
             course.setDraftStateJson(request.draftStateJson());
         }
-        
+
 
         course = courseRepository.save(course);
         return course.getId();
     }
 
     /** The user's courses for the dashboard. */
-    public List<CourseSummaryDto> listCourses(String ownerId) {
-        return courseRepository.findByOwnerIdOrdered(ownerId).stream()
+    public List<CourseSummaryDto> listCourses() {
+        List<UUID> visible = courseApi.idsMine(CourseRole.VIEWER);
+        if (visible.isEmpty()) return List.of();
+        return courseRepository.findByCoreCourseIdsOrdered(visible).stream()
                 .map(c -> new CourseSummaryDto(
                         c.getId(),
                         c.getTitle(),
@@ -403,12 +426,10 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
 
     /** @return false if the course does not exist */
     @Transactional
-    public boolean deleteCourse(String id, String ownerId) {
+    public boolean deleteCourse(String id) {
         CourseEntity course = courseRepository.findById(id).orElse(null);
         if (course == null) return false;
-        if (!course.getOwnerId().equals(ownerId)) {
-            throw new AccessDeniedException("Not authorized");
-        }
+        courseAccess.requireOwner(course.getCoreCourseId());
         // Collect templates owned by the course and its child sessions (child sessions are removed by
         // ON DELETE CASCADE, but their slide_templates rows would otherwise be orphaned).
         List<String> templateIds = new ArrayList<>();
@@ -419,18 +440,18 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         courseRepository.delete(course);
         courseRepository.flush();
         templateRepo.deleteAllById(templateIds);
+        courseApi.delete(course.getCoreCourseId());
         return true;
     }
 
     /** Rename a course, keeping the title inside its draft state in sync so later draft saves don't revert it. */
     @Transactional
-    public boolean renameCourse(String id, String newTitle, String ownerId) {
+    public boolean renameCourse(String id, String newTitle) {
         UsageGuard.checkTitle(newTitle);
         CourseEntity course = courseRepository.findById(id).orElse(null);
         if (course == null) return false;
-        if (!course.getOwnerId().equals(ownerId)) {
-            throw new AccessDeniedException("Not authorized");
-        }
+        courseAccess.requireWrite(course.getCoreCourseId());
+        courseApi.rename(course.getCoreCourseId(), newTitle);
         course.setTitle(newTitle);
         if (course.getDraftStateJson() != null && !course.getDraftStateJson().isBlank()) {
             try {

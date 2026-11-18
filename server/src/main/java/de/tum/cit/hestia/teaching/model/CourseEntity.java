@@ -1,20 +1,23 @@
 package de.tum.cit.hestia.teaching.model;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(schema = "teaching", name = "courses")
-public class CourseEntity {
+public class CourseEntity extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @Column(length = 255, nullable = false)
-    private String ownerId;
+    /** The {@code core.course} whose roles decide who may read, change and delete this course. */
+    @Column(name = "core_course_id", nullable = false, unique = true, updatable = false)
+    private UUID coreCourseId;
 
     @Column(columnDefinition = "TEXT")
     private String title;
@@ -58,8 +61,8 @@ public class CourseEntity {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getOwnerId() { return ownerId; }
-    public void setOwnerId(String ownerId) { this.ownerId = ownerId; }
+    public UUID getCoreCourseId() { return coreCourseId; }
+    public void setCoreCourseId(UUID coreCourseId) { this.coreCourseId = coreCourseId; }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }

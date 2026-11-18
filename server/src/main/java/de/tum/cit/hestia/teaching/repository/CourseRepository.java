@@ -6,13 +6,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 @Repository
 public interface CourseRepository extends JpaRepository<CourseEntity, String> {
 
-    @Query("SELECT c FROM CourseEntity c WHERE c.ownerId = :ownerId ORDER BY c.displayOrder ASC NULLS LAST, c.createdAt DESC")
-    List<CourseEntity> findByOwnerIdOrdered(@Param("ownerId") String ownerId);
+    /** The courses on the given core courses (the ones the user may see), in dashboard order. */
+    @Query("SELECT c FROM CourseEntity c WHERE c.coreCourseId IN :coreCourseIds ORDER BY c.displayOrder ASC NULLS LAST, c.createdAt DESC")
+    List<CourseEntity> findByCoreCourseIdsOrdered(@Param("coreCourseIds") Collection<UUID> coreCourseIds);
 
-    long countByOwnerId(String ownerId);
+    long countByCoreCourseIdIn(Collection<UUID> coreCourseIds);
 }
