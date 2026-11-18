@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.examination;
 
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.grading.Grade;
@@ -39,7 +38,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
 
     private Examination newExamination() {
         Examination e = new Examination();
-        e.setOwnerId(DefaultUser.ID);
+        e.setCreatedBy(userId("alice"));
         e.setSource("manual");
         e.setTitle("Progress");
         e.setStatus("grading");
@@ -116,7 +115,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
 
         // The frontend reads ExaminationListItem = Examination fields + counts at the top level,
         // so the counts must sit next to `id`/`status`, not nested.
-        mvc.perform(get("/examlense/api/exams").header("Authorization", "Bearer " + TEST_TOKEN))
+        mvc.perform(get("/examlense/api/exams").with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[?(@.id == '" + e.getId() + "')].status").value("grading"))
             .andExpect(jsonPath("$[?(@.id == '" + e.getId() + "')].task_count").value(1))

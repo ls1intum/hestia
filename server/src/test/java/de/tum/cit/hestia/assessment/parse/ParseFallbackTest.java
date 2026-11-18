@@ -63,7 +63,9 @@ class ParseFallbackTest {
         service = new ParseExaminationService(
             examRepository, storage, providerFactory, pageCounter,
             inputBuilder, persister, metricsRecorder, progress,
-            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class)
+            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class),
+            mock(de.tum.cit.hestia.assessment.shared.Access.class),
+            mock(de.tum.cit.hestia.core.CurrentUser.class)
         );
 
         when(storage.download(eq("exam-pdfs"), anyString())).thenReturn(new byte[]{1, 2, 3});

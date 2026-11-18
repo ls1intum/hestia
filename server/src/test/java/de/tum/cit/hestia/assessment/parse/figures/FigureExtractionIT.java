@@ -9,7 +9,6 @@ import de.tum.cit.hestia.assessment.section.SectionBlockRepository;
 import de.tum.cit.hestia.assessment.section.SectionFigure;
 import de.tum.cit.hestia.assessment.section.SectionFigureRepository;
 import de.tum.cit.hestia.assessment.section.SectionRepository;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.storage.StorageService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +51,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
     /** An exam whose page 1 holds one pasted image, plus an empty figure block for it. */
     private Fixture seed() {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("pdf");
         exam.setStatus("draft");
         exam.setParsedAt(OffsetDateTime.now());
@@ -76,7 +75,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
             TestPdfs.text(cs, 72, 780, "Aufgabe 1: Betrachten Sie die Abbildung.");
             cs.drawImage(TestPdfs.image(doc, 480, 360), 120, 430, 250, 190);
         });
-        String pdfPath = DefaultUser.ID + "/" + exam.getId() + ".pdf";
+        String pdfPath = orgId() + "/" + exam.getId() + ".pdf";
         storage.store("exam-pdfs", pdfPath, pdf);
         return new Fixture(exam, block, pdfPath);
     }
@@ -84,14 +83,13 @@ class FigureExtractionIT extends AbstractIntegrationTest {
     @Test
     void aParsedFigureBlockEndsUpRenderableThroughTheApi() throws Exception {
         Fixture f = seed();
-        String auth = "Bearer " + TEST_TOKEN;
 
         // Before: the block is the empty "upload a screenshot" placeholder.
-        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
+        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(0));
 
-        extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
+        extraction.extract(f.exam().getId(), f.pdfPath(),
             List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
 
         // A row landed, marked as machine-extracted and under the auto/ prefix.
@@ -100,7 +98,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         SectionFigure row = rows.get(0);
         assertThat(row.getSource()).isEqualTo("pdf");
         assertThat(row.getStoragePath())
-            .startsWith(DefaultUser.ID + "/" + f.exam().getId() + "/auto/")
+            .startsWith(orgId() + "/" + f.exam().getId() + "/auto/")
             .endsWith(".png");
 
         // The bytes really are on disk and really are an image.
@@ -109,17 +107,17 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         assertThat(ImageIO.read(new ByteArrayInputStream(stored))).isNotNull();
 
         // And the editor's own endpoints now serve it.
-        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").header("Authorization", auth))
+        mvc.perform(get("/examlense/api/blocks/" + f.block().getId() + "/figures").with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
             .andExpect(jsonPath("$[0].source").value("pdf"));
 
         String signed = com.jayway.jsonpath.JsonPath.read(
-            mvc.perform(get("/examlense/api/figures/" + row.getId() + "/signed-url").header("Authorization", auth))
+            mvc.perform(get("/examlense/api/figures/" + row.getId() + "/signed-url").with(as("alice")))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(), "$.signed_url");
 
-        byte[] served = mvc.perform(get("/examlense" + signed))
+        byte[] served = mvc.perform(get("/examlense" + signed).with(as("alice")))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsByteArray();
         assertThat(served).isEqualTo(stored);
@@ -128,7 +126,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
     @Test
     void deletingTheBlockCascadesTheExtractedFigureRowAway() {
         Fixture f = seed();
-        extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
+        extraction.extract(f.exam().getId(), f.pdfPath(),
             List.of(new FigurePlacement(f.block().getId(), 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
         assertThat(figures.findByBlockIdOrderByPositionAsc(f.block().getId())).hasSize(1);
 
@@ -144,7 +142,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
         Fixture f = seed();
         UUID ghost = UUID.randomUUID();
 
-        extraction.extract(f.exam().getId(), DefaultUser.ID.toString(), f.pdfPath(),
+        extraction.extract(f.exam().getId(), f.pdfPath(),
             List.of(new FigurePlacement(ghost, 1, "Abbildung 1", "Abbildung 1 — Der Ablauf", 0)));
 
         assertThat(figures.findByBlockIdOrderByPositionAsc(ghost)).isEmpty();

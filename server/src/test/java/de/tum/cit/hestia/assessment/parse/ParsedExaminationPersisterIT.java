@@ -9,7 +9,6 @@ import de.tum.cit.hestia.assessment.section.SectionBlockRepository;
 import de.tum.cit.hestia.assessment.section.SectionFigure;
 import de.tum.cit.hestia.assessment.section.SectionFigureRepository;
 import de.tum.cit.hestia.assessment.section.SectionRepository;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.storage.StorageService;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -32,7 +31,7 @@ class ParsedExaminationPersisterIT extends AbstractIntegrationTest {
     @Test
     void reparseRemovesObjectsForReplacedFigureRows() {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("pdf");
         exam.setStatus("parsing");
         exams.save(exam);
@@ -51,7 +50,7 @@ class ParsedExaminationPersisterIT extends AbstractIntegrationTest {
         oldFigure.setBlockId(oldBlock.getId());
         oldFigure.setPosition(0);
         oldFigure.setSource("pdf");
-        String path = DefaultUser.ID + "/" + exam.getId() + "/" + oldFigure.getId() + ".png";
+        String path = orgId() + "/" + exam.getId() + "/" + oldFigure.getId() + ".png";
         oldFigure.setStoragePath(path);
         figures.save(oldFigure);
         storage.store("exam-figures", path, "old-image".getBytes(StandardCharsets.UTF_8));
@@ -64,7 +63,7 @@ class ParsedExaminationPersisterIT extends AbstractIntegrationTest {
         task.put("prompt", "New task");
         task.put("type", "text");
         ParseAttempt attempt = new ParseAttempt(
-            exam.getId(), DefaultUser.ID.toString(), "openai:gpt-5.5", "text");
+            exam.getId(), userId("alice").toString(), "openai:gpt-5.5", "text");
 
         ParsedExaminationPersister.PersistResult result =
             persister.persist(attempt, parsed, List.of(task));

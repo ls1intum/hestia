@@ -5,15 +5,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
-import java.util.Optional;
+import de.tum.cit.hestia.core.OrgContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * The SSE hub is the realtime backbone (parse/solve progress, list fan-out).
@@ -27,17 +25,21 @@ import static org.mockito.Mockito.when;
  */
 class SseHubTest {
 
+    /** The organisation whose list stream the hub publishes to. */
     private static final UUID OWNER = UUID.randomUUID();
 
-    /** A hub whose exams all belong to {@link #OWNER}. */
-    private static SseHub hub() {
-        return hubWithOwner(OWNER);
+    @BeforeEach
+    void bindOrganisation() {
+        OrgContext.set(OWNER);
     }
 
-    private static SseHub hubWithOwner(UUID owner) {
-        ExaminationRepository exams = mock(ExaminationRepository.class);
-        when(exams.findOwnerIdById(any())).thenReturn(Optional.ofNullable(owner));
-        return new SseHub(exams);
+    @AfterEach
+    void unbindOrganisation() {
+        OrgContext.set(null);
+    }
+
+    private static SseHub hub() {
+        return new SseHub();
     }
 
     private static String listTopic(UUID owner) {
@@ -78,15 +80,13 @@ class SseHubTest {
     }
 
     /**
-     * The list stream is per owner. A shared one would tell every signed-in client
-     * the id of every exam anyone touched, and make them all refetch whenever
-     * anyone did anything.
+     * The list stream is per organisation: another university's clients never hear of an exam.
      */
     @Test
-    void listEventsReachOnlyTheOwningUsersStream() {
-        UUID alice = UUID.randomUUID();
+    void listEventsReachOnlyTheOwningOrganisationsStream() {
+        UUID alice = OWNER;
         UUID bob = UUID.randomUUID();
-        SseHub hub = hubWithOwner(alice); // every exam in this hub belongs to alice
+        SseHub hub = hub();
         CountingEmitter aliceList = attach(hub, listTopic(alice));
         CountingEmitter bobList = attach(hub, listTopic(bob));
 
@@ -110,13 +110,13 @@ class SseHubTest {
     }
 
     /**
-     * Publishes run on background threads after parse/solve work, by which point
-     * the exam may have been deleted. Every publish path is documented as never
-     * throwing, so a missing owner has to be swallowed.
+     * A thread without an organisation (it forgot to carry it) publishes to no list;
+     * every publish path is documented as never throwing.
      */
     @Test
-    void aDeletedExaminationDoesNotBreakThePublish() {
-        SseHub hub = hubWithOwner(null); // findOwnerIdById returns empty
+    void aThreadWithoutOrganisationDoesNotBreakThePublish() {
+        SseHub hub = hub();
+        OrgContext.set(null);
         CountingEmitter listSub = attach(hub, listTopic(OWNER));
 
         hub.examUpdated(UUID.randomUUID());

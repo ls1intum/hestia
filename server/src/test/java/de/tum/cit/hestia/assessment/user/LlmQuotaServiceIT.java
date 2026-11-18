@@ -21,20 +21,20 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 @TestPropertySource(properties = {
     "app.quota.parse-per-day=2", "app.quota.solve-per-day=1",
     // High enough that the per-user assertions below are not the global ceiling
-    // firing by accident; ClosedRegistrationIT's sibling covers the ceiling itself.
+    // firing by accident; GlobalLlmCeilingIT covers the ceiling itself.
     "app.quota.global-parse-per-day=10000", "app.quota.global-solve-per-day=10000",
 })
 class LlmQuotaServiceIT extends AbstractIntegrationTest {
 
     @Autowired LlmQuotaService quota;
 
-    private String freshUser() {
-        return createUser("quota-" + UUID.randomUUID()).id().toString();
+    private UUID freshUser() {
+        return userId("quota-" + UUID.randomUUID());
     }
 
     @Test
     void callsUpToTheLimitAreAdmittedAndTheNextIsRejected() {
-        String user = freshUser();
+        UUID user = freshUser();
 
         quota.checkAndRecord(user, LlmQuotaService.KIND_PARSE);
         quota.checkAndRecord(user, LlmQuotaService.KIND_PARSE);
@@ -46,8 +46,8 @@ class LlmQuotaServiceIT extends AbstractIntegrationTest {
 
     @Test
     void oneUserExhaustingTheirQuotaDoesNotAffectAnother() {
-        String heavy = freshUser();
-        String light = freshUser();
+        UUID heavy = freshUser();
+        UUID light = freshUser();
         quota.checkAndRecord(heavy, LlmQuotaService.KIND_SOLVE);
 
         assertThatThrownBy(() -> quota.checkAndRecord(heavy, LlmQuotaService.KIND_SOLVE))
@@ -58,7 +58,7 @@ class LlmQuotaServiceIT extends AbstractIntegrationTest {
 
     @Test
     void quotasAreTrackedPerKindNotShared() {
-        String user = freshUser();
+        UUID user = freshUser();
         quota.checkAndRecord(user, LlmQuotaService.KIND_SOLVE); // solve limit is 1
 
         assertThatCode(() -> quota.checkAndRecord(user, LlmQuotaService.KIND_PARSE))
@@ -67,7 +67,7 @@ class LlmQuotaServiceIT extends AbstractIntegrationTest {
 
     @Test
     void remainingCountsReflectConsumption() {
-        String user = freshUser();
+        UUID user = freshUser();
         assertThat(quota.remainingFor(user).parse_remaining()).isEqualTo(2);
 
         quota.checkAndRecord(user, LlmQuotaService.KIND_PARSE);
@@ -79,7 +79,7 @@ class LlmQuotaServiceIT extends AbstractIntegrationTest {
     /** check() must not consume, or the solve path would charge twice. */
     @Test
     void checkAloneDoesNotConsumeQuota() {
-        String user = freshUser();
+        UUID user = freshUser();
 
         quota.check(user, LlmQuotaService.KIND_PARSE);
         quota.check(user, LlmQuotaService.KIND_PARSE);
@@ -90,7 +90,7 @@ class LlmQuotaServiceIT extends AbstractIntegrationTest {
 
     @Test
     void anExhaustedUserIsRefusedByCheckBeforeAnythingIsRecorded() {
-        String user = freshUser();
+        UUID user = freshUser();
         quota.checkAndRecord(user, LlmQuotaService.KIND_SOLVE);
 
         assertThatThrownBy(() -> quota.check(user, LlmQuotaService.KIND_SOLVE))

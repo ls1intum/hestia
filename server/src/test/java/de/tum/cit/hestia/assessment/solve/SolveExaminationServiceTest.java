@@ -44,21 +44,21 @@ class SolveExaminationServiceTest {
     private final SolveExaminationService service =
         new SolveExaminationService(exams, tasks, answers,
             mock(EvaluationRunRepository.class), sectionService, executor, access, sse,
-            mock(LlmQuotaService.class));
+            mock(LlmQuotaService.class), mock(de.tum.cit.hestia.core.CurrentUser.class));
 
     private static Examination examOwnedBy(UUID owner) {
         Examination e = new Examination();
-        e.setOwnerId(owner);
+        e.setCreatedBy(owner);
         return e;
     }
 
     @Test
     void startEvaluationPropagatesForbiddenFromAccessAndMutatesNothing() {
         UUID examId = UUID.randomUUID();
-        when(access.requireExamination(eq(examId), any()))
+        when(access.requireExaminationForWrite(eq(examId)))
             .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "Forbidden"));
 
-        assertThatThrownBy(() -> service.startEvaluation(examId.toString(), UUID.randomUUID().toString()))
+        assertThatThrownBy(() -> service.startEvaluation(examId.toString()))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.FORBIDDEN));
 
@@ -68,17 +68,17 @@ class SolveExaminationServiceTest {
     @Test
     void startEvaluationPropagatesNotFoundFromAccess() {
         UUID examId = UUID.randomUUID();
-        when(access.requireExamination(eq(examId), any()))
+        when(access.requireExaminationForWrite(eq(examId)))
             .thenThrow(new ApiException(HttpStatus.NOT_FOUND, "Exam not found"));
 
-        assertThatThrownBy(() -> service.startEvaluation(examId.toString(), UUID.randomUUID().toString()))
+        assertThatThrownBy(() -> service.startEvaluation(examId.toString()))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
     void malformedExamIdMapsTo404BeforeTouchingAccess() {
-        assertThatThrownBy(() -> service.startEvaluation("not-a-uuid", UUID.randomUUID().toString()))
+        assertThatThrownBy(() -> service.startEvaluation("not-a-uuid"))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.NOT_FOUND));
     }
@@ -87,13 +87,13 @@ class SolveExaminationServiceTest {
     void emptyExaminationShortCircuitsStraightToGrading() {
         UUID owner = UUID.randomUUID();
         UUID examId = UUID.randomUUID();
-        when(access.requireExamination(eq(examId), eq(owner.toString()))).thenReturn(examOwnedBy(owner));
+        when(access.requireExaminationForWrite(eq(examId))).thenReturn(examOwnedBy(owner));
         when(tasks.findByExamIdOrderByPositionAsc(examId)).thenReturn(List.<TaskBlock>of());
         // startEvaluating is a compare-and-set: 1 row means we won it. Must be stubbed —
         // an unstubbed int mock returns 0, which the service reads as "cancelled, bail".
         when(exams.startEvaluating(eq(examId), any())).thenReturn(1);
 
-        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString(), owner.toString());
+        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString());
 
         assertThat(plan.sections()).isZero();
         assertThat(plan.tasks()).isZero();

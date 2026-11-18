@@ -29,24 +29,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SchemaIntegrityIT extends AbstractIntegrationTest {
 
     @Autowired ExaminationRepository exams;
-    @Autowired de.tum.cit.hestia.assessment.user.UserRepository users;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired SectionRepository sections;
     @Autowired TaskBlockRepository tasks;
     @Autowired SectionBlockRepository blocks;
     @Autowired AIAnswerRepository answers;
     @Autowired GradeRepository grades;
 
-    /** A real user, because {@code exams.owner_id} is now a foreign key. */
     private UUID owner() {
-        if (owner == null) owner = createUser("schema-" + UUID.randomUUID()).id();
-        return owner;
+        return userId("schema");
     }
-
-    private UUID owner;
 
     private Examination newExamination(String status) {
         Examination e = new Examination();
-        e.setOwnerId(owner());
+        e.setCreatedBy(owner());
         e.setSource("manual");
         e.setStatus(status);
         return exams.save(e);
@@ -158,7 +154,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     @Test
     void invalidStatusIsRejectedByTheCheckConstraint() {
         Examination bad = new Examination();
-        bad.setOwnerId(owner()); // a real owner, so the failure can only be the status CHECK
+        bad.setCreatedBy(owner()); // a real user, so the failure can only be the status CHECK
         bad.setSource("manual");
         bad.setStatus("not-a-real-status");
 
@@ -166,20 +162,24 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
             .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    /**
-     * The shared bootstrap token resolves to this row and its value is committed to
-     * a public repository, so an admin flag here would be admin for anyone who
-     * reads it.
-     */
     @Test
-    void theSeededLegacyUserIsNotAnAdmin() {
-        assertThat(users.findById(de.tum.cit.hestia.assessment.shared.DefaultUser.ID).orElseThrow().isAdmin()).isFalse();
+    void everyAssessmentTableIsIsolatedByOrganisation() {
+        var tables = jdbc.queryForList(
+            "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+                + "where n.nspname = 'assessment' and c.relkind = 'r' and not c.relrowsecurity", String.class);
+        assertThat(tables).as("assessment tables without row-level security").isEmpty();
+        var withoutOrg = jdbc.queryForList(
+            "select table_name from information_schema.tables t where table_schema = 'assessment' "
+                + "and table_type = 'BASE TABLE' and not exists (select 1 from information_schema.columns c "
+                + "where c.table_schema = t.table_schema and c.table_name = t.table_name and c.column_name = 'org_id')",
+            String.class);
+        assertThat(withoutOrg).as("assessment tables without org_id").isEmpty();
     }
 
     @Test
-    void examOwnerMustReferenceARealUser() {
+    void examCreatorMustReferenceARealUser() {
         Examination orphan = new Examination();
-        orphan.setOwnerId(UUID.randomUUID());
+        orphan.setCreatedBy(UUID.randomUUID());
         orphan.setSource("manual");
         orphan.setStatus("draft");
 

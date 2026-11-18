@@ -3,7 +3,6 @@ package de.tum.cit.hestia.assessment.lgh;
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
 import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
@@ -40,10 +39,6 @@ class LghControllerTest extends AbstractIntegrationTest {
     @MockitoBean GoalDirectory goalDirectory;
     @MockitoBean ExamGoalDerivation derivation;
 
-    private static String bearer() {
-        return "Bearer " + TEST_TOKEN;
-    }
-
     @Test
     void listsCoursesAcrossAllPages() throws Exception {
         when(goalDirectory.listCourses(0, 100)).thenReturn(new GoalDirectory.Page<>(
@@ -51,7 +46,7 @@ class LghControllerTest extends AbstractIntegrationTest {
         when(goalDirectory.listCourses(1, 100)).thenReturn(new GoalDirectory.Page<>(
             List.of(new GoalDirectory.Course(2, "B", null)), 1, 100, 2, 2));
 
-        mvc.perform(get("/examlense/api/lgh/courses").header("Authorization", bearer()))
+        mvc.perform(get("/examlense/api/lgh/courses").with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[0].name").value("A"))
@@ -62,7 +57,7 @@ class LghControllerTest extends AbstractIntegrationTest {
     void listingFailureBecomesBadGateway() throws Exception {
         when(goalDirectory.listCourses(anyInt(), anyInt())).thenThrow(new IllegalStateException("down"));
 
-        mvc.perform(get("/examlense/api/lgh/courses").header("Authorization", bearer()))
+        mvc.perform(get("/examlense/api/lgh/courses").with(as("alice")))
             .andExpect(status().isBadGateway());
     }
 
@@ -70,7 +65,7 @@ class LghControllerTest extends AbstractIntegrationTest {
     void createsACourse() throws Exception {
         when(goalDirectory.createCourse("Algorithms")).thenReturn(new GoalDirectory.Course(7, "Algorithms", null));
 
-        mvc.perform(post("/examlense/api/lgh/courses").header("Authorization", bearer())
+        mvc.perform(post("/examlense/api/lgh/courses").with(as("alice"))
                 .contentType(APPLICATION_JSON).content("{\"name\":\" Algorithms \"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(7));
@@ -78,7 +73,7 @@ class LghControllerTest extends AbstractIntegrationTest {
 
     @Test
     void blankCourseNameIsRejected() throws Exception {
-        mvc.perform(post("/examlense/api/lgh/courses").header("Authorization", bearer())
+        mvc.perform(post("/examlense/api/lgh/courses").with(as("alice"))
                 .contentType(APPLICATION_JSON).content("{\"name\":\"  \"}"))
             .andExpect(status().isBadRequest());
     }
@@ -87,7 +82,7 @@ class LghControllerTest extends AbstractIntegrationTest {
     void createFailureBecomesBadGateway() throws Exception {
         when(goalDirectory.createCourse(anyString())).thenThrow(new RuntimeException("down"));
 
-        mvc.perform(post("/examlense/api/lgh/courses").header("Authorization", bearer())
+        mvc.perform(post("/examlense/api/lgh/courses").with(as("alice"))
                 .contentType(APPLICATION_JSON).content("{\"name\":\"X\"}"))
             .andExpect(status().isBadGateway());
     }
@@ -99,7 +94,7 @@ class LghControllerTest extends AbstractIntegrationTest {
         when(goalDirectory.goals(5L)).thenReturn(List.of(goal(11L, "kept"), goal(12L, "other")));
 
         mvc.perform(get("/examlense/api/exams/" + exam.getId() + "/learning-goals")
-                .header("Authorization", bearer()))
+                .with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
             .andExpect(jsonPath("$[0].text").value("kept"));
@@ -112,13 +107,13 @@ class LghControllerTest extends AbstractIntegrationTest {
         when(goalDirectory.goals(anyLong())).thenThrow(new NoSuchElementException("no course"));
 
         mvc.perform(get("/examlense/api/exams/" + exam.getId() + "/learning-goals")
-                .header("Authorization", bearer()))
+                .with(as("alice")))
             .andExpect(status().isBadGateway());
     }
 
     private Examination examinationLinkedTo(long courseId) {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("manual");
         exam.setStatus("draft");
         exam.setLghCourseId(courseId);

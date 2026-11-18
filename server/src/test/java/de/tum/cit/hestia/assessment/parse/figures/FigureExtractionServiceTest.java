@@ -41,6 +41,7 @@ import static org.mockito.Mockito.when;
 class FigureExtractionServiceTest {
 
     private static final UUID EXAM = UUID.randomUUID();
+    /** The organisation id: stored files live under it. */
     private static final String USER = "11111111-1111-1111-1111-111111111111";
     private static final String PATH = USER + "/" + EXAM + ".pdf";
     private static final OffsetDateTime PARSED_AT = OffsetDateTime.now();
@@ -52,8 +53,14 @@ class FigureExtractionServiceTest {
     private SseHub sse;
     private FigureExtractionService service;
 
+    @org.junit.jupiter.api.AfterEach
+    void unbindOrg() {
+        de.tum.cit.hestia.core.OrgContext.set(null);
+    }
+
     @BeforeEach
     void setUp() {
+        de.tum.cit.hestia.core.OrgContext.set(UUID.fromString(USER));
         examRepository = mock(ExaminationRepository.class);
         figureRepository = mock(SectionFigureRepository.class);
         storage = mock(StorageService.class);
@@ -86,7 +93,7 @@ class FigureExtractionServiceTest {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
         FigurePlacement block = placement(1);
 
-        service.extract(EXAM, USER, PATH, List.of(block));
+        service.extract(EXAM, PATH, List.of(block));
 
         ArgumentCaptor<byte[]> bytes = ArgumentCaptor.forClass(byte[].class);
         verify(storage).store(eq("exam-figures"), contains("/auto/"), bytes.capture());
@@ -106,7 +113,7 @@ class FigureExtractionServiceTest {
     void seedsTheRowWithTheParsedCaption() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         ArgumentCaptor<SectionFigure> row = ArgumentCaptor.forClass(SectionFigure.class);
         verify(figureRepository).save(row.capture());
@@ -118,7 +125,7 @@ class FigureExtractionServiceTest {
     void leavesTheCaptionNullWhenTheParserFoundNone() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
 
-        service.extract(EXAM, USER, PATH,
+        service.extract(EXAM, PATH,
             List.of(new FigurePlacement(UUID.randomUUID(), 1, "Abbildung 1", null, 0)));
 
         ArgumentCaptor<SectionFigure> row = ArgumentCaptor.forClass(SectionFigure.class);
@@ -130,7 +137,7 @@ class FigureExtractionServiceTest {
     void keepsExtractedImagesUnderAnAutoPrefixSoManualUploadsStaySeparable() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         ArgumentCaptor<SectionFigure> row = ArgumentCaptor.forClass(SectionFigure.class);
         verify(figureRepository).save(row.capture());
@@ -149,7 +156,7 @@ class FigureExtractionServiceTest {
         });
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdf);
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(storage).store(eq("exam-figures"), contains("/auto/"), any());
         verify(figureRepository).save(any());
@@ -159,7 +166,7 @@ class FigureExtractionServiceTest {
     void writesNothingWhenTheFigureHasNoPageNumber() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(null)));
+        service.extract(EXAM, PATH, List.of(placement(null)));
 
         verify(storage, never()).store(anyString(), anyString(), any());
         verify(figureRepository, never()).save(any());
@@ -180,7 +187,7 @@ class FigureExtractionServiceTest {
         });
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdf);
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -190,7 +197,7 @@ class FigureExtractionServiceTest {
         when(storage.download(eq("exam-pdfs"), eq(PATH)))
             .thenReturn(TestPdfs.page((doc, cs) -> TestPdfs.text(cs, 72, 700, "Nur Text hier.")));
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
         verify(sse, never()).examUpdated(any());
@@ -200,7 +207,7 @@ class FigureExtractionServiceTest {
     void survivesAMissingSourcePdf() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(null);
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -209,7 +216,7 @@ class FigureExtractionServiceTest {
     void survivesUnreadablePdfBytes() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn("not a pdf".getBytes());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -218,7 +225,7 @@ class FigureExtractionServiceTest {
     void ignoresAPageNumberBeyondTheEndOfTheDocument() {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(9)));
+        service.extract(EXAM, PATH, List.of(placement(9)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -229,7 +236,7 @@ class FigureExtractionServiceTest {
         doThrow(new RuntimeException("disk full"))
             .when(storage).store(eq("exam-figures"), anyString(), any());
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -240,7 +247,7 @@ class FigureExtractionServiceTest {
         when(storage.download(eq("exam-pdfs"), eq(PATH))).thenReturn(pdfWithOneImage());
         when(figureRepository.save(any())).thenThrow(new RuntimeException("FK violation"));
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(storage).delete(eq("exam-figures"), contains("/auto/"));
         verify(sse, never()).examUpdated(any());
@@ -256,7 +263,7 @@ class FigureExtractionServiceTest {
             .thenReturn(Optional.of(reParsed));           // staleness re-check
         service = newService(true);
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(figureRepository, never()).save(any());
     }
@@ -265,7 +272,7 @@ class FigureExtractionServiceTest {
     void doesNothingWhenTheFeatureIsDisabled() {
         service = newService(false);
 
-        service.extract(EXAM, USER, PATH, List.of(placement(1)));
+        service.extract(EXAM, PATH, List.of(placement(1)));
 
         verify(storage, never()).download(anyString(), anyString());
     }
