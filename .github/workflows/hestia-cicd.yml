@@ -129,6 +129,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      # Gradle cache, as in test-server: without it every run downloads all dependencies again and
+      # Maven Central answers with 429 Too Many Requests.
+      - uses: gradle/actions/setup-gradle@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
