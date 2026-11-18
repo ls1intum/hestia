@@ -279,4 +279,10 @@ jobs:
               curl -fsS -o /dev/null --resolve "${{ vars.APP_HOST }}:443:127.0.0.1" \
                 "https://${{ vars.APP_HOST }}/$prefix/"
             done
+            # Java4Shell mitigation (see server/Dockerfile) must be active in the running JVM.
+            if ! docker exec hestia-server sh -c 'tr "\0" " " < /proc/1/cmdline' | grep -q -- '-XX:-UseBASE64Intrinsics'; then
+              echo "hestia-server runs without -XX:-UseBASE64Intrinsics (CVE-2026-114938)"
+              docker exec hestia-server java -version 2>&1 | head -1
+              exit 1
+            fi
             echo "hestia is up"
