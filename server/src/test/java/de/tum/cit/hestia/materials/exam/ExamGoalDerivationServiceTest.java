@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.exam;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -52,7 +53,7 @@ class ExamGoalDerivationServiceTest extends MaterialsTestBase {
 
     @Test
     void derivesAndStoresGoalsPerTaskLikeTheEndpoint() {
-        Course course = courseRepository.save(new Course("Derivation: ML"));
+        Course course = courseRepository.save(TestTenant.course("Derivation: ML"));
         when(generator.generate(anyString(), eq("singleChoice"), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recalling basic integer addition.", "Recall integer addition.")));
         when(generator.generate(anyString(), eq("freeText"), anyString(), anyString(), isNull()))
@@ -94,7 +95,7 @@ class ExamGoalDerivationServiceTest extends MaterialsTestBase {
 
     @Test
     void anInvalidExamIsRejectedBeforeAnyModelCall() {
-        Course course = courseRepository.save(new Course("Derivation: invalid"));
+        Course course = courseRepository.save(TestTenant.course("Derivation: invalid"));
 
         assertThatThrownBy(() -> derivation.derive(course.getId(), List.of()))
                 .isInstanceOf(IllegalArgumentException.class);

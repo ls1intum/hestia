@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -17,7 +18,7 @@ import org.springframework.data.domain.Persistable;
  */
 @Entity
 @Table(schema = "materials", name = "document_content")
-public class DocumentContent implements Persistable<Long> {
+public class DocumentContent extends OrgScoped implements Persistable<Long> {
 
     @Id
     @Column(name = "document_id")

@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
-import de.tum.cit.hestia.JpaRepositoriesConfig;
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -12,13 +12,12 @@ import de.tum.cit.hestia.materials.document.DocumentRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
+@SpringBootTest
+@org.springframework.transaction.annotation.Transactional
+@Import(MaterialsTestConfiguration.class)
 class GoalSourceRepositoryTest extends MaterialsTestBase {
 
     @Autowired
@@ -35,7 +34,7 @@ class GoalSourceRepositoryTest extends MaterialsTestBase {
 
     @Test
     void goalCanBeAttributedToMultipleDocuments() {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise text"));
 

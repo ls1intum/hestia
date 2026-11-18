@@ -17,7 +17,7 @@ class ExtractionRunnerLanguageTest {
 
     @Test
     void resolvesCourseOverrideBeforeDocumentDominantAndFallback() {
-        Course course = new Course("Course");
+        Course course = new Course("Course", java.util.UUID.randomUUID());
         course.setOutputLanguage("de");
 
         assertThat(LanguageUtils.resolveLanguage(course, "en", "fr")).isEqualTo("de");
@@ -25,14 +25,14 @@ class ExtractionRunnerLanguageTest {
 
     @Test
     void resolvesDocumentLanguageBeforeDominantAndFallback() {
-        Course course = new Course("Course");
+        Course course = new Course("Course", java.util.UUID.randomUUID());
 
         assertThat(LanguageUtils.resolveLanguage(course, "de", "en")).isEqualTo("de");
     }
 
     @Test
     void resolvesDominantLanguageBeforeEnglishFallback() {
-        Course course = new Course("Course");
+        Course course = new Course("Course", java.util.UUID.randomUUID());
 
         assertThat(LanguageUtils.resolveLanguage(course, null, "de")).isEqualTo("de");
         assertThat(LanguageUtils.resolveLanguage(course, null, null)).isEqualTo("en");
@@ -40,7 +40,7 @@ class ExtractionRunnerLanguageTest {
 
     @Test
     void weightsDominantLanguageByRawTextLength() {
-        Course course = new Course("Course");
+        Course course = new Course("Course", java.util.UUID.randomUUID());
         Document shortGerman = new Document(course, "de.pdf", "application/pdf", "kurz");
         shortGerman.setLanguage("de");
         Document longEnglish = new Document(course, "en.pdf", "application/pdf", "english ".repeat(10));
@@ -51,7 +51,7 @@ class ExtractionRunnerLanguageTest {
 
     @Test
     void usesRoleBeforeBloomAndKeepsBloomFallbackForLegacyGoals() {
-        Course course = new Course("Course");
+        Course course = new Course("Course", java.util.UUID.randomUUID());
         LearningGoal taggedKnowledge = new LearningGoal(course, "Explain the method.", GoalKind.IMPLICIT);
         taggedKnowledge.setRole(GoalRole.KNOWLEDGE);
         taggedKnowledge.setBloomLevel(BloomLevel.APPLY);

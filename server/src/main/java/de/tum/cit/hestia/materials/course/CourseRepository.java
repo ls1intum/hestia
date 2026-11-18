@@ -1,5 +1,8 @@
 package de.tum.cit.hestia.materials.course;
 
+import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -12,6 +15,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
+
+    /** One page of the courses whose core course is in {@code coreCourseIds}. */
+    Page<Course> findByCoreCourseIdIn(Collection<UUID> coreCourseIds, Pageable pageable);
 
     /** The course, its row locked until the surrounding transaction ends. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

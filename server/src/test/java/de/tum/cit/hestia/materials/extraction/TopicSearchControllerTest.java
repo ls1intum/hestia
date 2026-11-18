@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -285,7 +286,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void anUnknownProposalIsNotFound() throws Exception {
-        Course course = courseRepository.save(new Course("Machine Learning"));
+        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(),
                         "00000000-0000-0000-0000-000000000000")
@@ -296,7 +297,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void rangesAboveTheCapAreRejected() throws Exception {
-        Course course = courseRepository.save(new Course("Machine Learning"));
+        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
         String[] pages = new String[81];
         java.util.Arrays.fill(pages, "Random forests");
         Document lecture = document(course, pages);
@@ -313,7 +314,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
      * page, and the mocked structuring groups the first two into a skill.
      */
     private Course courseWithLecture() {
-        Course course = courseRepository.save(new Course("Machine Learning"));
+        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
         Document lecture = document(course, "Bootstrap samples train each tree", "Features are sampled per split",
                 "The out-of-bag error estimates generalisation", "More trees reduce variance");
         documentSectionRepository.save(new DocumentSection(lecture, 0, "Ensembles", 0,

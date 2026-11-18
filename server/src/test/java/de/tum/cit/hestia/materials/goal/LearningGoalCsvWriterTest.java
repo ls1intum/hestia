@@ -23,7 +23,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void writesHeaderAndDerivesHierarchyLevels() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         HierarchyNode module = node(course, null, HierarchyLevel.MODULE, "Software Engineering", 1L);
         HierarchyNode session = node(course, module, HierarchyLevel.SESSION, "Session 3: Testing", 2L);
         HierarchyNode exercise = node(course, session, HierarchyLevel.EXERCISE, "Exercise 3.2: TDD Kata", 3L);
@@ -54,7 +54,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void startsWithAByteOrderMarkSoExcelReadsUtf8() throws IOException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         StringWriter out = new StringWriter();
         writer.write(out, List.of(goal(course, "Verstehe Übergänge.", GoalKind.EXPLICIT, null, 1L)),
                 List.of(), List.of());
@@ -64,7 +64,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void ordersRowsByTopicTreeDepthFirstThenGoalsOutsideTheTree() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal loose = goal(course, "Loose goal.", GoalKind.EXPLICIT, null, 1L);
         LearningGoal topicB = topic(course, "Topic B", 2L, 2);
         LearningGoal topicA = topic(course, "Topic A", 3L, 1);
@@ -89,7 +89,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void listsEveryParentButWritesAGoalWithTwoParentsOnce() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal topicA = topic(course, "Topic A", 1L, 1);
         LearningGoal topicB = topic(course, "Topic B", 2L, 2);
         LearningGoal shared = goal(course, "Shared.", GoalKind.EXPLICIT, null, 3L);
@@ -106,7 +106,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void leavesOutLegacyGapGoalsAndLegacyEdges() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal a = goal(course, "A", GoalKind.EXPLICIT, null, 1L);
         LearningGoal b = goal(course, "B", GoalKind.EXPLICIT, null, 2L);
         LearningGoal gap = goal(course, "Gap", GoalKind.IMPLICIT, null, 3L);
@@ -125,7 +125,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void writesStatusProvenanceAndShortLabel() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal g = goal(course, "Apply TDD.", GoalKind.EXPLICIT, null, 70L);
         g.setStatus(GoalStatus.APPROVED);
         g.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
@@ -142,7 +142,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void writesSourcesWithPagesAndWhetherAllAreGrounded() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal both = goal(course, "Apply TDD.", GoalKind.EXPLICIT, null, 20L);
         LearningGoal partly = goal(course, "Refactor.", GoalKind.EXPLICIT, null, 21L);
         LearningGoal none = goal(course, "No source.", GoalKind.EXPLICIT, null, 22L);
@@ -167,7 +167,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void writesBloomAndSoloInSeparateColumns() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal full = goal(course, "Apply TDD.", GoalKind.EXPLICIT, null, 40L);
         full.setBloomLevel(BloomLevel.APPLY);
         full.setSoloLevel(SoloLevel.RELATIONAL);
@@ -186,7 +186,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void namesTheTierAsTheClientDrawsIt() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal topic = topic(course, "Testing", 1L, 1);
         LearningGoal skill = skillGoal(course, "Test software.", 2L);
         LearningGoal subSkill = skillGoal(course, "Write unit tests.", 3L);
@@ -212,7 +212,7 @@ class LearningGoalCsvWriterTest {
 
     @Test
     void escapesCommasAndQuotesAndNewlinesInGoalText() throws IOException, CsvException {
-        Course course = new Course("Software Engineering");
+        Course course = new Course("Software Engineering", java.util.UUID.randomUUID());
         LearningGoal g = goal(course,
                 "Apply \"TDD\", red-green-refactor,\nand keep tests fast.",
                 GoalKind.EXPLICIT, null, 30L);

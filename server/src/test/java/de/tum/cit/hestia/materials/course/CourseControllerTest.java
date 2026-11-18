@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.course;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -62,13 +63,13 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void exposesDocumentAndGoalCountsPerCourse() throws Exception {
-        Course empty = courseRepository.save(new Course("Empty Course"));
+        Course empty = courseRepository.save(TestTenant.course("Empty Course"));
 
-        Course withDocs = courseRepository.save(new Course("Course With Documents"));
+        Course withDocs = courseRepository.save(TestTenant.course("Course With Documents"));
         documentRepository.save(new Document(withDocs, "lecture.pdf", "application/pdf", "lecture"));
         documentRepository.save(new Document(withDocs, "exercise.pdf", "application/pdf", "exercise"));
 
-        Course analyzed = courseRepository.save(new Course("Analyzed Course"));
+        Course analyzed = courseRepository.save(TestTenant.course("Analyzed Course"));
         documentRepository.save(new Document(analyzed, "slides.pdf", "application/pdf", "slides"));
         goalRepository.save(new LearningGoal(analyzed, "Apply TDD.", GoalKind.EXPLICIT));
         goalRepository.save(new LearningGoal(analyzed, "Value refactoring.", GoalKind.IMPLICIT));
@@ -98,7 +99,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void getCourseReturnsNameAndCounts() throws Exception {
-        Course course = courseRepository.save(new Course("Single Course"));
+        Course course = courseRepository.save(TestTenant.course("Single Course"));
         documentRepository.save(new Document(course, "slides.pdf", "application/pdf", "slides"));
         goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
         goalRepository.save(new LearningGoal(course, "Understand testing.", GoalKind.EXPLICIT));
@@ -115,7 +116,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void countsTopicsAndSkillsFromTheTopicTree() throws Exception {
-        Course course = courseRepository.save(new Course("Tree Course"));
+        Course course = courseRepository.save(TestTenant.course("Tree Course"));
         LearningGoal topicA = goal(course, "Testing", GoalOrigin.TERMINAL, null);
         LearningGoal topicB = goal(course, "Design", GoalOrigin.TERMINAL, null);
         // A skill: a topic child whose own children include a SKILL-role goal.
@@ -162,7 +163,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void updatesAndExposesOutputLanguage() throws Exception {
-        Course course = courseRepository.save(new Course("Language Course"));
+        Course course = courseRepository.save(TestTenant.course("Language Course"));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -183,7 +184,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
-        Course course = new Course("Language Course");
+        Course course = TestTenant.course("Language Course");
         course.setOutputLanguage("de");
         course = courseRepository.save(course);
 
@@ -204,7 +205,7 @@ class CourseControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.figuresEnabled").value(true));
 
-        Course course = courseRepository.save(new Course("Patch Figures Course"));
+        Course course = courseRepository.save(TestTenant.course("Patch Figures Course"));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -231,7 +232,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void renamesCourseAndLeavesTheNameAloneWhenOmitted() throws Exception {
-        Course course = courseRepository.save(new Course("Old Name"));
+        Course course = courseRepository.save(TestTenant.course("Old Name"));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -248,7 +249,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsBlankCourseName() throws Exception {
-        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        Course course = courseRepository.save(TestTenant.course("Keeps Its Name"));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -270,7 +271,7 @@ class CourseControllerTest extends MaterialsTestBase {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
 
-        Course course = courseRepository.save(new Course("Keeps Its Name"));
+        Course course = courseRepository.save(TestTenant.course("Keeps Its Name"));
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"" + tooLong + "\"}"))
@@ -287,7 +288,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsUnknownOutputLanguage() throws Exception {
-        Course course = courseRepository.save(new Course("Language Course"));
+        Course course = courseRepository.save(TestTenant.course("Language Course"));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -298,7 +299,7 @@ class CourseControllerTest extends MaterialsTestBase {
 
     @Test
     void deleteRemovesCourseAndCascadesToDocumentsAndGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Disposable Course"));
+        Course course = courseRepository.save(TestTenant.course("Disposable Course"));
         Document document =
                 documentRepository.save(new Document(course, "slides.pdf", "application/pdf", "slides"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
@@ -354,9 +355,9 @@ class CourseControllerTest extends MaterialsTestBase {
     void sortsNewestFirst() throws Exception {
         // The three most recently created courses must occupy the first three positions
         // (default sort createdAt DESC), regardless of older courses left by other tests.
-        Course older = courseRepository.save(new Course("Older"));
-        Course newer = courseRepository.save(new Course("Newer"));
-        Course newest = courseRepository.save(new Course("Newest"));
+        Course older = courseRepository.save(TestTenant.course("Older"));
+        Course newer = courseRepository.save(TestTenant.course("Newer"));
+        Course newest = courseRepository.save(TestTenant.course("Newest"));
 
         String body = mockMvc.perform(get("/learninggoalhub/api/courses").param("size", "200"))
                 .andExpect(status().isOk())

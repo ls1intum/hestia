@@ -1,10 +1,12 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.tum.cit.hestia.core.spi.GoalDirectory;
+import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.course.Course;
@@ -60,7 +62,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalsCarryEnumNamesHierarchyAndRelationships() {
-        Course course = courseRepository.save(new Course("Directory: goals"));
+        Course course = courseRepository.save(TestTenant.course("Directory: goals"));
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
@@ -102,7 +104,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalsBySessionGroupsByNodeWithUngroupedLast() {
-        Course course = courseRepository.save(new Course("Directory: by session"));
+        Course course = courseRepository.save(TestTenant.course("Directory: by session"));
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Module"));
         HierarchyNode session = hierarchyRepository.save(
@@ -127,7 +129,7 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void deleteGoalRemovesItAndAGoneGoalIsNotAnError() {
-        Course course = courseRepository.save(new Course("Directory: delete"));
+        Course course = courseRepository.save(TestTenant.course("Directory: delete"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Delete me.", GoalKind.EXPLICIT));
 
         directory.deleteGoal(course.getId(), goal.getId());
@@ -138,8 +140,8 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void goalOfAnotherCourseCannotBeReadOrDeleted() {
-        Course course = courseRepository.save(new Course("Directory: mine"));
-        Course other = courseRepository.save(new Course("Directory: other"));
+        Course course = courseRepository.save(TestTenant.course("Directory: mine"));
+        Course other = courseRepository.save(TestTenant.course("Directory: other"));
         LearningGoal goal = goalRepository.save(new LearningGoal(other, "Not yours.", GoalKind.EXPLICIT));
 
         assertThatThrownBy(() -> directory.goal(course.getId(), goal.getId()))
@@ -160,9 +162,34 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
     @Test
     void unknownGoalIsNoSuchElement() {
-        Course course = courseRepository.save(new Course("Directory: no goal"));
+        Course course = courseRepository.save(TestTenant.course("Directory: no goal"));
 
         assertThatThrownBy(() -> directory.goal(course.getId(), 987_654_321L))
                 .isInstanceOf(NoSuchElementException.class);
+    }
+
+    @Test
+    void coursesOfOthersAreNeitherListedNorReadable() throws Exception {
+        // Another organisation's course, and a course of this organisation the user is no member of.
+        String otherOrg = "directory-other-" + java.util.UUID.randomUUID() + ".test";
+        java.util.UUID otherOrgId = TestLogin.login(TestTenant.identities(), otherOrg, "carol").orgId();
+        Course foreign = de.tum.cit.hestia.core.OrgContext.call(otherOrgId,
+                () -> courseRepository.save(TestTenant.courseAs(otherOrg, "carol", "Directory: foreign")));
+        Course notMine = courseRepository.save(TestTenant.courseAs(TestTenant.ORG, "someone-else", "Directory: not mine"));
+
+        assertThat(directory.listCourses(0, 200).content()).extracting(GoalDirectory.Course::id)
+                .doesNotContain(foreign.getId(), notMine.getId());
+        assertThatThrownBy(() -> directory.goals(foreign.getId())).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> directory.goals(notMine.getId())).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> directory.deleteGoal(notMine.getId(), 1)).isInstanceOf(NoSuchElementException.class);
+    }
+
+    @Test
+    void listedCoursesCarryTheirCoreCourse() {
+        GoalDirectory.Course created = directory.createCourse("Directory: core id");
+
+        assertThat(created.coreCourseId()).isNotNull();
+        assertThat(directory.listCourses(0, 200).content()).filteredOn(c -> c.id() == created.id())
+                .extracting(GoalDirectory.Course::coreCourseId).containsExactly(created.coreCourseId());
     }
 }

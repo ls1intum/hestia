@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.exam.submission;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.course.Course;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -25,7 +26,7 @@ import org.hibernate.annotations.CreationTimestamp;
  */
 @Entity
 @Table(schema = "materials", name = "exam_submission")
-public class ExamSubmission {
+public class ExamSubmission extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

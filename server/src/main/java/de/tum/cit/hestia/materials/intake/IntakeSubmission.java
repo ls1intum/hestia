@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.intake;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -15,7 +16,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(schema = "materials", name = "intake_submission")
-public class IntakeSubmission {
+public class IntakeSubmission extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import jakarta.persistence.Column;
@@ -18,7 +19,7 @@ import java.time.OffsetDateTime;
 /** Audit record for one extraction pipeline run. */
 @Entity
 @Table(schema = "materials", name = "extraction_run")
-public class ExtractionRun {
+public class ExtractionRun extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

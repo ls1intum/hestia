@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
-import de.tum.cit.hestia.JpaRepositoriesConfig;
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -17,13 +17,12 @@ import de.tum.cit.hestia.materials.goal.RelationshipType;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
+@SpringBootTest
+@org.springframework.transaction.annotation.Transactional
+@Import(MaterialsTestConfiguration.class)
 class GoalRelationshipRepositoryTest extends MaterialsTestBase {
 
     @Autowired
@@ -37,7 +36,7 @@ class GoalRelationshipRepositoryTest extends MaterialsTestBase {
 
     @Test
     void relationshipsCanBePersistedAndQueriedBySource() {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal a = goalRepository.save(new LearningGoal(course, "Understand TDD basics.", GoalKind.EXPLICIT));
         LearningGoal b = goalRepository.save(new LearningGoal(course, "Apply red-green-refactor.", GoalKind.EXPLICIT));
         LearningGoal c = goalRepository.save(new LearningGoal(course, "Design test suites.", GoalKind.IMPLICIT));

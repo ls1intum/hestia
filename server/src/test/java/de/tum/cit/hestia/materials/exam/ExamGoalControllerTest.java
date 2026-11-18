@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.exam;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -106,7 +107,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatesPersistsAndReturnsGoalsPerTaskBlock() throws Exception {
-        Course course = courseRepository.save(new Course("Introduction to ML"));
+        Course course = courseRepository.save(TestTenant.course("Introduction to ML"));
         when(generator.generate(anyString(), eq("singleChoice"), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recalling basic integer addition.", "Recall integer addition.")));
         when(generator.generate(anyString(), eq("freeText"), anyString(), anyString(), isNull()))
@@ -153,7 +154,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void accumulatesPrecedingContextBlocksPerTask() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull())).thenReturn(List.of());
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of());
 
@@ -183,7 +184,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void storesTheExamTaskEachGoalCameFrom() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenReturn(List.of(
@@ -223,7 +224,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void placesNewGoalsInTheTreeASkillTierGoalUnderASkillAndKnowledgeUnderItsTopic() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(topic);
@@ -273,7 +274,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void keepsTheGoalsWhenPlacementFails() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(topic);
@@ -295,7 +296,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void persistsNothingWhenStoringThePlacementFails() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         LearningGoal topic = new LearningGoal(course, "Sorting", GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(topic);
@@ -325,7 +326,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void anIdenticalRequestWhileTheFirstIsRunningJoinsItInsteadOfGeneratingAgain() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         CountDownLatch firstGenerating = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
         AtomicInteger generations = new AtomicInteger();
@@ -366,7 +367,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void reusesExamRootAcrossRequests() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull()))
@@ -388,7 +389,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void persistsGoalsWithoutLevelsWhenTaxonomyFails() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         when(generator.generate(anyString(), any(), anyString(), anyString(), isNull()))
                 .thenReturn(List.of(new GeneratedExamGoal("Recall a fact.")));
         when(taxonomyService.classifyBatch(anyList(), isNull())).thenThrow(new RuntimeException("HTTP 429"));
@@ -418,7 +419,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400WhenNoTaskBlockPresent() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -431,7 +432,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400ForEmptyBlocks() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -441,7 +442,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400ForBlankTaskDescription() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -453,7 +454,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400ForNullBlock() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -463,7 +464,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400ForRepeatedTaskBlockId() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/exam-tasks/learning-goals", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -478,7 +479,7 @@ class ExamGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returns400ForTooManyBlocksOrTooLongDescription() throws Exception {
-        Course course = courseRepository.save(new Course("Course"));
+        Course course = courseRepository.save(TestTenant.course("Course"));
         String tooMany = java.util.stream.IntStream.rangeClosed(1, ExamGoalController.MAX_BLOCKS + 1)
                 .mapToObj(i -> "{ \"blockId\": \"" + i + "\", \"blockType\": \"task\", \"description\": \"Q\" }")
                 .collect(java.util.stream.Collectors.joining(",", "{ \"blocks\": [", "] }"));

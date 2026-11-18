@@ -312,7 +312,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsNonPdfUploadsWithoutStoringAnyFile() throws Exception {
-        long courseId = courseRepository.save(new de.tum.cit.hestia.materials.course.Course("Course")).getId();
+        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -331,7 +331,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsAScannedPdfWithoutStoringAnyFile() throws Exception {
-        long courseId = courseRepository.save(new de.tum.cit.hestia.materials.course.Course("Course")).getId();
+        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -368,7 +368,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void uploadNamesTheSessionWithoutHoldingATransaction() throws Exception {
-        long courseId = courseRepository.save(new de.tum.cit.hestia.materials.course.Course("Course")).getId();
+        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         List<Boolean> inTransaction = new ArrayList<>();
         when(titleService.deriveTitle(any(), any(), anyString())).thenAnswer(invocation -> {

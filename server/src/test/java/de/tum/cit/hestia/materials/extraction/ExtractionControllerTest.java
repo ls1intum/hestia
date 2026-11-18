@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -216,7 +217,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionRefusesToReplaceExistingGoalsWithoutForce() throws Exception {
-        Course course = courseRepository.save(new Course("Extraction guard"));
+        Course course = courseRepository.save(TestTenant.course("Extraction guard"));
         LearningGoal existing = goalRepository.save(new LearningGoal(course, "Existing goal", GoalKind.EXPLICIT));
 
         startExtractionExpectingFailure(course.getId());
@@ -231,7 +232,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void forcedExtractionClearsThePreviousRunBeforeBuildingItAgain() throws Exception {
-        Course course = courseRepository.save(new Course("Forced extraction"));
+        Course course = courseRepository.save(TestTenant.course("Forced extraction"));
         Document document = documentRepository.save(
                 new Document(course, "forced.pdf", "application/pdf", "new outcome"));
         HierarchyNode oldModule = hierarchyRepository.save(
@@ -260,7 +261,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(new Course("Forced extraction without a held transaction"));
+        Course course = courseRepository.save(TestTenant.course("Forced extraction without a held transaction"));
         Document document = documentRepository.save(
                 new Document(course, "unlocked.pdf", "application/pdf", "new outcome"));
         LearningGoal oldGoal = goalRepository.saveAndFlush(new LearningGoal(course, "Old goal", GoalKind.EXPLICIT));
@@ -294,7 +295,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
     /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
     @Test
     void topicTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(new Course("Tree stage without a held transaction"));
+        Course course = courseRepository.save(TestTenant.course("Tree stage without a held transaction"));
         documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any()))
@@ -313,7 +314,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void rebuildHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(new Course("Rebuild without a held transaction"));
+        Course course = courseRepository.save(TestTenant.course("Rebuild without a held transaction"));
         documentRepository.save(new Document(course, "rebuild.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("rebuild.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any()))
@@ -349,7 +350,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void aFailedForcedExtractionKeepsThePreviousOne() throws Exception {
-        Course course = courseRepository.save(new Course("Failed forced extraction"));
+        Course course = courseRepository.save(TestTenant.course("Failed forced extraction"));
         Document document = documentRepository.save(
                 new Document(course, "failing.pdf", "application/pdf", "new outcome"));
         HierarchyNode oldModule = hierarchyRepository.save(
@@ -372,7 +373,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionPersistsGoalsAndSourcesPerDocument() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
@@ -447,7 +448,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void multiPdfExtractionUsesNaturalLectureOrderInsteadOfUploadOrder() throws Exception {
-        Course course = courseRepository.save(new Course("Naturally ordered lectures"));
+        Course course = courseRepository.save(TestTenant.course("Naturally ordered lectures"));
         documentRepository.save(new Document(course, "Lecture 10.pdf", "application/pdf", "later material"));
         documentRepository.save(new Document(course, "Lecture 2.pdf", "application/pdf", "earlier material"));
         when(sessionExtractionService.extract(eq("Lecture 10.pdf"), eq("later material"),
@@ -472,7 +473,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void auditServicePersistsRunningThenSucceededInSeparateTransactions() {
-        Course course = courseRepository.save(new Course("Audit lifecycle"));
+        Course course = courseRepository.save(TestTenant.course("Audit lifecycle"));
 
         Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
                 "{\"unit-max-chars\":12000,\"skill-target-chars\":3000,\"parallelism\":16}");
@@ -491,7 +492,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void directSourcesPreferLinesThenUseFiguresAndRejectInvalidFigureIndices() throws Exception {
-        Course course = new Course("Figure source precedence");
+        Course course = TestTenant.course("Figure source precedence");
         // Figure evidence is opt-in per course, and this test is about what it does once opted in.
         course.setFiguresEnabled(true);
         courseRepository.save(course);
@@ -536,7 +537,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void oversizedSectionIsSplitIntoWindowsOnOneSession() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         // unit-max-chars is 80 here, so a 180-character document cuts into three 60-character
         // line-aligned windows.
         String first = paddedLine("Apply the first capability.");
@@ -600,7 +601,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void oversizedSectionSplitsOnPageBoundaries() throws Exception {
-        Course course = courseRepository.save(new Course("Paged sections"));
+        Course course = courseRepository.save(TestTenant.course("Paged sections"));
         // Four 50-character pages against an 80-character budget: whole pages pack one per window.
         List<String> pages = List.of(
                 pagedLine("Apply the page one capability."),
@@ -657,7 +658,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionPersistsShortLabelOnTerminalCompetencies() throws Exception {
-        Course course = courseRepository.save(new Course("Terminal competency labels"));
+        Course course = courseRepository.save(TestTenant.course("Terminal competency labels"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -678,7 +679,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void topicGroupsItsSkillsUnderGeneratedCapabilities() throws Exception {
-        Course course = courseRepository.save(new Course("Consolidated competency"));
+        Course course = courseRepository.save(TestTenant.course("Consolidated competency"));
         String material = "Apply one. Apply two. Apply three. Apply four. Apply five. Apply six.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         List<ExtractedSkill> extracted = java.util.stream.IntStream.rangeClosed(1, 6)
@@ -734,7 +735,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void compactPlanCoversEverySourceWithoutCatchAllTerminal() throws Exception {
-        Course course = courseRepository.save(new Course("Unmatched goals"));
+        Course course = courseRepository.save(TestTenant.course("Unmatched goals"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -769,7 +770,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void unmatchedGoalsReceiveSemanticCompetencyRepairBeforeCatchAll() throws Exception {
-        Course course = courseRepository.save(new Course("Semantic coverage repair"));
+        Course course = courseRepository.save(TestTenant.course("Semantic coverage repair"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."),
                 eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -792,7 +793,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
     /** A skill no topic covers stays out of the tree, and the rebuild reports how many there were. */
     @Test
     void skillsNoTopicCoversStayOutOfTheTree() throws Exception {
-        Course course = courseRepository.save(new Course("Unmatched skill"));
+        Course course = courseRepository.save(TestTenant.course("Unmatched skill"));
         String material = "Apply one. Apply two.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         when(sessionExtractionService.extract(eq("session.pdf"), eq(material), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -822,7 +823,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void competenciesThatReceiveNoGoalsAreNotPersisted() throws Exception {
-        Course course = courseRepository.save(new Course("Empty competency"));
+        Course course = courseRepository.save(TestTenant.course("Empty competency"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -848,7 +849,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void rebuildReplacesTheTreeAndKeepsExtractedGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Rebuild"));
+        Course course = courseRepository.save(TestTenant.course("Rebuild"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -907,7 +908,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void repeatedRebuildsDoNotAccumulateTreeEdges() throws Exception {
-        Course course = courseRepository.save(new Course("Repeated rebuild"));
+        Course course = courseRepository.save(TestTenant.course("Repeated rebuild"));
         String material = "Apply one. Apply two. Apply three. Apply four. Apply five. Apply six.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         List<ExtractedSkill> extracted = java.util.stream.IntStream.rangeClosed(1, 6)
@@ -948,7 +949,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
     /** Extraction creates knowledge → skill edges, and rebuilding preserves them while replacing tree edges. */
     @Test
     void rebuildLeavesNoEdgesFromThePreviousTree() throws Exception {
-        Course course = courseRepository.save(new Course("Rebuild edges"));
+        Course course = courseRepository.save(TestTenant.course("Rebuild edges"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf",
                 "Apply the capability.\n\nUnderstand the basics."));
 
@@ -1022,7 +1023,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void failedRebuildLeavesTheExistingTreeIntact() throws Exception {
-        Course course = courseRepository.save(new Course("Rebuild failure"));
+        Course course = courseRepository.save(TestTenant.course("Rebuild failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1054,7 +1055,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void rebuildRefusesWhenTheTreeHoldsApprovedWork() throws Exception {
-        Course course = courseRepository.save(new Course("Rebuild guard"));
+        Course course = courseRepository.save(TestTenant.course("Rebuild guard"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1093,7 +1094,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void failedTerminalSynthesisKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
-        Course course = courseRepository.save(new Course("Terminal synthesis failure"));
+        Course course = courseRepository.save(TestTenant.course("Terminal synthesis failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."),
@@ -1132,7 +1133,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void failedAssignmentKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
-        Course course = courseRepository.save(new Course("Assignment failure"));
+        Course course = courseRepository.save(TestTenant.course("Assignment failure"));
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1166,7 +1167,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void failedSessionFailsTheRunWithoutPublishingPartialGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         String failing = "short session text";
         String healthy = "healthy session text";
         documentRepository.save(new Document(course, "failed.pdf", "application/pdf", failing));
@@ -1201,7 +1202,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void identicalGoalsAcrossDocumentsRemainSeparateGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise body"));
 
@@ -1226,7 +1227,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void duplicateExtractionsFromSameDocumentCreateSeparateGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
 
         // A direct response can contain closely related goals; each enriched goal is persisted.
@@ -1255,7 +1256,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void statusReturnsNoContentBeforeAnyRun() throws Exception {
-        Course course = courseRepository.save(new Course("Untouched"));
+        Course course = courseRepository.save(TestTenant.course("Untouched"));
 
         mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
                 .andExpect(status().isNoContent());
@@ -1263,7 +1264,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void statusReportsSucceededWithSummaryAfterExtraction() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
@@ -1283,7 +1284,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionSplitsOneDocumentIntoItsStructuralSectionsAndRoutesChunksByOffset() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         // One uploaded PDF whose bookmarks split it into a lecture chapter and an exercise chapter.
         // The runner chunks each section's character range and attaches its goals to that section.
         String sessionText = "Lecture 3 Testing. Students apply TDD by writing a failing test first.\n";

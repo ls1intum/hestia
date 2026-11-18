@@ -1,5 +1,9 @@
 package de.tum.cit.hestia.materials.course;
 
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CourseRole;
+import java.util.UUID;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,10 +22,15 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final ExtractionStatusLookup extractionStatuses;
+    private final CourseApi courseApi;
+    private final CourseAccess courseAccess;
 
-    public CourseService(CourseRepository courseRepository, ExtractionStatusLookup extractionStatuses) {
+    public CourseService(CourseRepository courseRepository, ExtractionStatusLookup extractionStatuses,
+                         CourseApi courseApi, CourseAccess courseAccess) {
         this.courseRepository = courseRepository;
         this.extractionStatuses = extractionStatuses;
+        this.courseApi = courseApi;
+        this.courseAccess = courseAccess;
     }
 
     @Transactional
@@ -30,7 +39,9 @@ public class CourseService {
         // instructor's language override has to be settable here — afterwards is too late for the
         // first run. Null means "detect the language from the uploaded documents".
         validateOutputLanguage(outputLanguage);
-        Course course = new Course(name);
+        // The core course carries the roles; the creator becomes its owner.
+        UUID coreCourseId = courseApi.create(name).id();
+        Course course = new Course(name, coreCourseId);
         course.setOutputLanguage(outputLanguage);
         course.setFiguresEnabled(Boolean.TRUE.equals(figuresEnabled));
         return courseRepository.save(course);
@@ -38,7 +49,11 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseSummaryResponse> summaries(Pageable pageable) {
-        Page<Course> page = courseRepository.findAll(pageable);
+        List<UUID> mine = courseApi.idsMine(CourseRole.VIEWER);
+        if (mine.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Page<Course> page = courseRepository.findByCoreCourseIdIn(mine, pageable);
         Map<Long, CourseSummaryResponse> summaries = summarise(page.getContent());
         return page.map(course -> summaries.get(course.getId()));
     }
@@ -75,6 +90,7 @@ public class CourseService {
                         "name must be at most " + CourseController.MAX_NAME_LENGTH + " characters");
             }
             course.setName(name);
+            courseApi.rename(course.getCoreCourseId(), name);
         }
         if (request.hasOutputLanguage()) {
             course.setOutputLanguage(request.getOutputLanguage());
@@ -87,8 +103,11 @@ public class CourseService {
 
     @Transactional
     public void delete(Long id) {
-        courseRepository.requireExists(id);
-        courseRepository.deleteById(id);
+        Course course = courseRepository.findOrThrow(id);
+        courseAccess.requireOwner(course.getCoreCourseId());
+        courseRepository.delete(course);
+        courseRepository.flush();
+        courseApi.delete(course.getCoreCourseId());
     }
 
     /** One summary per course, with every count read in one grouped query per kind. */

@@ -9,9 +9,32 @@ export const API_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // Paths in the generated schema are absolute (/api/...); baseUrl prepends the app prefix so
 // requests hit /<prefix>/api/... — same-origin, routed by the proxy to the server.
-export const api = createClient<paths>({ baseUrl: API_PREFIX });
+export const api = createClient<paths>({ baseUrl: API_PREFIX, credentials: "same-origin" });
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/** The CSRF token the server set in the XSRF-TOKEN cookie (double submit), or undefined before it did. */
+export function xsrfToken(): string | undefined {
+  for (const part of document.cookie.split(";")) {
+    const [name, ...value] = part.trim().split("=");
+    if (name === "XSRF-TOKEN") return decodeURIComponent(value.join("="));
+  }
+  return undefined;
+}
+
+/** Headers a request that changes data needs: the token from the cookie in X-XSRF-TOKEN. */
+export function csrfHeaders(method: string): Record<string, string> {
+  const token = xsrfToken();
+  return token && !SAFE_METHODS.has(method.toUpperCase()) ? { "X-XSRF-TOKEN": token } : {};
+}
 
 api.use({
+  onRequest({ request }) {
+    for (const [name, value] of Object.entries(csrfHeaders(request.method))) {
+      request.headers.set(name, value);
+    }
+    return request;
+  },
   onResponse({ response }) {
     if (response.status === 401) {
       window.dispatchEvent(new CustomEvent("lgh:unauthorized"));

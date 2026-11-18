@@ -1,4 +1,4 @@
-import { API_PREFIX, api } from "../api/client.ts";
+import { API_PREFIX, api, csrfHeaders } from "../api/client.ts";
 import type { Schemas } from "../api/client.ts";
 import { requestError } from "./requestError.ts";
 
@@ -57,7 +57,12 @@ export async function submit(form: SubmissionForm): Promise<IntakeSubmission> {
   if (form.contactEmail.trim()) body.append("contactEmail", form.contactEmail.trim());
   if (form.note.trim()) body.append("note", form.note.trim());
 
-  const response = await fetch(`${API_PREFIX}/api/intake/submissions`, { method: "POST", body });
+  const response = await fetch(`${API_PREFIX}/api/intake/submissions`, {
+    method: "POST",
+    body,
+    credentials: "same-origin",
+    headers: csrfHeaders("POST"),
+  });
   if (response.status === 401) {
     window.dispatchEvent(new CustomEvent("lgh:unauthorized"));
   }
