@@ -10,6 +10,10 @@
 #   docker compose -f compose.prod.yaml --env-file .env up -d
 #
 # For local development (database only) use compose.yaml instead.
+#
+# The file lives in infra/ but is used from the deploy folder on the VM (/opt/hestia/app), where
+# CI puts it next to infra/postgres/init. Relative paths below are relative to that folder, not
+# to infra/.
 
 services:
   postgres:

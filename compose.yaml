@@ -1,6 +1,6 @@
 # Local development: the one Postgres of the Hestia server, set up like the deployment (database
 # hestia, roles hestia_owner and hestia_app from infra/postgres/init). Start the server with
-# `./gradlew :server:bootRun` against it. The full deployment is compose.prod.yaml.
+# `./gradlew :server:bootRun` against it. The full deployment is infra/compose.prod.yaml.
 #
 #   docker compose up -d
 
