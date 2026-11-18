@@ -29,6 +29,8 @@ docker compose up -d            # the Postgres for local development (compose.ya
 ./gradlew :server:bootRun       # the server on http://localhost:8080
 ```
 
+Before pushing, `scripts/ci-local.sh` runs what the CI checks before it builds images (deploy preflight, server tests, client tests; `--e2e` adds the LearningGoalHub browser tests).
+
 See the `README.md` (or `AGENTS.md`) in each `apps/` directory for how to run and test that app's client and what its module does.
 
 Thank you for contributing!
