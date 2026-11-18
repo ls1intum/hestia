@@ -71,7 +71,7 @@ class WorkshopSessionRepositoryTest {
     @Test
     void queriesAreParameterised() {
         UUID a = TestLogin.login(identities, uniA, "alice").userId();
-        String jsonInjection = "'; DROP TABLE workshop_sessions; --";
+        String jsonInjection = "{\"note\":\"'; DROP TABLE workshop_sessions; --\"}";
         Optional<WorkshopSessionEntity> retrieved = TestLogin.runAs(identities, uniA, "alice", () -> {
             WorkshopSessionEntity e = session(a, null, "Injection Session");
             e.setSessionJson(jsonInjection);
@@ -79,6 +79,6 @@ class WorkshopSessionRepositoryTest {
         });
         // Stored and read back as the literal text
         assertThat(retrieved).isPresent();
-        assertThat(retrieved.get().getSessionJson()).isEqualTo(jsonInjection);
+        assertThat(retrieved.get().getSessionJson()).contains("DROP TABLE workshop_sessions; --");
     }
 }

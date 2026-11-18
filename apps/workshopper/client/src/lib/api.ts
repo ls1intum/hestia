@@ -53,9 +53,23 @@ async function parseJson<T>(res: Response): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-/** Sends a request to the Workshopper API; throws an ApiError for any non-2xx answer. */
-async function send(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+/** The CSRF token the server keeps in the XSRF-TOKEN cookie (readable by scripts on purpose). */
+function csrfToken(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.split("; ").find(c => c.startsWith("XSRF-TOKEN="));
+  return match ? decodeURIComponent(match.slice("XSRF-TOKEN=".length)) : undefined;
+}
+
+/**
+ * Sends a request to the Workshopper API with the session cookie; every write also sends the CSRF
+ * token as X-XSRF-TOKEN. Throws an ApiError for any non-2xx answer.
+ */
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const method = (init.method ?? "GET").toUpperCase();
+  const token = method === "GET" || method === "HEAD" ? undefined : csrfToken();
+  if (token) headers.set("X-XSRF-TOKEN", token);
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "same-origin" });
   if (!res.ok) {
     throw new ApiError(res.status, readableError(await res.text()) || `HTTP ${res.status}`);
   }

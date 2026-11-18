@@ -8,14 +8,13 @@ The Workshopper server is a Spring Boot 3.5 application (Java 21). It is the `te
 /server/src/main/java/de/tum/cit/hestia/teaching/
 ├── controller/   WorkshopController (sessions, generation, export), CourseController (courses),
 │                 ApiExceptionHandler (turns exceptions into 403/404/409/500 answers)
-├── facade/       WorkshopSessionFacade: ownership checks, generation orchestration, course ZIP;
+├── facade/       WorkshopSessionFacade: course-role checks, generation orchestration, course ZIP;
 │                 UsageGuard: limits on AI requests, input sizes and stored data (see API.md)
 ├── usecase/      GenerateTimetableUseCase, GenerateSlideBlockUseCase, AssemblePptxUseCase,
 │                 RefineLearningGoalUseCase, FixGoalsGrammarUseCase,
 │                 ActivityRecommender, TemplateBranding, PptxTextFit
 ├── service/      LlmService (prompt rendering + LLM calls), WorkshopService (persistence,
 │                 drafts, templates), PdfExportService (PDFBox)
-├── config/       SecurityConfig (chain for `/workshopper/**`; SAML login and profile gate are in core), AuthContext
 ├── dto/          request/response records (JSON contract with the client)
 ├── model/        JPA entities: WorkshopSessionEntity, CourseEntity, SlideTemplateEntity
 ├── repository/   Spring Data repositories
@@ -38,7 +37,8 @@ Migrations run on startup. Never edit a migration that has run anywhere; add a n
 | Column | Meaning |
 |---|---|
 | `id` | UUID |
-| `owner_id` | the user who owns the session |
+| `created_by` | the user who created the session (FK to `core.app_user`, `ON DELETE SET NULL`); a session without a course belongs to them alone |
+| `org_id` | the organisation (row-level security) |
 | `course_id` | FK to `courses` (`ON DELETE CASCADE`); null for standalone sessions |
 | `display_order` | order on the dashboard |
 | `title`, `student_background`, `duration`, `participants`, `session_type`, `session_type_other` | the settings from the Setup step |
@@ -54,10 +54,10 @@ Migrations run on startup. Never edit a migration that has run anywhere; add a n
 Removed columns: `learning_goal` (V7), `interaction_level` (V6).
 
 ### `courses`
-`id`, `owner_id`, `title`, `display_order`, `draft_state_json` (the course settings that new sessions inherit), `status`, `current_step`, `template_id` (FK to `slide_templates`, V5), `created_at`, `updated_at`.
+`id`, `org_id`, `core_course_id` (FK to `core.course`, unique: the course's members and roles live there),  `title`, `display_order`, `draft_state_json` (the course settings that new sessions inherit), `status`, `current_step`, `template_id` (FK to `slide_templates`, V5), `created_at`, `updated_at`.
 
 ### `slide_templates`
-`id` (the session or course id it belongs to), `owner_id`, `file_name`, `file_data` (the .pptx), `created_at`.
+`id` (the session or course id it belongs to), `org_id`, `owner_id` (FK to `core.app_user`: the user who uploaded it), `file_name`, `file_data` (the .pptx), `created_at`.
 
 ## Slide templates
 

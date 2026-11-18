@@ -37,9 +37,9 @@ If the client sends `availableMaterials`, ensure it isn't silently dropped by th
 ### 3. Layering
 - Controllers never call a `UseCase` directly; generation goes through `WorkshopSessionFacade`.
 - Persistence (sessions, courses, drafts, templates) goes through `WorkshopService`; it holds no generation logic.
-- Every endpoint that touches a session or course by ID checks ownership (`facade.verifyOwnership` / `facade.verifyCourseOwnership`).
+- Every endpoint that touches a session or course by ID checks the course role (`facade.verifyRead` / `verifyWrite`, `verifyCourseRead` / `verifyCourseWrite` / `verifyCourseOwner`). The user comes from core's `CurrentUser`; work on other threads must carry `OrgContext` (`OrgContext.wrap`).
 
 ### 4. Auth Bypass Awareness
-Local development and the VPN-only `hestia-test` VM use the `local` Spring profile, which activates `DevAuthFilter` and signs every request in as `dev-local-user` (SAML access exists only for production). There is no default profile; `local` must be chosen explicitly and never be active in production.
+Local development and the VPN-only `hestia-test` VM use the `local` Spring profile, which activates `DevAuthFilter` and signs every request in as `dev-local-user` of the organisation `local.test` (SAML access exists only for production). There is no default profile; `local` must be chosen explicitly and never be active in production.
 - NEVER attempt to disable CSRF globally or write manual `catch (AccessDeniedException e)` blocks to fix auth issues.
-- Rely on `ApiExceptionHandler` (403/404/409/500 for every controller) and the existing SAML 401 redirect logic in `api.ts`. Controllers need no `try`/`catch`; let exceptions propagate.
+- Rely on `ApiExceptionHandler` (403/404/409/500 for every controller) and the existing 401 redirect logic in `api.ts`; writes carry the CSRF token (`X-XSRF-TOKEN`). Controllers need no `try`/`catch`; let exceptions propagate.
