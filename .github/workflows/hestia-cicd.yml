@@ -7,6 +7,14 @@ name: hestia CI/CD
 #   push to main      -> all tests + build (sha-<commit>) + deploy to Staging + smoke check
 #   workflow_dispatch -> all tests + build + deploy to Staging (optionally an existing image tag)
 #                        + smoke check
+#   schedule (weekly) -> all tests on ubuntu-latest, no build, no deploy   [early warning]
+#
+# Every job runs on a pinned runner image (ubuntu-24.04) and the ls1intum reusable workflows are
+# pinned to a commit, so the pipeline only changes through a commit in this repository. The weekly
+# run tests on ubuntu-latest instead: when GitHub moves ubuntu-latest to a new image, it fails there
+# first, on main, instead of in an unrelated pull request. The deploy-preflight job checks the deploy
+# configuration in every pull request; the deploy itself only runs after the merge.
+# `scripts/ci-local.sh` runs the same checks locally.
 #
 # Production is not deployed from here yet: it keeps running the three former servers until the
 # single login is released. There is therefore no release trigger and no Production target.
@@ -28,11 +36,14 @@ on:
         description: "Image tag to deploy to Staging (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
         type: string
         default: ""
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
 
 # A newer push to a pull request cancels its older run. Runs on main are never cancelled: one may
-# be in the middle of a deploy; the next one waits for it instead.
+# be in the middle of a deploy; the next one waits for it instead. The weekly run has its own group
+# so that it never replaces a deploy waiting in the main group.
 concurrency:
-  group: hestia-cicd-${{ github.ref }}
+  group: hestia-cicd-${{ github.event_name == 'schedule' && 'schedule' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -45,8 +56,9 @@ env:
 jobs:
   # Server and shared-llm test suites: unit, Testcontainers-Postgres integration, HTTP flow tests
   # and the module boundary test. GitHub-hosted runners provide the Docker daemon.
+  # The test jobs use ubuntu-latest only in the weekly run (see the header).
   test-server:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'schedule' && 'ubuntu-latest' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -67,7 +79,7 @@ jobs:
           retention-days: 7
 
   test-clients:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'schedule' && 'ubuntu-latest' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +102,8 @@ jobs:
   # LearningGoalHub browser tests: the built server against a Postgres service and a fake model
   # (client/e2e/fake-llm.mjs), driven through the Vite dev server by Playwright.
   test-e2e:
-    # Pinned: Playwright cannot install its browser on ubuntu-latest (26.04) yet.
+    # Also pinned in the weekly run: Playwright cannot install its browser on ubuntu-latest (26.04)
+    # yet. Move it to the same expression as the other test jobs once it can.
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -146,9 +159,20 @@ jobs:
             apps/learninggoalhub/client/test-results
           retention-days: 7
 
+  # Checks in every pull request what the deploy will find after the merge: where the compose file
+  # sits, that its bind mounts reach the VM, and that `docker compose config` accepts it.
+  deploy-preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/deploy-preflight.sh
+
+  # The ls1intum reusable workflows are pinned to a commit of their main branch (as of 2026-11-18;
+  # their release tags are older than main). Update the SHA on purpose, in its own pull request.
   build-server:
-    needs: [test-server, test-clients, test-e2e]
-    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    needs: [test-server, test-clients, test-e2e, deploy-preflight]
+    if: github.event_name != 'schedule'
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
       image-name: ${{ github.repository }}/server
       docker-file: server/Dockerfile
@@ -157,12 +181,13 @@ jobs:
       tags: type=sha,format=long
 
   build-clients:
-    needs: [test-server, test-clients, test-e2e]
+    needs: [test-server, test-clients, test-e2e, deploy-preflight]
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
         app: [examlense, learninggoalhub, workshopper]
-    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
       image-name: ${{ github.repository }}/${{ matrix.app }}/client
       docker-file: apps/${{ matrix.app }}/client/Dockerfile
@@ -173,8 +198,8 @@ jobs:
   # database roles from infra/postgres/init on its first start, so that folder goes next to it.
   copy-db-init:
     needs: [build-server, build-clients]
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
     environment: Staging
     steps:
       - uses: actions/checkout@v4
@@ -193,10 +218,11 @@ jobs:
 
   deploy:
     needs: [build-server, build-clients, copy-db-init]
-    # PRs only validate the build; everything else deploys to Staging.
-    if: github.event_name != 'pull_request'
+    # PRs only validate the build and the weekly run only tests; pushes to main and manual runs
+    # deploy to Staging.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment gateway.
-    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
+    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
       environment: Staging
       # Not at the repository root: the deploy reusable copies the file to the root first and
@@ -217,7 +243,7 @@ jobs:
   # the server, and the server reaches the database; then the public routes through Traefik.
   smoke-test:
     needs: deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: Staging
     steps:
       - name: Check the deployed application over SSH
