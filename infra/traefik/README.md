@@ -24,6 +24,15 @@ TLS uses the RBG certificate already on the VM under `/var/lib/rbg-cert/live/`
 (generate/renew with `sudo rbg-cert --force-request` then `sudo rbg-cert`). The exact
 filenames are referenced in `dynamic_conf.yml`; adjust them if the VM hostname differs.
 
+`rbg-cert` renews the certificate on its own (daily timer), but Traefik does not re-read
+certificate files that change behind the `live/` symlinks, so it keeps serving the old one until
+it restarts. Install the hook once; `rbg-cert` runs it after every new certificate:
+
+```bash
+sudo install -m 755 infra/traefik/cert.d/50-restart-traefik /usr/local/cert.d/
+sudo rbg-cert --reinstall   # runs the hooks once for the current certificate
+```
+
 ## How an app registers itself
 
 In the app's deploy compose, the `web` (nginx) service:

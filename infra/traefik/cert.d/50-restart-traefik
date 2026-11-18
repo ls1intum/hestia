@@ -1,0 +1,13 @@
+#!/bin/sh
+# rbg-cert hook: run-parts calls every script in /usr/local/cert.d/ after a new certificate was
+# installed (first argument: its directory). Traefik does not re-read certificate files that
+# change behind a symlink, so without a restart it keeps serving the old certificate.
+#
+# Install on the VM: sudo install -m 755 infra/traefik/cert.d/50-restart-traefik /usr/local/cert.d/
+# Apply now:         sudo rbg-cert --reinstall
+set -eu
+
+if docker inspect hestia-traefik >/dev/null 2>&1; then
+  docker restart hestia-traefik >/dev/null
+  echo "restarted hestia-traefik for new certificate in ${1:-?}"
+fi
