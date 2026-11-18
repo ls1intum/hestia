@@ -1,10 +1,10 @@
 /**
  * Server-Sent-Events subscriptions — the replacement for the old Supabase
- * realtime channels. The browser EventSource API can't set headers, so the
- * static token rides along as a `?token=` query param (the backend's auth
- * filter accepts it). EventSource auto-reconnects on transient errors.
+ * realtime channels. The session cookie authenticates the stream (EventSource sends it with
+ * `withCredentials`), so no credential travels in the URL. EventSource auto-reconnects on
+ * transient errors.
  */
-import { apiBaseUrl, apiToken } from "@/lib/api/api-client";
+import { apiBaseUrl } from "@/lib/api/api-client";
 
 export interface ExamEventHandlers {
   /** exam status/phase changed — refetch exam + children. */
@@ -23,8 +23,7 @@ export interface ExamEventHandlers {
 }
 
 function open(path: string): EventSource {
-  const sep = path.includes("?") ? "&" : "?";
-  return new EventSource(`${apiBaseUrl()}${path}${sep}token=${encodeURIComponent(apiToken())}`);
+  return new EventSource(`${apiBaseUrl()}${path}`, { withCredentials: true });
 }
 
 /** Subscribe to one exam's status + progress stream. Returns an unsubscribe fn. */

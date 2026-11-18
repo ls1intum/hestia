@@ -9,19 +9,21 @@ this document are relative to that prefix unless they carry it. Course lookup an
 derivation use the `GoalDirectory` / `ExamGoalDerivation` ports of the materials module,
 in process.
 
-- **Auth** — a static bearer token (`API_AUTH_TOKEN`) plus a per-IP rate
-  limiter. Single-user for now: `owner_id`/`user_id`/`graded_by` and storage
-  paths are stamped server-side from the default principal. (Real per-user auth
-  is a later, separate effort.)
+- **Auth** — the session login of the hestia server (TUM SAML; the `local` profile signs in a
+  dev user). Every `/examlense/api/**` call needs a session, except `healthz`. Non-GET requests
+  carry the CSRF header `X-XSRF-TOKEN` (value of the `XSRF-TOKEN` cookie). Tenancy comes from
+  core: all tables are `OrgScoped` (`org_id`, Hibernate tenant filter plus Postgres RLS).
+  An exam with a `course_id` follows `CourseAccess` (read: viewer, write: editor); an exam
+  without a course belongs to its creator (`created_by`), everyone else gets 404.
 - **DB** — PostgreSQL 16; schema via Flyway (`src/main/resources/db/migration/`),
   validated at boot (`ddl-auto: validate`).
-- **Storage** — local filesystem behind `StorageService`, served through
-  HMAC-signed, time-limited URLs (`GET /api/files/**`, public + signature-gated).
-  URLs are signed with a dedicated key (`FILES_SIGNING_SECRET`); when unset the
-  server falls back to the auth token and logs a warning.
-- **Realtime** — SSE (`GET /api/exams/{id}/events`, `GET /api/exams/events`);
-  the token rides as a `?token=` query param since `EventSource` can't set headers.
-  The hub sends a keep-alive comment every 25s so proxies don't drop idle streams.
+- **Storage** — local filesystem behind `StorageService`; keys carry the prefix `<org_id>/`.
+  Files are served through HMAC-signed, time-limited URLs (`GET /api/files/**`) that also
+  need a login whose organisation matches the prefix. The key is `FILES_SIGNING_SECRET`; when
+  unset a random key is used per start.
+- **Realtime** — SSE (`GET /api/exams/{id}/events`, `GET /api/exams/events`); the browser's
+  session cookie authenticates the stream. The list topic is per organisation. The hub sends a
+  keep-alive comment every 25s so proxies don't drop idle streams.
 
 ## API documentation
 
@@ -36,12 +38,10 @@ Both are **off by default** for this module and enabled by the `local` profile, 
 `SPRING_PROFILES_ACTIVE=local ./gradlew :server:bootRun` has them. With docs off, the
 assessment paths are removed from every OpenAPI document the server still serves for the other
 modules, and the `assessment` group does not exist. To browse them on a deployed instance, set
-`API_DOCS_ENABLED=true` — note they are unauthenticated when enabled (Swagger UI can't present
-a bearer token on its initial page load), and the frontend's `nginx.conf` would need a
+`API_DOCS_ENABLED=true` — note they are unauthenticated when enabled, and the frontend's `nginx.conf` would need a
 `location` block for `/v3/api-docs` and `/swagger-ui` to route them at all.
 
-Click **Authorize** in Swagger UI and paste the value of `API_AUTH_TOKEN` to
-make "Try it out" work. To grab a point-in-time copy of the spec:
+"Try it out" uses your browser session, so sign in first. To grab a point-in-time copy of the spec:
 
 ```bash
 curl -s http://localhost:8080/v3/api-docs/assessment -o openapi.json
@@ -66,12 +66,10 @@ carries no compatibility guarantee. Do not treat it as a stable interface. See
 
 1. Copy `server/.env.example` to `server/.env` and fill in the AI provider values you want to
    use. GPT strategies use `OPENAI_API_KEY`; Claude strategies use
-   `ANTHROPIC_API_KEY`; Gemini strategies use `GEMINI_API_KEY`. `API_AUTH_TOKEN` defaults to
-   `dev-local-token` and must match the client's `VITE_API_AUTH_TOKEN`.
+   `ANTHROPIC_API_KEY`; Gemini strategies use `GEMINI_API_KEY`.
    Optional hardening: `FILES_SIGNING_SECRET` (dedicated HMAC key for signed
-   file URLs — recommended in deployments so token rotation doesn't invalidate
-   outstanding URLs) and `API_RATELIMIT_BEHIND_PROXY=true` (trust
-   `X-Forwarded-For` for rate limiting — only when behind a reverse proxy).
+   file URLs; without it file URLs stop working after a restart) and `API_RATELIMIT_BEHIND_PROXY=true` (trust
+   `X-Forwarded-For` for rate limiting, only behind a reverse proxy).
 2. Load the env vars into your shell (Spring Boot does **not** auto-read `.env`):
 
    ```bash
@@ -118,17 +116,17 @@ LearningGoalHub settings any more.
 ### Smoke test
 
 ```bash
-# Public — no token needed
+# Public, no login needed
 curl http://localhost:8080/examlense/api/healthz
 # => {"status":"ok","time":"..."}
 
-# Protected — static bearer token (matches API_AUTH_TOKEN)
-curl -H "Authorization: Bearer dev-local-token" http://localhost:8080/examlense/api/exams
+# Protected: the local profile signs in a dev user via a header
+curl -H "X-Dev-User: dev-local-user" http://localhost:8080/examlense/api/exams
 # => []   (empty list on a fresh DB)
 ```
 
-A 401 means the `Authorization` header is missing or the token doesn't match
-`API_AUTH_TOKEN`.
+A 401 means there is no session (without the `local` profile, sign in via
+`/saml2/authenticate/tum`).
 
 Under the `local` profile you can also browse the whole API at
 <http://localhost:8080/swagger-ui.html> (group `assessment`) — see [API documentation](#api-documentation).
@@ -160,11 +158,10 @@ The Vite project's `.env` (or `.env.local`) needs:
 
 ```
 VITE_API_BASE_URL=http://localhost:8080/examlense
-VITE_API_AUTH_TOKEN=dev-local-token
 ```
 
-`client/src/lib/api/api-client.ts` is the single transport; it sends the static token on
-every request, and `client/src/lib/api/sse.ts` opens the SSE streams.
+`client/src/lib/api/api-client.ts` is the single transport; it sends the session cookie
+(`credentials: include`) and the `X-XSRF-TOKEN` header on non-GET requests, and `client/src/lib/api/sse.ts` opens the SSE streams.
 
 ## Project layout
 
@@ -193,14 +190,14 @@ server/
 │   │                    #   per-provider request/response adapters, parser/solver strategies
 │   ├── storage/         # StorageService, LocalFileSystemStorageService, SignedUrls, FileController
 │   ├── sse/             # SseHub + SseController
-│   ├── security/        # StaticTokenAuthFilter, RateLimitFilter, CurrentUser
-│   ├── config/          # SecurityConfig, AsyncConfig (solver/LGH pools, scheduling),
+│   ├── security/        # RateLimitFilter
+│   ├── config/          # AsyncConfig (solver/LGH pools, scheduling),
 │   │                    #   OpenApiConfig (spec metadata; only loaded when docs are on)
 │   ├── error/           # ApiException + GlobalExceptionHandler + ErrorResponse (spec schema)
 │   ├── prompts/         # solver prompt + submit_answers schema
 │   ├── models/          # ModelsController (parser/solver model catalog endpoint)
 │   ├── health/          # HealthController
-│   └── shared/          # Access + Patch (ownership / PATCH-body helpers), DefaultUser
+│   └── shared/          # Access + Patch (course/org access + PATCH-body helpers)
 └── src/main/resources/
     ├── application.yml
     └── db/migration/    # Flyway (V1__baseline.sql … V11)
@@ -229,8 +226,9 @@ Three things that surprise people:
   client to call the delete-by-section endpoints first.
 - **`parse_metrics.exam_id` is `SET NULL`** on purpose, so parser-quality metrics outlive the
   exams they were measured on.
-- **`owner_id` / `user_id` / `graded_by` are plain uuid columns with no foreign key** — there
-  is no users table. They are stamped from `DefaultUser.ID` (see the auth note above).
+- **`exams.created_by`, `exams.course_id`, `llm_usage.user_id`, `parse_metrics.owner_id` and
+  `task_grades.graded_by` reference core (`app_user`, `course`)**; every table has `org_id`
+  with an RLS policy `org_isolation`.
 
 `exams.status` is CHECK-constrained to `draft|parsing|failed|ready|evaluating|grading|finished`,
 mirrored in Java in `ExamController`. `updated_at` is trigger-maintained on `exams`, `sections`,
@@ -277,5 +275,5 @@ fallback the exam's `parser_model` is updated to the serving model too.
 
 This module is deployed as part of the `hestia-server` container (one image for all modules, built by CI). The local-FS storage directory
 (`STORAGE_LOCAL_BASE_PATH`) is backed by a named Docker volume and Postgres runs as a sibling
-container; provider keys, `API_AUTH_TOKEN`, and `DB_*` come from the deploy `.env`.
+container; provider keys and `DB_*` come from the deploy `.env`.
 See the app-level **[`../DEPLOY.md`](../DEPLOY.md)** for the full pipeline.

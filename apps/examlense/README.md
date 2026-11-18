@@ -5,7 +5,7 @@ React 18 + TypeScript SPA for **exam authoring, AI-powered parsing, solving, gra
 ## Stack
 
 - **Client** — Vite (SWC), React 18, TypeScript, Tailwind (HESTIA design system), shadcn/ui (Radix), React Query, React Router v6, Recharts. English-only; there is no i18n layer.
-- **Spring Boot server** (`server/`, JDK 21) — the only service. Owns all CRUD + ownership, parse/solve/metrics endpoints, file storage (local filesystem + HMAC-signed URLs), and SSE realtime. Auth is a static bearer token (single-user). See [`server/README.md`](server/README.md).
+- **Spring Boot server** (`server/`, JDK 21) — the only service. Owns all CRUD + ownership, parse/solve/metrics endpoints, file storage (local filesystem + HMAC-signed URLs), and SSE realtime. Auth is the session login of the hestia server (TUM SAML). See [`server/README.md`](server/README.md).
 - **PostgreSQL** — plain Postgres (Docker, host port 5433); schema managed by Flyway in `server/src/main/resources/db/migration/`.
 - **AI providers** — native OpenAI, Anthropic, and Gemini APIs for the GPT / Claude / Gemini strategies, each enabled by its own key. The model catalog lives in `client/src/lib/exam/llm-models.ts`.
 
@@ -66,8 +66,7 @@ the goal insights in the grading and results views.
 The server API is documented by a generated **OpenAPI spec** — spec at `/v3/api-docs/assessment`,
 Swagger UI at `/swagger-ui.html`. Both are enabled by the `local` profile and off in
 deployments, so run the server with `SPRING_PROFILES_ACTIVE=local` and open
-<http://localhost:8080/swagger-ui.html> (group `assessment`). Click **Authorize** and paste your `API_AUTH_TOKEN`
-to make "Try it out" work.
+<http://localhost:8080/swagger-ui.html> (group `assessment`). "Try it out" uses your browser session.
 
 Full details — how to enable it elsewhere, and how the spec is kept honest — live in
 **[`server/docs/assessment.md` → API documentation](../../server/docs/assessment.md#api-documentation)**.
@@ -79,9 +78,8 @@ Client lives in `client/`; Vite loads `client/.env.local` with priority over `cl
 | Variable | Purpose |
 |---|---|
 | `VITE_API_BASE_URL` | ExamLense API base: the hestia server under its prefix (default `http://localhost:8080/examlense`). |
-| `VITE_API_AUTH_TOKEN` | Static bearer token; must match the server's `API_AUTH_TOKEN` (default `dev-local-token`). |
 
-Server secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `API_AUTH_TOKEN`, optional `FILES_SIGNING_SECRET`) live in `server/.env` (gitignored). The client `.env` holds only the non-secret dev defaults above.
+Server secrets (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, optional `FILES_SIGNING_SECRET`) live in `server/.env` (gitignored). The client `.env` holds only the non-secret dev defaults above.
 
 ## Commands
 
