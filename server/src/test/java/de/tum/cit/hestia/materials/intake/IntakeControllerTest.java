@@ -2,13 +2,16 @@ package de.tum.cit.hestia.materials.intake;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import de.tum.cit.hestia.core.TestLogin;
+import de.tum.cit.hestia.core.internal.identity.IdentityService;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.TestTenant;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -39,6 +42,13 @@ class IntakeControllerTest extends MaterialsTestBase {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private IdentityService identities;
+
+    private RequestPostProcessor as(String user) {
+        return TestLogin.as(identities, TestTenant.ORG, user);
+    }
+
     @Test
     void needsALogin() throws Exception {
         mockMvc.perform(get(BASE + "/terms").with(anonymous())).andExpect(status().isUnauthorized());
@@ -56,7 +66,7 @@ class IntakeControllerTest extends MaterialsTestBase {
 
     @Test
     void meNamesTheUser() throws Exception {
-        mockMvc.perform(get(BASE + "/me").with(user("someone")))
+        mockMvc.perform(get(BASE + "/me").with(as("someone")))
                 .andExpect(jsonPath("$.id").value("someone"));
     }
 
@@ -103,7 +113,7 @@ class IntakeControllerTest extends MaterialsTestBase {
                         .param("courseTitle", " Software Engineering WS 2025/26 ")
                         .param("contactEmail", " teacher@example.org ")
                         .param("consentResearch", "true")
-                        .with(user(submitter)))
+                        .with(as(submitter)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.courseTitle").value("Software Engineering WS 2025/26"))
                 .andExpect(jsonPath("$.contactEmail").value("teacher@example.org"))
@@ -123,17 +133,21 @@ class IntakeControllerTest extends MaterialsTestBase {
                 byte[].class, id)).isEqualTo(slides);
 
         // The submitter sees it, another user does not.
-        mockMvc.perform(get(BASE + "/submissions").with(user(submitter)))
+        mockMvc.perform(get(BASE + "/submissions").with(as(submitter)))
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(id));
-        mockMvc.perform(get(BASE + "/submissions").with(user("other-" + UUID.randomUUID())))
+        mockMvc.perform(get(BASE + "/submissions").with(as("other-" + UUID.randomUUID())))
+                .andExpect(jsonPath("$.length()").value(0));
+        // The same external id at another organisation is another user: nothing there either.
+        mockMvc.perform(get(BASE + "/submissions")
+                        .with(TestLogin.as(identities, "other-uni-" + UUID.randomUUID() + ".test", submitter)))
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
     void researchConsentCanBeWithdrawnAtUpload() throws Exception {
         mockMvc.perform(submission(pdf("a.pdf")).param("consentReplicationPackage", "true")
-                        .with(user("teacher-" + UUID.randomUUID())))
+                        .with(as("teacher-" + UUID.randomUUID())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.consentResearch").value(false))
                 .andExpect(jsonPath("$.consentReplicationPackage").value(true));

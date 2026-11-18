@@ -7,7 +7,11 @@ import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
 import de.tum.cit.hestia.materials.course.Course;
 import java.util.UUID;
+import de.tum.cit.hestia.core.internal.identity.HestiaAuthentication;
 import org.junit.jupiter.api.extension.AfterAllCallback;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.springframework.context.ApplicationContext;
@@ -19,18 +23,31 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
  * creates a course the default user {@link #USER} owns. MockMvc requests are logged in as that user
  * by {@link MaterialsTestConfiguration}.
  */
-public class TestTenant implements BeforeAllCallback, AfterAllCallback {
+public class TestTenant implements BeforeAllCallback, BeforeEachCallback, AfterEachCallback, AfterAllCallback {
 
     public static final String ORG = "materials-tests.test";
     public static final String USER = "test-user";
 
     private static volatile ApplicationContext context;
+    private static volatile HestiaPrincipal principal;
 
     @Override
     public void beforeAll(ExtensionContext extension) {
         context = SpringExtension.getApplicationContext(extension);
-        HestiaPrincipal principal = TestLogin.login(context.getBean(IdentityService.class), ORG, USER);
+        principal = TestLogin.login(context.getBean(IdentityService.class), ORG, USER);
         OrgContext.set(principal.orgId());
+    }
+
+    /** The test thread is logged in as the default user, for tests that call services directly. */
+    @Override
+    public void beforeEach(ExtensionContext extension) {
+        OrgContext.set(principal.orgId());
+        SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(principal));
+    }
+
+    @Override
+    public void afterEach(ExtensionContext extension) {
+        SecurityContextHolder.clearContext();
     }
 
     @Override

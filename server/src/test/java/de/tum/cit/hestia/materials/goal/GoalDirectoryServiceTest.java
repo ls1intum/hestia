@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.tum.cit.hestia.core.spi.GoalDirectory;
+import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.course.Course;
@@ -165,5 +166,30 @@ class GoalDirectoryServiceTest extends MaterialsTestBase {
 
         assertThatThrownBy(() -> directory.goal(course.getId(), 987_654_321L))
                 .isInstanceOf(NoSuchElementException.class);
+    }
+
+    @Test
+    void coursesOfOthersAreNeitherListedNorReadable() throws Exception {
+        // Another organisation's course, and a course of this organisation the user is no member of.
+        String otherOrg = "directory-other-" + java.util.UUID.randomUUID() + ".test";
+        java.util.UUID otherOrgId = TestLogin.login(TestTenant.identities(), otherOrg, "carol").orgId();
+        Course foreign = de.tum.cit.hestia.core.OrgContext.call(otherOrgId,
+                () -> courseRepository.save(TestTenant.courseAs(otherOrg, "carol", "Directory: foreign")));
+        Course notMine = courseRepository.save(TestTenant.courseAs(TestTenant.ORG, "someone-else", "Directory: not mine"));
+
+        assertThat(directory.listCourses(0, 200).content()).extracting(GoalDirectory.Course::id)
+                .doesNotContain(foreign.getId(), notMine.getId());
+        assertThatThrownBy(() -> directory.goals(foreign.getId())).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> directory.goals(notMine.getId())).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> directory.deleteGoal(notMine.getId(), 1)).isInstanceOf(NoSuchElementException.class);
+    }
+
+    @Test
+    void listedCoursesCarryTheirCoreCourse() {
+        GoalDirectory.Course created = directory.createCourse("Directory: core id");
+
+        assertThat(created.coreCourseId()).isNotNull();
+        assertThat(directory.listCourses(0, 200).content()).filteredOn(c -> c.id() == created.id())
+                .extracting(GoalDirectory.Course::coreCourseId).containsExactly(created.coreCourseId());
     }
 }
