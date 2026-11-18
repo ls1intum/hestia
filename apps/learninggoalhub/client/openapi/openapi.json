@@ -1157,6 +1157,181 @@
           "current-extraction-controller"
         ]
       }
+    },
+    "/api/intake/me": {
+      "get": {
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Who is logged in, and an e-mail suggestion from the login",
+        "tags": [
+          "intake-controller"
+        ]
+      }
+    },
+    "/api/intake/submissions": {
+      "get": {
+        "operationId": "mine",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubmissionResponse"
+                  }
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The caller's own submissions, newest first",
+        "tags": [
+          "intake-controller"
+        ]
+      },
+      "post": {
+        "operationId": "submit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "termsVersion",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "termsSha256",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirmedTerms",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "in": "query",
+            "name": "consentResearch",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "in": "query",
+            "name": "consentReplicationPackage",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "in": "query",
+            "name": "courseTitle",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contactEmail",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "note",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                },
+                "required": [
+                  "files"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "summary": "Upload a past course's material; needs the confirmation and the version and hash of the terms shown",
+        "tags": [
+          "intake-controller"
+        ]
+      }
+    },
+    "/api/intake/terms": {
+      "get": {
+        "operationId": "terms",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "The terms of use in force, to show before an upload",
+        "tags": [
+          "intake-controller"
+        ]
+      }
     }
   },
   "components": {
@@ -1506,6 +1681,28 @@
           }
         }
       },
+      "FileResponse": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "GenerateExamGoalsRequest": {
         "type": "object",
         "properties": {
@@ -1790,6 +1987,17 @@
             ]
           },
           "text": {
+            "type": "string"
+          }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "suggestedEmail": {
             "type": "string"
           }
         }
@@ -2162,6 +2370,60 @@
           "total": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "SubmissionResponse": {
+        "type": "object",
+        "properties": {
+          "consentReplicationPackage": {
+            "type": "boolean"
+          },
+          "consentResearch": {
+            "type": "boolean"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "courseTitle": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileResponse"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string"
+          },
+          "termsSha256": {
+            "type": "string"
+          },
+          "termsVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "TermsResponse": {
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
           }
         }
       },
