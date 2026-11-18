@@ -24,9 +24,14 @@ final class FlowClient {
         this.auth = auth;
     }
 
-    static FlowClient signedIn(int port) { return new FlowClient(port, FlowAuth::signIn); }
+    static FlowClient signedIn(int port) { return signedInAs(port, null, null); }
 
-    static FlowClient anonymous(int port) { return new FlowClient(port, b -> b); }
+    /** Another dev user and/or organisation (the dev login's X-Dev-User and X-Dev-Org headers). */
+    static FlowClient signedInAs(int port, String user, String org) {
+        return new FlowClient(port, b -> FlowAuth.signIn(b, user, org));
+    }
+
+    static FlowClient anonymous(int port) { return new FlowClient(port, FlowAuth::csrf); }
 
     FlowResponse get(String path) { return send("GET", path, null); }
 

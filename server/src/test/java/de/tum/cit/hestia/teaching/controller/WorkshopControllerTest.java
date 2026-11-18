@@ -85,8 +85,8 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with empty list when no sessions exist")
         void returnsEmptyList() throws Exception {
-            
-            when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
+
+            when(workshopService.listSessions()).thenReturn(List.of());
 
             mvc.perform(get("/workshopper/api/workshop/sessions"))
                     .andExpect(status().isOk())
@@ -97,8 +97,8 @@ class WorkshopControllerTest {
         @DisplayName("returns session summaries")
         void returnsSessionSummaries() throws Exception {
             var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", null, null);
-            
-            when(workshopService.listSessions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(summary));
+
+            when(workshopService.listSessions()).thenReturn(List.of(summary));
 
             mvc.perform(get("/workshopper/api/workshop/sessions"))
                     .andExpect(status().isOk())
@@ -226,7 +226,7 @@ class WorkshopControllerTest {
     void courseZipUnknownCourseReturns404() throws Exception {
         doThrow(new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.NOT_FOUND, "Course not found"))
-            .when(facade).verifyCourseOwnership("nope");
+            .when(facade).verifyCourseRead("nope");
 
         mvc.perform(get("/workshopper/api/workshop/export/course/nope/zip"))
             .andExpect(status().isNotFound());

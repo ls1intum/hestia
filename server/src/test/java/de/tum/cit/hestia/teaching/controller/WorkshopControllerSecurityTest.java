@@ -1,114 +1,226 @@
 package de.tum.cit.hestia.teaching.controller;
 
-import de.tum.cit.hestia.teaching.facade.WorkshopSessionFacade;
-import de.tum.cit.hestia.teaching.service.PdfExportService;
-import de.tum.cit.hestia.teaching.service.WorkshopService;
-import de.tum.cit.hestia.teaching.usecase.AssemblePptxUseCase;
-import de.tum.cit.hestia.teaching.usecase.GenerateSlideBlockUseCase;
-import de.tum.cit.hestia.teaching.usecase.RefineLearningGoalUseCase;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.tum.cit.hestia.TestDatabase;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CourseNotFoundException;
+import de.tum.cit.hestia.core.TestLogin;
+import de.tum.cit.hestia.core.internal.identity.IdentityService;
+import de.tum.cit.hestia.teaching.repository.CourseRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Verifies that the SecurityConfig correctly gates write endpoints behind
- * authentication. Specifically: anonymous POST/PUT/DELETE must be rejected
- * (4xx) — NOT 200 — which would mean the "system" fallback in AuthContext
- * is reachable and ownership enforcement is silently bypassed.
- *
- * Security auto-configuration is deliberately LEFT ENABLED (no blanket
- * excludeAutoConfiguration) so these tests exercise the real filter chain.
- *
- * Spring returns 403 (not 401) for CSRF-disabled, sessionless SAML contexts
- * when no credentials are present — both are "not authenticated/not authorised"
- * and either confirms the endpoint is not publicly reachable.
+ * Login, organisation and course roles of the teaching endpoints, against the real filter chain and
+ * database: 401 without login, another organisation sees nothing, a VIEWER cannot write, a session
+ * without a course belongs to its creator.
  */
-@org.springframework.test.context.ContextConfiguration(classes = TeachingWebMvcTestConfig.class)
-@org.springframework.context.annotation.Import({de.tum.cit.hestia.teaching.config.SecurityConfig.class, WorkshopController.class})
-@WebMvcTest(
-    value = WorkshopController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.autoconfigure.security.saml2.Saml2RelyingPartyAutoConfiguration.class
-    }
-)
-@DisplayName("SecurityConfig — write endpoints require authentication")
+@SpringBootTest
+@AutoConfigureMockMvc
+@DisplayName("Teaching endpoints: login, organisation and course roles")
 class WorkshopControllerSecurityTest {
 
-    @Autowired
-    private MockMvc mvc;
+    private static final String API = "/workshopper/api/workshop";
 
-    @MockitoBean private WorkshopService workshopService;
-    @MockitoBean private PdfExportService pdfExportService;
-    @MockitoBean private WorkshopSessionFacade facade;
-    @MockitoBean private GenerateSlideBlockUseCase generateSlideBlockUseCase;
-    @MockitoBean private AssemblePptxUseCase assemblePptxUseCase;
-    @MockitoBean private RefineLearningGoalUseCase refineLearningGoalUseCase;
-    @MockitoBean private org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry registry) {
+        TestDatabase.register(registry);
+    }
 
-    @Test
-    @DisplayName("Anonymous POST /api/workshop/session → 4xx (not 200: system-fallback bypass is closed)")
-    void anonymousPostToSessionIsRejected() throws Exception {
-        mvc.perform(post("/workshopper/api/workshop/session")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                .content("{}"))
-           .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
-           .andExpect(status().is4xxClientError()); // 401 or 403 — either confirms the endpoint is gated
+    @MockitoBean
+    RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
+
+    @Autowired MockMvc mvc;
+    @Autowired IdentityService identities;
+    @Autowired CourseRepository courses;
+    @Autowired CourseApi courseApi;
+
+    private final ObjectMapper json = new ObjectMapper();
+    private final String run = UUID.randomUUID().toString().substring(0, 8);
+    private final String uniA = "uni-a-" + run + ".test";
+    private final String uniB = "uni-b-" + run + ".test";
+
+    private RequestPostProcessor as(String org, String user) {
+        return TestLogin.as(identities, org, user);
+    }
+
+    private String createCourse(RequestPostProcessor who, String title) throws Exception {
+        String body = mvc.perform(post(API + "/courses/draft").with(who).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"" + title + "\",\"currentStep\":\"settings\",\"draftStateJson\":\"{}\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(body).path("id").asText();
+    }
+
+    private String createSession(RequestPostProcessor who, String courseId) throws Exception {
+        String course = courseId == null ? "" : ",\"courseId\":\"" + courseId + "\"";
+        String body = mvc.perform(post(API + "/sessions/draft").with(who).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Session\",\"currentStep\":\"goals\",\"draftStateJson\":\"{}\"" + course + "}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(body).path("id").asText();
+    }
+
+    private UUID coreIdOf(String org, String user, String courseId) {
+        return TestLogin.runAs(identities, org, user, () -> courses.findById(courseId).orElseThrow().getCoreCourseId());
+    }
+
+    private void addMember(String course, String member, String role) throws Exception {
+        TestLogin.login(identities, uniA, member);
+        mvc.perform(put("/core/api/courses/" + coreIdOf(uniA, "alice", course) + "/members").with(as(uniA, "alice"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"externalId\":\"" + member + "\",\"role\":\"" + role + "\"}"))
+                .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("Anonymous PUT /api/workshop/sessions/{id}/rename → 4xx")
-    void anonymousPutIsRejected() throws Exception {
-        mvc.perform(put("/workshopper/api/workshop/sessions/some-id/rename")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"hacked\"}"))
-           .andExpect(status().is4xxClientError());
+    @DisplayName("without login every endpoint answers 401")
+    void withoutLoginTheAnswerIs401() throws Exception {
+        mvc.perform(get(API + "/sessions")).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/courses")).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/sessions/some-id")).andExpect(status().isUnauthorized());
+        mvc.perform(post(API + "/session").with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post(API + "/sessions/draft").with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(put(API + "/sessions/some-id/rename").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"hacked\"}")).andExpect(status().isUnauthorized());
+        mvc.perform(delete(API + "/sessions/some-id").with(csrf())).andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("Anonymous DELETE /api/workshop/sessions/{id} → 4xx")
-    void anonymousDeleteIsRejected() throws Exception {
-        mvc.perform(delete("/workshopper/api/workshop/sessions/some-id"))
-           .andExpect(status().is4xxClientError());
+    @DisplayName("health stays open")
+    void healthIsOpen() throws Exception {
+        mvc.perform(get(API + "/health")).andExpect(status().isOk());
     }
 
     @Test
-    @org.springframework.security.test.context.support.WithAnonymousUser
-    @DisplayName("Anonymous POST /api/workshop/session → 401 (HttpStatusEntryPoint returns UNAUTHORIZED, not redirect)")
-    void anonymousPostReturnsUnauthorized() throws Exception {
-        mvc.perform(post("/workshopper/api/workshop/session")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                .content("{}"))
-           .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print()).andExpect(status().isUnauthorized());
+    @DisplayName("a write without CSRF token is refused")
+    void writesNeedTheCsrfToken() throws Exception {
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(new de.tum.cit.hestia.core.internal.identity.HestiaAuthentication(
+                        TestLogin.login(identities, uniA, "alice")));
+        mvc.perform(post(API + "/courses/draft").with(auth).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    @DisplayName("GET /api/workshop/sessions/{id} by non-owner → 403 Forbidden")
-    @WithMockUser(username = "other-user")
-    void getSessionByNonOwnerReturnsForbidden() throws Exception {
-        // Simulate the facade throwing AccessDeniedException (wrong owner)
-        doThrow(new AccessDeniedException("User other-user is not allowed to access this session"))
-                .when(facade).verifyOwnership(anyString());
+    @DisplayName("a user of another organisation sees nothing")
+    void anotherOrganisationSeesNothing() throws Exception {
+        String course = createCourse(as(uniA, "alice"), "Algorithms");
+        String session = createSession(as(uniA, "alice"), course);
+        String privateSession = createSession(as(uniA, "alice"), null);
+        TestLogin.login(identities, uniB, "alice"); // same external id, other university: another user
+        var other = as(uniB, "alice");
 
-        mvc.perform(get("/workshopper/api/workshop/sessions/some-session-id"))
-           .andExpect(status().isForbidden());
+        mvc.perform(get(API + "/courses").with(other)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get(API + "/sessions").with(other)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get(API + "/courses/" + course).with(other)).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/sessions/" + session).with(other)).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/sessions/" + privateSession).with(other)).andExpect(status().isNotFound());
+        mvc.perform(delete(API + "/courses/" + course).with(other)).andExpect(status().isNotFound());
+        mvc.perform(put(API + "/sessions/" + session + "/rename").with(other).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"x\"}")).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/export/course/" + course + "/zip").with(other)).andExpect(status().isNotFound());
     }
 
     @Test
-    @org.springframework.security.test.context.support.WithAnonymousUser
-    @DisplayName("Anonymous GET /api/workshop/sessions → 401 (not 200 with anonymous identity)")
-    void anonymousListSessionsReturnsUnauthorized() throws Exception {
-        mvc.perform(get("/workshopper/api/workshop/sessions"))
-           .andExpect(status().isUnauthorized());
+    @DisplayName("a non-member of the same organisation sees nothing of a course")
+    void nonMemberSeesNothing() throws Exception {
+        String course = createCourse(as(uniA, "alice"), "Algorithms");
+        String session = createSession(as(uniA, "alice"), course);
+        TestLogin.login(identities, uniA, "bob");
+        var bob = as(uniA, "bob");
+
+        mvc.perform(get(API + "/courses").with(bob)).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get(API + "/sessions").with(bob)).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get(API + "/courses/" + course).with(bob)).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/sessions/" + session).with(bob)).andExpect(status().isNotFound());
+        // ... and cannot put a session into the course
+        mvc.perform(post(API + "/sessions/draft").with(bob).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"x\",\"courseId\":\"" + course + "\"}")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("a VIEWER reads but cannot write; an EDITOR writes but cannot delete the course; the OWNER deletes it")
+    void rolesDecideWhatAUserMayDo() throws Exception {
+        String course = createCourse(as(uniA, "alice"), "Algorithms");
+        String session = createSession(as(uniA, "alice"), course);
+        addMember(course, "vera", "VIEWER");
+        addMember(course, "edgar", "EDITOR");
+        var viewer = as(uniA, "vera");
+        var editor = as(uniA, "edgar");
+
+        // VIEWER: reads
+        mvc.perform(get(API + "/courses").with(viewer)).andExpect(jsonPath("$.length()").value(1));
+        mvc.perform(get(API + "/courses/" + course).with(viewer)).andExpect(status().isOk());
+        mvc.perform(get(API + "/sessions").with(viewer)).andExpect(jsonPath("$.length()").value(1));
+        mvc.perform(get(API + "/sessions/" + session).with(viewer)).andExpect(status().isOk());
+
+        // VIEWER: cannot write
+        String draft = "{\"sessionId\":\"" + session + "\",\"title\":\"changed\",\"currentStep\":\"goals\"}";
+        mvc.perform(post(API + "/sessions/draft").with(viewer).contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(API + "/sessions/draft").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"new\",\"courseId\":\"" + course + "\"}")).andExpect(status().isForbidden());
+        mvc.perform(put(API + "/sessions/" + session + "/rename").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"x\"}")).andExpect(status().isForbidden());
+        mvc.perform(put(API + "/sessions/" + session + "/finish").with(viewer)).andExpect(status().isForbidden());
+        mvc.perform(delete(API + "/sessions/" + session).with(viewer)).andExpect(status().isForbidden());
+        mvc.perform(post(API + "/courses/draft").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"sessionId\":\"" + course + "\",\"title\":\"x\"}")).andExpect(status().isForbidden());
+        mvc.perform(put(API + "/courses/" + course + "/rename").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"x\"}")).andExpect(status().isForbidden());
+        mvc.perform(delete(API + "/courses/" + course).with(viewer)).andExpect(status().isForbidden());
+        mvc.perform(delete(API + "/courses/" + course + "/template").with(viewer)).andExpect(status().isForbidden());
+
+        // EDITOR: writes, renames, but does not delete the course
+        mvc.perform(post(API + "/sessions/draft").with(editor).contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isOk());
+        mvc.perform(put(API + "/courses/" + course + "/rename").with(editor).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Renamed\"}")).andExpect(status().isOk());
+        mvc.perform(get(API + "/courses/" + course).with(viewer)).andExpect(jsonPath("$.title").value("Renamed"));
+        mvc.perform(delete(API + "/courses/" + course).with(editor)).andExpect(status().isForbidden());
+
+        // OWNER: deletes the teaching course together with the core course
+        UUID core = coreIdOf(uniA, "alice", course);
+        mvc.perform(delete(API + "/courses/" + course).with(as(uniA, "alice"))).andExpect(status().isNoContent());
+        mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "alice"))).andExpect(status().isNotFound());
+        assertThatThrownBy(() -> TestLogin.runAs(identities, uniA, "alice", () -> courseApi.get(core)))
+                .isInstanceOf(CourseNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("a session without a course is visible to its creator only")
+    void sessionWithoutCourseIsPrivate() throws Exception {
+        String session = createSession(as(uniA, "alice"), null);
+        TestLogin.login(identities, uniA, "bob");
+
+        mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "alice"))).andExpect(status().isOk());
+        mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "bob"))).andExpect(status().isNotFound());
+        mvc.perform(delete(API + "/sessions/" + session).with(as(uniA, "bob"))).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/sessions").with(as(uniA, "bob"))).andExpect(jsonPath("$.length()").value(0));
+        assertThat(mvc.perform(get(API + "/sessions").with(as(uniA, "alice"))).andReturn().getResponse()
+                .getContentAsString()).contains(session);
     }
 }
-
