@@ -108,13 +108,18 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
                 .content("{\"exam_id\":\"" + exam + "\",\"position\":1,\"name\":\"s\"}")),
             new Call("create block", true, post(base + "/blocks").contentType(json())
                 .content("{\"exam_id\":\"" + exam + "\",\"position\":1,\"content\":\"c\"}")),
-            new Call("delete tasks", true, delete(base + "/exams/" + exam + "/tasks")),
+            new Call("delete tasks", true, delete(base + "/exams/" + exam + "/tasks?section_id=" + UUID.randomUUID())),
             new Call("parse", true, post(base + "/parse-exam-pdf").contentType(json())
                 .content("{\"exam_id\":\"" + exam + "\",\"storage_path\":\"x\"}")),
             new Call("solve exam", true, post(base + "/solve-exam").contentType(json())
                 .content("{\"exam_id\":\"" + exam + "\"}")),
             new Call("solve section", true, post(base + "/solve-section").contentType(json())
                 .content("{\"exam_id\":\"" + exam + "\"}")));
+    }
+
+    private int statusOf(Call call, org.springframework.test.web.servlet.request.RequestPostProcessor login)
+            throws Exception {
+        return mvc.perform(call.request().with(login)).andReturn().getResponse().getStatus();
     }
 
     // (a) no login -> 401
@@ -169,8 +174,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     @Test
     void anotherUserOfTheSameOrganisationSeesNothingOfACourselessExam() throws Exception {
         for (Call c : callsOn(privateExam)) {
-            mvc.perform(c.request().with(as("bob")))
-                .andExpect(status().isNotFound());
+            assertThat(statusOf(c, as("bob"))).as(c.name()).isEqualTo(404);
         }
         mvc.perform(get("/examlense/api/exams").with(as("bob")))
             .andExpect(status().isOk())
@@ -180,7 +184,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     @Test
     void aNonMemberSeesNothingOfACourseExam() throws Exception {
         for (Call c : callsOn(courseExam)) {
-            mvc.perform(c.request().with(as("bob"))).andExpect(status().isNotFound());
+            assertThat(statusOf(c, as("bob"))).as(c.name()).isEqualTo(404);
         }
         mvc.perform(get("/examlense/api/exams").with(as("bob")))
             .andExpect(status().isOk())
@@ -192,7 +196,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         String other = "other-" + uni;
         for (UUID exam : List.of(privateExam, courseExam)) {
             for (Call c : callsOn(exam)) {
-                mvc.perform(c.request().with(asIn(other, "alice"))).andExpect(status().isNotFound());
+                assertThat(statusOf(c, asIn(other, "alice"))).as(c.name()).isEqualTo(404);
             }
         }
         mvc.perform(get("/examlense/api/exams").with(asIn(other, "alice")))
@@ -229,8 +233,9 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     void aViewerCanReadButNoWriteGetsThrough() throws Exception {
         for (Call c : callsOn(courseExam)) {
             if (c.name().equals("events")) continue; // a long-lived stream, covered below
-            mvc.perform(c.request().with(as("viewer")))
-                .andExpect(c.write() ? status().isForbidden() : status().is2xxSuccessful());
+            int status = statusOf(c, as("viewer"));
+            if (c.write()) assertThat(status).as(c.name()).isEqualTo(403);
+            else assertThat(status).as(c.name()).isBetween(200, 299);
         }
         mvc.perform(get("/examlense/api/exams/" + courseExam + "/events").with(as("viewer")))
             .andExpect(status().isOk());
@@ -280,8 +285,12 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
 
     @Test
     void figuresOfACourseExamNeedTheCourseRole() throws Exception {
+        String section = mvc.perform(post("/examlense/api/sections").with(as("alice")).contentType(json())
+                .content("{\"exam_id\":\"" + courseExam + "\",\"position\":1,\"name\":\"s\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String block = mvc.perform(post("/examlense/api/blocks").with(as("alice")).contentType(json())
-                .content("{\"exam_id\":\"" + courseExam + "\",\"position\":1,\"kind\":\"figure\",\"content\":\"c\"}"))
+                .content("{\"exam_id\":\"" + courseExam + "\",\"section_id\":\"" + JsonPath.read(section, "$.id")
+                    + "\",\"position\":1,\"kind\":\"figure\",\"content\":\"c\"}"))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String blockId = JsonPath.read(block, "$.id");
         MockMultipartFile png = new MockMultipartFile("file", "f.png", "image/png", new byte[] {1, 2, 3});

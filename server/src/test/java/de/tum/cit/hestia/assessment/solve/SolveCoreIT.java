@@ -52,10 +52,10 @@ class SolveCoreIT extends AbstractIntegrationTest {
         Examination exam = examination();
         TaskBlock task = task(exam, 0);
 
-        CompletableFuture<Void> first = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "first"))));
-        CompletableFuture<Void> second = CompletableFuture.runAsync(() ->
-            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "second"))));
+        CompletableFuture<Void> first = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "first")))));
+        CompletableFuture<Void> second = CompletableFuture.runAsync(OrgContext.wrap(() ->
+            core.replaceAnswers(exam.getId(), List.of(answer(exam, task, "second")))));
         CompletableFuture.allOf(first, second).join();
 
         assertThat(answers.findByTaskId(task.getId())).isPresent();

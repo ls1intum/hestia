@@ -5,7 +5,6 @@ import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
-import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
 import de.tum.cit.hestia.core.spi.GoalDirectory;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -37,7 +36,6 @@ class LghControllerTest extends AbstractIntegrationTest {
     @Autowired TaskBlockRepository tasks;
 
     @MockitoBean GoalDirectory goalDirectory;
-    @MockitoBean ExamGoalDerivation derivation;
 
     @Test
     void listsCoursesAcrossAllPages() throws Exception {

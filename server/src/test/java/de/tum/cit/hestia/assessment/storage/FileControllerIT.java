@@ -57,8 +57,8 @@ class FileControllerIT extends AbstractIntegrationTest {
 
         String signed = signedUrls.buildUrl("exam-pdfs", storagePath, 300);
 
-        // Public route — no token, signature does the gating.
-        mvc.perform(get(MODULE + signed))
+        // The session login and the signature both gate the download.
+        mvc.perform(get(MODULE + signed).with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.APPLICATION_PDF))
             .andExpect(content().bytes(pdf));
@@ -104,11 +104,12 @@ class FileControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void uploadRequiresAToken() throws Exception {
+    void uploadRequiresALogin() throws Exception {
         Examination exam = ownExamination();
         MockMultipartFile file = new MockMultipartFile("file", "exam.pdf", "application/pdf", "x".getBytes());
 
-        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file))
+        mvc.perform(multipart("/examlense/api/exams/" + exam.getId() + "/pdf").file(file)
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
             .andExpect(status().isUnauthorized());
     }
 
