@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.exam.submission;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,7 +20,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(schema = "materials", name = "exam_block")
-public class SubmittedExamBlock {
+public class SubmittedExamBlock extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

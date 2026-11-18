@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.topictree;
 
+import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import de.tum.cit.hestia.materials.llm.LlmClient;
 import de.tum.cit.hestia.materials.llm.LlmClient.LlmRequest;
@@ -13,7 +14,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -348,7 +348,7 @@ public class TopicTreeSynthesizer {
             return new Plan(List.of(), List.of());
         }
         String effectiveModel = effectiveModel(modelOverride);
-        try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
+        try (ExecutorService executor = OrgExecutors.newFixedThreadPool(PARALLEL_CALLS)) {
             List<String> topics = normalizeNames(call(
                     NAMING_PROMPT.formatted(languageName, numbered(outcomes, 0, outcomes.size())),
                     effectiveModel, new ParameterizedTypeReference<TopicNames>() {}));
@@ -433,7 +433,7 @@ public class TopicTreeSynthesizer {
         }
         String effectiveModel = effectiveModel(modelOverride);
         Map<Integer, Placement> result = new LinkedHashMap<>();
-        try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_CALLS)) {
+        try (ExecutorService executor = OrgExecutors.newFixedThreadPool(PARALLEL_CALLS)) {
             List<CompletableFuture<Map<Integer, Integer>>> batches = new ArrayList<>();
             for (int start = 0; start < outcomes.size(); start += ASSIGNMENT_BATCH) {
                 int from = start;

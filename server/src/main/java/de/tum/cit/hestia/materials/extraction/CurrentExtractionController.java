@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.core.CourseAccess;
 import de.tum.cit.hestia.materials.course.CourseRepository;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -14,9 +15,12 @@ public class CurrentExtractionController {
 
     private final ExtractionProgressTracker progressTracker;
     private final CourseRepository courseRepository;
+    private final CourseAccess courseAccess;
 
     public CurrentExtractionController(ExtractionProgressTracker progressTracker,
-                                       CourseRepository courseRepository) {
+                                       CourseRepository courseRepository,
+                                       CourseAccess courseAccess) {
+        this.courseAccess = courseAccess;
         this.progressTracker = progressTracker;
         this.courseRepository = courseRepository;
     }
@@ -28,7 +32,9 @@ public class CurrentExtractionController {
         return progressTracker.current()
                 .flatMap(current -> {
                     ExtractionProgressTracker.Snapshot snapshot = current.snapshot();
+                    // Another organisation's course is not found; a course the user is no member of is not shown.
                     return courseRepository.findById(current.courseId())
+                            .filter(course -> courseAccess.canRead(course.getCoreCourseId()))
                             .map(course -> new CurrentExtractionResponse(
                                     current.courseId(),
                                     course.getName(),

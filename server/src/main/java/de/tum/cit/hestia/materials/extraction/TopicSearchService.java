@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
 import de.tum.cit.hestia.materials.course.Course;
@@ -64,7 +65,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -373,7 +373,7 @@ public class TopicSearchService {
 
     private List<SessionExtraction<PageRange>> extractAll(Course course, List<SessionUnit<PageRange>> units,
                                                           String dominantLanguage, String modelOverride) {
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, Math.min(parallelism, units.size())));
+        ExecutorService executor = OrgExecutors.newFixedThreadPool(Math.max(1, Math.min(parallelism, units.size())));
         try {
             List<CompletableFuture<SessionExtraction<PageRange>>> futures = units.stream()
                     .map(unit -> CompletableFuture.supplyAsync(

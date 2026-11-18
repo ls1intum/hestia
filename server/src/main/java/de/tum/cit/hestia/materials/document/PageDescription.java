@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
@@ -14,7 +15,7 @@ import org.hibernate.annotations.CreationTimestamp;
 /** A short, non-verbatim VLM description of a text-poor PDF page. */
 @Entity
 @Table(schema = "materials", name = "page_description")
-public class PageDescription {
+public class PageDescription extends OrgScoped {
 
     @EmbeddedId
     private PageDescriptionId id;

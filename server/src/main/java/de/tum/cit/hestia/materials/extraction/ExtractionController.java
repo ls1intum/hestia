@@ -1,7 +1,9 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.CompetencyTreeResult;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
+import de.tum.cit.hestia.materials.course.CourseGuard;
 import de.tum.cit.hestia.materials.course.CourseRepository;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.web.ExtractionErrors;
@@ -42,6 +44,7 @@ public class ExtractionController {
     private final ExtractionRunRepository extractionRunRepository;
     private final ExtractionRunAuditService extractionRunAuditService;
     private final CourseRepository courseRepository;
+    private final CourseGuard courseGuard;
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
@@ -50,6 +53,7 @@ public class ExtractionController {
                                 ExtractionRunRepository extractionRunRepository,
                                 ExtractionRunAuditService extractionRunAuditService,
                                 CourseRepository courseRepository,
+                                CourseGuard courseGuard,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
         this.topicTrees = topicTrees;
@@ -57,6 +61,7 @@ public class ExtractionController {
         this.extractionRunRepository = extractionRunRepository;
         this.extractionRunAuditService = extractionRunAuditService;
         this.courseRepository = courseRepository;
+        this.courseGuard = courseGuard;
         this.extractionExecutor = extractionExecutor;
     }
 
@@ -73,6 +78,8 @@ public class ExtractionController {
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
             String runningCourse = progressTracker.current()
+                    // Only name a course the caller can see; another organisation's id stays hidden.
+                    .filter(current -> courseGuard.canRead(current.courseId()))
                     .map(current -> current.courseId().toString())
                     .orElse("another course");
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -200,6 +207,6 @@ class ExtractionExecutorConfiguration {
             thread.setDaemon(true);
             return thread;
         };
-        return Executors.newSingleThreadExecutor(threadFactory);
+        return OrgExecutors.bound(Executors.newSingleThreadExecutor(threadFactory));
     }
 }

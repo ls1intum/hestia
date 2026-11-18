@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.exam.submission.SubmittedExamBlock;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
@@ -27,7 +28,7 @@ import org.hibernate.annotations.CreationTimestamp;
  */
 @Entity
 @Table(schema = "materials", name = "learning_goal")
-public class LearningGoal {
+public class LearningGoal extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

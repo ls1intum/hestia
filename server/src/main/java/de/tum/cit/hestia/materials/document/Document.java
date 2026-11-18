@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.course.Course;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,7 +18,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(schema = "materials", name = "document")
-public class Document {
+public class Document extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

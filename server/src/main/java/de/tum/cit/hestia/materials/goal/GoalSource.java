@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.HighlightRect;
 import jakarta.persistence.Column;
@@ -18,7 +19,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(schema = "materials", name = "goal_source")
-public class GoalSource {
+public class GoalSource extends OrgScoped {
 
     @EmbeddedId
     private GoalSourceId id;

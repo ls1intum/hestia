@@ -2,7 +2,8 @@ package de.tum.cit.hestia.materials.exam;
 
 import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
 import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.CourseNotFoundException;
+import de.tum.cit.hestia.materials.course.CourseGuard;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlock;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlockType;
 import de.tum.cit.hestia.materials.goal.GoalDirectoryService;
@@ -20,18 +21,22 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ExamGoalDerivationService implements ExamGoalDerivation {
 
-    private final CourseRepository courseRepository;
+    private final CourseGuard guard;
     private final ExamGoalService examGoalService;
 
-    public ExamGoalDerivationService(CourseRepository courseRepository, ExamGoalService examGoalService) {
-        this.courseRepository = courseRepository;
+    public ExamGoalDerivationService(CourseGuard guard, ExamGoalService examGoalService) {
+        this.guard = guard;
         this.examGoalService = examGoalService;
     }
 
     @Override
     public List<TaskGoals> derive(long courseId, List<ExamTask> tasks) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new NoSuchElementException("Course not found: " + courseId));
+        Course course;
+        try {
+            course = guard.requireWrite(courseId);
+        } catch (ResponseStatusException | CourseNotFoundException e) {
+            throw new NoSuchElementException("Course not found: " + courseId);
+        }
         List<ExamBlock> blocks = tasks == null ? null : tasks.stream().map(ExamGoalDerivationService::toBlock).toList();
         try {
             ExamGoalController.validate(new ExamGoalController.GenerateExamGoalsRequest(blocks));

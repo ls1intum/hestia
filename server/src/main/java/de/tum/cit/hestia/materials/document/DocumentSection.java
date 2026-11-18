@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -19,7 +20,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(schema = "materials", name = "document_section")
-public class DocumentSection {
+public class DocumentSection extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

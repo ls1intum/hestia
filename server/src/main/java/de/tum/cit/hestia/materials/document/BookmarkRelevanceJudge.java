@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
+import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.llm.LlmClient;
 import de.tum.cit.hestia.materials.llm.LlmClient.LlmRequest;
 import java.time.Duration;
@@ -7,7 +8,6 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -140,7 +140,7 @@ public class BookmarkRelevanceJudge {
      * looks stuck. Past the deadline the call is interrupted, which also ends its retries.
      */
     private String withinTimeout(Callable<String> call) {
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        ExecutorService executor = OrgExecutors.newVirtualThreadPerTaskExecutor();
         Future<String> reply = executor.submit(call);
         try {
             return reply.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
