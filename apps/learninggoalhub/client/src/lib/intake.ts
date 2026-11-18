@@ -7,8 +7,8 @@ export type IntakeMe = Schemas["MeResponse"];
 export type IntakeSubmission = Schemas["SubmissionResponse"];
 export type IntakeFile = Schemas["FileResponse"];
 
-/** Where the intake lives inside the client; the login sends people back here. */
-export const INTAKE_PATH = "/einreichen";
+/** The first step of the workflow; the login sends people back here. */
+export const INTAKE_PATH = "/start";
 const RETURN_KEY = "lgh:returnTo";
 
 export const ACCEPTED_EXTENSIONS = [".pdf", ".pptx", ".ppt", ".docx", ".doc", ".xlsx", ".odt", ".odp", ".zip", ".txt", ".md", ".tex"];
@@ -33,30 +33,13 @@ export async function fetchMine(): Promise<IntakeSubmission[]> {
   return result.data;
 }
 
-export async function fetchAll(): Promise<IntakeSubmission[]> {
-  const result = await api.GET("/api/intake/admin/submissions");
-  if (!result.data) throw requestError("Die Einreichungen konnten nicht geladen werden.", result);
-  return result.data;
-}
-
-export async function deleteSubmission(id: string): Promise<void> {
-  const result = await api.DELETE("/api/intake/admin/submissions/{submissionId}", {
-    params: { path: { submissionId: id } },
-  });
-  if (!result.response.ok) throw requestError("Die Einreichung konnte nicht gelöscht werden.", result);
-}
-
-export function fileUrl(submissionId: string, fileId: string): string {
-  return `${API_PREFIX}/api/intake/admin/submissions/${submissionId}/files/${fileId}`;
-}
-
 export interface SubmissionForm {
   terms: IntakeTerms;
   files: File[];
-  confirmedRights: boolean;
-  confirmedNoStudentData: boolean;
-  consentPublication: boolean;
-  consentExternalAi: boolean;
+  confirmedTerms: boolean;
+  consentResearch: boolean;
+  consentReplicationPackage: boolean;
+  courseTitle: string;
   contactEmail: string;
   note: string;
 }
@@ -67,10 +50,10 @@ export async function submit(form: SubmissionForm): Promise<IntakeSubmission> {
   for (const file of form.files) body.append("files", file);
   body.append("termsVersion", form.terms.version ?? "");
   body.append("termsSha256", form.terms.sha256 ?? "");
-  body.append("confirmedRights", String(form.confirmedRights));
-  body.append("confirmedNoStudentData", String(form.confirmedNoStudentData));
-  body.append("consentPublication", String(form.consentPublication));
-  body.append("consentExternalAi", String(form.consentExternalAi));
+  body.append("confirmedTerms", String(form.confirmedTerms));
+  body.append("consentResearch", String(form.consentResearch));
+  body.append("consentReplicationPackage", String(form.consentReplicationPackage));
+  if (form.courseTitle.trim()) body.append("courseTitle", form.courseTitle.trim());
   if (form.contactEmail.trim()) body.append("contactEmail", form.contactEmail.trim());
   if (form.note.trim()) body.append("note", form.note.trim());
 

@@ -14,7 +14,7 @@ import org.springframework.security.saml2.provider.service.authentication.Saml2A
 
 class IntakeRequesterTest {
 
-    private final IntakeRequester requester = new IntakeRequester(List.of(" ab12cde@tum.de ", ""));
+    private final IntakeRequester requester = new IntakeRequester();
 
     @AfterEach
     void clear() {
@@ -32,7 +32,6 @@ class IntakeRequesterTest {
         IntakeRequester.Identity identity = requester.current();
 
         assertThat(identity.id()).isEqualTo("ab12cde@tum.de");
-        assertThat(identity.admin()).isTrue();
         assertThat(identity.suggestedEmail()).isEqualTo("teacher@tum.de");
     }
 
@@ -44,7 +43,6 @@ class IntakeRequesterTest {
         IntakeRequester.Identity identity = requester.current();
 
         assertThat(identity.id()).isEqualTo("dev-local-user");
-        assertThat(identity.admin()).isFalse();
         assertThat(identity.suggestedEmail()).isNull();
     }
 }

@@ -21,8 +21,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Stores submissions of research material. Nothing here calls a model: the material is only
- * stored for the project owner to download.
+ * Stores the material of past courses that teachers upload as the first step of the workflow.
+ * Nothing here calls a model.
  */
 @Service
 class IntakeService {
@@ -34,10 +34,11 @@ class IntakeService {
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int MAX_NOTE_CHARS = 4000;
     private static final int MAX_EMAIL_CHARS = 254;
+    private static final int MAX_TITLE_CHARS = 300;
 
-    record NewSubmission(String termsVersion, String termsSha256, boolean confirmedRights,
-                         boolean confirmedNoStudentData, boolean consentPublication, boolean consentExternalAi,
-                         String contactEmail, String note, List<MultipartFile> files) {
+    record NewSubmission(String termsVersion, String termsSha256, boolean confirmedTerms, boolean consentResearch,
+                         boolean consentReplicationPackage, String courseTitle, String contactEmail, String note,
+                         List<MultipartFile> files) {
     }
 
     private final IntakeSubmissionRepository submissions;
@@ -59,9 +60,9 @@ class IntakeService {
 
     @Transactional
     IntakeDtos.SubmissionResponse submit(String submitterId, NewSubmission request) {
-        if (!request.confirmedRights() || !request.confirmedNoStudentData()) {
+        if (!request.confirmedTerms()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Both confirmations (rights, no student data) are required");
+                    "The terms of use must be accepted (rights to the material, no student data)");
         }
         IntakeTerms.Current current = terms.current();
         if (!current.version().equals(request.termsVersion()) || !current.sha256().equals(request.termsSha256())) {
@@ -80,14 +81,18 @@ class IntakeService {
             requireAllowed(file);
         }
         String email = normalizeEmail(request.contactEmail());
+        String courseTitle = blankToNull(request.courseTitle());
+        if (courseTitle != null && courseTitle.length() > MAX_TITLE_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Course title is too long");
+        }
         String note = blankToNull(request.note());
         if (note != null && note.length() > MAX_NOTE_CHARS) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Note is too long");
         }
 
         Instant now = clock.instant();
-        IntakeSubmission submission = submissions.save(new IntakeSubmission(submitterId, email, note, current,
-                request.consentPublication(), request.consentExternalAi(), now));
+        IntakeSubmission submission = submissions.save(new IntakeSubmission(submitterId, courseTitle, email, note, current,
+                request.consentResearch(), request.consentReplicationPackage(), now));
         List<IntakeFile> stored = new ArrayList<>(uploads.size());
         for (MultipartFile upload : uploads) {
             byte[] bytes = bytes(upload);
@@ -102,26 +107,6 @@ class IntakeService {
     @Transactional(readOnly = true)
     List<IntakeDtos.SubmissionResponse> mine(String submitterId) {
         return withFiles(submissions.findBySubmitterIdOrderByCreatedAtDesc(submitterId));
-    }
-
-    @Transactional(readOnly = true)
-    List<IntakeDtos.SubmissionResponse> all() {
-        return withFiles(submissions.findAllByOrderByCreatedAtDesc());
-    }
-
-    @Transactional(readOnly = true)
-    IntakeFile file(UUID submissionId, UUID fileId) {
-        return files.findByIdAndSubmissionId(fileId, submissionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
-    }
-
-    @Transactional
-    void delete(UUID submissionId) {
-        if (!submissions.existsById(submissionId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found");
-        }
-        // The files go with it (on delete cascade).
-        submissions.deleteById(submissionId);
     }
 
     private List<IntakeDtos.SubmissionResponse> withFiles(List<IntakeSubmission> list) {

@@ -13,7 +13,7 @@ final class IntakeDtos {
     record TermsResponse(String version, String sha256, String text) {
     }
 
-    record MeResponse(String id, boolean admin, String suggestedEmail) {
+    record MeResponse(String id, String suggestedEmail) {
     }
 
     record FileResponse(UUID id, String name, String contentType, long sizeBytes, String sha256) {
@@ -22,12 +22,12 @@ final class IntakeDtos {
         }
     }
 
-    record SubmissionResponse(UUID id, String submitterId, String contactEmail, String note, String termsVersion,
-                              String termsSha256, boolean consentPublication, boolean consentExternalAi,
+    record SubmissionResponse(UUID id, String courseTitle, String contactEmail, String note, String termsVersion,
+                              String termsSha256, boolean consentResearch, boolean consentReplicationPackage,
                               Instant createdAt, List<FileResponse> files) {
         static SubmissionResponse from(IntakeSubmission s, List<IntakeFileInfo> files) {
-            return new SubmissionResponse(s.getId(), s.getSubmitterId(), s.getContactEmail(), s.getNote(),
-                    s.getTermsVersion(), s.getTermsSha256(), s.isConsentPublication(), s.isConsentExternalAi(),
+            return new SubmissionResponse(s.getId(), s.getCourseTitle(), s.getContactEmail(), s.getNote(),
+                    s.getTermsVersion(), s.getTermsSha256(), s.isConsentResearch(), s.isConsentReplicationPackage(),
                     s.getCreatedAt(), files.stream().map(FileResponse::from).toList());
         }
     }

@@ -360,57 +360,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/intake/admin/submissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** All submissions, newest first (platform admins only) */
-        get: operations["all"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/intake/admin/submissions/{submissionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a submission with its files, e.g. on the submitter's request (platform admins only) */
-        delete: operations["delete_2"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/intake/admin/submissions/{submissionId}/files/{fileId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download one file of a submission (platform admins only) */
-        get: operations["file"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/intake/me": {
         parameters: {
             query?: never;
@@ -418,7 +367,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who is logged in, whether they are an admin, and an e-mail suggestion from the login */
+        /** Who is logged in, and an e-mail suggestion from the login */
         get: operations["me"];
         put?: never;
         post?: never;
@@ -438,7 +387,7 @@ export interface paths {
         /** The caller's own submissions, newest first */
         get: operations["mine"];
         put?: never;
-        /** Submit files; needs both confirmations and the version and hash of the terms shown */
+        /** Upload a past course's material; needs the confirmation and the version and hash of the terms shown */
         post: operations["submit"];
         delete?: never;
         options?: never;
@@ -692,7 +641,6 @@ export interface components {
             text?: string;
         };
         MeResponse: {
-            admin?: boolean;
             id?: string;
             suggestedEmail?: string;
         };
@@ -819,16 +767,16 @@ export interface components {
             total?: number;
         };
         SubmissionResponse: {
-            consentExternalAi?: boolean;
-            consentPublication?: boolean;
+            consentReplicationPackage?: boolean;
+            consentResearch?: boolean;
             contactEmail?: string;
+            courseTitle?: string;
             /** Format: date-time */
             createdAt?: string;
             files?: components["schemas"]["FileResponse"][];
             /** Format: uuid */
             id?: string;
             note?: string;
-            submitterId?: string;
             termsSha256?: string;
             termsVersion?: string;
         };
@@ -1559,69 +1507,6 @@ export interface operations {
             };
         };
     };
-    all: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["SubmissionResponse"][];
-                };
-            };
-        };
-    };
-    delete_2: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                submissionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    file: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                submissionId: string;
-                fileId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": string;
-                };
-            };
-        };
-    };
     me: {
         parameters: {
             query?: never;
@@ -1667,10 +1552,10 @@ export interface operations {
             query: {
                 termsVersion: string;
                 termsSha256: string;
-                confirmedRights?: boolean;
-                confirmedNoStudentData?: boolean;
-                consentPublication?: boolean;
-                consentExternalAi?: boolean;
+                confirmedTerms?: boolean;
+                consentResearch?: boolean;
+                consentReplicationPackage?: boolean;
+                courseTitle?: string;
                 contactEmail?: string;
                 note?: string;
             };

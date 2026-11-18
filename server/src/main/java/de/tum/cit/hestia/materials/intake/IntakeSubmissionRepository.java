@@ -7,6 +7,4 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface IntakeSubmissionRepository extends JpaRepository<IntakeSubmission, UUID> {
 
     List<IntakeSubmission> findBySubmitterIdOrderByCreatedAtDesc(String submitterId);
-
-    List<IntakeSubmission> findAllByOrderByCreatedAtDesc();
 }

@@ -3,14 +3,11 @@ package de.tum.cit.hestia.materials.intake;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import java.nio.charset.StandardCharsets;
@@ -20,27 +17,27 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
-// Material intake over HTTP: login, terms, confirmations, own list, admin list and download.
+// Material intake over HTTP: login, terms, confirmation, consents, own list, no access to others.
 @Import(MaterialsTestConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class IntakeControllerTest extends MaterialsTestBase {
 
     private static final String BASE = "/learninggoalhub/api/intake";
-    private static final String ADMIN = "intake-admin";
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private IntakeTerms terms;
 
     @Autowired
-    private IntakeTerms terms;
+    private JdbcTemplate jdbc;
 
     @Test
     void needsALogin() throws Exception {
@@ -58,25 +55,17 @@ class IntakeControllerTest extends MaterialsTestBase {
     }
 
     @Test
-    void meNamesTheUserAndTheAdminFlag() throws Exception {
+    void meNamesTheUser() throws Exception {
         mockMvc.perform(get(BASE + "/me").with(user("someone")))
-                .andExpect(jsonPath("$.id").value("someone"))
-                .andExpect(jsonPath("$.admin").value(false));
-        mockMvc.perform(get(BASE + "/me").with(user(ADMIN)))
-                .andExpect(jsonPath("$.admin").value(true));
+                .andExpect(jsonPath("$.id").value("someone"));
     }
 
     @Test
-    void refusesASubmissionWithoutBothConfirmations() throws Exception {
+    void refusesASubmissionWithoutTheConfirmation() throws Exception {
         mockMvc.perform(multipart(BASE + "/submissions").file(pdf("a.pdf"))
                         .param("termsVersion", terms.current().version())
                         .param("termsSha256", terms.current().sha256())
-                        .param("confirmedRights", "true"))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(multipart(BASE + "/submissions").file(pdf("a.pdf"))
-                        .param("termsVersion", terms.current().version())
-                        .param("termsSha256", terms.current().sha256())
-                        .param("confirmedNoStudentData", "true"))
+                        .param("consentResearch", "true"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -85,8 +74,7 @@ class IntakeControllerTest extends MaterialsTestBase {
         mockMvc.perform(multipart(BASE + "/submissions").file(pdf("a.pdf"))
                         .param("termsVersion", terms.current().version())
                         .param("termsSha256", "0".repeat(64))
-                        .param("confirmedRights", "true")
-                        .param("confirmedNoStudentData", "true"))
+                        .param("confirmedTerms", "true"))
                 .andExpect(status().isConflict());
     }
 
@@ -105,63 +93,55 @@ class IntakeControllerTest extends MaterialsTestBase {
     }
 
     @Test
-    void storesASubmissionThatOnlyItsSubmitterAndTheAdminSee() throws Exception {
+    void storesTheSubmissionWithItsConsentsAndOnlyItsSubmitterSeesIt() throws Exception {
         String submitter = "teacher-" + UUID.randomUUID();
         byte[] slides = "%PDF-1.4 slides".getBytes(StandardCharsets.UTF_8);
 
-        String body = mockMvc.perform(submission(new MockMultipartFile("files", "Folien 1.pdf", "application/pdf", slides),
+        String id = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(
+                        submission(new MockMultipartFile("files", "Folien 1.pdf", "application/pdf", slides),
                                 new MockMultipartFile("files", "Klausur.docx", "application/octet-stream", new byte[] {7, 7}))
+                        .param("courseTitle", " Software Engineering WS 2025/26 ")
                         .param("contactEmail", " teacher@example.org ")
-                        .param("note", "Klausur WS 2025")
-                        .param("consentExternalAi", "true")
+                        .param("consentResearch", "true")
                         .with(user(submitter)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.submitterId").value(submitter))
+                .andExpect(jsonPath("$.courseTitle").value("Software Engineering WS 2025/26"))
                 .andExpect(jsonPath("$.contactEmail").value("teacher@example.org"))
                 .andExpect(jsonPath("$.termsVersion").value(terms.current().version()))
-                .andExpect(jsonPath("$.consentExternalAi").value(true))
-                .andExpect(jsonPath("$.consentPublication").value(false))
+                .andExpect(jsonPath("$.consentResearch").value(true))
+                .andExpect(jsonPath("$.consentReplicationPackage").value(false))
                 .andExpect(jsonPath("$.files.length()").value(2))
-                .andReturn().getResponse().getContentAsString();
-        JsonNode created = objectMapper.readTree(body);
-        String submissionId = created.get("id").asText();
-        String slidesId = null;
-        for (JsonNode file : created.get("files")) {
-            if (file.get("name").asText().equals("Folien 1.pdf")) {
-                slidesId = file.get("id").asText();
-            }
-        }
-        assertThat(slidesId).isNotNull();
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        // What was accepted is on the row, the bytes are stored unchanged.
+        assertThat(jdbc.queryForObject("""
+                select submitter_id || '|' || terms_sha256 || '|' || confirmed_terms
+                from materials.intake_submission where id = ?::uuid""", String.class, id))
+                .isEqualTo(submitter + "|" + terms.current().sha256() + "|true");
+        assertThat(jdbc.queryForObject("""
+                select bytes from materials.intake_file where submission_id = ?::uuid and original_name = 'Folien 1.pdf'""",
+                byte[].class, id)).isEqualTo(slides);
 
         // The submitter sees it, another user does not.
         mockMvc.perform(get(BASE + "/submissions").with(user(submitter)))
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(submissionId));
+                .andExpect(jsonPath("$[0].id").value(id));
         mockMvc.perform(get(BASE + "/submissions").with(user("other-" + UUID.randomUUID())))
                 .andExpect(jsonPath("$.length()").value(0));
+    }
 
-        // Only the admin lists everything and downloads the original bytes.
-        mockMvc.perform(get(BASE + "/admin/submissions").with(user(submitter))).andExpect(status().isForbidden());
-        mockMvc.perform(get(BASE + "/admin/submissions/{s}/files/{f}", submissionId, slidesId).with(user(submitter)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(get(BASE + "/admin/submissions").with(user(ADMIN)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.id == '" + submissionId + "')]").exists());
-        byte[] downloaded = mockMvc.perform(get(BASE + "/admin/submissions/{s}/files/{f}", submissionId, slidesId)
-                        .with(user(ADMIN)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsByteArray();
-        assertThat(downloaded).isEqualTo(slides);
+    @Test
+    void researchConsentCanBeWithdrawnAtUpload() throws Exception {
+        mockMvc.perform(submission(pdf("a.pdf")).param("consentReplicationPackage", "true")
+                        .with(user("teacher-" + UUID.randomUUID())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.consentResearch").value(false))
+                .andExpect(jsonPath("$.consentReplicationPackage").value(true));
+    }
 
-        // Deleting takes the files with it.
-        mockMvc.perform(delete(BASE + "/admin/submissions/{s}", submissionId).with(user(submitter)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(delete(BASE + "/admin/submissions/{s}", submissionId).with(user(ADMIN)))
-                .andExpect(status().isNoContent());
-        mockMvc.perform(get(BASE + "/submissions").with(user(submitter)))
-                .andExpect(jsonPath("$.length()").value(0));
-        mockMvc.perform(get(BASE + "/admin/submissions/{s}/files/{f}", submissionId, slidesId).with(user(ADMIN)))
-                .andExpect(status().isNotFound());
+    @Test
+    void nobodyCanListOrDownloadOtherPeoplesSubmissions() throws Exception {
+        mockMvc.perform(get(BASE + "/admin/submissions")).andExpect(status().isNotFound());
     }
 
     private MockMultipartHttpServletRequestBuilder submission(MockMultipartFile... files) {
@@ -171,8 +151,7 @@ class IntakeControllerTest extends MaterialsTestBase {
         }
         request.param("termsVersion", terms.current().version())
                 .param("termsSha256", terms.current().sha256())
-                .param("confirmedRights", "true")
-                .param("confirmedNoStudentData", "true");
+                .param("confirmedTerms", "true");
         return request;
     }
 

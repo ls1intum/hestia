@@ -51,9 +51,6 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
-      # External ids (eduPersonPrincipalName) of the platform admins, comma separated; they see
-      # the material intake. A GitHub variable, not a secret.
-      HESTIA_PLATFORM_ADMINS: ${HESTIA_PLATFORM_ADMINS:-}
       # TUM AET Logos gateway (materials and teaching). One key for the whole server.
       LOGOS_API_KEY: ${HESTIA_LOGOS_API_KEY:?set HESTIA_LOGOS_API_KEY in .env}
       # assessment: AI providers. Each key is optional; without it the matching strategies are off.

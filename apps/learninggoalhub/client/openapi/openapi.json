@@ -1158,97 +1158,6 @@
         ]
       }
     },
-    "/api/intake/admin/submissions": {
-      "get": {
-        "operationId": "all",
-        "responses": {
-          "200": {
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SubmissionResponse"
-                  }
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "summary": "All submissions, newest first (platform admins only)",
-        "tags": [
-          "intake-controller"
-        ]
-      }
-    },
-    "/api/intake/admin/submissions/{submissionId}": {
-      "delete": {
-        "operationId": "delete_2",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "submissionId",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "summary": "Delete a submission with its files, e.g. on the submitter's request (platform admins only)",
-        "tags": [
-          "intake-controller"
-        ]
-      }
-    },
-    "/api/intake/admin/submissions/{submissionId}/files/{fileId}": {
-      "get": {
-        "operationId": "file",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "submissionId",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "in": "path",
-            "name": "fileId",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "summary": "Download one file of a submission (platform admins only)",
-        "tags": [
-          "intake-controller"
-        ]
-      }
-    },
     "/api/intake/me": {
       "get": {
         "operationId": "me",
@@ -1264,7 +1173,7 @@
             "description": "OK"
           }
         },
-        "summary": "Who is logged in, whether they are an admin, and an e-mail suggestion from the login",
+        "summary": "Who is logged in, and an e-mail suggestion from the login",
         "tags": [
           "intake-controller"
         ]
@@ -1314,7 +1223,7 @@
           },
           {
             "in": "query",
-            "name": "confirmedRights",
+            "name": "confirmedTerms",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -1323,7 +1232,7 @@
           },
           {
             "in": "query",
-            "name": "confirmedNoStudentData",
+            "name": "consentResearch",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -1332,7 +1241,7 @@
           },
           {
             "in": "query",
-            "name": "consentPublication",
+            "name": "consentReplicationPackage",
             "required": false,
             "schema": {
               "type": "boolean",
@@ -1341,11 +1250,10 @@
           },
           {
             "in": "query",
-            "name": "consentExternalAi",
+            "name": "courseTitle",
             "required": false,
             "schema": {
-              "type": "boolean",
-              "default": false
+              "type": "string"
             }
           },
           {
@@ -1398,7 +1306,7 @@
             "description": "Created"
           }
         },
-        "summary": "Submit files; needs both confirmations and the version and hash of the terms shown",
+        "summary": "Upload a past course's material; needs the confirmation and the version and hash of the terms shown",
         "tags": [
           "intake-controller"
         ]
@@ -2086,9 +1994,6 @@
       "MeResponse": {
         "type": "object",
         "properties": {
-          "admin": {
-            "type": "boolean"
-          },
           "id": {
             "type": "string"
           },
@@ -2471,13 +2376,16 @@
       "SubmissionResponse": {
         "type": "object",
         "properties": {
-          "consentExternalAi": {
+          "consentReplicationPackage": {
             "type": "boolean"
           },
-          "consentPublication": {
+          "consentResearch": {
             "type": "boolean"
           },
           "contactEmail": {
+            "type": "string"
+          },
+          "courseTitle": {
             "type": "string"
           },
           "createdAt": {
@@ -2495,9 +2403,6 @@
             "format": "uuid"
           },
           "note": {
-            "type": "string"
-          },
-          "submitterId": {
             "type": "string"
           },
           "termsSha256": {

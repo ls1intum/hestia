@@ -10,8 +10,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One submission of research material. Besides who submitted it, the row records what they
- * accepted: the terms version and its hash, both confirmations and the two optional consents.
+ * One upload of a past course's material. Besides who submitted it, the row records what they
+ * accepted: the terms version and its hash, the confirmation and the two research consents.
  */
 @Entity
 @Table(schema = "materials", name = "intake_submission")
@@ -23,6 +23,9 @@ public class IntakeSubmission {
 
     @Column(name = "submitter_id", nullable = false)
     private String submitterId;
+
+    @Column(name = "course_title")
+    private String courseTitle;
 
     @Column(name = "contact_email")
     private String contactEmail;
@@ -36,17 +39,14 @@ public class IntakeSubmission {
     @Column(name = "terms_sha256", nullable = false)
     private String termsSha256;
 
-    @Column(name = "confirmed_rights", nullable = false)
-    private boolean confirmedRights;
+    @Column(name = "confirmed_terms", nullable = false)
+    private boolean confirmedTerms;
 
-    @Column(name = "confirmed_no_student_data", nullable = false)
-    private boolean confirmedNoStudentData;
+    @Column(name = "consent_research", nullable = false)
+    private boolean consentResearch;
 
-    @Column(name = "consent_publication", nullable = false)
-    private boolean consentPublication;
-
-    @Column(name = "consent_external_ai", nullable = false)
-    private boolean consentExternalAi;
+    @Column(name = "consent_replication_package", nullable = false)
+    private boolean consentReplicationPackage;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -54,18 +54,19 @@ public class IntakeSubmission {
     protected IntakeSubmission() {
     }
 
-    IntakeSubmission(String submitterId, String contactEmail, String note, IntakeTerms.Current terms,
-                     boolean consentPublication, boolean consentExternalAi, Instant createdAt) {
+    IntakeSubmission(String submitterId, String courseTitle, String contactEmail, String note,
+                     IntakeTerms.Current terms, boolean consentResearch, boolean consentReplicationPackage,
+                     Instant createdAt) {
         this.submitterId = submitterId;
+        this.courseTitle = courseTitle;
         this.contactEmail = contactEmail;
         this.note = note;
         this.termsVersion = terms.version();
         this.termsSha256 = terms.sha256();
-        // Only constructed after both confirmations were checked; the table enforces it as well.
-        this.confirmedRights = true;
-        this.confirmedNoStudentData = true;
-        this.consentPublication = consentPublication;
-        this.consentExternalAi = consentExternalAi;
+        // Only constructed after the confirmation was checked; the table enforces it as well.
+        this.confirmedTerms = true;
+        this.consentResearch = consentResearch;
+        this.consentReplicationPackage = consentReplicationPackage;
         this.createdAt = createdAt;
     }
 
@@ -75,6 +76,10 @@ public class IntakeSubmission {
 
     public String getSubmitterId() {
         return submitterId;
+    }
+
+    public String getCourseTitle() {
+        return courseTitle;
     }
 
     public String getContactEmail() {
@@ -93,20 +98,16 @@ public class IntakeSubmission {
         return termsSha256;
     }
 
-    public boolean isConfirmedRights() {
-        return confirmedRights;
+    public boolean isConfirmedTerms() {
+        return confirmedTerms;
     }
 
-    public boolean isConfirmedNoStudentData() {
-        return confirmedNoStudentData;
+    public boolean isConsentResearch() {
+        return consentResearch;
     }
 
-    public boolean isConsentPublication() {
-        return consentPublication;
-    }
-
-    public boolean isConsentExternalAi() {
-        return consentExternalAi;
+    public boolean isConsentReplicationPackage() {
+        return consentReplicationPackage;
     }
 
     public Instant getCreatedAt() {

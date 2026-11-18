@@ -4,7 +4,6 @@ import Layout from "./components/Layout.tsx";
 import CoursesPage from "./pages/CoursesPage.tsx";
 import CoursePage from "./pages/CoursePage.tsx";
 import IntakePage from "./pages/IntakePage.tsx";
-import IntakeAdminPage from "./pages/IntakeAdminPage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
 import { INTAKE_PATH, rememberReturn, takeReturn } from "./lib/intake.ts";
 
@@ -34,9 +33,9 @@ export default function App() {
         <div className="flex h-full flex-col items-center justify-center pt-24 text-center">
           {onIntake ? (
             <>
-              <h1 className="mb-2 text-2xl font-bold">Material einreichen</h1>
+              <h1 className="mb-2 text-2xl font-bold">Die nächste Veranstaltung beginnt mit der letzten</h1>
               <p className="mb-6 max-w-md text-hestia-text-muted">
-                Bitte melden Sie sich an. Danach sehen Sie die Nutzungsbedingungen und können Ihr Material hochladen.
+                Melden Sie sich an, um die Unterlagen Ihrer letzten Durchführung hochzuladen.
               </p>
             </>
           ) : (
@@ -63,7 +62,6 @@ export default function App() {
         <Route path="/" element={<CoursesPage />} />
         <Route path="/courses/:courseId" element={<CoursePage />} />
         <Route path={INTAKE_PATH} element={<IntakePage />} />
-        <Route path={`${INTAKE_PATH}/admin`} element={<IntakeAdminPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Layout>

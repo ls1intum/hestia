@@ -1,20 +1,24 @@
--- Material intake (package 3a): teachers submit slides, exams and module descriptions for research.
--- Each submission records the terms version the submitter accepted and their confirmations.
+-- Material intake (package 3a): teachers upload the material of a past course as the first step of
+-- the workflow. Each submission records the terms version the submitter accepted, the confirmation
+-- and the two research consents.
 
 CREATE TABLE materials.intake_submission (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     submitter_id text NOT NULL,
+    course_title text,
     contact_email text,
     note text,
     terms_version text NOT NULL,
     terms_sha256 text NOT NULL,
-    confirmed_rights boolean NOT NULL,
-    confirmed_no_student_data boolean NOT NULL,
-    consent_publication boolean DEFAULT false NOT NULL,
-    consent_external_ai boolean DEFAULT false NOT NULL,
+    -- Terms accepted, rights to the material, no student data: one required confirmation.
+    confirmed_terms boolean NOT NULL,
+    -- Opt-out, checked by default: the material may be used for the HESTIA research.
+    consent_research boolean NOT NULL,
+    -- Opt-in: anonymised data may go into a published replication package.
+    consent_replication_package boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT intake_submission_pkey PRIMARY KEY (id),
-    CONSTRAINT intake_submission_confirmed CHECK (confirmed_rights AND confirmed_no_student_data)
+    CONSTRAINT intake_submission_confirmed CHECK (confirmed_terms)
 );
 
 CREATE INDEX intake_submission_submitter_idx ON materials.intake_submission (submitter_id, created_at);
