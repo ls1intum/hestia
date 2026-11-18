@@ -1,6 +1,12 @@
 # Settings of the materials module (formerly the LearningGoalHub server).
 
 hestia:
+  intake:
+    # Terms of use shown before a material upload: resources/intake/terms-<version>.md. A changed
+    # text gets a new file and version; every submission records the version it accepted.
+    terms-version: 2026-11-18
+    max-files: 10
+    max-file-size: 50MB
   figures:
     # Vision model used to describe eligible text-poor slide pages during extraction.
     vision-model: Qwen/Qwen3.8-27B

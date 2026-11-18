@@ -360,6 +360,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/intake/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is logged in, and an e-mail suggestion from the login */
+        get: operations["me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/intake/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own submissions, newest first */
+        get: operations["mine"];
+        put?: never;
+        /** Upload a past course's material; needs the confirmation and the version and hash of the terms shown */
+        post: operations["submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/intake/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The terms of use in force, to show before an upload */
+        get: operations["terms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -491,6 +543,15 @@ export interface components {
             /** Format: int32 */
             unsupportedSources?: number;
         };
+        FileResponse: {
+            contentType?: string;
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            sha256?: string;
+            /** Format: int64 */
+            sizeBytes?: number;
+        };
         GenerateExamGoalsRequest: {
             blocks?: components["schemas"]["ExamBlock"][];
         };
@@ -578,6 +639,10 @@ export interface components {
             /** @enum {string} */
             status?: "PENDING" | "APPROVED";
             text?: string;
+        };
+        MeResponse: {
+            id?: string;
+            suggestedEmail?: string;
         };
         PageMetadata: {
             /** Format: int64 */
@@ -700,6 +765,25 @@ export interface components {
             summary?: components["schemas"]["ExtractionSummary"];
             /** Format: int32 */
             total?: number;
+        };
+        SubmissionResponse: {
+            consentReplicationPackage?: boolean;
+            consentResearch?: boolean;
+            contactEmail?: string;
+            courseTitle?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            files?: components["schemas"]["FileResponse"][];
+            /** Format: uuid */
+            id?: string;
+            note?: string;
+            termsSha256?: string;
+            termsVersion?: string;
+        };
+        TermsResponse: {
+            sha256?: string;
+            text?: string;
+            version?: string;
         };
         TopicRequest: {
             text?: string;
@@ -1420,6 +1504,101 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["MeResponse"];
+                };
+            };
+        };
+    };
+    mine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SubmissionResponse"][];
+                };
+            };
+        };
+    };
+    submit: {
+        parameters: {
+            query: {
+                termsVersion: string;
+                termsSha256: string;
+                confirmedTerms?: boolean;
+                consentResearch?: boolean;
+                consentReplicationPackage?: boolean;
+                courseTitle?: string;
+                contactEmail?: string;
+                note?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    files: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SubmissionResponse"];
+                };
+            };
+        };
+    };
+    terms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TermsResponse"];
+                };
             };
         };
     };
