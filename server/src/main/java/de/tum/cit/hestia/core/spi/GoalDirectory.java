@@ -11,7 +11,7 @@ import java.util.NoSuchElementException;
  */
 public interface GoalDirectory {
 
-    /** One page of courses, ordered as LearningGoalHub lists them. */
+    /** One page of the courses the current user is a member of, ordered as LearningGoalHub lists them. */
     Page<Course> listCourses(int page, int size);
 
     /** Creates an empty course (no documents) and returns it. */
@@ -29,7 +29,11 @@ public interface GoalDirectory {
     /** Deletes a goal of a course. A goal that is already gone is not an error. */
     void deleteGoal(long courseId, long goalId);
 
-    record Course(long id, String name) {}
+    /**
+     * A course of the materials module; {@code coreCourseId} is the {@code core.course} it belongs to,
+     * on which course roles are checked.
+     */
+    record Course(long id, String name, java.util.UUID coreCourseId) {}
 
     record Page<T>(List<T> content, int number, int size, long totalElements, int totalPages) {}
 

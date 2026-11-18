@@ -42,7 +42,7 @@ public class GoalDirectoryService implements GoalDirectory {
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
         return new GoalDirectory.Page<>(
                 courses.getContent().stream()
-                        .map(c -> new GoalDirectory.Course(c.id(), c.name()))
+                        .map(c -> new GoalDirectory.Course(c.id(), c.name(), null))
                         .toList(),
                 courses.getNumber(), courses.getSize(), courses.getTotalElements(), courses.getTotalPages());
     }
@@ -50,7 +50,7 @@ public class GoalDirectoryService implements GoalDirectory {
     @Override
     public GoalDirectory.Course createCourse(String name) {
         de.tum.cit.hestia.materials.course.Course course = courseService.create(name, null, null);
-        return new GoalDirectory.Course(course.getId(), course.getName());
+        return new GoalDirectory.Course(course.getId(), course.getName(), null);
     }
 
     @Override

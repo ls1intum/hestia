@@ -47,9 +47,9 @@ class LghControllerTest extends AbstractIntegrationTest {
     @Test
     void listsCoursesAcrossAllPages() throws Exception {
         when(goalDirectory.listCourses(0, 100)).thenReturn(new GoalDirectory.Page<>(
-            List.of(new GoalDirectory.Course(1, "A")), 0, 100, 2, 2));
+            List.of(new GoalDirectory.Course(1, "A", null)), 0, 100, 2, 2));
         when(goalDirectory.listCourses(1, 100)).thenReturn(new GoalDirectory.Page<>(
-            List.of(new GoalDirectory.Course(2, "B")), 1, 100, 2, 2));
+            List.of(new GoalDirectory.Course(2, "B", null)), 1, 100, 2, 2));
 
         mvc.perform(get("/examlense/api/lgh/courses").header("Authorization", bearer()))
             .andExpect(status().isOk())
@@ -68,7 +68,7 @@ class LghControllerTest extends AbstractIntegrationTest {
 
     @Test
     void createsACourse() throws Exception {
-        when(goalDirectory.createCourse("Algorithms")).thenReturn(new GoalDirectory.Course(7, "Algorithms"));
+        when(goalDirectory.createCourse("Algorithms")).thenReturn(new GoalDirectory.Course(7, "Algorithms", null));
 
         mvc.perform(post("/examlense/api/lgh/courses").header("Authorization", bearer())
                 .contentType(APPLICATION_JSON).content("{\"name\":\" Algorithms \"}"))
