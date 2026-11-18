@@ -25,6 +25,12 @@ The merge follows a design document maintained by the project owner outside this
 - user-specific details in docs — keep repository docs user-agnostic
 - never use `git add -A`; stage files by explicit path
 
+## Before Pushing
+
+Run `scripts/ci-local.sh` (add `--e2e` when you changed LearningGoalHub's client or its API) and push only when it passes. It runs the deploy preflight, `./gradlew testAll` and the client tests, as the CI does before it builds images. After pushing, check the pull request with `gh pr checks` and fix a red check before handing the work back.
+
+Workflows run on pinned runner images (`ubuntu-24.04`) and pin the ls1intum reusable workflows to a commit. Keep it that way: do not switch a job to `ubuntu-latest` or a reusable workflow back to `@main`.
+
 ## Repo Guard
 
 The repo ships a pre-commit guard (secret scan via gitleaks + binary file guard). One-time setup per clone:

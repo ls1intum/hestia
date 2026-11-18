@@ -48,7 +48,7 @@ permissions:
 
 jobs:
   build:
-    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@main
+    uses: ls1intum/.github/.github/workflows/build-and-push-docker-image.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
       image-name: ${{ github.repository }}/landing-site
       docker-file: apps/landing-page/Dockerfile
@@ -62,7 +62,7 @@ jobs:
     # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment
     # gateway. The reusable workflow applies the GitHub environment protection rules, so a
     # deploy to the `Production` environment (required reviewer) pauses until approved.
-    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@main
+    uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
       environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       docker-compose-file: apps/landing-page/compose.prod.yaml

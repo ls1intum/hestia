@@ -1,0 +1,17 @@
+# Updates of the GitHub Actions used by the workflows arrive as one weekly pull request, where CI
+# tests them, instead of changing under a running pipeline. The ls1intum reusable workflows are
+# pinned to a commit of their main branch and are updated by hand (their release tags are older).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "ls1intum/.github*" # the reusable workflows, whatever path Dependabot reports
+    commit-message:
+      prefix: ci
