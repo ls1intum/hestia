@@ -62,6 +62,8 @@ abstract class FlowApplication {
 
     FlowClient signedIn() { return FlowClient.signedIn(port); }
 
+    FlowClient signedInAs(String user, String org) { return FlowClient.signedInAs(port, user, org); }
+
     FlowClient anonymous() { return FlowClient.anonymous(port); }
 
     /** Answers the goal directory with the courses of one canned JSON body ({@code content: [{id, name}]}). */
@@ -76,7 +78,7 @@ abstract class FlowApplication {
             try {
                 JsonNode content = new ObjectMapper().readTree(body.get()).path("content");
                 List<GoalDirectory.Course> courses = new ArrayList<>();
-                content.forEach(c -> courses.add(new GoalDirectory.Course(c.path("id").asLong(), c.path("name").asText())));
+                content.forEach(c -> courses.add(new GoalDirectory.Course(c.path("id").asLong(), c.path("name").asText(), java.util.UUID.randomUUID())));
                 return new GoalDirectory.Page<>(courses, page, size, courses.size(), 1);
             } catch (IOException e) {
                 throw new IllegalStateException(e);

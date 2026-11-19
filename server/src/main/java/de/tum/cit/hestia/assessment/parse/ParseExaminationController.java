@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.assessment.parse;
 
 import de.tum.cit.hestia.assessment.ai.ParserStrategy;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
+import de.tum.cit.hestia.core.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,22 +27,24 @@ public class ParseExaminationController {
     ) {}
 
     private final ParseExaminationService service;
+    private final CurrentUser currentUser;
 
-    public ParseExaminationController(ParseExaminationService service) {
+    public ParseExaminationController(ParseExaminationService service, CurrentUser currentUser) {
         this.service = service;
+        this.currentUser = currentUser;
     }
 
     /**
      * POST /api/parse-exam-pdf  { "exam_id": "...", "storage_path": "...", ... }
      *
-     * Verifies ownership synchronously, dispatches the extraction onto the
+     * Verifies write access to the exam synchronously, dispatches the extraction onto the
      * background pool, and returns 202 immediately. The frontend observes
      * `exams.parse_phase` for progress (via SSE once Phase 2c lands).
      */
     @Operation(
         summary = "Parse an uploaded exam PDF",
         description = """
-            Verifies ownership synchronously, then runs the extraction on a background pool \
+            Verifies write access to the exam synchronously, then runs the extraction on a background pool \
             and returns **202** right away with `{ ok, exam_id, status: "parsing" }`.
 
             `parser_model` is optional; an omitted **or unrecognised** id falls back to the \
@@ -60,16 +62,15 @@ public class ParseExaminationController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `exam_id` is not a valid UUID.")
     @PostMapping("/parse-exam-pdf")
     public ResponseEntity<Map<String, Object>> parse(
-        @Valid @RequestBody ParseExaminationRequest req,
-        @CurrentUser String userId
+        @Valid @RequestBody ParseExaminationRequest req
     ) {
         // Start the clock here (not inside run()) so the recorded duration tracks
         // the closest-to-e2e server-side window: preflight + queue wait + pipeline.
         long requestNanos = System.nanoTime();
-        ParserStrategy strategy = service.preflight(req.exam_id(), userId, req.parser_model());
+        ParserStrategy strategy = service.preflight(req.exam_id(), req.parser_model());
         service.runAsync(
             req.exam_id(),
-            userId,
+            currentUser.userId().toString(),
             req.storage_path(),
             strategy,
             requestNanos

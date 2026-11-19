@@ -3,7 +3,6 @@ package de.tum.cit.hestia.assessment.grading;
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
-import de.tum.cit.hestia.assessment.shared.DefaultUser;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
@@ -34,7 +33,7 @@ class GradeControllerIT extends AbstractIntegrationTest {
         AIAnswer answer = answer(exam, task);
 
         mvc.perform(put("/examlense/api/task-grades")
-                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .with(as("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(request(task, exam)))
             .andExpect(status().isOk())
@@ -50,7 +49,7 @@ class GradeControllerIT extends AbstractIntegrationTest {
         TaskBlock task = task(exam);
 
         mvc.perform(put("/examlense/api/task-grades")
-                .header("Authorization", "Bearer " + TEST_TOKEN)
+                .with(as("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(request(task, exam)))
             .andExpect(status().isConflict())
@@ -59,7 +58,7 @@ class GradeControllerIT extends AbstractIntegrationTest {
 
     private Examination examination() {
         Examination exam = new Examination();
-        exam.setOwnerId(DefaultUser.ID);
+        exam.setCreatedBy(userId("alice"));
         exam.setSource("manual");
         exam.setStatus("grading");
         return exams.save(exam);

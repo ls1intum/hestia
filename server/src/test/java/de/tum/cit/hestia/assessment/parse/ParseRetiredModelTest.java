@@ -5,11 +5,12 @@ import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
+import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.storage.StorageService;
+import de.tum.cit.hestia.core.CurrentUser;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,20 +35,24 @@ class ParseRetiredModelTest {
     private final ExaminationRepository examRepository = mock(ExaminationRepository.class);
     private final ParseProgress progress = mock(ParseProgress.class);
     private final ParseInputBuilder inputBuilder = mock(ParseInputBuilder.class);
+    private final Access access = mock(Access.class);
+    private final CurrentUser currentUser = mock(CurrentUser.class);
 
     private ParseExaminationService service() {
         return new ParseExaminationService(
             examRepository, mock(StorageService.class), mock(AiProviderFactory.class),
             mock(PdfPageCounter.class), inputBuilder, mock(ParsedExaminationPersister.class),
             mock(ParseMetricsRecorder.class), progress,
-            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class));
+            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class),
+            access, currentUser);
     }
 
     private void withExamination() {
         Examination exam = new Examination();
         exam.setId(EXAM_ID);
-        exam.setOwnerId(OWNER);
-        when(examRepository.findById(EXAM_ID)).thenReturn(Optional.of(exam));
+        exam.setCreatedBy(OWNER);
+        when(access.requireExaminationForWrite(EXAM_ID)).thenReturn(exam);
+        when(currentUser.userId()).thenReturn(OWNER);
     }
 
     @Test
@@ -55,7 +60,7 @@ class ParseRetiredModelTest {
         withExamination();
 
         assertThatThrownBy(() ->
-            service().preflight(EXAM_ID.toString(), OWNER.toString(), "qwen3.6-35b-a3b"))
+            service().preflight(EXAM_ID.toString(), "qwen3.6-35b-a3b"))
             .isInstanceOf(ApiException.class)
             .hasMessage(ParseErrorMessages.AI_MODEL_RETIRED)
             .extracting(e -> ((ApiException) e).status())
@@ -71,7 +76,7 @@ class ParseRetiredModelTest {
     void preflightStillAcceptsACurrentModel() {
         withExamination();
 
-        assertThat(service().preflight(EXAM_ID.toString(), OWNER.toString(), "gemini-3.5-flash").id())
+        assertThat(service().preflight(EXAM_ID.toString(), "gemini-3.5-flash").id())
             .isEqualTo("gemini-3.5-flash");
         verify(progress).notifyExamination(EXAM_ID);
     }
@@ -82,7 +87,7 @@ class ParseRetiredModelTest {
 
         // Unknown ≠ retired: a typo or a client from a newer build should not
         // block a parse, and the registry's default already covers it.
-        assertThat(service().preflight(EXAM_ID.toString(), OWNER.toString(), "not-a-model").id())
+        assertThat(service().preflight(EXAM_ID.toString(), "not-a-model").id())
             .isEqualTo("gemini-3.5-flash");
         verify(progress, never()).fail(any(), anyString());
     }

@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -31,6 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * catches the IOException — so the ERROR must be produced below our code, by the
  * container finishing the abandoned async request. This pins where it comes from.
  */
+// Profile local: every request is the dev login (no session over a raw socket).
+@ActiveProfiles("local")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class SseHubBrokenPipeIT extends AbstractIntegrationTest {
 
@@ -57,7 +60,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
     private void openThenKillSseStream() throws Exception {
         Socket socket = new Socket("localhost", port);
         OutputStream out = socket.getOutputStream();
-        out.write(("GET /examlense/api/exams/events?token=" + TEST_TOKEN + " HTTP/1.1\r\n"
+        out.write(("GET /examlense/api/exams/events HTTP/1.1\r\n"
             + "Host: localhost:" + port + "\r\n"
             + "Accept: text/event-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -91,7 +94,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
         try (Socket socket = new Socket("localhost", port)) {
             socket.getOutputStream().write(
                 ("GET /examlense/api/__boom HTTP/1.1\r\nHost: localhost:" + port + "\r\n"
-                    + "Authorization: Bearer " + TEST_TOKEN + "\r\n\r\n")
+                    + "\r\n")
                     .getBytes(StandardCharsets.UTF_8));
             socket.getOutputStream().flush();
             byte[] buf = new byte[512];
@@ -106,6 +109,9 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
     @Test
     void publishingToADeadSseStreamLogsNoErrorAndDoesNotThrow() throws Exception {
         openThenKillSseStream();
+        // The stream belongs to the dev login's organisation; publish for that one.
+        de.tum.cit.hestia.core.OrgContext.set(
+            identities.login("local.test", "dev-local-user", "dev-local-user").orgId());
 
         // Two publishes: the first hits the dead socket, the second proves the
         // emitter was evicted rather than left to fail again.

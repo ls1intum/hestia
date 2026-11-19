@@ -112,6 +112,25 @@ class CourseSessionHttpFlowTest extends FlowTestSupport {
         assertThat(response.status()).isEqualTo(404);
     }
 
+    @Test
+    void anotherUserAndAnotherOrganisationDoNotSeeTheCourse() {
+        FlowClient owner = signedIn();
+        String courseId = createCourse(owner, "Flow Course Private");
+        String sessionId = createSession(owner, "Flow Session Private", courseId);
+
+        FlowClient sameOrgOtherUser = signedInAs("flow-other-user", null);
+        FlowClient otherOrg = signedInAs(null, "other-uni.test");
+        for (FlowClient stranger : new FlowClient[] {sameOrgOtherUser, otherOrg}) {
+            assertThat(stranger.get(FlowPaths.course(courseId)).status()).isEqualTo(404);
+            assertThat(stranger.get(FlowPaths.session(sessionId)).status()).isEqualTo(404);
+            assertThat(find(stranger.get(FlowPaths.COURSES).json(), courseId)).isNull();
+            assertThat(find(stranger.get(FlowPaths.SESSIONS).json(), sessionId)).isNull();
+            assertThat(stranger.delete(FlowPaths.course(courseId)).status()).isEqualTo(404);
+        }
+
+        assertThat(owner.delete(FlowPaths.course(courseId)).status()).isEqualTo(204);
+    }
+
     private static JsonNode find(JsonNode array, String id) {
         for (JsonNode item : array) {
             if (id.equals(item.path("id").asText())) return item;

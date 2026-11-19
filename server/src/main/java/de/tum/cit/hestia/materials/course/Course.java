@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.materials.course;
 
+import java.util.UUID;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,7 +13,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(schema = "materials", name = "course")
-public class Course {
+public class Course extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,11 +36,20 @@ public class Course {
     @Column(name = "skills_reviewed_at")
     private OffsetDateTime skillsReviewedAt;
 
+    /** The {@code core.course} this course belongs to; course roles are checked on it. */
+    @Column(name = "core_course_id", nullable = false, updatable = false)
+    private UUID coreCourseId;
+
     protected Course() {
     }
 
-    public Course(String name) {
+    public Course(String name, UUID coreCourseId) {
         this.name = name;
+        this.coreCourseId = coreCourseId;
+    }
+
+    public UUID getCoreCourseId() {
+        return coreCourseId;
     }
 
     public Long getId() {

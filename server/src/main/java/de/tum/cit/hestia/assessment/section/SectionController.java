@@ -4,7 +4,6 @@ import de.tum.cit.hestia.assessment.shared.Access;
 
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.lgh.TaskBlockGoalGenerationService;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -48,8 +47,8 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/sections")
-    public List<SectionDtos.SectionDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public List<SectionDtos.SectionDto> list(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return sectionRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
             .stream().map(SectionDtos.SectionDto::from).toList();
     }
@@ -60,9 +59,9 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `exam_id` is not a valid UUID.")
     @PostMapping("/sections")
-    public SectionDtos.SectionDto create(@RequestBody CreateSectionRequest req, @CurrentUser String userId) {
+    public SectionDtos.SectionDto create(@RequestBody CreateSectionRequest req) {
         UUID examId = Access.id(req.exam_id());
-        access.requireExamination(examId, userId);
+        access.requireExaminationForWrite(examId);
         Section s = new Section();
         s.setExamId(examId);
         s.setPosition(req.position() == null ? 0 : req.position());
@@ -81,9 +80,8 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")
     @PatchMapping("/sections/{id}")
-    public SectionDtos.SectionDto patch(@PathVariable String id, @RequestBody java.util.Map<String, Object> body,
-                                 @CurrentUser String userId) {
-        Section s = load(id, userId);
+    public SectionDtos.SectionDto patch(@PathVariable String id, @RequestBody java.util.Map<String, Object> body) {
+        Section s = load(id, true);
         // Only user-editable fields. `confirmed_at` has dedicated endpoints
         // (confirm/unconfirm do goal + answer cleanup a raw patch would skip)
         // and `solve_started_at` / `goals_started_at` are internal CAS locks.
@@ -108,8 +106,8 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")
     @DeleteMapping("/sections/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
-        Section s = load(id, userId);
+    public ResponseEntity<Void> delete(@PathVariable String id) {
+        Section s = load(id, true);
         sectionService.deleteSection(s);
         return ResponseEntity.noContent().build();
     }
@@ -128,8 +126,8 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")
     @PostMapping("/sections/{id}/confirm")
-    public SectionDtos.SectionDto confirm(@PathVariable String id, @CurrentUser String userId) {
-        Section s = load(id, userId);
+    public SectionDtos.SectionDto confirm(@PathVariable String id) {
+        Section s = load(id, true);
         s.setConfirmedAt(OffsetDateTime.now());
         SectionDtos.SectionDto dto = SectionDtos.SectionDto.from(sectionRepository.save(s));
         // Fire-and-forget LGH goal generation; must never fail the confirm.
@@ -148,14 +146,14 @@ public class SectionController {
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")
     @PostMapping("/sections/{id}/unconfirm")
-    public SectionDtos.SectionDto unconfirm(@PathVariable String id, @CurrentUser String userId) {
-        Section s = load(id, userId);
+    public SectionDtos.SectionDto unconfirm(@PathVariable String id) {
+        Section s = load(id, true);
         sectionService.unconfirmSection(s);
         return SectionDtos.SectionDto.from(sectionRepository.findById(s.getId()).orElse(s));
     }
 
     /** Load a section and verify the caller owns its exam. */
-    private Section load(String id, String userId) {
-        return access.requireOwnedChild(sectionRepository, id, userId, Section::getExamId, "Section");
+    private Section load(String id, boolean write) {
+        return access.requireChild(sectionRepository, id, write, Section::getExamId, "Section");
     }
 }

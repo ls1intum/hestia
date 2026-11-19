@@ -4,6 +4,7 @@ import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -12,6 +13,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * test Postgres (inherited), and every outbound AI
  * call pointed at a local fake. Tests talk to the app only through {@link #http}.
  */
+@ActiveProfiles(FlowAuth.SIGNED_IN_PROFILE)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 abstract class AbstractHttpFlowTest extends AbstractIntegrationTest {
 

@@ -10,7 +10,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.test.context.support.WithMockUser;
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CurrentUser;
+import java.util.UUID;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,15 +35,29 @@ public class WorkshopSessionFacadeContractTest {
     @Mock
     private com.fasterxml.jackson.databind.ObjectMapper mapper;
 
+    @Mock
+    private CurrentUser currentUser;
+
+    @Mock
+    private CourseAccess courseAccess;
+
     @org.mockito.Spy
-    private UsageGuard usageGuard = new UsageGuard(4, 120, 10);
+    private UsageGuard usageGuard = new UsageGuard(anyone(), 4, 120, 10);
+
+    private final UUID userId = UUID.randomUUID();
+
+    private static CurrentUser anyone() {
+        CurrentUser u = org.mockito.Mockito.mock(CurrentUser.class);
+        org.mockito.Mockito.when(u.userId()).thenReturn(UUID.randomUUID());
+        return u;
+    }
 
     @InjectMocks
     private WorkshopSessionFacade facade;
 
     @Test
-    @WithMockUser(username = "dev-local-user")
     public void generateAndSaveSession_shouldPassAvailableMaterialsToUseCase() throws Exception {
+        org.mockito.Mockito.lenient().when(currentUser.userId()).thenReturn(userId);
         // Arrange
         String materials = "Whiteboard, Jupyter Notebooks";
         WorkshopInputDto meta = new WorkshopInputDto("Test Title", 90, 10, "lecture", null, null, null);
@@ -53,7 +69,7 @@ public class WorkshopSessionFacadeContractTest {
 
         WorkshopSessionEntity mockEntity = new WorkshopSessionEntity();
         mockEntity.setId("id");
-        mockEntity.setOwnerId("dev-local-user");
+        mockEntity.setCreatedBy(userId);
         org.mockito.Mockito.lenient().when(repository.findById(anyString())).thenReturn(Optional.of(mockEntity));
         org.mockito.Mockito.lenient().when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -68,8 +84,8 @@ public class WorkshopSessionFacadeContractTest {
     }
 
     @Test
-    @WithMockUser(username = "dev-local-user")
     public void generateAndSaveSession_shouldNotSaveASingleRegeneratedBlockOverTheTimetable() throws Exception {
+        org.mockito.Mockito.lenient().when(currentUser.userId()).thenReturn(userId);
         WorkshopInputDto meta = new WorkshopInputDto("Test Title", 90, 10, "lecture", null, null, null);
         SkeletonBlockDto block = new SkeletonBlockDto("LEARNING_CYCLE", 1, 20, "Cycle", null, List.of());
         SessionSkeletonDto skeleton = new SessionSkeletonDto(List.of(block), "session-1");
@@ -79,7 +95,7 @@ public class WorkshopSessionFacadeContractTest {
         when(generateTimetableUseCase.execute(any(), any(), any(), anyString())).thenReturn(generated);
         WorkshopSessionEntity entity = new WorkshopSessionEntity();
         entity.setId("session-1");
-        entity.setOwnerId(de.tum.cit.hestia.teaching.config.AuthContext.getCurrentUserId()); // the caller owns the session
+        entity.setCreatedBy(userId); // the caller created the session
         when(repository.findById("session-1")).thenReturn(Optional.of(entity));
 
         WorkshopSessionDto result = facade.generateAndSaveSession(request);

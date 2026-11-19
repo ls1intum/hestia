@@ -5,13 +5,16 @@ import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
 import de.tum.cit.hestia.assessment.ai.SolverStrategies;
 import de.tum.cit.hestia.assessment.ai.SolverStrategy;
 import de.tum.cit.hestia.assessment.shared.Access;
+import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.section.SectionRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
 import de.tum.cit.hestia.assessment.prompts.Prompts;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -47,6 +50,7 @@ public class SolveSectionService {
     private final TaskBlockRepository taskRepository;
     private final AiProviderFactory providerFactory;
     private final Access access;
+    private final ExaminationRepository examRepository;
     private final SolveCore core;
 
     public SolveSectionService(
@@ -54,8 +58,10 @@ public class SolveSectionService {
         TaskBlockRepository taskRepository,
         AiProviderFactory providerFactory,
         Access access,
+        ExaminationRepository examRepository,
         SolveCore core
     ) {
+        this.examRepository = examRepository;
         this.sectionRepository = sectionRepository;
         this.taskRepository = taskRepository;
         this.providerFactory = providerFactory;
@@ -65,11 +71,22 @@ public class SolveSectionService {
 
     public record Result(String status, int requested, int answered) {}
 
-    public Result solve(String examId, String sectionId, String userId) {
+    /** Solve one section for the logged-in user (request thread). */
+    public Result solve(String examId, String sectionId) {
+        access.requireExaminationForWrite(Access.id(examId));
+        return solveChecked(examId, sectionId);
+    }
+
+    /**
+     * Solve one section without an access check, for the orchestrator on a background thread:
+     * {@link SolveExaminationService} checked the caller's access when the run was started.
+     */
+    Result solveChecked(String examId, String sectionId) {
         UUID examUuid = Access.id(examId);
         UUID sectionUuid = sectionId == null ? null : Access.id(sectionId);
 
-        Examination exam = access.requireExamination(examUuid, userId);
+        Examination exam = examRepository.findById(examUuid)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found"));
 
         // Solve lock for real sections (unassigned bucket is single-shot).
         if (sectionUuid != null) {

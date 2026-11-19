@@ -28,7 +28,8 @@ fails the build when two of them depend on each other.
 | `topictree` | builds the Topic tree from the extracted goals and places exam goals in it | `TopicTreeService`, `TopicTreeSynthesizer`, `ExamGoalPlacer` |
 | `extraction` | the asynchronous pipeline, progress tracking, run audit, "Find in the slides" | `ExtractionRunner`, `UnitExtractor`, `SessionExtractionService`, `TopicSearchService` |
 | `exam` | the endpoint and the `ExamGoalDerivation` port: goals for exam tasks | `ExamGoalController`, `ExamGoalDerivationService`, `ExamGoalService`, `ExamGoalGenerator` |
-| `config` | the module's security chain, the LLM rate limit, the OpenAPI group | `SecurityConfig`, `LlmRateLimitFilter`, `MaterialsOpenApiConfig` |
+| `config` | the OpenAPI group (login, CSRF and the LLM rate limit are in `core`) | `MaterialsOpenApiConfig` |
+| `tenancy` | executors whose tasks carry the caller's organisation | `OrgExecutors` |
 | `web` | the `{code, message}` error body | `GlobalExceptionHandler` |
 
 The Topic tree is called the competency tree in older code and in the API
@@ -80,9 +81,12 @@ comparable across prompt changes.
 2. Keep the logic in a service of the same package. If you need a class from a higher layer, move
    the shared piece down instead; `PackageCycleTest` tells you when you got it wrong.
 3. If the endpoint starts model calls, add its path (with the `/learninggoalhub` prefix) to
-   `SecurityConfig.LLM_REQUESTS` so the rate limit covers it. Every endpoint needs a login; there
-   are no service keys. Other modules call `materials` through the ports in `core.spi`, not over HTTP.
-4. Write a `@SpringBootTest` + `MockMvc` test with `@Import(MaterialsTestConfiguration.class)`, extend `MaterialsTestBase` (the shared test database), use the prefixed path, and
+   `core.internal.security.CoreSecurityConfig.LLM_REQUESTS` so the rate limit covers it. Every endpoint needs a login; there
+   are no service keys. A path with the course id in it (`/api/courses/{courseId}/**`) is checked by
+   `CourseAccessInterceptor`: GET needs membership, anything else editor (404 for a course the caller cannot see,
+   403 for a role that is too small); deleting needs owner (`CourseService.delete`). Work on other threads
+   uses `OrgExecutors` so it carries the organisation. Other modules call `materials` through the ports in `core.spi`, not over HTTP.
+4. Write a `@SpringBootTest` + `MockMvc` test with `@Import(MaterialsTestConfiguration.class)`, extend `MaterialsTestBase` (the shared test database and the default tenant; `TestTenant.course(name)` creates a course the default user owns), use the prefixed path, and
    mock the model-calling bean with `@MockitoBean`, as `ExamGoalControllerTest` does.
 5. Regenerate the client types (see [client/README.md](../../apps/learninggoalhub/client/README.md#api-client)) and commit
    `openapi.json` and `schema.d.ts` with the change. For endpoints other apps use, update

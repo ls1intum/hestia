@@ -38,21 +38,8 @@ final class FlowHttp {
         return send(authed(builder(apiPath)).GET());
     }
 
-    Reply getUnauthenticated(String apiPath) {
-        return send(builder(apiPath).GET());
-    }
-
-    Reply getWithInvalidCredential(String apiPath) {
-        return send(FlowAuth.applyInvalid(builder(apiPath)).GET());
-    }
-
     Reply postJson(String apiPath, Object body) {
         return send(authed(builder(apiPath)).header("Content-Type", "application/json")
-            .POST(BodyPublishers.ofString(toJson(body))));
-    }
-
-    Reply postJsonUnauthenticated(String apiPath, Object body) {
-        return send(builder(apiPath).header("Content-Type", "application/json")
             .POST(BodyPublishers.ofString(toJson(body))));
     }
 

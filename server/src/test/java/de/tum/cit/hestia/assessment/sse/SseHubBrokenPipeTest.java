@@ -39,7 +39,7 @@ class SseHubBrokenPipeTest {
 
     @Test
     void publishDoesNotLetABrokenPipeEscapeToTheCaller() throws Exception {
-        SseHub hub = new SseHub(mock(de.tum.cit.hestia.assessment.examination.ExaminationRepository.class));
+        SseHub hub = new SseHub();
         UUID examId = UUID.randomUUID();
         DeadEmitter dead = new DeadEmitter();
         Map<String, Set<SseEmitter>> topics = topicsOf(hub);

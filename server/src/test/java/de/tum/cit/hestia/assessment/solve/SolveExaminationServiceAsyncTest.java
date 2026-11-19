@@ -51,13 +51,13 @@ class SolveExaminationServiceAsyncTest {
         AIAnswerRepository answerRepository = mock(AIAnswerRepository.class);
         SolveSectionService sectionService = mock(SolveSectionService.class);
         SseHub sse = mock(SseHub.class);
-        Access access = new Access(examRepository, sectionRepository);
+        Access access = mock(Access.class);
 
         UUID examId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         Examination exam = new Examination();
-        exam.setOwnerId(ownerId);
-        when(examRepository.findById(examId)).thenReturn(Optional.of(exam));
+        exam.setCreatedBy(ownerId);
+        when(access.requireExaminationForWrite(examId)).thenReturn(exam);
 
         TaskBlock task = new TaskBlock();
         task.setExamId(examId);
@@ -66,7 +66,7 @@ class SolveExaminationServiceAsyncTest {
 
         CountDownLatch solveStarted = new CountDownLatch(1);
         CountDownLatch releaseSolve = new CountDownLatch(1);
-        when(sectionService.solve(any(), any(), any())).thenAnswer(inv -> {
+        when(sectionService.solveChecked(any(), any())).thenAnswer(inv -> {
             solveStarted.countDown();
             releaseSolve.await(5, TimeUnit.SECONDS);
             return new SolveSectionService.Result("ok", 1, 1);
@@ -80,9 +80,10 @@ class SolveExaminationServiceAsyncTest {
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
-            sectionService, executor, access, sse, mock(LlmQuotaService.class));
+            sectionService, executor, access, sse, mock(LlmQuotaService.class),
+            mock(de.tum.cit.hestia.core.CurrentUser.class));
 
-        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString(), ownerId.toString());
+        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString());
 
         // startEvaluation already returned; the solve must still be blocked.
         assertThat(plan.sections()).isEqualTo(1);
@@ -110,13 +111,13 @@ class SolveExaminationServiceAsyncTest {
         AIAnswerRepository answerRepository = mock(AIAnswerRepository.class);
         SolveSectionService sectionService = mock(SolveSectionService.class);
         SseHub sse = mock(SseHub.class);
-        Access access = new Access(examRepository, sectionRepository);
+        Access access = mock(Access.class);
 
         UUID examId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         Examination exam = new Examination();
-        exam.setOwnerId(ownerId);
-        when(examRepository.findById(examId)).thenReturn(Optional.of(exam));
+        exam.setCreatedBy(ownerId);
+        when(access.requireExaminationForWrite(examId)).thenReturn(exam);
         when(taskRepository.findByExamIdOrderByPositionAsc(examId)).thenReturn(List.of());
         // See the CAS note above: without this the service bails before finalizing.
         when(examRepository.startEvaluating(any(), any())).thenReturn(1);
@@ -124,9 +125,10 @@ class SolveExaminationServiceAsyncTest {
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
-            sectionService, executor, access, sse, mock(LlmQuotaService.class));
+            sectionService, executor, access, sse, mock(LlmQuotaService.class),
+            mock(de.tum.cit.hestia.core.CurrentUser.class));
 
-        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString(), ownerId.toString());
+        SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString());
 
         assertThat(plan.sections()).isZero();
         assertThat(plan.tasks()).isZero();

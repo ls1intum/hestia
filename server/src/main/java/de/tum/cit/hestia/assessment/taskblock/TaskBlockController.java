@@ -3,7 +3,6 @@ import de.tum.cit.hestia.assessment.shared.Patch;
 import de.tum.cit.hestia.assessment.shared.Access;
 
 import de.tum.cit.hestia.assessment.error.ApiException;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -51,8 +50,8 @@ public class TaskBlockController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/tasks")
-    public List<TaskBlockDtos.TaskBlockDto> list(@PathVariable String examId, @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+    public List<TaskBlockDtos.TaskBlockDto> list(@PathVariable String examId) {
+        access.requireExamination(Access.id(examId));
         return taskRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
             .stream().map(TaskBlockDtos.TaskBlockDto::from).toList();
     }
@@ -65,9 +64,9 @@ public class TaskBlockController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or an id is not a valid UUID.")
     @PostMapping("/tasks")
-    public TaskBlockDtos.TaskBlockDto create(@RequestBody CreateTaskBlockRequest req, @CurrentUser String userId) {
+    public TaskBlockDtos.TaskBlockDto create(@RequestBody CreateTaskBlockRequest req) {
         UUID examId = Access.id(req.exam_id());
-        access.requireExamination(examId, userId);
+        access.requireExaminationForWrite(examId);
         TaskBlock t = new TaskBlock();
         t.setExamId(examId);
         t.setPosition(req.position() == null ? 0 : req.position());
@@ -95,9 +94,8 @@ public class TaskBlockController {
     @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such task, or `id` is not a valid UUID.")
     @PatchMapping("/tasks/{id}")
-    public TaskBlockDtos.TaskBlockDto patch(@PathVariable String id, @RequestBody Map<String, Object> body,
-                              @CurrentUser String userId) {
-        TaskBlock t = load(id, userId);
+    public TaskBlockDtos.TaskBlockDto patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        TaskBlock t = load(id, true);
         if (Patch.has(body, "position")) t.setPosition(Patch.intVal(body.get("position")));
         if (Patch.has(body, "type")) t.setType(Patch.str(body.get("type")));
         if (Patch.has(body, "prompt")) t.setPrompt(Patch.str(body.get("prompt")));
@@ -121,8 +119,8 @@ public class TaskBlockController {
     @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such task, or `id` is not a valid UUID.")
     @DeleteMapping("/tasks/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @CurrentUser String userId) {
-        TaskBlock t = load(id, userId);
+    public ResponseEntity<Void> delete(@PathVariable String id) {
+        TaskBlock t = load(id, true);
         taskRepository.delete(t);
         return ResponseEntity.noContent().build();
     }
@@ -137,14 +135,13 @@ public class TaskBlockController {
     public ResponseEntity<Void> deleteBySection(@PathVariable String examId,
                                                  @RequestParam("section_id")
                                                  @Parameter(description = "Section whose tasks are removed.")
-                                                 String sectionId,
-                                                 @CurrentUser String userId) {
-        access.requireExamination(Access.id(examId), userId);
+                                                 String sectionId) {
+        access.requireExaminationForWrite(Access.id(examId));
         taskRepository.deleteByExamIdAndSectionId(Access.id(examId), Access.id(sectionId));
         return ResponseEntity.noContent().build();
     }
 
-    private TaskBlock load(String id, String userId) {
-        return access.requireOwnedChild(taskRepository, id, userId, TaskBlock::getExamId, "Task");
+    private TaskBlock load(String id, boolean write) {
+        return access.requireChild(taskRepository, id, write, TaskBlock::getExamId, "Task");
     }
 }

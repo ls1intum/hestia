@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { ApiError, downloadName, errorMessage, safeFileName } from "./api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError, deleteSession, downloadName, errorMessage, listSessions, safeFileName } from "./api";
 
 describe("download names", () => {
   it("use the title as shown", () => {
@@ -32,5 +32,40 @@ describe("errorMessage", () => {
     expect(errorMessage(new ApiError(500, "The request failed on the server."), "Please try again.")).toBe("Please try again.");
     expect(errorMessage("weird", "Please try again.")).toBe("Please try again.");
     expect(errorMessage(new Error("Network down"), "fallback")).toBe("Network down");
+  });
+});
+
+describe("requests", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch() {
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function lastInit(fetchMock: ReturnType<typeof stubFetch>) {
+    const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    return { ...call[1], headers: new Headers(call[1].headers) };
+  }
+
+  it("send the CSRF token from the cookie with every write and the session cookie always", async () => {
+    vi.stubGlobal("document", { cookie: "other=1; XSRF-TOKEN=abc123" });
+    const fetchMock = stubFetch();
+    await deleteSession("s1");
+    const init = lastInit(fetchMock);
+    expect(init.headers.get("X-XSRF-TOKEN")).toBe("abc123");
+    expect(init.credentials).toBe("same-origin");
+  });
+
+  it("do not send the CSRF token with reads", async () => {
+    vi.stubGlobal("document", { cookie: "other=1; XSRF-TOKEN=abc123" });
+    const fetchMock = stubFetch();
+    await listSessions();
+    const init = lastInit(fetchMock);
+    expect(init.headers.has("X-XSRF-TOKEN")).toBe(false);
+    expect(init.credentials).toBe("same-origin");
   });
 });

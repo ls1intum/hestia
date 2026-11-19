@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.hierarchy;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,7 +33,7 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
 
     @Test
     void renamesHierarchyNode() throws Exception {
-        Course course = courseRepository.save(new Course("Operating Systems"));
+        Course course = courseRepository.save(TestTenant.course("Operating Systems"));
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
@@ -46,7 +47,7 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsBlankLabel() throws Exception {
-        Course course = courseRepository.save(new Course("Compilers"));
+        Course course = courseRepository.save(TestTenant.course("Compilers"));
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
@@ -58,8 +59,8 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
 
     @Test
     void renameReturns404WhenNodeBelongsToOtherCourse() throws Exception {
-        Course course = courseRepository.save(new Course("Networks"));
-        Course otherCourse = courseRepository.save(new Course("Security"));
+        Course course = courseRepository.save(TestTenant.course("Networks"));
+        Course otherCourse = courseRepository.save(TestTenant.course("Security"));
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 

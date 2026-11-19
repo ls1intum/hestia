@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.hierarchy;
 
-import de.tum.cit.hestia.JpaRepositoriesConfig;
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -13,13 +13,12 @@ import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaRepositoriesConfig.class, MaterialsTestConfiguration.class})
+@SpringBootTest
+@org.springframework.transaction.annotation.Transactional
+@Import(MaterialsTestConfiguration.class)
 class HierarchyNodeRepositoryTest extends MaterialsTestBase {
 
     @Autowired
@@ -33,7 +32,7 @@ class HierarchyNodeRepositoryTest extends MaterialsTestBase {
 
     @Test
     void persistsModuleSessionExerciseTree() {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
@@ -52,7 +51,7 @@ class HierarchyNodeRepositoryTest extends MaterialsTestBase {
 
     @Test
     void learningGoalCanReferenceHierarchyNode() {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 

@@ -6,7 +6,6 @@ import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,7 +62,7 @@ public class LghController {
         description = "Every course LGH knows about, for the picker shown when an exam is created.")
     @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @GetMapping("/lgh/courses")
-    public List<CourseDto> courses(@CurrentUser String userId) {
+    public List<CourseDto> courses() {
         return viaLgh("list LGH courses", () -> listAllCourses().stream()
             .map(c -> new CourseDto(c.id(), c.name()))
             .toList());
@@ -76,7 +75,7 @@ public class LghController {
     @ApiResponse(responseCode = "400", description = "`name` is missing or blank.")
     @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @PostMapping("/lgh/courses")
-    public CourseDto createCourse(@RequestBody CreateCourseReq req, @CurrentUser String userId) {
+    public CourseDto createCourse(@RequestBody CreateCourseReq req) {
         String name = req.name() == null ? "" : req.name().trim();
         if (name.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Course name is required");
@@ -104,8 +103,8 @@ public class LghController {
     @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
     @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable; the client falls back to `Goal #id` placeholders.")
     @GetMapping("/exams/{id}/learning-goals")
-    public List<LearningGoalDto> examLearningGoals(@PathVariable String id, @CurrentUser String userId) {
-        Examination exam = access.requireExamination(Access.id(id), userId);
+    public List<LearningGoalDto> examLearningGoals(@PathVariable String id) {
+        Examination exam = access.requireExamination(Access.id(id));
         if (exam.getLghCourseId() == null) return List.of();
 
         Set<Long> taskGoalIds = new HashSet<>();

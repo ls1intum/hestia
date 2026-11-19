@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.materials.TestTenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -99,7 +100,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returnsPaginatedGoalsWithKindAndSources() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise"));
         documentContentRepository.save(new DocumentContent(lecture, new byte[]{1, 2, 3}));
@@ -136,7 +137,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void joinsFigureDescriptionIntoFigureSourceResponse() throws Exception {
-        Course course = courseRepository.save(new Course("Figure source API"));
+        Course course = courseRepository.save(TestTenant.course("Figure source API"));
         Document document = documentRepository.save(new Document(
                 course, "figures.pdf", "application/pdf", "text"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Explain the diagram.", GoalKind.IMPLICIT));
@@ -154,7 +155,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void exposesHierarchyTaxonomyAndRelationshipsInJson() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
@@ -198,7 +199,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void honoursPageSizeAndPageNumber() throws Exception {
-        Course course = courseRepository.save(new Course("Databases"));
+        Course course = courseRepository.save(TestTenant.course("Databases"));
         for (int i = 0; i < 5; i++) {
             goalRepository.save(new LearningGoal(course, "Goal " + i, GoalKind.EXPLICIT));
         }
@@ -217,7 +218,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void filtersByStatus() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal approved = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         approved.setStatus(GoalStatus.APPROVED);
         goalRepository.save(approved);
@@ -238,7 +239,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void filtersByRoleWithoutChangingTheDefaultList() throws Exception {
-        Course course = courseRepository.save(new Course("Role filter"));
+        Course course = courseRepository.save(TestTenant.course("Role filter"));
         LearningGoal skill = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         skill.setRole(GoalRole.SKILL);
         goalRepository.save(skill);
@@ -261,7 +262,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listsGoalsGroupedBySession() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
@@ -310,7 +311,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listBySessionFiltersToSingleNode() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
@@ -362,7 +363,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void exportCsvReturnsAllGoalsWithHierarchyAndSources() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise"));
 
@@ -421,7 +422,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchUpdatesText() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setShortLabel("Test-Driven Development");
         goal = goalRepository.save(goal);
@@ -441,7 +442,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchKeepsGeneratedWordingOnFirstRenameOnly() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
@@ -466,7 +467,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchKeepsNoOriginalForInstructorCreatedGoal() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal = goalRepository.save(goal);
@@ -480,7 +481,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchApprovesAndUnapprovesGoal() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
@@ -500,7 +501,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchUpdatesTaxonomyLevels() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setBloomLevel(BloomLevel.UNDERSTAND);
         goal = goalRepository.save(goal);
@@ -525,7 +526,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
@@ -536,8 +537,8 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchGoalFromOtherCourseReturns404() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
-        Course other = courseRepository.save(new Course("Databases"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        Course other = courseRepository.save(TestTenant.course("Databases"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId())
@@ -548,7 +549,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deleteRemovesGoalWithSourcesAndRelationships() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         LearningGoal tdd = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
         LearningGoal unitTests = goalRepository.save(
@@ -571,8 +572,8 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deleteGoalFromOtherCourseReturns404() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
-        Course other = courseRepository.save(new Course("Databases"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        Course other = courseRepository.save(TestTenant.course("Databases"));
         LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
         mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId()))
@@ -583,7 +584,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillPersistsUserCreatedTerminalUnderCompetencyRoot() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -610,7 +611,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
     /** Adding a topic by hand stays manual: nothing is generated beneath it. */
     @Test
     void manualTopicCreationGeneratesNothingBeneathIt() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -632,7 +633,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillLeavesTaxonomyLevelsUnset() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -647,7 +648,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -657,7 +658,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -680,7 +681,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatingATopicCallsTheModelsWithoutHoldingATransaction() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
             inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
@@ -704,7 +705,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void twoRequestsGeneratingTheSameTopicAtOnceCreateItOnce() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         CountDownLatch bothGenerating = new CountDownLatch(2);
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
             // Both requests pass the duplicate check before either stores its topic.
@@ -735,7 +736,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillPersistsFullSubtreeAndHierarchyEdges() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         GeneratedSubtree subtree = new GeneratedSubtree(List.of(
                 new GeneratedSkill("Automate the release process", "Automate releases", List.of(
                         new GeneratedSubSkill("Configure deployment pipelines.", "Deployment Pipelines",
@@ -819,7 +820,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -829,7 +830,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal existing = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         existing.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(existing);
@@ -842,7 +843,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillPersistsWhenClassificationFails() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
                 .thenReturn(subtree("Run deployments", "Configure deployments.", "Explain deployment stages."));
         when(taxonomyService.classifyBatch(anyList(), any()))
@@ -862,7 +863,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildToTerminal() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
 
@@ -895,7 +896,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildToSubSkill() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
         LearningGoal subSkill = goalRepository.saveAndFlush(
@@ -924,7 +925,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void acceptsSixthManualSkillUnderTopic() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
         for (int index = 1; index <= 5; index++) {
@@ -946,7 +947,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildToExtractedGoal() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
         LearningGoal extracted = goalRepository.saveAndFlush(
@@ -973,7 +974,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsManualChildUnderKnowledge() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
         LearningGoal subSkill = goalRepository.saveAndFlush(
@@ -997,7 +998,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildWithTheRoleItWasAddedAs() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.USER_CREATED));
 
@@ -1011,7 +1012,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualKnowledgeToSubSkillBeneathASkill() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.WIZARD_AI_SUBTREE));
         LearningGoal skill = generatedGoal(course, "Automate secure deployments.", GoalOrigin.SYNTHESIZED);
@@ -1038,7 +1039,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsManualChildUnderKnowledgeDirectlyBeneathATopic() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.WIZARD_AI_SUBTREE));
         LearningGoal knowledge = generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED);
@@ -1058,7 +1059,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingGeneratedTopicRemovesEverythingBeneathIt() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         HierarchyNode rootNode = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
@@ -1097,7 +1098,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingSubSkillRemovesOwnedKnowledge() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal subSkill = goalRepository.save(
                 generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
         LearningGoal knowledge = goalRepository.saveAndFlush(
@@ -1114,7 +1115,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingPipelineTopicRemovesItsSkillsAndExtractedGoals() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
         LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
@@ -1146,7 +1147,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingPipelineSkillRemovesItsExtractedSubSkills() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
         LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         skill.setOrigin(GoalOrigin.SYNTHESIZED);
@@ -1174,7 +1175,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingKeepsADescendantThatStillContributesElsewhere() throws Exception {
-        Course course = courseRepository.save(new Course("Software Engineering"));
+        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
         LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
         LearningGoal otherTopic = goalRepository.saveAndFlush(terminalGoal(course, "Release management", null));
         LearningGoal shared = goalRepository.saveAndFlush(

@@ -11,25 +11,25 @@ Originally, all generation logic (LLM calls, PPTX building, DB saving) lived in 
   * `AssemblePptxUseCase`: builds the PPTX from the default template
   * `RefineLearningGoalUseCase`, `FixGoalsGrammarUseCase`: goal checks
   * Helpers: `ActivityRecommender` (Bloom's/SOLO activity choice), `TemplateBranding` (applies an uploaded template's title slide, logo and footer), `PptxTextFit` (shrinks text to fit its box)
-* **`WorkshopSessionFacade`**: orchestrates generation. It verifies ownership, calls the use cases outside any transaction, and then persists the result in a short transaction. It also guards against double submission: a second generation request for the same session while one is running gets `409 Conflict`.
-* **Controllers** (`WorkshopController`, `CourseController`): the HTTP boundary. Generation goes through the facade; a controller never calls a use case directly. Controllers have no `try`/`catch`: `ApiExceptionHandler` turns exceptions into answers (`AccessDeniedException` → 403, `SessionLockedException` → 409, `ResponseStatusException` → its status, anything else → 500 with `{"error": ...}`, logged with the request).
+* **`WorkshopSessionFacade`**: orchestrates generation. It verifies the course role, calls the use cases outside any transaction, and then persists the result in a short transaction. It also guards against double submission: a second generation request for the same session while one is running gets `409 Conflict`.
+* **Controllers** (`WorkshopController`, `CourseController`): the HTTP boundary. Generation goes through the facade; a controller never calls a use case directly. Controllers have no `try`/`catch`: `ApiExceptionHandler` turns exceptions into answers (`AccessDeniedException` and a missing course role → 403, an unknown course or one the user is not a member of → 404, `SessionLockedException` → 409, `ResponseStatusException` → its status, anything else → 500 with `{"error": ...}`, logged with the request).
 * **`WorkshopService`**: persistence of sessions, courses, drafts and slide templates, including which template applies to a session. No generation logic.
 
 ## 2. Security & Environments (The Profile Gate)
-Workshopper integrates with TUM Central IT via SAML 2.0. Developing locally against real SAML is painful, so there is a bypass:
+Hestia has one SAML 2.0 login, owned by core (session cookie, CSRF header; see AUTH.md). Developing locally against real SAML is painful, so there is a bypass:
 
-* **`DevAuthFilter`**: active *only* when the `local` Spring profile is active. It signs every request in as `dev-local-user`.
+* **`DevAuthFilter`**: active *only* when the `local` Spring profile is active. It signs every request in as `dev-local-user` of the organisation `local.test`.
 * **No default profile**: `application.yml` sets no profile, so `local` must always be chosen explicitly (`SPRING_PROFILES_ACTIVE=local`).
-* **The Profile Gate**: core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`. The SAML login itself is also core's; Workshopper's `SecurityConfig` only protects `/workshopper/**`.
+* **The Profile Gate**: core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`. The SAML login itself is also core's.
 * **Environments**:
   * Laptop: `SPRING_PROFILES_ACTIVE=local`, SAML bypassed.
   * `hestia-test` (VM, VPN-only): the deploy writes `ENVIRONMENT=Staging` into `.env`, and `application.yml` maps the `Staging` profile to `local`, so SAML is bypassed, because SAML access was only requested for production. `Production` maps to `prod`. Every tester is the same `dev-local-user` and sees the same sessions.
   * Production: `compose.prod.yaml` defaults to `prod`, real SAML enforced.
 
 ## 3. API Authorization & Error Handling
-All `/workshopper/api/**` endpoints (the client's nginx maps `/api/` to it) except `GET /workshopper/api/workshop/health` require an authenticated user. An unauthenticated request gets `401 Unauthorized`; the client (`handleAuthError` in `api.ts`) then redirects the browser to `<base>/saml2/authenticate/tum`, which starts the SAML login.
+All `/workshopper/api/**` endpoints (the client's nginx maps `/api/` to it) except `GET /workshopper/api/workshop/health` require an authenticated user. An unauthenticated request gets `401 Unauthorized`; the client (`handleAuthError` in `api.ts`) then redirects the browser to `<base>/saml2/authenticate/tum`, which starts the SAML login. Writes carry the CSRF token (`X-XSRF-TOKEN`, copied from the `XSRF-TOKEN` cookie).
 
-**Per-resource authorization (IDOR protection):** Spring Security checks that a user is logged in, not that they own a resource. Every endpoint that reads, changes or deletes a session by ID calls `facade.verifyOwnership(id)`; every endpoint that refers to a course (including moving a session into one, or saving a draft with a `courseId`) calls `facade.verifyCourseOwnership(id)`, which also returns `404` for unknown courses. Ownership failures throw `AccessDeniedException`, which `ApiExceptionHandler` turns into `403 Forbidden`.
+**Per-resource authorization (IDOR protection):** Spring Security checks that a user is logged in, not what they may touch. A teaching course hangs on a `core` course (`core_course_id`) and takes its access from the user's role there: `VIEWER` reads, `EDITOR` changes (drafts, generation, templates, renaming), `OWNER` deletes. Every endpoint that reads a session or course by ID calls `facade.verifyRead(id)`, every one that changes it `facade.verifyWrite(id)`; endpoints that refer to a course call `facade.verifyCourseRead/Write/Owner(id)`. A session without a course belongs to its creator alone (`404` for everybody else). The checks go through core's `CourseAccess`: no membership gives `404`, a role that is too small `403`. Organisation scope comes on top of that: entities extend `OrgScoped`, so another university's rows are never loaded.
 
 ## 4. Data Model
 * `workshop_sessions`: one row per session, with its settings, the draft state of the wizard (`draft_state_json`), the generated timetable (`session_json`) and slides (`slides_json`), all JSONB. A session may belong to a course (`course_id`).

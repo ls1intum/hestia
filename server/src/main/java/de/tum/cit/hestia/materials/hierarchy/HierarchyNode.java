@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.hierarchy;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.document.Document;
 import jakarta.persistence.Column;
@@ -16,7 +17,7 @@ import jakarta.persistence.Table;
 
 @Entity
 @Table(schema = "materials", name = "hierarchy_node")
-public class HierarchyNode {
+public class HierarchyNode extends OrgScoped {
 
     /** Label of the root every terminal competency of a course hangs under. */
     public static final String COMPETENCY_ROOT_LABEL = "Terminal Competencies";

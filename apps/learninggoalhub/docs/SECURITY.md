@@ -1,8 +1,8 @@
 # Security
 
 What protects LearningGoalHub today and what is still open.
-The configuration lives in `server/src/main/java/de/tum/cit/hestia/materials/config/` (`SecurityConfig`,
-`LlmRateLimitFilter`), in `core/internal/security/` (the shared SAML login) and in `client/nginx.conf`.
+The configuration lives in `server/src/main/java/de/tum/cit/hestia/core/internal/security/` (the one
+security chain: SAML login, CSRF, `LlmRateLimitFilter`), in `materials/course/` (course roles) and in `client/nginx.conf`.
 
 ## At a glance
 
@@ -15,14 +15,16 @@ The configuration lives in `server/src/main/java/de/tum/cit/hestia/materials/con
 | ExamLens input | At most 100 blocks per request and 20,000 characters per block description. |
 | CSV export | Cells that a spreadsheet would run as a formula are neutralised. |
 | Client | Content Security Policy and hardening headers from nginx. |
-| CSRF | Off; open item now that a login session exists (see below). |
+| CSRF | On: cookie token `XSRF-TOKEN`, echoed in `X-XSRF-TOKEN` on every write (see below). |
+| Tenancy | Every table has `org_id` with row-level security; an organisation sees only its own rows. |
+| Course roles | `VIEWER` reads, `EDITOR` changes content and starts model calls, `OWNER` also deletes the course. |
 | Secrets | Server-side only, from environment variables and a read-only mount. |
 | Database | No host port; reachable only from the app's containers. Daily `pg_dump`. |
 
 ## Browser login
 
-The server is a SAML service provider for TUM login (`saml2Login` in `SecurityConfig`), and
-`/api/**` needs a login or a consuming server's key. Without either, the API answers `401`, and
+The server is a SAML service provider for TUM login (`saml2Login` in `core`), and
+`/api/**` needs a login. Without one, the API answers `401`, and
 the client shows a "Log in with TUM" screen that starts the SAML login. Swagger UI needs the login
 too; the OpenAPI document at `/v3/api-docs` and `/actuator/health` stay public on purpose.
 
@@ -32,22 +34,25 @@ deploy sets the profile from its target (`Staging` is a profile group for `local
 [DEPLOY.md](../DEPLOY.md#cicd)), so hestia-test needs no manual step and production keeps the
 login. hestia-test is reachable only inside the university network.
 
-Courses have no owner column, so every logged-in user sees and edits every course. The rate
-limit, the upload limits and the daily backup (see [DEPLOY.md](../DEPLOY.md#backups)) still limit
-the damage a single account can do.
+A user belongs to an organisation (the login's `schacHomeOrganization`). Every materials course
+belongs to a `core.course`, where the creator is `OWNER` and members are managed. Everything under
+`/api/courses/{courseId}/**` is checked against the caller's role there; a course of another
+organisation or without membership answers `404`, a role that is too small `403`
+(`CourseAccessInterceptor`). Background work (extraction, "Find in the slides", the Topic tree) runs
+with the organisation of the request that started it (`OrgExecutors`). Intake submissions stay filed under
+the uploader's external id and are visible to that user only.
 
 ## CSRF
 
-CSRF protection is still off. A CSRF attack makes a logged-in user's browser send a request that
-carries their session cookie, for example a form on another site that posts to the API. Browsers
-that treat cookies without a `SameSite` attribute as `Lax` do not send the session cookie on such
-cross-site posts, but not every browser does. Turn it on as the next step: a cookie token
-(`CookieCsrfTokenRepository`) that the client echoes in an `X-XSRF-TOKEN` header on every write.
+CSRF protection is on. A CSRF attack makes a logged-in user's browser send a request that
+carries their session cookie, for example a form on another site that posts to the API. The server sets a
+cookie token (`XSRF-TOKEN`) and rejects every write without the same value in the `X-XSRF-TOKEN`
+header; the client's fetch wrapper (`src/api/client.ts`) and the intake upload send it.
 
 ## Rate limit on model calls
 
 Every model call spends the deployment's shared inference quota and can run for minutes.
-`LlmRateLimitFilter` counts the requests in `SecurityConfig.LLM_REQUESTS` (extraction, Topic
+`LlmRateLimitFilter` counts the requests in `CoreSecurityConfig.LLM_REQUESTS` (extraction, Topic
 tree rebuild, upload, exam goals, "Find in the slides", "Generate with AI") per client address
 and answers the 61st within 10 minutes with `429` and a `Retry-After` header.
 

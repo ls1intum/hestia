@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.config;
 
 import de.tum.cit.hestia.assessment.error.ErrorResponse;
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -16,7 +15,6 @@ import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.models.GroupedOpenApi;
-import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,7 +26,7 @@ import org.springframework.context.annotation.Configuration;
  * docs off, {@link OpenApiHidden} removes the assessment paths from every document.
  *
  * <p>Everything here is attached to the group, not registered globally, so the
- * title, bearer scheme and error responses never leak into other modules' documents.
+ * title, security scheme and error responses never leak into other modules' documents.
  */
 @Configuration
 @ConditionalOnProperty(name = "app.docs.enabled", havingValue = "true")
@@ -37,16 +35,8 @@ public class OpenApiConfig {
     static final String GROUP = "assessment";
     static final String PACKAGE = "de.tum.cit.hestia.assessment";
 
-    private static final String BEARER_SCHEME = "bearerAuth";
+    private static final String SESSION_SCHEME = "sessionCookie";
     private static final String ERROR_SCHEMA = "ErrorResponse";
-
-    static {
-        // Every handler takes the principal as @CurrentUser String userId. Without
-        // this, springdoc reads it as a request parameter and documents a bogus
-        // `userId` query param on all ~40 operations. Registered here rather than
-        // as @Parameter(hidden = true) on each argument.
-        SpringDocUtils.getConfig().addAnnotationsToIgnore(CurrentUser.class);
-    }
 
     @Bean
     public GroupedOpenApi assessmentOpenApiGroup() {
@@ -75,26 +65,14 @@ public class OpenApiConfig {
                     it carries no compatibility guarantee. Do not treat it as a stable \
                     interface.
 
-                    Authentication is a per-user bearer token. Registration is open: a \
-                    first-time visitor calls `POST /api/auth/register` (unauthenticated) and \
-                    receives an account plus its token, optionally linking a TUM ID later via \
-                    `PATCH /api/me`. Every endpoint is scoped to the caller's own rows; \
-                    `/api/parse-metrics` and `/api/admin/**` additionally require an admin. \
-                    SSE endpoints also accept the token as a `token` query parameter, because \
-                    `EventSource` cannot set headers.
-
-                    Interim scheme, replaced by TUM SAML later — see \
-                    `docs/auth-and-saml-cutover.md`. The shared `API_AUTH_TOKEN` remains as \
-                    a dev/bootstrap credential that authenticates as the seeded legacy user \
-                    and bypasses per-user isolation."""))
+                    Authentication is the session login of the hestia server (TUM SAML); the                     session cookie is sent automatically, and writes need the CSRF header                     `X-XSRF-TOKEN` (copy of the `XSRF-TOKEN` cookie). Every endpoint is                     scoped to the courses and organisation of the logged-in user;                     `/api/parse-metrics` additionally requires a platform admin."""))
             .components(new Components()
-                .addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()
-                    .type(SecurityScheme.Type.HTTP)
-                    .scheme("bearer")
-                    .description(
-                        "Per-user session token from `POST /api/auth/register`, "
-                            + "or the shared bootstrap `API_AUTH_TOKEN`.")))
-            .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
+                .addSecuritySchemes(SESSION_SCHEME, new SecurityScheme()
+                    .type(SecurityScheme.Type.APIKEY)
+                    .in(SecurityScheme.In.COOKIE)
+                    .name("SESSION")
+                    .description("Session cookie set by the SAML login.")))
+            .addSecurityItem(new SecurityRequirement().addList(SESSION_SCHEME));
         openApi.setInfo(info.getInfo());
         if (openApi.getComponents() == null) openApi.setComponents(new Components());
         info.getComponents().getSecuritySchemes().forEach(openApi.getComponents()::addSecuritySchemes);
@@ -134,7 +112,7 @@ public class OpenApiConfig {
                     ApiResponses responses = operation.getResponses();
                     if (responses == null) return;
                     if (!optedOutOfAuth(operation)) {
-                        putIfAbsent(responses, "401", "Missing or invalid bearer token.", errorRef);
+                        putIfAbsent(responses, "401", "Not logged in.", errorRef);
                     }
                     putIfAbsent(responses, "429", "Per-IP rate limit exceeded.", errorRef);
                     responses.forEach((code, response) -> {

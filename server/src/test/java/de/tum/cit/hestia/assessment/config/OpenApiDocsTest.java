@@ -90,15 +90,15 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void bearerSchemeIsDeclaredGloballyAndPublicEndpointsOptOut() throws Exception {
+    void sessionSchemeIsDeclaredGloballyAndPublicEndpointsOptOut() throws Exception {
         JsonNode spec = spec();
         JsonNode schemes = spec.path("components").path("securitySchemes");
-        assertThat(schemes.has("bearerAuth")).isTrue();
-        assertThat(schemes.path("bearerAuth").path("scheme").asText()).isEqualTo("bearer");
-        assertThat(spec.path("security").toString()).contains("bearerAuth");
+        assertThat(schemes.has("sessionCookie")).isTrue();
+        assertThat(schemes.path("sessionCookie").path("in").asText()).isEqualTo("cookie");
+        assertThat(spec.path("security").toString()).contains("sessionCookie");
+        assertThat(schemes.has("bearerAuth")).as("the token system is gone").isFalse();
 
         assertOptsOutOfAuth(operation(spec, "/examlense/api/healthz", "get"), "the liveness probe");
-        assertOptsOutOfAuth(operation(spec, signedFilePath(spec), "get"), "the signed file endpoint");
     }
 
     @Test
@@ -174,7 +174,7 @@ class OpenApiDocsTest extends AbstractIntegrationTest {
     private static void assertOptsOutOfAuth(JsonNode operation, String what) {
         JsonNode security = operation.path("security");
         assertThat(security.isArray() && security.isEmpty())
-            .as(what + " must declare an empty security list, overriding the global bearer requirement")
+            .as(what + " must declare an empty security list, overriding the global session requirement")
             .isTrue();
     }
 

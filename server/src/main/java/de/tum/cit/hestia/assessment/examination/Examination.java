@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.examination;
 
 import jakarta.persistence.Column;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -11,7 +12,7 @@ import org.hibernate.generator.EventType;
 
 @Entity
 @Table(schema = "assessment", name = "exams")
-public class Examination {
+public class Examination extends OrgScoped {
 
     @Id
     private UUID id = UUID.randomUUID();
@@ -30,8 +31,11 @@ public class Examination {
     @Column(nullable = false)
     private String status = "draft";
 
-    @Column(name = "owner_id", nullable = false)
-    private UUID ownerId;
+    @Column(name = "created_by")
+    private UUID createdBy;
+
+    @Column(name = "course_id")
+    private UUID courseId;
 
     @Column(name = "parse_error")
     private String parseError;
@@ -84,8 +88,10 @@ public class Examination {
     public void setSourceFileUrl(String sourceFileUrl) { this.sourceFileUrl = sourceFileUrl; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
-    public UUID getOwnerId() { return ownerId; }
-    public void setOwnerId(UUID ownerId) { this.ownerId = ownerId; }
+    public UUID getCreatedBy() { return createdBy; }
+    public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
+    public UUID getCourseId() { return courseId; }
+    public void setCourseId(UUID courseId) { this.courseId = courseId; }
     public String getParseError() { return parseError; }
     public void setParseError(String parseError) { this.parseError = parseError; }
     public String getParsePhase() { return parsePhase; }

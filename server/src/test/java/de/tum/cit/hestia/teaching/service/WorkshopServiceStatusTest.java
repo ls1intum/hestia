@@ -5,6 +5,9 @@ import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
 import de.tum.cit.hestia.teaching.repository.CourseRepository;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,16 +27,16 @@ class WorkshopServiceStatusTest {
     @BeforeEach
     void setUp() {
         sessions = mock(WorkshopSessionRepository.class);
-        service = new WorkshopService(sessions, mock(CourseRepository.class), mock(SlideTemplateRepository.class));
+        service = new WorkshopService(sessions, mock(CourseRepository.class), mock(SlideTemplateRepository.class),
+                mock(CourseApi.class), mock(CourseAccess.class), mock(CurrentUser.class));
         entity = new WorkshopSessionEntity();
         entity.setId("s1");
-        entity.setOwnerId("u");
         when(sessions.findById("s1")).thenReturn(Optional.of(entity));
         when(sessions.save(any())).thenAnswer(i -> i.getArgument(0));
     }
 
     private void save(String step, String draftJson) {
-        service.saveDraft(new SaveDraftRequestDto("s1", step, "Title", draftJson, null), "u");
+        service.saveDraft(new SaveDraftRequestDto("s1", step, "Title", draftJson, null));
     }
 
     @Test

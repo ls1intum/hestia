@@ -14,6 +14,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import de.tum.cit.hestia.core.OrgContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -83,16 +84,16 @@ public class FigureExtractionService {
      * re-reading from local storage costs milliseconds.
      */
     @Async("figureExecutor")
-    public void extractAsync(UUID examId, String userId, String storagePath,
+    public void extractAsync(UUID examId, String storagePath,
                              List<FigurePlacement> placements) {
         try {
-            extract(examId, userId, storagePath, placements);
+            extract(examId, storagePath, placements);
         } catch (Exception e) {
             log.warn("figure-extract[{}] aborted: {}", examId, e.toString());
         }
     }
 
-    void extract(UUID examId, String userId, String storagePath, List<FigurePlacement> placements) {
+    void extract(UUID examId, String storagePath, List<FigurePlacement> placements) {
         if (!enabled || placements == null || placements.isEmpty()) return;
 
         List<FigurePlacement> withPage = placements.stream()
@@ -124,7 +125,7 @@ public class FigureExtractionService {
             if (pages.isEmpty()) return;
 
             List<FigureMatcher.Match> matches = matcher.match(withPage, pages);
-            stored = writeCrops(examId, userId, doc, matches, captions, parsedAt);
+            stored = writeCrops(examId, doc, matches, captions, parsedAt);
         } catch (Exception e) {
             log.warn("figure-extract[{}] failed: {}", examId, e.toString());
         }
@@ -168,7 +169,7 @@ public class FigureExtractionService {
     }
 
     /** Renders each matched page once, crops every figure on it, then moves on. */
-    private int writeCrops(UUID examId, String userId, PDDocument doc,
+    private int writeCrops(UUID examId, PDDocument doc,
                            List<FigureMatcher.Match> matches, Map<UUID, String> captions,
                            OffsetDateTime parsedAt) {
         Map<Integer, List<FigureMatcher.Match>> byPage = new LinkedHashMap<>();
@@ -193,13 +194,13 @@ public class FigureExtractionService {
                     log.info("figure-extract[{}] exam re-parsed mid-run — stopping", examId);
                     return stored;
                 }
-                if (writeOne(examId, userId, m, captions.get(m.blockId()), page, rendered)) stored++;
+                if (writeOne(examId, m, captions.get(m.blockId()), page, rendered)) stored++;
             }
         }
         return stored;
     }
 
-    private boolean writeOne(UUID examId, String userId, FigureMatcher.Match match,
+    private boolean writeOne(UUID examId, FigureMatcher.Match match,
                              String caption, PDPage page, BufferedImage rendered) {
         Optional<PdfFigureCropper.Crop> crop;
         try {
@@ -224,7 +225,7 @@ public class FigureExtractionService {
         fig.setCaption(caption);
         // The `auto/` segment keeps extracted images separable from the user's own
         // uploads, so a future re-extract can clear only what it created.
-        String path = userId + "/" + examId + "/auto/" + fig.getId() + ".png";
+        String path = OrgContext.require() + "/" + examId + "/auto/" + fig.getId() + ".png";
         fig.setStoragePath(path);
 
         // Store first, then insert. This is the opposite order to a manual upload,

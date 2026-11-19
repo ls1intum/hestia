@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.CompetencyTreeResult;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
 import de.tum.cit.hestia.materials.course.Course;
@@ -51,7 +52,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -242,7 +242,7 @@ public class ExtractionRunner {
             // document's page batches concurrently. Spreading across documents instead capped a
             // two-PDF course at two calls in flight however wide the pool.
             run.phase(ExtractionProgressTracker.Phase.DESCRIBING_FIGURES, documents.size());
-            ExecutorService figureExecutor = Executors.newFixedThreadPool(Math.max(1, figureParallelism));
+            ExecutorService figureExecutor = OrgExecutors.newFixedThreadPool(Math.max(1, figureParallelism));
             try {
                 for (Document document : documents) {
                     try {
@@ -390,7 +390,7 @@ public class ExtractionRunner {
                                                                    List<SessionUnit<HierarchyNode>> sessions,
                                                                    String dominantLanguage, String modelOverride,
                                                                    ExtractionProgressTracker.Run run) {
-        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, parallelism));
+        ExecutorService executor = OrgExecutors.newFixedThreadPool(Math.max(1, parallelism));
         try {
             List<CompletableFuture<SessionExtraction<HierarchyNode>>> futures = sessions.stream()
                     .map(session -> CompletableFuture.supplyAsync(() -> {

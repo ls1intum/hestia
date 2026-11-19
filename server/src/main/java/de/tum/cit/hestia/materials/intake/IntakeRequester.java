@@ -1,21 +1,23 @@
 package de.tum.cit.hestia.materials.intake;
 
+import de.tum.cit.hestia.core.CurrentUser;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticatedPrincipal;
 import org.springframework.stereotype.Component;
 
 /**
- * Who is calling: the external id that submissions are filed under and an e-mail suggestion from
- * the login. Until package 4 brings {@code core.CurrentUser}, the id is the SAML attribute
- * eduPersonPrincipalName, falling back to the authentication name (the development login's
- * {@code dev-local-user}).
+ * Who is calling: the external id that submissions are filed under (the login's
+ * eduPersonPrincipalName, which is the name of the logged-in principal) and an e-mail suggestion
+ * from {@link CurrentUser#email()}.
  */
 @Component
 class IntakeRequester {
 
-    static final String EPPN = "urn:oid:1.3.6.1.4.1.5923.1.1.1.6";
-    static final String MAIL = "urn:oid:0.9.2342.19200300.100.1.3";
+    private final CurrentUser currentUser;
+
+    IntakeRequester(CurrentUser currentUser) {
+        this.currentUser = currentUser;
+    }
 
     record Identity(String id, String suggestedEmail) {
     }
@@ -25,15 +27,6 @@ class IntakeRequester {
         if (auth == null || !auth.isAuthenticated()) {
             throw new IllegalStateException("No login");
         }
-        String id = auth.getName();
-        String mail = null;
-        if (auth.getPrincipal() instanceof Saml2AuthenticatedPrincipal saml) {
-            String eppn = saml.getFirstAttribute(EPPN);
-            if (eppn != null && !eppn.isBlank()) {
-                id = eppn;
-            }
-            mail = saml.getFirstAttribute(MAIL);
-        }
-        return new Identity(id, mail);
+        return new Identity(auth.getName(), currentUser.email());
     }
 }

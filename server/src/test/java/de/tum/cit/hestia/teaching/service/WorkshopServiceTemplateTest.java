@@ -6,6 +6,9 @@ import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
 import de.tum.cit.hestia.teaching.repository.CourseRepository;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,11 +35,12 @@ class WorkshopServiceTemplateTest {
         sessions = mock(WorkshopSessionRepository.class);
         courses = mock(CourseRepository.class);
         templates = mock(SlideTemplateRepository.class);
-        service = new WorkshopService(sessions, courses, templates);
+        service = new WorkshopService(sessions, courses, templates, mock(CourseApi.class),
+                mock(CourseAccess.class), mock(CurrentUser.class));
 
         CourseEntity course = new CourseEntity();
         course.setId("course-1");
-        course.setOwnerId("owner");
+        course.setCoreCourseId(java.util.UUID.randomUUID());
         course.setTemplateId("course-1");
         when(courses.findById("course-1")).thenReturn(Optional.of(course));
         when(templates.findById("course-1")).thenReturn(Optional.of(template("course-1", COURSE_FILE)));
@@ -44,7 +48,6 @@ class WorkshopServiceTemplateTest {
 
         session = new WorkshopSessionEntity();
         session.setId("session-1");
-        session.setOwnerId("owner");
         session.setCourseId("course-1");
         when(sessions.findById("session-1")).thenReturn(Optional.of(session));
         when(sessions.save(any())).thenAnswer(i -> i.getArgument(0));

@@ -58,9 +58,9 @@ class ParseExamHttpFlowTest extends AbstractHttpFlowTest {
     }
 
     @Test
-    void parseWithoutCredential_isRejected() {
-        FlowHttp.Reply res = http.postJsonUnauthenticated(FlowPaths.api("/parse-exam-pdf"),
+    void parseOfAnUnknownExam_is404() {
+        FlowHttp.Reply res = http.postJson(FlowPaths.api("/parse-exam-pdf"),
             Map.of("exam_id", "00000000-0000-0000-0000-000000000000", "storage_path", "x"));
-        assertThat(res.status()).isEqualTo(401);
+        assertThat(res.status()).isEqualTo(404);
     }
 }

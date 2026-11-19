@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import de.tum.cit.hestia.materials.TestTenant;
 import java.net.CookieManager;
+import java.net.HttpCookie;
+import java.net.URLEncoder;
 import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -29,17 +32,24 @@ final class HubApi {
     record Response(int status, String raw, JsonNode json) {
     }
 
+    private static final String CSRF_TOKEN = "flow-test-csrf-token";
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Keeps the session cookie, so a login of this client counts for its later requests. */
+    private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
     private final HttpClient client = HttpClient.newBuilder()
-            .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
+            .cookieHandler(cookies)
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final String origin;
 
     private HubApi(int port) {
         this.origin = "http://localhost:" + port;
+        // CSRF is double-submit: the cookie and the header must carry the same value.
+        HttpCookie xsrf = new HttpCookie("XSRF-TOKEN", CSRF_TOKEN);
+        xsrf.setPath("/");
+        cookies.getCookieStore().add(URI.create(origin), xsrf);
     }
 
     /**
@@ -47,8 +57,15 @@ final class HubApi {
      * test setup ({@link FlowLoginConfiguration}) offers a login request that exists only in tests.
      */
     static HubApi loggedIn(int port) {
+        return loggedIn(port, TestTenant.ORG, TestTenant.USER);
+    }
+
+    /** A client logged in as {@code user} of the organisation {@code org} (created on first use). */
+    static HubApi loggedIn(int port, String org, String user) {
         HubApi api = new HubApi(port);
-        Response login = api.send(HttpRequest.newBuilder(URI.create(api.origin + FlowLoginConfiguration.LOGIN_PATH))
+        Response login = api.send(HttpRequest.newBuilder(URI.create(api.origin + FlowLoginConfiguration.LOGIN_PATH
+                + "?org=" + URLEncoder.encode(org, StandardCharsets.UTF_8)
+                + "&user=" + URLEncoder.encode(user, StandardCharsets.UTF_8)))
                 .POST(HttpRequest.BodyPublishers.noBody()));
         if (login.status() != 204) {
             throw new IllegalStateException("The test login failed with status " + login.status());
@@ -101,7 +118,8 @@ final class HubApi {
     private HttpRequest.Builder builder(String path) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(origin + BASE_PATH + path))
                 .timeout(Duration.ofSeconds(60))
-                .header("Accept", "application/json");
+                .header("Accept", "application/json")
+                .header("X-XSRF-TOKEN", CSRF_TOKEN);
         return request;
     }
 

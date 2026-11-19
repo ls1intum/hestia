@@ -15,14 +15,12 @@ import org.springframework.web.util.UriUtils;
 /**
  * HMAC-signed, time-limited file URLs — the local-FS equivalent of Supabase
  * Storage signed URLs. Lets the frontend render figures via a plain {@code <img src>}
- * (no auth header) while keeping the bucket private: the content endpoint
- * (`GET /api/files/**`, permitAll) validates the signature itself.
+ * (the session cookie authenticates) while keeping the bucket private: the content endpoint
+ * (`GET /api/files/**`) validates the signature itself; it also needs the session login
+ * and an object of the caller's organisation.
  *
- * Signing uses a dedicated secret ({@code app.files.signing-secret}) so the
- * URL-signing key is decoupled from the API bearer token: rotating the token
- * doesn't invalidate outstanding URLs, and the signing key never transits the
- * network. Falls back to the token (with a warning) when unset, so existing
- * deployments keep working until they configure it.
+ * Signing uses a dedicated secret ({@code app.files.signing-secret}); when unset a random key is
+ * used, so URLs do not survive a restart.
  */
 @Component
 public class SignedUrls {
@@ -31,17 +29,16 @@ public class SignedUrls {
 
     private final byte[] secret;
 
-    public SignedUrls(
-        @Value("${app.files.signing-secret:}") String signingSecret,
-        @Value("${app.auth.token}") String authToken
-    ) {
-        String effective = signingSecret;
-        if (effective == null || effective.isBlank()) {
-            log.warn("app.files.signing-secret is not set — falling back to the API auth token as "
-                + "the URL-signing key. Set FILES_SIGNING_SECRET to decouple the two credentials.");
-            effective = authToken;
+    public SignedUrls(@Value("${app.files.signing-secret:}") String signingSecret) {
+        if (signingSecret == null || signingSecret.isBlank()) {
+            log.warn("app.files.signing-secret is not set - signing file URLs with a random key that "
+                + "changes on every start. Set FILES_SIGNING_SECRET.");
+            byte[] random = new byte[32];
+            new java.security.SecureRandom().nextBytes(random);
+            this.secret = random;
+        } else {
+            this.secret = signingSecret.getBytes(StandardCharsets.UTF_8);
         }
-        this.secret = effective.getBytes(StandardCharsets.UTF_8);
     }
 
     /** Build `/api/files/{bucket}/{path}?exp=…&sig=…` valid for ttlSeconds. */

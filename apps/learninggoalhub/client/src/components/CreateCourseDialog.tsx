@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, API_PREFIX } from "../api/client.ts";
+import { api, API_PREFIX, csrfHeaders } from "../api/client.ts";
 import type { DocumentKind } from "../lib/documents.ts";
 import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
@@ -620,6 +620,9 @@ function uploadBatch(
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_PREFIX}/api/courses/${courseId}/documents?kind=${kind}`);
+    for (const [name, value] of Object.entries(csrfHeaders("POST"))) {
+      request.setRequestHeader(name, value);
+    }
     request.timeout = UPLOAD_TIMEOUT_MS;
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onFraction(event.loaded / event.total);

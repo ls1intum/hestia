@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,8 +43,8 @@ public class SolveExaminationController {
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `exam_id` is not a valid UUID.")
     @PostMapping("/solve-exam")
-    public Map<String, Object> solve(@Valid @RequestBody SolveExaminationRequest req, @CurrentUser String userId) {
-        SolveExaminationService.DispatchPlan plan = service.startEvaluation(req.exam_id(), userId);
+    public Map<String, Object> solve(@Valid @RequestBody SolveExaminationRequest req) {
+        SolveExaminationService.DispatchPlan plan = service.startEvaluation(req.exam_id());
         return Map.of(
             "ok", true,
             "sections", plan.sections(),

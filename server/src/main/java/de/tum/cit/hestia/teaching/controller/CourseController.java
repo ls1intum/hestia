@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.teaching.controller;
 
-import de.tum.cit.hestia.teaching.config.AuthContext;
 import de.tum.cit.hestia.teaching.dto.CourseSummaryDto;
 import de.tum.cit.hestia.teaching.dto.SaveDraftRequestDto;
 import de.tum.cit.hestia.teaching.dto.SessionDetailDto;
@@ -27,20 +26,20 @@ public class CourseController {
 
     @GetMapping
     public List<CourseSummaryDto> listCourses() {
-        return workshopService.listCourses(AuthContext.getCurrentUserId());
+        return workshopService.listCourses();
     }
 
-    /** The course settings (as draft state) and template; 404 if unknown, 403 if not the user's. */
+    /** The course settings (as draft state) and template; 404 if unknown or not a member, needs VIEWER. */
     @GetMapping("/{id}")
     public ResponseEntity<SessionDetailDto> getCourseDetail(@PathVariable String id) {
-        facade.verifyCourseOwnership(id);
+        facade.verifyCourseRead(id);
         return ResponseEntity.of(workshopService.getCourse(id));
     }
 
     /** Creates or updates a course draft; returns {"id": ...}. */
     @PostMapping("/draft")
     public Map<String, String> saveCourseDraft(@RequestBody SaveDraftRequestDto request) {
-        return Map.of("id", workshopService.saveCourseDraft(request, AuthContext.getCurrentUserId()));
+        return Map.of("id", workshopService.saveCourseDraft(request));
     }
 
     @PutMapping("/{id}/rename")
@@ -49,7 +48,7 @@ public class CourseController {
         if (newTitle == null || newTitle.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Title is required"));
         }
-        if (!workshopService.renameCourse(id, newTitle.trim(), AuthContext.getCurrentUserId())) {
+        if (!workshopService.renameCourse(id, newTitle.trim())) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(Map.of("success", true));
@@ -57,7 +56,7 @@ public class CourseController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCourse(@PathVariable String id) {
-        if (!workshopService.deleteCourse(id, AuthContext.getCurrentUserId())) {
+        if (!workshopService.deleteCourse(id)) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.noContent().build();

@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.OrgScoped;
 import de.tum.cit.hestia.materials.goal.LearningGoal;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +26,7 @@ import org.hibernate.annotations.CreationTimestamp;
         columnNames = {"source_goal_id", "target_goal_id", "type"}
     )
 )
-public class GoalRelationship {
+public class GoalRelationship extends OrgScoped {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

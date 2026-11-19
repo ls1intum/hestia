@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.taskblock;
 
 import jakarta.persistence.Column;
+import de.tum.cit.hestia.core.OrgScoped;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -15,7 +16,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(schema = "assessment", name = "tasks")
-public class TaskBlock {
+public class TaskBlock extends OrgScoped {
 
     @Id
     private UUID id = UUID.randomUUID();
