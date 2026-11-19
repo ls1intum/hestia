@@ -105,7 +105,8 @@ public class ClientAbortFilter extends OncePerRequestFilter {
         return m.contains("broken pipe")
             || m.contains("connection reset")
             || m.contains("connection abort")
-            || m.contains("an established connection was aborted"); // Windows wording
+            || m.contains("an established connection was aborted") // Windows wording
+            || m.contains("eine bestehende verbindung wurde"); // the same on a German Windows
     }
 
     private static String rootMessage(Throwable e) {
