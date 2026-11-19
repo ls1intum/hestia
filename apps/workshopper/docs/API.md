@@ -17,7 +17,7 @@ Common responses:
 All of these come from `ApiExceptionHandler`, so the controllers themselves have no error handling. Error bodies are `{"error": "..."}` or Spring's `{"detail": "..."}`; the client shows that message.
 
 **Limits** (`facade/UsageGuard.java`), far above normal use, so one user can't burn LLM credits, starve others or fill the database:
-* AI requests (`/session`, `/export/block-slides`, `/refine-goal`, `/fix-goals-grammar`): at most 4 running and 120 per 10 minutes per user (`workshopper.limits.*` in `application.yml` to change), 40 blocks, 20 goals, 3,000 characters per text field, 600 minutes per session or block.
+* AI requests (`/session`, `/export/block-slides`, `/refine-goal`, `/fix-goals-grammar`): no limit by default; `workshopper.limits.ai-concurrent-per-user` and `ai-requests-per-window` (per 10 minutes) turn one on with a positive value (`workshopper.limits.*` in `application.yml` to change), 40 blocks, 20 goals, 3,000 characters per text field, 600 minutes per session or block.
 * Storage: 500 sessions and 100 courses per user, titles up to 300 characters, drafts up to 2 MB and slides up to 5 MB of JSON.
 * Uploads: templates up to 20 MB, checked to open as a PowerPoint file.
 

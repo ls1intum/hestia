@@ -18,5 +18,7 @@ public final class UserDtos {
     ) {}
 
     @Schema(description = "Remaining LLM jobs in the current window, per kind.")
-    public record QuotaResponse(int parse_remaining, int parse_limit, int solve_remaining, int solve_limit) {}
+    /** A limit of 0 means no limit; the used counts are the last 24 hours. */
+    public record QuotaResponse(int parse_remaining, int parse_limit, int solve_remaining, int solve_limit,
+                                int parse_used, int solve_used) {}
 }

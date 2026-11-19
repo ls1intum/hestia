@@ -53,7 +53,7 @@ final class LlmRateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (!llmRequests.matches(request)) {
+        if (limit <= 0 || !llmRequests.matches(request)) { // a limit of 0 is off
             chain.doFilter(request, response);
             return;
         }

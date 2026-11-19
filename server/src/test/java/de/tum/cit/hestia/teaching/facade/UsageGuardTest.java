@@ -60,4 +60,11 @@ class UsageGuardTest {
         assertThrows(ResponseStatusException.class,
                 () -> UsageGuard.checkStoredSize("The session", "a".repeat(UsageGuard.MAX_DRAFT_CHARS + 1), UsageGuard.MAX_DRAFT_CHARS));
     }
+
+    /** 0 turns both AI limits off (the default): no request is refused. */
+    @Test
+    void aiLimitsOfZeroAreOff() throws Exception {
+        UsageGuard guard = new UsageGuard(user, 0, 0, 10);
+        for (int i = 0; i < 500; i++) assertEquals("ok", guard.runAi(() -> "ok"));
+    }
 }
