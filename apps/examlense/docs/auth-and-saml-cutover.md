@@ -7,8 +7,9 @@ bootstrap token). That is gone. The `assessment` module uses the identity and te
 ## Login
 
 - The browser signs in through TUM SAML (`/saml2/authenticate/tum`) and gets the session cookie
-  of the hestia server. In the `local` profile a dev user is signed in instead (headers
-  `X-Dev-User` / `X-Dev-Org` select another one).
+  of the hestia server. In the `local` profile a dev user is signed in instead, never as admin.
+  Only with `hestia.dev-login.impersonation=true` (the tests) do the headers `X-Dev-User` /
+  `X-Dev-Org` select another one; a deployed server refuses to start with it.
 - `client/src/lib/api/api-client.ts` sends the cookie (`credentials: "include"`) and, on every
   non-GET request, the CSRF header `X-XSRF-TOKEN` (value of the `XSRF-TOKEN` cookie). A 401
   sends the browser to the SAML login.

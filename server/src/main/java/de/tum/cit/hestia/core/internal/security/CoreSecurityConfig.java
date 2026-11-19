@@ -71,29 +71,22 @@ class CoreSecurityConfig {
         this.env = env;
     }
 
-    /** The development login must never meet production. */
+    /** The development login must never meet production, nor impersonate anyone on a deployment. */
     @PostConstruct
     void validateProfiles() {
-        List<String> active = Arrays.asList(env.getActiveProfiles());
-        if (!active.contains("local")) {
-            return;
-        }
-        if (active.contains("prod")) {
-            throw new IllegalStateException(
-                    "CRITICAL SECURITY ERROR: 'local' and 'prod' profiles cannot be active simultaneously.");
-        }
-        // Catch a deployed environment where 'local' is active alone
-        if (System.getenv("KUBERNETES_SERVICE_HOST") != null || System.getenv("FLY_APP_NAME") != null) {
-            throw new IllegalStateException(
-                    "CRITICAL SECURITY ERROR: 'local' profile is active in a deployed environment!");
-        }
+        DeployGuard.check(Arrays.asList(env.getActiveProfiles()), env.getProperty("HESTIA_DEPLOY_TARGET"),
+                devLoginImpersonation());
+    }
+
+    private boolean devLoginImpersonation() {
+        return env.getProperty("hestia.dev-login.impersonation", Boolean.class, false);
     }
 
     @Bean
     SecurityFilterChain hestiaFilterChain(
             HttpSecurity http,
             IdentityService identities,
-            @Value("${hestia.rate-limit.llm-requests:60}") int llmRequestLimit,
+            @Value("${hestia.rate-limit.llm-requests:0}") int llmRequestLimit,
             @Value("${hestia.rate-limit.window:10m}") Duration llmRequestWindow,
             @Value("${app.ratelimit.requests:300}") int assessmentRequestLimit,
             @Value("${app.ratelimit.window-seconds:10}") long assessmentWindowSeconds,
@@ -142,7 +135,7 @@ class CoreSecurityConfig {
             .addFilterAfter(new OrgContextFilter(), AnonymousAuthenticationFilter.class);
 
         if (env.matchesProfiles("local")) {
-            http.addFilterBefore(new DevAuthFilter(identities), AnonymousAuthenticationFilter.class);
+            http.addFilterBefore(new DevAuthFilter(identities, devLoginImpersonation()), AnonymousAuthenticationFilter.class);
         }
         return http.build();
     }

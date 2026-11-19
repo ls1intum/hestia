@@ -142,7 +142,8 @@ its value. The ones you are most likely to change:
 | `SAML_PRIVATE_KEY_LOCATION` / `SAML_CERTIFICATE_LOCATION` | `classpath:certs/…` (absent) | SAML signing pair |
 | `SAML_IDP_ENTITY_ID` / `SAML_IDP_METADATA_URI` | none (required) | the identity provider; the deployment's values are in `infra/compose.prod.yaml`, the browser tests generate a throwaway one (`client/e2e/start-server.sh`) |
 | `HESTIA_PLATFORM_ADMINS` | empty | external ids (eduPersonPrincipalName) with `ROLE_ADMIN` |
-| `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) replaces the SAML login by the development login (headers `X-Dev-User`/`X-Dev-Org` choose user and organisation) |
+| `SPRING_PROFILES_ACTIVE` | empty (deploy: `Staging`/`Production`) | `local` (and `Staging`, a group for it) replaces the SAML login by the development login as `dev-local-user`, never admin |
+| `HESTIA_DEV_LOGIN_IMPERSONATION` | `false` | `true` lets the headers `X-Dev-User`/`X-Dev-Org` choose user and organisation under `local` (the tests use it); a deployment refuses to start with it |
 | `VITE_API_TARGET` (client dev server) | `http://localhost:8080` | where Vite proxies `/learninggoalhub/api` |
 
 Pipeline settings (parallelism, unit size, models, temperatures) are under `hestia.*` in
