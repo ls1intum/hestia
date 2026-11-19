@@ -25,12 +25,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SseHubTest {
 
-    /** The organisation whose list stream the hub publishes to. */
+    /** The organisation the publishing thread carries. */
+    private static final UUID ORG = UUID.randomUUID();
+    /** The creator of every exam in these tests. */
     private static final UUID OWNER = UUID.randomUUID();
 
     @BeforeEach
     void bindOrganisation() {
-        OrgContext.set(OWNER);
+        OrgContext.set(ORG);
     }
 
     @AfterEach
@@ -39,11 +41,11 @@ class SseHubTest {
     }
 
     private static SseHub hub() {
-        return new SseHub();
+        return new SseHub(examId -> java.util.Optional.of(OWNER));
     }
 
-    private static String listTopic(UUID owner) {
-        return "exams:" + owner;
+    private static String listTopic(UUID user) {
+        return SseHub.listTopic(user);
     }
 
     @Test
@@ -80,10 +82,11 @@ class SseHubTest {
     }
 
     /**
-     * The list stream is per organisation: another university's clients never hear of an exam.
+     * The list stream is per user: only the exam's creator hears of it, not other users of the
+     * same university (who may not be allowed to open it).
      */
     @Test
-    void listEventsReachOnlyTheOwningOrganisationsStream() {
+    void listEventsReachOnlyTheCreatorsStream() {
         UUID alice = OWNER;
         UUID bob = UUID.randomUUID();
         SseHub hub = hub();
@@ -95,6 +98,31 @@ class SseHubTest {
 
         assertThat(aliceList.sends.get()).isEqualTo(2);
         assertThat(bobList.sends.get()).isZero();
+    }
+
+    /** An exam without a creator reaches no list stream. */
+    @Test
+    void anExamWithoutCreatorReachesNoList() {
+        SseHub hub = new SseHub(examId -> java.util.Optional.empty());
+        CountingEmitter orgList = attach(hub, listTopic(ORG));
+        CountingEmitter ownerList = attach(hub, listTopic(OWNER));
+
+        hub.examUpdated(UUID.randomUUID());
+
+        assertThat(orgList.sends.get()).isZero();
+        assertThat(ownerList.sends.get()).isZero();
+    }
+
+    /** A failing creator lookup is swallowed; the exam topic still gets its event. */
+    @Test
+    void aFailingCreatorLookupDoesNotBreakThePublish() {
+        SseHub hub = new SseHub(examId -> { throw new IllegalStateException("db down"); });
+        UUID examId = UUID.randomUUID();
+        CountingEmitter examSub = attach(hub, "exam:" + examId);
+
+        hub.examUpdated(examId);
+
+        assertThat(examSub.sends.get()).isEqualTo(1);
     }
 
     /** Nobody subscribed to a shared topic should ever receive anything. */

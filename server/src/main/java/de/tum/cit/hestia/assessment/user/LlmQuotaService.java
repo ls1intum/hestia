@@ -24,6 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Counts are kept in the database rather than in memory so a restart does not
  * reset everyone's quota, and so the numbers stay correct if the service is ever
  * run as more than one instance.
+ *
+ * <p>The per-user quotas are off by default (0); usage is counted either way and a positive value
+ * turns them on. The organisation ceilings stay on by default (200 per day): ExamLense calls
+ * OpenAI, Anthropic and Gemini directly on the project's own provider account, not through the
+ * Logos gateway, so nothing else caps that spend. 0 turns a ceiling off.
  */
 @Service
 public class LlmQuotaService {
@@ -33,15 +38,14 @@ public class LlmQuotaService {
 
     private final LlmUsageRepository usage;
 
-    @Value("${app.quota.parse-per-day:20}")
+    @Value("${app.quota.parse-per-day:0}")
     private int parsePerDay;
 
-    @Value("${app.quota.solve-per-day:20}")
+    @Value("${app.quota.solve-per-day:0}")
     private int solvePerDay;
 
     /**
-     * Instance-wide daily ceilings. Set generously enough not to bite normal use;
-     * they are a backstop on spend, not a fairness control.
+     * Instance-wide daily ceilings: a backstop on spend, not a fairness control.
      */
     @Value("${app.quota.global-parse-per-day:200}")
     private int globalParsePerDay;
@@ -78,8 +82,7 @@ public class LlmQuotaService {
         OffsetDateTime since = windowStart();
 
         int limit = limitFor(kind);
-        long used = usage.countSince(userId, kind, since);
-        if (used >= limit) {
+        if (limit > 0 && usage.countSince(userId, kind, since) >= limit) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS,
                 "Daily %s limit reached (%d per day). Try again tomorrow.".formatted(kind, limit));
         }
@@ -88,7 +91,7 @@ public class LlmQuotaService {
         // for different actions from the person reading it, and only the second is
         // worth telling an administrator about.
         int globalLimit = globalLimitFor(kind);
-        if (usage.countAllSince(kind, since) >= globalLimit) {
+        if (globalLimit > 0 && usage.countAllSince(kind, since) >= globalLimit) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS,
                 ("ExamLense has reached its daily %s limit across all users (%d per day). "
                     + "Try again tomorrow, or ask an administrator to raise it.")
@@ -116,8 +119,14 @@ public class LlmQuotaService {
         long parseUsed = usage.countSince(id, KIND_PARSE, since);
         long solveUsed = usage.countSince(id, KIND_SOLVE, since);
         return new QuotaResponse(
-            (int) Math.max(0, parsePerDay - parseUsed), parsePerDay,
-            (int) Math.max(0, solvePerDay - solveUsed), solvePerDay);
+            remaining(parsePerDay, parseUsed), parsePerDay,
+            remaining(solvePerDay, solveUsed), solvePerDay,
+            (int) parseUsed, (int) solveUsed);
+    }
+
+    /** What is left of a limit; 0 when the limit is off (0), where only the used count matters. */
+    private static int remaining(int limit, long used) {
+        return limit > 0 ? (int) Math.max(0, limit - used) : 0;
     }
 
     /** Rolling 24h rather than calendar-day, so nobody games the reset at midnight. */

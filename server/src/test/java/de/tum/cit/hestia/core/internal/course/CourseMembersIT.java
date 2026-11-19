@@ -123,6 +123,54 @@ class CourseMembersIT {
                 .andExpect(status().isConflict());
     }
 
+    /**
+     * Two owners demote each other at the same moment: the course row lock lets only one win, so
+     * the course keeps an owner. Repeated, since without the lock the race is not certain to hit.
+     */
+    @Test
+    void twoOwnersDemotingEachOtherKeepAnOwner() throws Exception {
+        for (int round = 0; round < 5; round++) {
+            UUID course = courseOfAlice();
+            TestLogin.login(identities, uniA, "bob");
+            mvc.perform(put(members(course)).with(TestLogin.as(identities, uniA, "alice"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"externalId\":\"bob\",\"role\":\"OWNER\"}"))
+                    .andExpect(status().isOk());
+
+            var start = new java.util.concurrent.CyclicBarrier(2);
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                var aliceDemotesBob = pool.submit(() -> demote(start, course, "alice", "bob"));
+                var bobDemotesAlice = pool.submit(() -> demote(start, course, "bob", "alice"));
+                java.util.List<Integer> codes = java.util.List.of(aliceDemotesBob.get(), bobDemotesAlice.get());
+                // The loser is no longer an owner once it gets the lock.
+                assertThat(codes).containsExactlyInAnyOrder(200, 403);
+            } finally {
+                pool.shutdownNow();
+            }
+            assertThat(countOwners(course)).isEqualTo(1);
+        }
+    }
+
+    private int demote(java.util.concurrent.CyclicBarrier start, UUID course, String actor, String target)
+            throws Exception {
+        start.await();
+        return mvc.perform(put(members(course)).with(TestLogin.as(identities, uniA, actor))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"externalId\":\"" + target + "\",\"role\":\"VIEWER\"}"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    @Autowired CourseMembershipRepository membershipRows;
+
+    private long countOwners(UUID course) {
+        de.tum.cit.hestia.core.OrgContext.set(TestLogin.login(identities, uniA, "alice").orgId());
+        try {
+            return membershipRows.countByCourseIdAndRole(course, CourseRole.OWNER);
+        } finally {
+            de.tum.cit.hestia.core.OrgContext.set(null);
+        }
+    }
+
     @Test
     void anotherOrganisationSeesNothing() throws Exception {
         UUID course = courseOfAlice();

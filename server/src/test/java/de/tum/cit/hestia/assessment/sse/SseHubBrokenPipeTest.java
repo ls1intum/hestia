@@ -39,7 +39,7 @@ class SseHubBrokenPipeTest {
 
     @Test
     void publishDoesNotLetABrokenPipeEscapeToTheCaller() throws Exception {
-        SseHub hub = new SseHub();
+        SseHub hub = new SseHub(examId -> java.util.Optional.empty());
         UUID examId = UUID.randomUUID();
         DeadEmitter dead = new DeadEmitter();
         Map<String, Set<SseEmitter>> topics = topicsOf(hub);

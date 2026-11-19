@@ -20,7 +20,7 @@ Hestia has one SAML 2.0 login, owned by core (session cookie, CSRF header; see A
 
 * **`DevAuthFilter`**: active *only* when the `local` Spring profile is active. It signs every request in as `dev-local-user` of the organisation `local.test`.
 * **No default profile**: `application.yml` sets no profile, so `local` must always be chosen explicitly (`SPRING_PROFILES_ACTIVE=local`).
-* **The Profile Gate**: core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`. The SAML login itself is also core's.
+* **The Profile Gate**: core's `DeployGuard` refuses to start (`IllegalStateException`) if `local` is active together with `prod` or on the Production deploy target (`HESTIA_DEPLOY_TARGET`), or if the dev login's header impersonation (`hestia.dev-login.impersonation`, tests only) is on in any deployment. The dev login is never a platform admin. The SAML login itself is also core's.
 * **Environments**:
   * Laptop: `SPRING_PROFILES_ACTIVE=local`, SAML bypassed.
   * `hestia-test` (VM, VPN-only): the deploy writes `ENVIRONMENT=Staging` into `.env`, and `application.yml` maps the `Staging` profile to `local`, so SAML is bypassed, because SAML access was only requested for production. `Production` maps to `prod`. Every tester is the same `dev-local-user` and sees the same sessions.

@@ -1,6 +1,10 @@
 package de.tum.cit.hestia.assessment.sse;
 
 import de.tum.cit.hestia.assessment.AbstractIntegrationTest;
+import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
+import de.tum.cit.hestia.core.OrgContext;
+import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -39,6 +43,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
 
     @LocalServerPort int port;
     @Autowired SseHub hub;
+    @Autowired ExaminationRepository exams;
 
     private ListAppender<ILoggingEvent> appender;
     private Logger rootLogger;
@@ -56,8 +61,22 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
         rootLogger.detachAppender(appender);
     }
 
-    /** Opens a real SSE stream, waits for the "connected" comment, then kills it. */
-    private void openThenKillSseStream() throws Exception {
+    /** The dev login's user, whose organisation the publishing thread carries. */
+    private HestiaPrincipal devUser() {
+        HestiaPrincipal dev = identities.login("local.test", "dev-local-user", "dev-local-user");
+        OrgContext.set(dev.orgId());
+        return dev;
+    }
+
+    private UUID examCreatedBy(UUID userId) {
+        Examination exam = new Examination();
+        exam.setSource("pdf");
+        exam.setCreatedBy(userId);
+        return exams.save(exam).getId();
+    }
+
+    /** Opens a real SSE stream of the dev login's list and waits for the "connected" comment. */
+    private Socket openListStream() throws Exception {
         Socket socket = new Socket("localhost", port);
         OutputStream out = socket.getOutputStream();
         out.write(("GET /examlense/api/exams/events HTTP/1.1\r\n"
@@ -75,6 +94,31 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
             seen.append(new String(buf, 0, n, StandardCharsets.UTF_8));
         }
         assertThat(seen.toString()).contains("connected");
+        return socket;
+    }
+
+    /** Everything the stream sends within {@code millis}. */
+    private static String readFor(Socket socket, long millis) throws Exception {
+        socket.setSoTimeout(100);
+        InputStream in = socket.getInputStream();
+        byte[] buf = new byte[1024];
+        StringBuilder seen = new StringBuilder();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
+        while (System.nanoTime() < deadline) {
+            try {
+                int n = in.read(buf);
+                if (n < 0) break;
+                seen.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+            } catch (java.net.SocketTimeoutException quiet) {
+                // keep waiting until the deadline
+            }
+        }
+        return seen.toString();
+    }
+
+    /** Opens a real SSE stream, waits for the "connected" comment, then kills it. */
+    private void openThenKillSseStream() throws Exception {
+        Socket socket = openListStream();
 
         // Abort rather than close politely: SO_LINGER 0 sends an RST, which is
         // what a killed tab / reloaded dev page actually does to the server.
@@ -108,21 +152,39 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
 
     @Test
     void publishingToADeadSseStreamLogsNoErrorAndDoesNotThrow() throws Exception {
+        UUID exam = examCreatedBy(devUser().userId());
         openThenKillSseStream();
-        // The stream belongs to the dev login's organisation; publish for that one.
-        de.tum.cit.hestia.core.OrgContext.set(
-            identities.login("local.test", "dev-local-user", "dev-local-user").orgId());
 
         // Two publishes: the first hits the dead socket, the second proves the
         // emitter was evicted rather than left to fail again.
-        hub.examUpdated(UUID.randomUUID());
+        hub.examUpdated(exam);
         Thread.sleep(300);
-        hub.examUpdated(UUID.randomUUID());
+        hub.examUpdated(exam);
         Thread.sleep(500);
 
         assertThat(errors())
             .describedAs("a client going away is expected teardown, not an error: %s",
                 errors().stream().map(ILoggingEvent::getFormattedMessage).toList())
             .isEmpty();
+    }
+
+    /**
+     * The list stream is per user: the creator hears of their exam, but not of another user's exam
+     * in the same university. The creator is looked up in the database under row-level security.
+     */
+    @Test
+    void listEventsReachOnlyTheExamsCreator() throws Exception {
+        HestiaPrincipal dev = devUser();
+        UUID own = examCreatedBy(dev.userId());
+        UUID colleagues = examCreatedBy(identities.login("local.test", "colleague", "colleague").userId());
+
+        try (Socket socket = openListStream()) {
+            hub.examUpdated(colleagues);
+            hub.examUpdated(own);
+            String events = readFor(socket, 1500);
+
+            assertThat(events).contains(own.toString());
+            assertThat(events).doesNotContain(colleagues.toString());
+        }
     }
 }

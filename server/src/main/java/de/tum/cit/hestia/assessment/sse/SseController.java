@@ -21,8 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Tag(name = "Realtime", description = """
     Server-sent event streams. These are long-lived `text/event-stream` responses, not \
     request/response calls — "Try it out" in Swagger UI will hang open rather than return. \
-    Because `EventSource` cannot set headers, both accept the bearer token as a `token` \
-    query parameter instead. The hub emits a keep-alive comment every 25s so proxies don't \
+    Both use the session cookie, which `EventSource` sends like any request. The hub emits a keep-alive comment every 25s so proxies don't \
     drop an idle stream.""")
 public class SseController {
 
@@ -62,13 +61,14 @@ public class SseController {
         summary = "Subscribe to exam-list events",
         description = """
             Dashboard-level stream. Emits a single `exam` event with an \
-            `{ "exam_id": "<uuid>" }` payload whenever one of **the caller's own** exams \
+            `{ "exam_id": "<uuid>" }` payload whenever one of **the exams the caller created** \
             changes status or makes solve progress, so the list can refresh without one \
-            subscription per row.""")
+            subscription per row. Exams the caller sees only through a course appear on the \
+            next list fetch.""")
     @ApiResponse(responseCode = "200", description = "Event stream opened.",
         content = @Content(mediaType = "text/event-stream"))
     @GetMapping("/exams/events")
     public SseEmitter listEvents() {
-        return hub.register("exams:" + currentUser.orgId());
+        return hub.register(SseHub.listTopic(currentUser.userId()));
     }
 }

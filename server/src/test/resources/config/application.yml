@@ -9,3 +9,6 @@ hestia:
   rate-limit:
     # Test classes share one context and one client address; the limiter has its own tests.
     llm-requests: 100000
+  dev-login:
+    # Tests under profile `local` choose user and organisation with X-Dev-User / X-Dev-Org.
+    impersonation: true

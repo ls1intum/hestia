@@ -31,9 +31,9 @@ The session cookie is sent automatically by the browser, so writes are protected
 ## 5. Local Development Bypass
 To avoid needing live SAML certificates locally, core has a `DevAuthFilter`.
 
-* **How it works:** when the `local` profile is active, every request counts as the user `dev-local-user` of the organisation `local.test`. The headers `X-Dev-User` and `X-Dev-Org` choose another user or organisation (used by tests for "another user" and "another university"). Writes still need the CSRF token.
+* **How it works:** when the `local` profile is active, every request counts as the user `dev-local-user` of the organisation `local.test`. With `hestia.dev-login.impersonation=true` (set by the tests) the headers `X-Dev-User` and `X-Dev-Org` choose another user or organisation ("another user", "another university"); without it they are ignored. The dev login is never a platform admin. Writes still need the CSRF token.
 * **How to use it:** start the server with `SPRING_PROFILES_ACTIVE=local` (see the README). There is no default profile, so the bypass is never on by accident.
-* **Security:** core's `CoreSecurityConfig` refuses to start (`IllegalStateException`) if `local` is active together with `prod`.
+* **Security:** core's `DeployGuard` refuses to start (`IllegalStateException`) if `local` is active together with `prod`, if `local` runs on the Production deploy target, or if impersonation is on in any deployment. The deploy target comes from `HESTIA_DEPLOY_TARGET`, which `infra/compose.prod.yaml` sets from the deploy's `ENVIRONMENT`, so overriding `SPRING_PROFILES_ACTIVE` does not get around it.
 
 ## 6. Environment Variables
 In deployment (`compose.prod.yaml`), the server expects:

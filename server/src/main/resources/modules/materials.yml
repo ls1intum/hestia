@@ -64,7 +64,8 @@ hestia:
     taxonomy-planner-model: openai/gpt-oss-120b
   rate-limit:
     # Requests that start model calls, per client address and window; more get a 429.
-    llm-requests: 60
+    # Off (0) by default: the gateway limits on its own. A positive value turns it on.
+    llm-requests: ${HESTIA_RATE_LIMIT_LLM_REQUESTS:0}
     window: 10m
   upload:
     # Bounds on one uploaded PDF, checked after parsing. A whole-semester slide collection reaches

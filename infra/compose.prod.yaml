@@ -48,6 +48,9 @@ services:
       # Defaults to the deploy target the CI deploy writes into .env (Staging/Production);
       # application.yml maps Staging to `local` (development login) and Production to `prod`.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-${ENVIRONMENT:-prod}}
+      # The deploy target itself, whatever the profiles say: the server refuses to start the
+      # development login on Production, and its header impersonation on any deploy target.
+      HESTIA_DEPLOY_TARGET: ${ENVIRONMENT:-Production}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
       SAML_PRIVATE_KEY_LOCATION: file:/app/certs/private-key.pem
       SAML_CERTIFICATE_LOCATION: file:/app/certs/certificate.crt
@@ -65,8 +68,10 @@ services:
       ANTHROPIC_API_KEY: ${EXAMLENSE_ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
       GEMINI_API_KEY: ${EXAMLENSE_GEMINI_API_KEY:-}
-      QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-20}
-      QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-20}
+      # Daily LLM limits; usage is counted either way. Per user off (0) unless .env sets them;
+      # per organisation on, since ExamLense calls the providers directly on our own account.
+      QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-0}
+      QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-0}
       QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-200}
       QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-200}
       # HMAC key for signed file URLs. Required: without it the server signs with a random key

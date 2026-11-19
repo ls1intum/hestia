@@ -23,7 +23,8 @@ import java.util.concurrent.Semaphore;
  *       {@code maxPerWindow} per {@code windowMinutes} per user (429 when exceeded)</li>
  *   <li>stored data: bounded draft and slide sizes (413) and number of sessions/courses (400)</li>
  * </ul>
- * The limits are far above normal use (a 90-minute session has about 10 blocks and 3–6 goals).
+ * The input limits are far above normal use (a 90-minute session has about 10 blocks and 3–6 goals).
+ * The AI request limits are off by default (0) and turned on by a positive value.
  */
 @Component
 public class UsageGuard {
@@ -49,8 +50,8 @@ public class UsageGuard {
 
     public UsageGuard(
             CurrentUser currentUser,
-            @Value("${workshopper.limits.ai-concurrent-per-user:4}") int maxConcurrent,
-            @Value("${workshopper.limits.ai-requests-per-window:120}") int maxPerWindow,
+            @Value("${workshopper.limits.ai-concurrent-per-user:0}") int maxConcurrent,
+            @Value("${workshopper.limits.ai-requests-per-window:0}") int maxPerWindow,
             @Value("${workshopper.limits.ai-window-minutes:10}") int windowMinutes) {
         this.currentUser = currentUser;
         this.maxConcurrent = maxConcurrent;
@@ -66,7 +67,8 @@ public class UsageGuard {
     /** Runs an AI request for the current user within their limits. */
     public <T> T runAi(AiCall<T> call) throws Exception {
         UUID user = currentUser.userId();
-        countRequest(user);
+        if (maxPerWindow > 0) countRequest(user);
+        if (maxConcurrent <= 0) return call.call();
         Semaphore slots = running.computeIfAbsent(user, u -> new Semaphore(maxConcurrent));
         if (!slots.tryAcquire()) {
             throw tooMany("Too many AI requests are running at once. Please wait for them to finish.");

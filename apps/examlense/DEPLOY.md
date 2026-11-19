@@ -138,8 +138,11 @@ without a course is visible to its creator only. Admin (the parse-metrics dashbo
 `hestia.security.platform-admins` (env `HESTIA_PLATFORM_ADMINS`). See
 [`docs/auth-and-saml-cutover.md`](docs/auth-and-saml-cutover.md).
 
-**AI spend is metered per user.** `QUOTA_PARSE_PER_DAY` / `QUOTA_SOLVE_PER_DAY` (20 each by
-default) cap LLM jobs per user over a rolling 24h window. The per-IP request limiter
+**AI spend is metered per user.** Every LLM job is counted over a rolling 24h window and shown
+in the user menu. `QUOTA_PARSE_PER_DAY` / `QUOTA_SOLVE_PER_DAY` cap jobs per user and
+`QUOTA_GLOBAL_*` per organisation. The per-user quotas are off (0) by default; the organisation
+ceilings default to 200 per day, because ExamLense calls the providers directly on the project's
+own account, not through Logos. The per-IP request limiter
 (300 requests / 10 s) is still there and still useful: it runs *before* authentication, so it
 is the only thing that can cheaply absorb unauthenticated floods, including of the login endpoints.
 

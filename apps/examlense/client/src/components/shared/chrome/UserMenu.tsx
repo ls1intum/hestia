@@ -12,7 +12,12 @@ import { LogOut, Shield, User } from "lucide-react";
 import { signOut } from "@/lib/api/api-client";
 import { useMe, useResetOnSignOut } from "@/hooks/data/use-me";
 
-/** Identity, the remaining quota and sign-out. */
+/** "3/20 parses left" with a limit, "4 parses today" without one (limit 0). */
+function usage(used: number, remaining: number, limit: number, what: string): string {
+  return limit > 0 ? `${remaining}/${limit} ${what} left` : `${used} ${what} today`;
+}
+
+/** Identity, the daily usage and sign-out. */
 export const UserMenu = () => {
   const { data: me } = useMe();
   const resetCache = useResetOnSignOut();
@@ -38,8 +43,8 @@ export const UserMenu = () => {
         <DropdownMenuLabel className="font-normal">
           <p className="text-sm font-medium">{me.display_name ?? "Signed in"}</p>
           <p className="text-xs text-hestia-text-muted">
-            {me.quota.parse_remaining}/{me.quota.parse_limit} parses ·{" "}
-            {me.quota.solve_remaining}/{me.quota.solve_limit} solves left today
+            {usage(me.quota.parse_used, me.quota.parse_remaining, me.quota.parse_limit, "parses")} ·{" "}
+            {usage(me.quota.solve_used, me.quota.solve_remaining, me.quota.solve_limit, "solves")}
           </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

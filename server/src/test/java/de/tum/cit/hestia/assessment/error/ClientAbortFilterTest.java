@@ -29,6 +29,14 @@ class ClientAbortFilterTest {
     }
 
     @Test
+    void treatsTheWindowsAbortAsAClientDisconnectInEnglishAndGerman() {
+        assertThat(ClientAbortFilter.isClientDisconnect(new IOException(
+            "An established connection was aborted by the software in your host machine"))).isTrue();
+        assertThat(ClientAbortFilter.isClientDisconnect(new IOException(
+            "Eine bestehende Verbindung wurde softwaregesteuert\ndurch den Hostcomputer abgebrochen"))).isTrue();
+    }
+
+    @Test
     void treatsAConnectionResetAsAClientDisconnect() {
         assertThat(ClientAbortFilter.isClientDisconnect(
             new IOException("Connection reset by peer"))).isTrue();

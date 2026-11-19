@@ -116,11 +116,14 @@ export async function apiRequest<T = unknown>(
 // Identity
 // ---------------------------------------------------------------------------
 
+/** Daily LLM usage of the user; a limit of 0 means no limit. */
 export interface Quota {
   parse_remaining: number;
   parse_limit: number;
   solve_remaining: number;
   solve_limit: number;
+  parse_used: number;
+  solve_used: number;
 }
 
 export interface Me {

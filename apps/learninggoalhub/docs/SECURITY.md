@@ -10,7 +10,7 @@ security chain: SAML login, CSRF, `LlmRateLimitFilter`), in `materials/course/` 
 | --- | --- |
 | Browser login | TUM login (SAML) required on `/learninggoalhub/**`; hestia-test and local runs use a dev user instead. |
 | Other modules | `assessment` and `teaching` call `materials` in-process (ports in `core.spi`); there is no service key. |
-| Model calls | At most 60 requests that start model calls per client address and 10 minutes. |
+| Model calls | Off by default. `HESTIA_RATE_LIMIT_LLM_REQUESTS` (a positive number) limits the requests that start model calls per client address and 10 minutes. |
 | Uploads | PDF only, checked by extension and file signature; page and text limits. |
 | ExamLens input | At most 100 blocks per request and 20,000 characters per block description. |
 | CSV export | Cells that a spreadsheet would run as a formula are neutralised. |

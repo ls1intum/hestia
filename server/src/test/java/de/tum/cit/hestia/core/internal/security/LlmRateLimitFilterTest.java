@@ -43,4 +43,16 @@ class LlmRateLimitFilterTest {
         now.set(now.get().plus(Duration.ofMinutes(6)));
         assertThat(limiter.tryAcquire("a")).isZero();
     }
+
+    /** A limit of 0 (the default) is off: every request passes. */
+    @Test
+    void aLimitOfZeroIsOff() throws Exception {
+        LlmRateLimitFilter limiter = new LlmRateLimitFilter(request -> true, 0, Duration.ofMinutes(10), Clock.systemUTC());
+        for (int i = 0; i < 100; i++) {
+            var response = new org.springframework.mock.web.MockHttpServletResponse();
+            limiter.doFilter(new org.springframework.mock.web.MockHttpServletRequest("POST", "/x"), response,
+                    new org.springframework.mock.web.MockFilterChain());
+            assertThat(response.getStatus()).isEqualTo(200);
+        }
+    }
 }
