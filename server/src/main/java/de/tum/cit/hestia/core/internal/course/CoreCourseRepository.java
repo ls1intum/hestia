@@ -1,9 +1,12 @@
 package de.tum.cit.hestia.core.internal.course;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 /** Courses of the current organisation only (tenant filter). */
@@ -13,4 +16,9 @@ interface CoreCourseRepository extends JpaRepository<CoreCourse, UUID> {
             + "(select m.courseId from CourseMembership m where m.userId = :userId) "
             + "order by c.createdAt desc, c.id")
     List<CoreCourse> findMine(UUID userId, Pageable page);
+
+    /** Locks the course row until the transaction ends, so membership changes run one at a time. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from CoreCourse c where c.id = :id")
+    Optional<CoreCourse> lockById(UUID id);
 }

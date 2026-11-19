@@ -27,7 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Members of a course, for its owners only ({@code /core/api/courses/{courseId}/members}). A member is
  * added by external id and must have logged in once in the same organisation. A course always keeps
- * at least one owner.
+ * at least one owner: changes to a course's members lock the course row first, so two owners
+ * demoting each other at the same time cannot both succeed.
  */
 @RestController
 @RequestMapping("/api/courses/{courseId}/members")
@@ -40,10 +41,13 @@ class CourseMemberController {
     private final CourseService courses;
     private final CourseMembershipRepository memberships;
     private final AppUserRepository users;
+    private final CoreCourseRepository courseRows;
     private final Clock clock = Clock.systemUTC();
 
-    CourseMemberController(CourseService courses, CourseMembershipRepository memberships, AppUserRepository users) {
+    CourseMemberController(CourseService courses, CourseMembershipRepository memberships, AppUserRepository users,
+            CoreCourseRepository courseRows) {
         this.courses = courses;
+        this.courseRows = courseRows;
         this.memberships = memberships;
         this.users = users;
     }
@@ -62,6 +66,7 @@ class CourseMemberController {
     @PutMapping
     @Transactional
     public Member put(@PathVariable UUID courseId, @Valid @RequestBody MemberRequest request) {
+        courseRows.lockById(courseId);
         courses.requireOwner(courseId);
         AppUser user = users.findByExternalId(request.externalId().trim())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -82,6 +87,7 @@ class CourseMemberController {
     @DeleteMapping("/{userId}")
     @Transactional
     public ResponseEntity<Void> delete(@PathVariable UUID courseId, @PathVariable UUID userId) {
+        courseRows.lockById(courseId);
         courses.requireOwner(courseId);
         CourseMembership membership = memberships.findById(new CourseMembership.Key(courseId, userId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Not a member"));
