@@ -68,11 +68,12 @@ services:
       ANTHROPIC_API_KEY: ${EXAMLENSE_ANTHROPIC_API_KEY:-}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
       GEMINI_API_KEY: ${EXAMLENSE_GEMINI_API_KEY:-}
-      # Daily LLM limits, off (0) unless .env sets them; usage is counted either way.
+      # Daily LLM limits; usage is counted either way. Per user off (0) unless .env sets them;
+      # per organisation on, since ExamLense calls the providers directly on our own account.
       QUOTA_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_PARSE_PER_DAY:-0}
       QUOTA_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_SOLVE_PER_DAY:-0}
-      QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-0}
-      QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-0}
+      QUOTA_GLOBAL_PARSE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY:-200}
+      QUOTA_GLOBAL_SOLVE_PER_DAY: ${EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY:-200}
       # HMAC key for signed file URLs. Required: without it the server signs with a random key
       # per start, so every file URL stops working after a restart.
       FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:?set EXAMLENSE_FILES_SIGNING_SECRET in .env}

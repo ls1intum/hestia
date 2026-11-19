@@ -25,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
  * reset everyone's quota, and so the numbers stay correct if the service is ever
  * run as more than one instance.
  *
- * <p>Every limit is off by default (0): the gateway has its own limits, and usage is counted either
- * way. A positive value turns a limit on.
+ * <p>The per-user quotas are off by default (0); usage is counted either way and a positive value
+ * turns them on. The organisation ceilings stay on by default (200 per day): ExamLense calls
+ * OpenAI, Anthropic and Gemini directly on the project's own provider account, not through the
+ * Logos gateway, so nothing else caps that spend. 0 turns a ceiling off.
  */
 @Service
 public class LlmQuotaService {
@@ -45,10 +47,10 @@ public class LlmQuotaService {
     /**
      * Instance-wide daily ceilings: a backstop on spend, not a fairness control.
      */
-    @Value("${app.quota.global-parse-per-day:0}")
+    @Value("${app.quota.global-parse-per-day:200}")
     private int globalParsePerDay;
 
-    @Value("${app.quota.global-solve-per-day:0}")
+    @Value("${app.quota.global-solve-per-day:200}")
     private int globalSolvePerDay;
 
     public LlmQuotaService(LlmUsageRepository usage) {

@@ -21,15 +21,16 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8080,http://localhost:5173}
   # Per-user LLM metering. Rolling 24h windows, counted in the database so a
-  # restart doesn't reset anyone's count. Every limit is off (0) by default: the
-  # gateway limits on its own, and usage is counted either way. A positive value
-  # turns a limit on.
+  # restart doesn't reset anyone's count. 0 turns a limit off; usage is counted either way.
   quota:
+    # Per user: off by default.
     parse-per-day: ${QUOTA_PARSE_PER_DAY:0}
     solve-per-day: ${QUOTA_SOLVE_PER_DAY:0}
-    # Ceilings for one organisation's users together, counted from actual usage.
-    global-parse-per-day: ${QUOTA_GLOBAL_PARSE_PER_DAY:0}
-    global-solve-per-day: ${QUOTA_GLOBAL_SOLVE_PER_DAY:0}
+    # Per organisation, counted from actual usage: on by default. ExamLense calls OpenAI,
+    # Anthropic and Gemini directly on the project's own provider account, not through the
+    # Logos gateway, so this is the cap on that spend.
+    global-parse-per-day: ${QUOTA_GLOBAL_PARSE_PER_DAY:200}
+    global-solve-per-day: ${QUOTA_GLOBAL_SOLVE_PER_DAY:200}
   files:
     # HMAC key for signed file URLs. When unset a random key is used per start.
     signing-secret: ${FILES_SIGNING_SECRET:}
