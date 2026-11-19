@@ -26,12 +26,12 @@ jobs:
       RUN_LIVE_LOGOS: "1"
       LOGOS_API_KEY: ${{ secrets.LOGOS_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Check that the secret is set
         run: test -n "$LOGOS_API_KEY" || { echo "::error::Repository secret LOGOS_API_KEY is missing"; exit 1; }
       - name: Run the Logos smoke tests
@@ -41,7 +41,7 @@ jobs:
           --continue
       - name: Keep the test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logos-smoke-reports
           path: server/build/reports/tests/test/
