@@ -22,7 +22,8 @@ in process.
   need a login whose organisation matches the prefix. The key is `FILES_SIGNING_SECRET`; when
   unset a random key is used per start.
 - **Realtime** — SSE (`GET /api/exams/{id}/events`, `GET /api/exams/events`); the browser's
-  session cookie authenticates the stream. The list topic is per organisation. The hub sends a
+  session cookie authenticates the stream. The list topic is per user: list events reach only the
+  exam's creator; course members see changes on their next list fetch. The hub sends a
   keep-alive comment every 25s so proxies don't drop idle streams.
 
 ## API documentation
@@ -120,8 +121,8 @@ LearningGoalHub settings any more.
 curl http://localhost:8080/examlense/api/healthz
 # => {"status":"ok","time":"..."}
 
-# Protected: the local profile signs in a dev user via a header
-curl -H "X-Dev-User: dev-local-user" http://localhost:8080/examlense/api/exams
+# Protected: the local profile signs every request in as dev-local-user
+curl http://localhost:8080/examlense/api/exams
 # => []   (empty list on a fresh DB)
 ```
 
