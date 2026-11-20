@@ -8,10 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,11 +29,9 @@ import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
 import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 /**
  * A model reply that cannot be parsed must abort the transaction after the other session workers
@@ -46,26 +41,19 @@ class ExtractionRunnerSessionIsolationTest {
 
     @Test
     void oneFailedSessionFailsTheRunAndNamesTheMissingSession() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.system(anyString())).thenReturn(spec);
-        when(spec.options(any())).thenReturn(spec);
         // The first session's reply is unparsable; the second must still be requested.
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenThrow(new RuntimeException("Unrecognized character escape '(' "))
-                .thenReturn(List.of());
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(new RuntimeException("Unrecognized character escape '(' "), List.of());
 
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
-        ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
+        ExtractionRunner runner = runner(llm, auditService, progressTracker);
 
         assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("41.pdf")
                 .hasMessageContaining("Retry the extraction");
 
-        verify(spec, times(2)).user(anyString());
+        assertThat(llm.requests()).hasSize(2);
         ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
@@ -75,17 +63,12 @@ class ExtractionRunnerSessionIsolationTest {
 
     @Test
     void aRunThatFindsNoGoalsFailsInsteadOfReportingSuccess() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.system(anyString())).thenReturn(spec);
-        when(spec.options(any())).thenReturn(spec);
         // Every session answers, but none of them names an outcome.
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
-        ExtractionRunner runner = runner(chatClient, auditService, progressTracker);
+        ExtractionRunner runner = runner(llm, auditService, progressTracker);
 
         assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
                 .isInstanceOf(IllegalStateException.class)
@@ -94,7 +77,7 @@ class ExtractionRunnerSessionIsolationTest {
                 org.mockito.ArgumentMatchers.contains("no learning goals"), isNull(), eq(0), eq(0), anyString());
     }
 
-    private static ExtractionRunner runner(ChatClient chatClient, ExtractionRunAuditService auditService,
+    private static ExtractionRunner runner(FakeLlm llm, ExtractionRunAuditService auditService,
                                            ExtractionProgressTracker progressTracker) {
         CourseRepository courseRepository = mock(CourseRepository.class);
         DocumentRepository documentRepository = mock(DocumentRepository.class);
@@ -123,10 +106,8 @@ class ExtractionRunnerSessionIsolationTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
-        ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
-        when(chatClientBuilder.build()).thenReturn(chatClient);
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), progressTracker, 0.2);
+                llm.client(), mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
                 courseRepository,

@@ -166,7 +166,7 @@ Core LearningGoalHub concepts:
 Use this stack unless the project owner explicitly changes it:
 
 - server: Spring Boot 3.5, Java 21
-- LLM integration: Spring AI through the app's single `LlmClient`, against the TUM AET Logos gateway
+- LLM integration: the module's `LlmClient`, an adapter to the `ai` module's `LlmGateway`, against the TUM AET Logos gateway
 - database: PostgreSQL with Flyway migrations
 - client: React, TypeScript and Tailwind CSS (Vite)
 - API style: REST with OpenAPI documentation

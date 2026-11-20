@@ -129,7 +129,7 @@ public class TopicSearchSynthesizer {
 
     private <T> T call(String prompt, String modelOverride, ParameterizedTypeReference<T> type) {
         String effectiveModel = modelOverride == null || modelOverride.isBlank() ? model : modelOverride;
-        return llm.entity(LlmRequest.of(prompt).withModel(effectiveModel).withTemperature(temperature), type);
+        return llm.entity(LlmRequest.of("topic-search", prompt).withModel(effectiveModel).withTemperature(temperature), type);
     }
 
     private static String numbered(List<String> items) {

@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.taxonomy;
 
+import de.tum.cit.hestia.materials.llm.LiveLogosGateway;
 import de.tum.cit.hestia.materials.llm.LlmClient;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -9,10 +10,6 @@ import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 
 /**
  * Measures how often a classified Bloom level disagrees with the verb the goal is written with,
@@ -66,14 +63,9 @@ class TaxonomyVerbLiveIT {
         String model = System.getenv().getOrDefault("TAXONOMY_MODEL", "openai/gpt-oss-120b");
         int batch = Integer.parseInt(System.getenv().getOrDefault("TAXONOMY_BATCH", "20"));
 
-        ChatClient.Builder builder = ChatClient.builder(OpenAiChatModel.builder()
-                .openAiApi(OpenAiApi.builder()
-                        .baseUrl(System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"))
-                        .apiKey(System.getenv("LOGOS_API_KEY"))
-                        .build())
-                .defaultOptions(OpenAiChatOptions.builder().model(model).build())
-                .build());
-        TaxonomyService service = new TaxonomyService(new LlmClient(builder), 0.0);
+        TaxonomyService service = new TaxonomyService(new LlmClient(new LiveLogosGateway(
+                System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"),
+                System.getenv("LOGOS_API_KEY"), model), (m, p, c, r) -> false), 0.0);
 
         int checked = 0;
         int disagreed = 0;

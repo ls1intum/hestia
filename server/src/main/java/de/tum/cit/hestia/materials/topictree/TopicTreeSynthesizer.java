@@ -662,7 +662,7 @@ public class TopicTreeSynthesizer {
     }
 
     private <T> T call(String prompt, String model, ParameterizedTypeReference<T> type) {
-        return llm.entity(LlmRequest.of(prompt).withModel(model).withTemperature(temperature), type);
+        return llm.entity(LlmRequest.of("topic-tree", prompt).withModel(model).withTemperature(temperature), type);
     }
 
     private static <T> CompletableFuture<T> async(ExecutorService executor, Supplier<T> task) {

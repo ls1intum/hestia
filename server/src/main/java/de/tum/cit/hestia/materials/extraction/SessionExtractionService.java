@@ -773,7 +773,7 @@ public class SessionExtractionService {
 
     private List<ExtractedSkill> call(String prompt, String languageName, String modelOverride,
                                       double callTemperature, boolean retry) {
-        List<ExtractedSkill> skills = llm.entity(LlmRequest.of(prompt)
+        List<ExtractedSkill> skills = llm.entity(LlmRequest.of("session-extraction", prompt)
                         .withSystem(retry
                                 ? LanguagePrompt.retrySystemInstruction(languageName)
                                 : LanguagePrompt.systemInstruction(languageName))
