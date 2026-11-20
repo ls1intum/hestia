@@ -1,20 +1,12 @@
 package de.tum.cit.hestia.materials.topictree;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 class TopicTreeSynthesizerTest {
 
@@ -145,22 +137,16 @@ class TopicTreeSynthesizerTest {
 
     @Test
     void structureSendsTheStructurePromptAndMapsTheAnswerLikeSynthesize() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.options(any())).thenReturn(spec);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(new TopicTreeSynthesizer.TopicStructure(List.of(
+        FakeLlm llm = FakeLlm.replying(new TopicTreeSynthesizer.TopicStructure(List.of(
                         new TopicTreeSynthesizer.CapabilityGroup("Build a random forest", List.of(0, 2))),
                         List.of(1)));
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         List<String> outcomes = List.of("Train trees on bootstrap samples.", "Explain variance.",
                 "Sample features per split.");
 
-        TopicTreeSynthesizer.PlannedTopic topic = new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
+        TopicTreeSynthesizer.PlannedTopic topic = new TopicTreeSynthesizer(llm.client(), "planner", 0.0)
                 .structure("Random forests", outcomes, "English", null);
 
-        verify(spec).user(TopicTreeSynthesizer.STRUCTURE_PROMPT.formatted("Random forests", "English",
+        assertThat(llm.prompt()).isEqualTo(TopicTreeSynthesizer.STRUCTURE_PROMPT.formatted("Random forests", "English",
                 "[0] Train trees on bootstrap samples.\n[1] Explain variance.\n[2] Sample features per split.\n"));
         assertThat(topic.capabilities()).singleElement().satisfies(capability -> {
             assertThat(capability.name()).isEqualTo("Build a random forest");
@@ -171,24 +157,18 @@ class TopicTreeSynthesizerTest {
 
     @Test
     void placeOffersTopicsWithTheirSkillsAndMapsEachEntryBackToItsTopicAndSkill() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.options(any())).thenReturn(spec);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(new TopicTreeSynthesizer.Assignments(List.of(
+        FakeLlm llm = FakeLlm.replying(new TopicTreeSynthesizer.Assignments(List.of(
                         List.of(0, 2), List.of(1, 3), List.of(2, -1), List.of(3, 99))));
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         List<TopicTreeSynthesizer.MenuTopic> menu = List.of(
                 new TopicTreeSynthesizer.MenuTopic("Sorting", List.of("Implement comparison sorts", "Analyse sorting cost")),
                 new TopicTreeSynthesizer.MenuTopic("Hashing", List.of()));
         List<String> outcomes = List.of("Derive the cost of merge sort", "Explain collisions",
                 "Design a compiler", "Invented index");
 
-        Map<Integer, TopicTreeSynthesizer.Placement> placements = new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
+        Map<Integer, TopicTreeSynthesizer.Placement> placements = new TopicTreeSynthesizer(llm.client(), "planner", 0.0)
                 .place(menu, outcomes, null);
 
-        verify(spec).user(TopicTreeSynthesizer.PLACEMENT_PROMPT.formatted(
+        assertThat(llm.prompt()).isEqualTo(TopicTreeSynthesizer.PLACEMENT_PROMPT.formatted(
                 "[0] TOPIC: Sorting\n[1]     SKILL: Implement comparison sorts\n[2]     SKILL: Analyse sorting cost\n"
                         + "[3] TOPIC: Hashing\n",
                 "[0] Derive the cost of merge sort\n[1] Explain collisions\n[2] Design a compiler\n[3] Invented index\n"));
@@ -199,15 +179,9 @@ class TopicTreeSynthesizerTest {
 
     @Test
     void shortLabelsLeaveEveryNameWithoutALabelWhenTheCallFails() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.options(any())).thenReturn(spec);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenThrow(new RuntimeException("model down"));
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
+        FakeLlm llm = FakeLlm.replying(new RuntimeException("model down"));
 
-        assertThat(new TopicTreeSynthesizer(new LlmClient(builder), "planner", 0.0)
+        assertThat(new TopicTreeSynthesizer(llm.client(), "planner", 0.0)
                 .shortLabels(List.of("Build a random forest", "Tune a forest"), "English", null))
                 .containsExactly(null, null);
     }

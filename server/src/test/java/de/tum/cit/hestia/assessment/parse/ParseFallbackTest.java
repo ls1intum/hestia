@@ -1,9 +1,12 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
-import de.tum.cit.hestia.assessment.ai.AiProvider;
-import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.LlmContent;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmJobs;
+import de.tum.cit.hestia.ai.LlmRequest;
+import de.tum.cit.hestia.ai.LlmResponse;
+import de.tum.cit.hestia.ai.Provider;
 import de.tum.cit.hestia.assessment.ai.ParserStrategies;
 import de.tum.cit.hestia.assessment.ai.ParserStrategy;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
@@ -36,7 +39,6 @@ class ParseFallbackTest {
 
     private ExaminationRepository examRepository;
     private StorageService storage;
-    private AiProviderFactory providerFactory;
     private PdfPageCounter pageCounter;
     private ParseInputBuilder inputBuilder;
     private ParsedExaminationPersister persister;
@@ -44,64 +46,62 @@ class ParseFallbackTest {
     private ParseProgress progress;
     private ParseExaminationService service;
 
-    private AiProvider geminiProvider;
-    private AiProvider gptProvider;
+    /** One gateway; each parser model has its own stubbing, matched on the model id of the request. */
+    private LlmGateway gateway;
+
+    private static final String GEMINI_MODEL = ParserStrategies.resolve(ParserStrategies.DEFAULT_ID).providerModel();
+    private static final String GPT_MODEL = ParserStrategies.resolve(ParserStrategies.FALLBACK_ID).providerModel();
+
+    private static LlmRequest requestFor(String modelId) {
+        return org.mockito.ArgumentMatchers.argThat(r -> r != null && modelId.equals(r.model().id()));
+    }
 
     @BeforeEach
     void setup() {
         examRepository = mock(ExaminationRepository.class);
         storage = mock(StorageService.class);
-        providerFactory = mock(AiProviderFactory.class);
+        gateway = mock(LlmGateway.class);
         pageCounter = mock(PdfPageCounter.class);
         inputBuilder = mock(ParseInputBuilder.class);
         persister = mock(ParsedExaminationPersister.class);
         metricsRecorder = mock(ParseMetricsRecorder.class);
         progress = mock(ParseProgress.class);
-        geminiProvider = mock(AiProvider.class);
-        gptProvider = mock(AiProvider.class);
 
         service = new ParseExaminationService(
-            examRepository, storage, providerFactory, pageCounter,
+            examRepository, storage, gateway, pageCounter,
             inputBuilder, persister, metricsRecorder, progress,
-            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class),
-            mock(de.tum.cit.hestia.assessment.shared.Access.class),
-            mock(de.tum.cit.hestia.core.CurrentUser.class)
+            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmJobs.class),
+            mock(de.tum.cit.hestia.assessment.shared.Access.class)
         );
 
         when(storage.download(eq("exam-pdfs"), anyString())).thenReturn(new byte[]{1, 2, 3});
         when(pageCounter.pageCount(any())).thenReturn(1);
         when(inputBuilder.build(any(), any(), any()))
-            .thenReturn(new AiProvider.TextContent("pdf-stub"));
+            .thenReturn(new LlmContent.TextContent("pdf-stub"));
         when(persister.persist(any(), any(), any()))
             .thenReturn(new ParsedExaminationPersister.PersistResult(true, java.util.List.of()));
-
-        // Route each ParserStrategy to its provider mock.
-        when(providerFactory.forParser(any())).thenAnswer(inv -> {
-            ParserStrategy s = inv.getArgument(0);
-            return ParserStrategies.FALLBACK_ID.equals(s.id()) ? gptProvider : geminiProvider;
-        });
     }
 
     private void runParse() {
         service.runAsync(
             EXAM_ID.toString(), UUID.randomUUID().toString(), "exam-pdfs/file.pdf",
-            ParserStrategies.resolve(ParserStrategies.DEFAULT_ID), System.nanoTime()
+            ParserStrategies.resolve(ParserStrategies.DEFAULT_ID), UUID.randomUUID(), System.nanoTime()
         );
     }
 
     @Test
     void transientPrimaryFailureFallsBackToGpt() {
-        when(geminiProvider.chat(any()))
+        when(gateway.chat(requestFor(GEMINI_MODEL)))
             .thenThrow(new AiExceptions.ProviderException("gemini busy", 503));
-        when(gptProvider.chat(any())).thenReturn(new AiProvider.ChatResponse(
-            Map.of("tasks", List.of(Map.of("type", "text", "prompt", "Q1"))),
-            "gpt-5.5", "openai", null
+        when(gateway.chat(requestFor(GPT_MODEL))).thenReturn(new LlmResponse(
+            null, Map.of("tasks", List.of(Map.of("type", "text", "prompt", "Q1"))),
+            "gpt-5.5", Provider.OPENAI, null
         ));
 
         runParse();
 
         // The fallback model actually served: it was called and no failure was recorded.
-        verify(gptProvider).chat(any());
+        verify(gateway).chat(requestFor(GPT_MODEL));
         verify(progress, never()).fail(any(), anyString());
         verify(persister).persist(any(), any(), any());
         // The exam is restamped with the serving model and metrics reflect it.
@@ -116,14 +116,13 @@ class ParseFallbackTest {
 
     @Test
     void nonTransientPrimaryFailureDoesNotFallBack() {
-        when(geminiProvider.chat(any()))
+        when(gateway.chat(requestFor(GEMINI_MODEL)))
             .thenThrow(new AiExceptions.MalformedModelOutputException("no tool call"));
 
         runParse();
 
         // No fallback attempt; the exam fails with the structured-output message.
-        verify(gptProvider, never()).chat(any());
-        verify(providerFactory, never()).forParser(argThatIsGpt());
+        verify(gateway, never()).chat(requestFor(GPT_MODEL));
         verify(progress).fail(eq(EXAM_ID), eq(ParseErrorMessages.NOT_STRUCTURED));
         verify(progress, never()).setParserModel(any(), anyString());
         verify(persister, never()).persist(any(), any(), any());
@@ -140,18 +139,13 @@ class ParseFallbackTest {
      */
     @Test
     void retiredPrimaryModelFailsWithoutFallingBack() {
-        when(geminiProvider.chat(any()))
+        when(gateway.chat(requestFor(GEMINI_MODEL)))
             .thenThrow(new AiExceptions.ProviderException("retired", 410));
 
         runParse();
 
-        verify(gptProvider, never()).chat(any());
+        verify(gateway, never()).chat(requestFor(GPT_MODEL));
         verify(progress).fail(eq(EXAM_ID), eq(ParseErrorMessages.AI_MODEL_RETIRED));
         verify(persister, never()).persist(any(), any(), any());
-    }
-
-    private static ParserStrategy argThatIsGpt() {
-        return org.mockito.ArgumentMatchers.argThat(
-            s -> s != null && ParserStrategies.FALLBACK_ID.equals(s.id()));
     }
 }

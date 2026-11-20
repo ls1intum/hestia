@@ -4,23 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.teaching.dto.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmRequest;
+import de.tum.cit.hestia.ai.ModelRef;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.retry.TransientAiException;
 import org.springframework.boot.convert.DurationStyle;
-import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
-import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.core.env.Environment;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.Resource;
@@ -38,47 +28,27 @@ public class LlmService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
-    private final ChatModel chatModel;
+    private static final String MODULE = "teaching";
+
+    private final LlmGateway gateway;
     private final ResourceLoader resourceLoader;
+    private final LlmRequest.Limits limits;
 
     @Value("${llm.secondary-model:}")
     private String secondaryModel;
 
-    public LlmService(ChatModel sharedChatModel, ResourceLoader resourceLoader, Environment env) {
-        this.chatModel = withTeachingLimits(sharedChatModel, env);
-        this.resourceLoader = resourceLoader;
-    }
-
     /**
      * A model call that hangs must fail instead of holding a session's generation lock, and a failing
-     * call is retried once. The application-wide chat model has other limits (set for the long
-     * extraction runs of materials), so teaching derives its own copy: same model, options and
-     * credentials, its own read timeout and retry ladder. Limits: {@code teaching.llm.*}.
+     * call is retried once, so every call carries its own limits ({@code teaching.llm.*}) instead of
+     * the application-wide ones, which are set for the long extraction runs of materials.
      */
-    private static ChatModel withTeachingLimits(ChatModel shared, Environment env) {
-        if (!(shared instanceof OpenAiChatModel openAi)) {
-            return shared;
-        }
-        Duration connect = duration(env, "teaching.llm.connect-timeout", "10s");
-        Duration read = duration(env, "teaching.llm.read-timeout", "90s");
-        int attempts = env.getProperty("teaching.llm.retry.max-attempts", Integer.class, 2);
-
-        RestClient.Builder restClient = RestClient.builder().requestFactory(
-                ClientHttpRequestFactoryBuilder.detect().build(ClientHttpRequestFactorySettings.defaults()
-                        .withConnectTimeout(connect).withReadTimeout(read)));
-        OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(env.getProperty("spring.ai.openai.base-url", "https://api.openai.com"))
-                .apiKey(env.getProperty("spring.ai.openai.api-key", ""))
-                .completionsPath(env.getProperty("spring.ai.openai.chat.completions-path", "/v1/chat/completions"))
-                .restClientBuilder(restClient)
-                .build();
-        RetryTemplate retry = RetryTemplate.builder()
-                .maxAttempts(attempts)
-                .retryOn(TransientAiException.class)
-                .retryOn(ResourceAccessException.class)
-                .exponentialBackoff(Duration.ofSeconds(2), 2, Duration.ofSeconds(10))
-                .build();
-        return openAi.mutate().openAiApi(api).retryTemplate(retry).build();
+    public LlmService(LlmGateway gateway, ResourceLoader resourceLoader, Environment env) {
+        this.gateway = gateway;
+        this.resourceLoader = resourceLoader;
+        this.limits = new LlmRequest.Limits(
+                duration(env, "teaching.llm.connect-timeout", "10s"),
+                duration(env, "teaching.llm.read-timeout", "90s"),
+                env.getProperty("teaching.llm.retry.max-attempts", Integer.class, 2));
     }
 
     private static Duration duration(Environment env, String key, String fallback) {
@@ -94,7 +64,7 @@ public class LlmService {
         }
     }
 
-    private <T> T callWithStructuredOutput(String systemTemplateName, String userTemplateName, Map<String, Object> model, BeanOutputConverter<T> converter, boolean useSecondary) {
+    private <T> T callWithStructuredOutput(String purpose, String systemTemplateName, String userTemplateName, Map<String, Object> model, BeanOutputConverter<T> converter, boolean useSecondary) {
         String systemText = new PromptTemplate(readTemplate(systemTemplateName)).render(model);
         String userText = new PromptTemplate(readTemplate(userTemplateName)).render(model);
         
@@ -103,17 +73,11 @@ public class LlmService {
         }
 
         log.debug("Calling LLM (system: {}, user: {})", systemTemplateName, userTemplateName);
-        Prompt prompt;
+        LlmRequest request = LlmRequest.of(MODULE, purpose, userText).withSystem(systemText).withLimits(limits);
         if (useSecondary && secondaryModel != null && !secondaryModel.isBlank()) {
-            prompt = new Prompt(
-                    List.of(new SystemMessage(systemText), new UserMessage(userText)),
-                    OpenAiChatOptions.builder().model(secondaryModel).build()
-            );
-        } else {
-            prompt = new Prompt(List.of(new SystemMessage(systemText), new UserMessage(userText)));
+            request = request.withModel(ModelRef.logos(secondaryModel));
         }
-
-        String output = chatModel.call(prompt).getResult().getOutput().getText();
+        String output = gateway.chat(request).text();
         if (converter == null) {
             return (T) output;
         }
@@ -132,7 +96,7 @@ public class LlmService {
     
     public List<GoalSuggestionDto> refineGoal(RefineGoalRequestDto request, String sessionType, String studentBackground, String subSkillsContext) {
         BeanOutputConverter<List<GoalSuggestionDto>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<GoalSuggestionDto>>() {});
-        return callWithStructuredOutput("refine-learning-goal-system", "refine-learning-goal-user",
+        return callWithStructuredOutput("refine-goal", "refine-learning-goal-system", "refine-learning-goal-user",
                 Map.of("sessionType", sessionType,
                        "studentBackground", studentBackground != null ? studentBackground : "",
                        "goal", request.goal(),
@@ -149,13 +113,13 @@ public class LlmService {
             sb.append(i + 1).append(". ").append(goals.get(i)).append("\n");
         }
         
-        return callWithStructuredOutput("fix-goals-grammar-system", "fix-goals-grammar-user",
+        return callWithStructuredOutput("fix-goals-grammar", "fix-goals-grammar-system", "fix-goals-grammar-user",
                 Map.of("goals", sb.toString()),
                 converter, false);
     }
     
     public String generateSessionTitle(WorkshopInputDto meta, String sessionTypeLabel, String skeletonStr, String goalsStr) {
-        return callWithStructuredOutput("generate-session-title-system", "generate-session-title-user",
+        return callWithStructuredOutput("session-title", "generate-session-title-system", "generate-session-title-user",
                 Map.of("sessionType", sessionTypeLabel,
                        "duration", meta.duration(),
                        "participants", meta.participants(),
@@ -167,7 +131,7 @@ public class LlmService {
     
     public ActivityBlockDto hydrateActivityBlock(WorkshopInputDto meta, String sessionTypeLabel, String selectedActivitiesStr, String learningGoalsStr, String skeletonBlocksStr, String targetBlockStr, String evaluateRules, String availableMaterials) {
         BeanOutputConverter<ActivityBlockDto> converter = new BeanOutputConverter<>(ActivityBlockDto.class);
-        return callWithStructuredOutput("generate-timetable-block-system", "generate-timetable-block-user",
+        return callWithStructuredOutput("timetable-block", "generate-timetable-block-system", "generate-timetable-block-user",
                 Map.ofEntries(
                        Map.entry("sessionType", sessionTypeLabel),
                        Map.entry("duration", meta.duration()),
@@ -185,11 +149,11 @@ public class LlmService {
 
     public List<Map<String, Object>> generatePptxSlides(String type, Map<String, Object> model) {
         BeanOutputConverter<List<Map<String, Object>>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
-        return callWithStructuredOutput("generate-slide-block-" + type + "-system", "generate-slide-block-" + type + "-user", model, converter, true);
+        return callWithStructuredOutput("slide-block", "generate-slide-block-" + type + "-system", "generate-slide-block-" + type + "-user", model, converter, true);
     }
 
     public Map<String, Object> generatePptxSlide(String type, Map<String, Object> model) {
         BeanOutputConverter<Map<String, Object>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<Map<String, Object>>() {});
-        return callWithStructuredOutput("generate-slide-block-" + type + "-system", "generate-slide-block-" + type + "-user", model, converter, true);
+        return callWithStructuredOutput("slide-block", "generate-slide-block-" + type + "-system", "generate-slide-block-" + type + "-user", model, converter, true);
     }
 }

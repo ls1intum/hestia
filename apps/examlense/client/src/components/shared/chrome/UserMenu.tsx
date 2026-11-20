@@ -8,9 +8,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link } from "react-router-dom";
-import { LogOut, Shield, User } from "lucide-react";
+import { LogOut, Shield, ShieldCheck, ShieldOff, User } from "lucide-react";
 import { signOut } from "@/lib/api/api-client";
-import { useMe, useResetOnSignOut } from "@/hooks/data/use-me";
+import { useAiConsent, useMe, useResetOnSignOut, useSetAiConsent } from "@/hooks/data/use-me";
 
 /** "3/20 parses left" with a limit, "4 parses today" without one (limit 0). */
 function usage(used: number, remaining: number, limit: number, what: string): string {
@@ -21,6 +21,8 @@ function usage(used: number, remaining: number, limit: number, what: string): st
 export const UserMenu = () => {
   const { data: me } = useMe();
   const resetCache = useResetOnSignOut();
+  const { data: consent } = useAiConsent();
+  const setConsent = useSetAiConsent();
 
   if (!me) return null;
 
@@ -47,6 +49,27 @@ export const UserMenu = () => {
             {usage(me.quota.solve_used, me.quota.solve_remaining, me.quota.solve_limit, "solves")}
           </p>
         </DropdownMenuLabel>
+        {consent && (
+          <>
+            <DropdownMenuSeparator />
+            <p className="px-2 py-1.5 text-xs text-hestia-text-muted" data-testid="ai-consent-state">
+              {consent.granted
+                ? "Externe KI-Modelle: Einwilligung erteilt"
+                : "Externe KI-Modelle: keine Einwilligung"}
+            </p>
+            <DropdownMenuItem
+              onClick={() => setConsent.mutate(!consent.granted)}
+              className="cursor-pointer"
+            >
+              {consent.granted ? (
+                <ShieldOff className="mr-2 h-4 w-4" />
+              ) : (
+                <ShieldCheck className="mr-2 h-4 w-4" />
+              )}
+              {consent.granted ? "Widerrufen" : "Zustimmen"}
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         {me.is_admin && (
           <DropdownMenuItem asChild>

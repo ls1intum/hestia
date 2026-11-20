@@ -1,7 +1,12 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
-import de.tum.cit.hestia.assessment.ai.AiProvider;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.LlmContent;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmRequest;
+import de.tum.cit.hestia.ai.LlmResponse;
+import de.tum.cit.hestia.ai.ModelRef;
+import de.tum.cit.hestia.assessment.ai.StrategyModels;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.section.Section;
@@ -64,6 +69,7 @@ class SolveCore {
     private final TaskBlockRepository taskRepository;
     private final TransactionTemplate txTemplate;
     private final SseHub sse;
+    private final LlmGateway gateway;
 
     SolveCore(
         SectionRepository sectionRepository,
@@ -73,7 +79,8 @@ class SolveCore {
         AIAnswerRepository taskAnswerRepository,
         TaskBlockRepository taskRepository,
         PlatformTransactionManager txManager,
-        SseHub sse
+        SseHub sse,
+        LlmGateway gateway
     ) {
         this.sectionRepository = sectionRepository;
         this.sectionBlockRepository = sectionBlockRepository;
@@ -83,6 +90,7 @@ class SolveCore {
         this.taskRepository = taskRepository;
         this.txTemplate = new TransactionTemplate(txManager);
         this.sse = sse;
+        this.gateway = gateway;
     }
 
     /** One figure image, labelled exactly as the section text refers to it. */
@@ -93,6 +101,20 @@ class SolveCore {
         List<Prompts.BlockPromptInfo> blocks,
         List<FigureImage> figures
     ) {}
+
+    static final String MODULE = "assessment";
+    static final String PURPOSE = "exam-solve";
+
+    /**
+     * Who a solve's model calls are for: the model, the admitted job (null for a single section or
+     * task solved straight from a request, which then runs as the logged-in user) and the exam's
+     * course, if it has one.
+     */
+    record ModelCall(ModelRef model, UUID jobId, UUID courseId) {
+        String providerName() {
+            return StrategyModels.providerName(model.provider());
+        }
+    }
 
     record AskResult(List<Map<String, Object>> answers, String model) {}
 
@@ -224,24 +246,25 @@ class SolveCore {
      */
     @SuppressWarnings("unchecked")
     AskResult askForAnswers(
-        AiProvider provider, String systemPrompt,
+        ModelCall call, String systemPrompt,
         PromptContext ctx, List<Prompts.TaskBlockPromptInfo> subset, String extraInstruction
     ) {
         String base = Prompts.buildSectionUserPrompt(ctx.section(), ctx.blocks(), subset);
         String userPrompt = extraInstruction == null ? base : base + "\n\n" + extraInstruction;
-        AiProvider.UserContent content = userContent(userPrompt, ctx.figures());
+        LlmContent.UserContent content = userContent(userPrompt, ctx.figures());
         RuntimeException lastErr = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                AiProvider.ChatResponse res = provider.chat(new AiProvider.ChatRequest(
-                    systemPrompt,
-                    content,
-                    new AiProvider.Tool(
+                LlmResponse res = gateway.chat(LlmRequest.of(MODULE, PURPOSE, content)
+                    .forCourse(call.courseId())
+                    .inJob(call.jobId())
+                    .withModel(call.model())
+                    .withSystem(systemPrompt)
+                    .withTool(new LlmContent.Tool(
                         "submit_answers",
                         "Submit answers for every task in this section.",
                         Prompts.submitAnswersSchema()
-                    )
-                ));
+                    )));
                 Object raw = res.toolArgs().get("answers");
                 List<Map<String, Object>> answers = (raw instanceof List<?> l)
                     ? new ArrayList<>((List<Map<String, Object>>) l)
@@ -321,18 +344,18 @@ class SolveCore {
      * naming it. The interleaved label is what lets the model tie an image to the
      * matching [Figure x.y] placeholder in the section text.
      */
-    private static AiProvider.UserContent userContent(String prompt, List<FigureImage> figures) {
+    private static LlmContent.UserContent userContent(String prompt, List<FigureImage> figures) {
         if (figures == null || figures.isEmpty()) {
-            return new AiProvider.TextContent(prompt);
+            return new LlmContent.TextContent(prompt);
         }
-        List<AiProvider.ContentPart> parts = new ArrayList<>();
-        parts.add(new AiProvider.TextPart(prompt));
+        List<LlmContent.ContentPart> parts = new ArrayList<>();
+        parts.add(new LlmContent.TextPart(prompt));
         for (FigureImage f : figures) {
-            parts.add(new AiProvider.TextPart(f.label() + ":"));
-            parts.add(new AiProvider.ImageUrlPart(
+            parts.add(new LlmContent.TextPart(f.label() + ":"));
+            parts.add(new LlmContent.ImageUrlPart(
                 "data:" + f.mimeType() + ";base64," + Base64.getEncoder().encodeToString(f.bytes())));
         }
-        return new AiProvider.MultipartContent(parts);
+        return new LlmContent.MultipartContent(parts);
     }
 
 }

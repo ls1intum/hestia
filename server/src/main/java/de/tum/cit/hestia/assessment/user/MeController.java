@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.assessment.user;
 
+import de.tum.cit.hestia.ai.LlmJobs;
 import de.tum.cit.hestia.assessment.user.UserDtos.MeResponse;
+import de.tum.cit.hestia.assessment.user.UserDtos.QuotaResponse;
 import de.tum.cit.hestia.core.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,11 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeController {
 
     private final CurrentUser currentUser;
-    private final LlmQuotaService quota;
+    private final LlmJobs jobs;
 
-    public MeController(CurrentUser currentUser, LlmQuotaService quota) {
+    public MeController(CurrentUser currentUser, LlmJobs jobs) {
         this.currentUser = currentUser;
-        this.quota = quota;
+        this.jobs = jobs;
     }
 
     @Operation(
@@ -29,7 +31,11 @@ public class MeController {
             `is_admin` is the platform-admin flag.""")
     @GetMapping("/me")
     public MeResponse me() {
-        return new MeResponse(currentUser.userId(), currentUser.displayName(), currentUser.isAdmin(),
-            quota.remainingFor(currentUser.userId()));
+        LlmJobs.Usage parse = jobs.usage("exam-parse");
+        LlmJobs.Usage solve = jobs.usage("exam-solve");
+        QuotaResponse quota = new QuotaResponse(
+            parse.remaining(), parse.limit(), solve.remaining(), solve.limit(),
+            (int) parse.used(), (int) solve.used());
+        return new MeResponse(currentUser.userId(), currentUser.displayName(), currentUser.isAdmin(), quota);
     }
 }

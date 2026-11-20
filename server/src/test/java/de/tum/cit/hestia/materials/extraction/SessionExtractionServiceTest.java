@@ -2,13 +2,8 @@ package de.tum.cit.hestia.materials.extraction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
@@ -17,33 +12,14 @@ import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import de.tum.cit.hestia.materials.document.DocumentKind;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 class SessionExtractionServiceTest {
 
-    /**
-     * The request spec returns itself from system() and options() so the whole call chain is one
-     * mock. Rebuilding the chain inside a verify() would otherwise be recorded as another
-     * invocation and make every count off by one.
-     */
-    private static ChatClient.ChatClientRequestSpec stubSpec(ChatClient chatClient) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.system(anyString())).thenReturn(spec);
-        when(spec.options(any(ChatOptions.class))).thenReturn(spec);
-        return spec;
-    }
-
     @Test
-    void returnsStructuredOutcomesFromChatClient() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
+    void returnsStructuredOutcomesFromTheModel() {
 
         List<ExtractedSkill> expected = List.of(
                 new ExtractedSkill("Applying the testing strategy in representative projects.",
@@ -56,18 +32,14 @@ class SessionExtractionServiceTest {
                 new ExtractedSkill("Applying the strategy to a small project.", "Apply Testing Practice",
                         GoalKind.IMPLICIT,
                         BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(expected);
+        FakeLlm llm = FakeLlm.replying(expected);
 
-        clearInvocations(spec);
-        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Session 4: Testing", "FULL-SESSION-MARKER-42");
 
         assertThat(result).containsExactlyElementsOf(expected);
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue())
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt())
                 .contains("Session 4: Testing")
                 .contains("[0] FULL-SESSION-MARKER-42")
                 // Asserted in fragments: the template wraps both sentences across two lines.
@@ -99,27 +71,20 @@ class SessionExtractionServiceTest {
 
     @Test
     void retriesCompleteSessionWhenARequiredTextFieldIsMissing() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill malformed = new ExtractedSkill(null, "Diskrete Teilmengen charakterisieren",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
         ExtractedSkill corrected = new ExtractedSkill(
                 "Charakterisieren diskreter Teilmengen anhand ihrer Häufungspunkte.",
                 "Diskrete Teilmengen charakterisieren", GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(malformed), List.of(corrected));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(malformed), List.of(corrected));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Vorlesung 1", "text", null, "German", null, List.of());
 
         assertThat(result).containsExactly(corrected);
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec, times(2)).user(promptCaptor.capture());
-        assertThat(promptCaptor.getAllValues().get(1))
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.prompts().get(1))
                 .contains("previous response violated")
                 .contains("Regenerate the")
                 .contains("COMPLETE response")
@@ -129,80 +94,61 @@ class SessionExtractionServiceTest {
 
     @Test
     void anExerciseUnitGetsTheExercisePromptAndTheSameValidation() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill outOfRange = new ExtractedSkill(
                 "Computing the determinant of a 3x3 matrix.", "Compute determinants",
                 GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL, 8, 9, List.of());
         ExtractedSkill corrected = new ExtractedSkill(
                 "Computing the determinant of a 3x3 matrix.", "Compute determinants",
                 GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.UNISTRUCTURAL, 0, 0, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(outOfRange), List.of(corrected));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(outOfRange), List.of(corrected));
 
-        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Sheet 4", "Task 1: Compute det(A).", null, "English", null, List.of(), 2,
                         DocumentKind.EXERCISE);
 
         assertThat(result).containsExactly(corrected);
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec, times(2)).user(promptCaptor.capture());
-        assertThat(promptCaptor.getAllValues().get(0))
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.prompts().get(0))
                 .startsWith(SessionExtractionService.EXERCISE_PROMPT_TEMPLATE.substring(0, 80))
                 .contains("what\nthe student does in its tasks")
                 .contains("Return at most 2.")
                 .contains("Exercise title:\n---\nSheet 4")
                 .contains("[0] Task 1: Compute det(A).")
                 .doesNotContain("what a student should");
-        assertThat(promptCaptor.getAllValues().get(1))
+        assertThat(llm.prompts().get(1))
                 .contains("previous response violated")
                 .contains("Specific validation failure");
     }
 
     @Test
     void aLectureOrKindlessUnitKeepsTheLecturePrompt() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class))).thenReturn(List.of());
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of());
         SessionExtractionService service =
-                new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, DocumentKind.LECTURE);
         service.extract("Lecture 4", "text", null, "English", null, List.of(), 2, null);
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec, times(2)).user(promptCaptor.capture());
-        assertThat(promptCaptor.getAllValues()).allSatisfy(prompt -> assertThat(prompt)
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.prompts()).allSatisfy(prompt -> assertThat(prompt)
                 .startsWith(SessionExtractionService.PROMPT_TEMPLATE.substring(0, 80))
                 .doesNotContain("Exercise title:"));
     }
 
     @Test
     void rejectsSessionWhenCorrectionRetryStillHasMissingText() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill malformed = new ExtractedSkill(null, "Missing text",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(malformed));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(malformed));
 
         SessionExtractionService service = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         assertThatThrownBy(() -> service.extract(
                 "Vorlesung 1", "text", null, "German", null, List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-blank text");
-        verify(spec, times(2)).user(anyString());
+        assertThat(llm.requests()).hasSize(2);
     }
 
     @Test
@@ -220,28 +166,21 @@ class SessionExtractionServiceTest {
 
     @Test
     void retriesCompleteSessionWhenSourceRangeIsOutsideNumberedText() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill invalid = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 8, 9, List.of());
         ExtractedSkill corrected = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 1, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(invalid), List.of(corrected));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(invalid), List.of(corrected));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "first line\nsecond line", null, "English", null, List.of());
 
         assertThat(result).containsExactly(corrected);
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec, times(2)).user(promptCaptor.capture());
-        assertThat(promptCaptor.getAllValues().get(1))
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.prompts().get(1))
                 .contains("Specific validation failure")
                 .contains("invalid source range [8..9]")
                 .contains("only the structured JSON");
@@ -249,35 +188,26 @@ class SessionExtractionServiceTest {
 
     @Test
     void rejectsMissingPartialAndAmbiguousEvidenceAfterRetry() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill missing = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
         ExtractedSkill partial = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, null, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(missing), List.of(partial));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(missing), List.of(partial));
 
         SessionExtractionService service = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         assertThatThrownBy(() -> service.extract(
                 "Lecture", "one line", null, "English", null, List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("both sourceStartLine and sourceEndLine");
-        verify(spec, times(2)).user(anyString());
+        assertThat(llm.requests()).hasSize(2);
     }
 
     @Test
     void salvagesIndividuallyGroundedOutcomesAfterInvalidCorrectionRetry() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill invalidFirst = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
@@ -293,13 +223,10 @@ class SessionExtractionServiceTest {
         ExtractedSkill invalidSkill = new ExtractedSkill(
                 "Applying an unsupported procedure to examples.", "Apply Unsupported Procedure",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(invalidFirst), List.of(validSkill, invalidSkill));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(invalidFirst), List.of(validSkill, invalidSkill));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         assertThat(result).hasSize(1);
@@ -307,14 +234,11 @@ class SessionExtractionServiceTest {
         assertThat(result.getFirst().knowledge())
                 .extracting(ExtractedSkill.Knowledge::text)
                 .containsExactly("Explaining the method's central assumption in context.");
-        verify(spec, times(2)).user(anyString());
+        assertThat(llm.requests()).hasSize(2);
     }
 
     @Test
     void booksOutcomesTheSalvageDropsToTheActiveRun() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill invalidFirst = new ExtractedSkill(
                 "Applying a method to representative examples.", "Apply Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, List.of());
@@ -328,13 +252,11 @@ class SessionExtractionServiceTest {
         ExtractedSkill invalidSkill = new ExtractedSkill(
                 "Applying an unsupported procedure to examples.", "Apply Unsupported Procedure",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(invalidFirst), List.of(validSkill, invalidSkill));
+        FakeLlm llm = FakeLlm.replying(List.of(invalidFirst), List.of(validSkill, invalidSkill));
         ExtractionProgressTracker tracker = new ExtractionProgressTracker();
         ExtractionProgressTracker.Run run = tracker.tryStart(1L, null).orElseThrow();
 
-        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), tracker, 0.2)
+        new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), tracker, 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         // The invalid skill and the uncited knowledge item under the kept skill.
@@ -344,24 +266,18 @@ class SessionExtractionServiceTest {
 
     @Test
     void acceptsFigureOnlyEvidence() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill figureOnly = new ExtractedSkill(
                 "Applying a visual method to representative examples.", "Apply Visual Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, 0, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(figureOnly));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(figureOnly));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "one line", null, "English", null,
                         List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
 
         assertThat(result).containsExactly(figureOnly);
-        verify(spec).user(anyString());
+        assertThat(llm.requests()).hasSize(1);
     }
 
     /**
@@ -371,19 +287,13 @@ class SessionExtractionServiceTest {
      */
     @Test
     void doesNotRetryWhenTheModelCitesLinesAndAFigureAtOnce() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill both = new ExtractedSkill(
                 "Applying a visual method to representative examples.", "Apply Visual Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of());
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(both));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(both));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "one line", null, "English", null,
                         List.of(new PageDescriptionService.FigureDescription(1, "Diagram")));
 
@@ -393,76 +303,53 @@ class SessionExtractionServiceTest {
                     assertThat(skill.sourceEndLine()).isEqualTo(0);
                     assertThat(skill.sourceFigure()).isNull();
                 });
-        verify(spec).user(anyString());
+        assertThat(llm.requests()).hasSize(1);
     }
 
     @Test
     void ignoresStructuredOutputFigurePlaceholderWhenNoFiguresWereOffered() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         ExtractedSkill modelResponse = new ExtractedSkill(
                 "Applying a textual method to representative examples.", "Apply Textual Method",
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, 0, List.of(
                         new ExtractedSkill.Knowledge(
                                 "Explaining the textual method's central assumption.",
                                 "Explain Central Assumption", GoalKind.IMPLICIT, BloomLevel.UNDERSTAND, SoloLevel.RELATIONAL, 1, 1, 0)));
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(modelResponse));
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of(modelResponse));
 
         List<ExtractedSkill> result = new SessionExtractionService(
-                new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().sourceFigure()).isNull();
         assertThat(result.getFirst().knowledge().getFirst().sourceFigure()).isNull();
-        verify(spec).user(anyString());
+        assertThat(llm.requests()).hasSize(1);
     }
 
     @Test
     void appliesModelOverrideWhenProvided() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
-        clearInvocations(spec);
-        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+        new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "German", "qwen3.6-35b-a3b");
 
-        ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
-        verify(spec).options(optionsCaptor.capture());
-        assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen3.6-35b-a3b");
+        assertThat(llm.only().model().id()).isEqualTo("qwen3.6-35b-a3b");
     }
 
     @Test
     void instructsModelToUseRequestedLanguageAndReturnLineIndices() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
-        clearInvocations(spec);
-        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+        new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "German", null);
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue())
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt())
                 .contains("in German")
                 .contains("never translate")
                 .contains("Final language requirement")
                 .contains("EXPLICIT or IMPLICIT");
-        ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec).system(systemCaptor.capture());
-        assertThat(systemCaptor.getValue())
+        assertThat(llm.only().system())
                 .contains("every GENERATED field")
                 .contains("must be written in German")
                 .contains("Verbatim quotes")
@@ -471,23 +358,16 @@ class SessionExtractionServiceTest {
 
     @Test
     void emptyFigureListLeavesTheDirectPromptWithoutFigureInstructions() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        clearInvocations(spec);
-        SessionExtractionService service = new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+        SessionExtractionService service = new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
         service.extract("title", "text", "English", null);
         service.extract("title", "text", null, "English", null, List.of());
 
-        verify(spec, times(2)).user(promptCaptor.capture());
-        assertThat(promptCaptor.getAllValues().get(0))
-                .isEqualTo(promptCaptor.getAllValues().get(1));
-        assertThat(promptCaptor.getAllValues().get(1))
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.prompts().get(0))
+                .isEqualTo(llm.prompts().get(1));
+        assertThat(llm.prompts().get(1))
                 .doesNotContain("Figure descriptions")
                 .doesNotContain("sourceFigure")
                 .contains("[0] text");
@@ -495,21 +375,14 @@ class SessionExtractionServiceTest {
 
     @Test
     void appendsFigureDescriptionsAndFigureOnlySourceRuleWhenProvided() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        clearInvocations(spec);
-        new SessionExtractionService(new LlmClient(builder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
+        new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", null, "English", null,
                 List.of(new PageDescriptionService.FigureDescription(12, "A process diagram.")));
 
-        verify(spec).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue())
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt())
                 .contains("Figure descriptions (AI-generated from rendered slides — NOT verbatim text):")
                 .contains("[F0] (page 12) A process diagram.")
                 .contains("ONLY when no numbered lines support an outcome")
@@ -519,32 +392,24 @@ class SessionExtractionServiceTest {
 
     @Test
     void retriesOnceWhenGeneratedLanguageConfidentlyMismatches() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
         List<ExtractedSkill> first = List.of(new ExtractedSkill(
                 "Anwenden einer englischen Methode in repräsentativen Kontexten.", "Englische Methode anwenden",
                 GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
         List<ExtractedSkill> retry = List.of(new ExtractedSkill(
                 "Anwenden einer deutschen Methode in repräsentativen Kontexten.", "Deutsche Methode anwenden",
                 GoalKind.EXPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 0, 0, List.of()));
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(first, retry);
+        FakeLlm llm = FakeLlm.replying(first, retry);
         LanguageDetectionService detector = mock(LanguageDetectionService.class);
         when(detector.detect(anyString())).thenReturn("en", "de");
 
-        List<ExtractedSkill> result = new SessionExtractionService(new LlmClient(builder), detector, new ExtractionProgressTracker(), 0.2)
+        List<ExtractedSkill> result = new SessionExtractionService(llm.client(), detector, new ExtractionProgressTracker(), 0.2)
                 .extract("title", "text", "de", "German", null);
 
         assertThat(result).containsExactlyElementsOf(retry);
-        ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
-        verify(spec, times(2)).options(optionsCaptor.capture());
-        assertThat(optionsCaptor.getAllValues().get(0).getTemperature()).isEqualTo(0.2);
-        assertThat(optionsCaptor.getAllValues().get(1).getTemperature()).isEqualTo(0.0);
-        ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec, times(2)).system(systemCaptor.capture());
-        assertThat(systemCaptor.getAllValues().get(1)).contains("language-correction retry");
+        assertThat(llm.requests()).hasSize(2);
+        assertThat(llm.requests().get(0).temperature()).isEqualTo(0.2);
+        assertThat(llm.requests().get(1).temperature()).isEqualTo(0.0);
+        assertThat(llm.requests().get(1).system()).contains("language-correction retry");
     }
 
     /**

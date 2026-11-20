@@ -118,7 +118,7 @@ public class BookmarkRelevanceJudge {
         String numbered = numberedList(titles);
         try {
             String reply = withinTimeout(() -> llm.text(
-                    LlmRequest.of(PROMPT.formatted(filename, pageCount, titles.size(), numbered))
+                    LlmRequest.of("bookmark-relevance", PROMPT.formatted(filename, pageCount, titles.size(), numbered))
                             .withModel(judgeModel)));
             Boolean verdict = parseVerdict(reply);
             if (verdict == null) {

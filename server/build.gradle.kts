@@ -21,8 +21,8 @@ tasks.jar {
 }
 
 dependencies {
-    implementation(project(":libs:shared-llm"))
-
+    // Model calls (module ai): Spring AI's OpenAI client, pointed at the Logos gateway
+    implementation("org.springframework.ai:spring-ai-starter-model-openai")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-security")

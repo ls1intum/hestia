@@ -4,7 +4,7 @@
 > repository: `infra/compose.prod.yaml` (one Postgres with the roles from `infra/postgres/init`,
 > `hestia-server`, the three clients' nginx containers, backup) by `.github/workflows/hestia-cicd.yml`
 > into `/opt/hestia/app`. Production still runs the separate per-app deployment described below
-> until it is switched over; this document will be replaced by one guide for the whole application.
+> until it is switched over. The guides for the whole application are [`infra/docs/setup-guide.md`](../../infra/docs/setup-guide.md) and [`infra/docs/operations-manual.md`](../../infra/docs/operations-manual.md).
 
 The app is deployed as four containers via `compose.prod.yaml`:
 
@@ -57,7 +57,7 @@ by the shared ls1intum reusable workflows (`.github/workflows/learninggoalhub-ci
 | GitHub Release `vX.Y.Z` | `…:vX.Y.Z` | → **Production** (waits for approval) |
 | Manual (`workflow_dispatch`) | per branch | → chosen environment/tag |
 
-Every run first runs the checks: the server and `shared-llm` test suites (Testcontainers, on the
+Every run first runs the checks: the server test suites (Testcontainers, on the
 runner's Docker) and the client's lint, typecheck and tests. The images are built only when all of
 them pass, so a red test never deploys. After a deploy, a smoke-test job SSHes to the VM, waits for
 the server container's healthcheck (`/actuator/health`, which includes the database) and requests

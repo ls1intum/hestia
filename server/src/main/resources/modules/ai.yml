@@ -1,0 +1,22 @@
+# Settings of the ai module: every model call goes through it. Chat and vision run on the TUM AET
+# Logos gateway (spring.ai.openai.* in application.yml, defaults in ai.internal.HestiaLlmDefaults).
+hestia:
+  ai:
+    # Commercial providers outside TUM, called directly only for models Logos does not offer
+    # (ExamLense's benchmark models), and only after the user consented. Blank key = provider off.
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    # Jobs per user and rolling 24 hours, by purpose; 0 turns a limit off, usage is counted either way.
+    # A job is one unit of work a person starts, however many model calls it takes.
+    job-limits:
+      # Read in one exam (ExamLense parse)
+      exam-parse: ${HESTIA_AI_LIMIT_EXAM_PARSE:10}
+      # Let one model solve one exam (ExamLense solve)
+      exam-solve: ${HESTIA_AI_LIMIT_EXAM_SOLVE:30}

@@ -30,15 +30,26 @@ abstract class AbstractHttpFlowTest extends AbstractIntegrationTest {
     @BeforeEach
     void connect() {
         http = new FlowHttp(port);
+        // The three providers are external: without the user's consent a parse or a solve is refused (428).
+        // The dev user of the "local" profile is shared by all flow tests, so every test sets it up itself.
+        grantConsent();
+    }
+
+    /** Consent of the signed-in test user to external models, through the public endpoint. */
+    protected final void grantConsent() {
+        FlowHttp.Reply res = http.postJson(FlowPaths.api("/ai-consent"), java.util.Map.of());
+        if (res.status() != 200 || !res.json().get("granted").asBoolean()) {
+            throw new IllegalStateException("could not grant consent: " + res.raw());
+        }
     }
 
     @DynamicPropertySource
     static void fakeOutbound(DynamicPropertyRegistry registry) {
-        registry.add("ai.openai.api-key", () -> FAKE_KEY);
-        registry.add("ai.openai.base-url", () -> FAKE_MODEL.url("/openai"));
-        registry.add("ai.anthropic.api-key", () -> FAKE_KEY);
-        registry.add("ai.anthropic.base-url", () -> FAKE_MODEL.url("/anthropic"));
-        registry.add("ai.gemini.api-key", () -> FAKE_KEY);
-        registry.add("ai.gemini.base-url", () -> FAKE_MODEL.url("/gemini"));
+        registry.add("hestia.ai.openai.api-key", () -> FAKE_KEY);
+        registry.add("hestia.ai.openai.base-url", () -> FAKE_MODEL.url("/openai"));
+        registry.add("hestia.ai.anthropic.api-key", () -> FAKE_KEY);
+        registry.add("hestia.ai.anthropic.base-url", () -> FAKE_MODEL.url("/anthropic"));
+        registry.add("hestia.ai.gemini.api-key", () -> FAKE_KEY);
+        registry.add("hestia.ai.gemini.base-url", () -> FAKE_MODEL.url("/gemini"));
     }
 }

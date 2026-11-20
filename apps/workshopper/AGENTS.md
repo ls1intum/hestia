@@ -16,7 +16,7 @@ Core Workshopper concepts:
 
 ## Technical Direction
 - server: Spring Boot 3.5 (Java 21), package `de.tum.cit.hestia.teaching` of the one server (Gradle module `:server`, `/workshopper` URL prefix)
-- LLM integration: Spring AI via Hestia's `libs:shared-llm` module (TUM AET Logos gateway, key `LOGOS_API_KEY`); prompts are `.st` files in `/server/src/main/resources/prompts`
+- LLM integration: the `ai` module's `LlmGateway` (TUM AET Logos gateway, key `LOGOS_API_KEY`); prompts are `.st` files in `/server/src/main/resources/prompts`
 - database: PostgreSQL with Flyway migrations (`/server/src/main/resources/db/migration`, one history for all modules, schema `teaching`); never edit an applied migration, add a new one
 - client: React, Vite, Tailwind CSS; wizard state lives in `client/src/hooks/useWizardState.ts` (plain React state)
 - build system: Gradle (multi-module)

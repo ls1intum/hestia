@@ -1,6 +1,6 @@
 # Materials module (LearningGoalHub)
 
-The `materials` module of the hestia server (Spring Boot 3.5 on Java 21, Spring AI for model calls,
+The `materials` module of the hestia server (Spring Boot 3.5 on Java 21, model calls through the `ai` module,
 PostgreSQL through Spring Data JPA, Flyway for the schema). Its controllers are served under
 `/learninggoalhub`, its tables live in the `materials` schema, and its settings are in
 `src/main/resources/modules/materials.yml`. To run it locally, see the
@@ -96,15 +96,16 @@ comparable across prompt changes.
 
 ### an LLM call
 
-1. Inject `LlmClient`; do not build a `ChatClient` yourself. `LlmClient` applies retries, timeouts
-   and usage logging to every call.
-2. Build an `LlmRequest` (`LlmRequest.of(prompt).withSystem(...).withModel(...).withTemperature(...)`)
+1. Inject `LlmClient`; do not call a model any other way. Calls run through `ai.LlmGateway`, which
+   applies retries and timeouts and logs the call; `LlmClient` books the tokens.
+2. Build an `LlmRequest` (`LlmRequest.of("my-purpose", prompt).withSystem(...).withModel(...).withTemperature(...)`,
+   the purpose being a short kebab-case name; `forCourse(coreCourseId)` if the core course is at hand)
    and call `entity(request, MyRecord.class)` for structured output, or `text(request)`. Prefer a
    record over parsing free text.
 3. Read the model and temperature from `application.yml` (`@Value("${hestia....}")`), not from
    constants, so a run's settings are visible and can be overridden.
 4. Validate the reply before storing it. Models drop fields and return out-of-range values.
-5. Test with a mocked `LlmClient` or a mocked `ChatClient.Builder` (`ExamGoalGeneratorTest`). A test
+5. Test with a mocked `LlmClient` or `FakeLlm`, a fake gateway (`ExamGoalGeneratorTest`). A test
    that needs a real model is a `*LiveIT` guarded by
    `@EnabledIfEnvironmentVariable(named = "RUN_LIVE_LOGOS", matches = "1")`.
 

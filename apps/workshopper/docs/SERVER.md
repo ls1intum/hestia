@@ -1,6 +1,6 @@
 # Server Architecture & Database Schema
 
-The Workshopper server is a Spring Boot 3.5 application (Java 21). It is the `teaching` module of the one Hestia server (Gradle module `:server`); its endpoints are served under `/workshopper`, e.g. `/workshopper/api/workshop/sessions`. It provides the REST API for the client, runs the AI generation through the TUM AET Logos gateway (`libs:shared-llm`), and builds the PDF and PPTX exports. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the layering rules and [API.md](./API.md) for the endpoints.
+The Workshopper server is a Spring Boot 3.5 application (Java 21). It is the `teaching` module of the one Hestia server (Gradle module `:server`); its endpoints are served under `/workshopper`, e.g. `/workshopper/api/workshop/sessions`. It provides the REST API for the client, runs the AI generation through the TUM AET Logos gateway (through the server's `ai` module), and builds the PDF and PPTX exports. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the layering rules and [API.md](./API.md) for the endpoints.
 
 ## Packages
 

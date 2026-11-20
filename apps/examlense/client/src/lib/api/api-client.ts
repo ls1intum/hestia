@@ -61,13 +61,35 @@ export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body">
   headers?: Record<string, string>;
   /** Do not redirect to the login on 401 (only for probes that expect it). */
   skipAuth?: boolean;
+  /** Set on the retry after the user consented; a second 428 is then an error. */
+  consentRetried?: boolean;
+}
+
+/**
+ * Asked when the server answers 428 CONSENT_REQUIRED (an external AI model needs the user consent):
+ * shows the notice and resolves true if the user consented, so the request is repeated.
+ * Registered by the consent dialog; without one the 428 is just an error.
+ */
+type ConsentHandler = () => Promise<boolean>;
+let consentHandler: ConsentHandler | null = null;
+export function setConsentHandler(handler: ConsentHandler | null): void {
+  consentHandler = handler;
+}
+
+export function isConsentRequired(status: number, body: string): boolean {
+  if (status !== 428) return false;
+  try {
+    return JSON.parse(body)?.code === "CONSENT_REQUIRED";
+  } catch {
+    return false;
+  }
 }
 
 export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
-  const { json, body, headers, skipAuth, ...rest } = options;
+  const { json, body, headers, skipAuth, consentRetried, ...rest } = options;
   const method = (rest.method ?? "GET").toUpperCase();
   const csrf = method === "GET" || method === "HEAD" ? undefined : xsrfToken();
   const finalHeaders: Record<string, string> = {
@@ -103,6 +125,11 @@ export async function apiRequest<T = unknown>(
     if (resp.status === 401 && !skipAuth) {
       window.location.assign(loginUrl());
     }
+    if (!consentRetried && consentHandler && isConsentRequired(resp.status, text)) {
+      if (await consentHandler()) {
+        return apiRequest<T>(path, { ...options, consentRetried: true });
+      }
+    }
     throw new ApiError(resp.status, text, message);
   }
 
@@ -136,6 +163,19 @@ export interface Me {
 
 /** Doubles as the session probe: a 200 means the user is signed in. */
 export const getMe = () => apiRequest<Me>("/api/me");
+
+/** The user consent to external AI models and the notice they consent to (Markdown). */
+export interface AiConsent {
+  granted: boolean;
+  notice_version: string;
+  last_action: "GRANTED" | "REVOKED" | null;
+  last_action_at: string | null;
+  notice: { version: string; text: string };
+}
+
+export const getAiConsent = () => apiRequest<AiConsent>("/api/ai-consent");
+export const grantAiConsent = () => apiRequest<AiConsent>("/api/ai-consent", { method: "POST" });
+export const revokeAiConsent = () => apiRequest<AiConsent>("/api/ai-consent", { method: "DELETE" });
 
 /** End the session (server answers 204), then reload so the app starts from the login. */
 export async function signOut(): Promise<void> {

@@ -5,23 +5,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import de.tum.cit.hestia.materials.llm.LlmClient;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 
 class BookmarkRelevanceJudgeTest {
 
-    // The chat client is never reached: every case here is resolved by the mechanical pre-filter. The
+    // The model is never reached: every case here is resolved by the mechanical pre-filter. The
     // grey-zone (model) path is covered where the judge is mocked by callers.
     private final BookmarkRelevanceJudge judge = mechanicalJudge();
 
     private static BookmarkRelevanceJudge mechanicalJudge() {
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(mock(ChatClient.class));
-        return new BookmarkRelevanceJudge(new LlmClient(builder), "test-model", Duration.ofSeconds(30));
+        return new BookmarkRelevanceJudge(FakeLlm.replying().client(), "test-model", Duration.ofSeconds(30));
     }
 
     @Test

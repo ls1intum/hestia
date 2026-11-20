@@ -20,6 +20,7 @@ spring:
     name: hestia-server
   config:
     import:
+      - classpath:modules/ai.yml
       - classpath:modules/materials.yml
       - classpath:modules/teaching.yml
       - classpath:modules/assessment.yml
@@ -83,7 +84,7 @@ spring:
     model:
       embedding: none
     openai:
-      # Chat and vision run on the TUM AET Logos gateway (the shared-llm default).
+      # Chat and vision run on the TUM AET Logos gateway (defaults in ai.internal.HestiaLlmDefaults).
       api-key: ${LOGOS_API_KEY:}
     # The gateway rate-limits bursts (HTTP 429). By default Spring AI treats 4xx as non-transient and
     # fails immediately; retry 429 specifically (other 4xx still fail fast) with a gentle backoff

@@ -109,7 +109,7 @@ public class TaxonomyService {
     }
 
     public TaxonomyClassification classify(String goalText, String modelOverride) {
-        return llm.entity(LlmRequest.of(PROMPT_TEMPLATE.formatted(goalText))
+        return llm.entity(LlmRequest.of("taxonomy", PROMPT_TEMPLATE.formatted(goalText))
                         .withModel(modelOverride)
                         .withTemperature(assignmentTemperature),
                 TaxonomyClassification.class);
@@ -134,7 +134,7 @@ public class TaxonomyService {
         for (int i = 0; i < goalTexts.size(); i++) {
             numbered.append(i + 1).append(". ").append(goalTexts.get(i)).append('\n');
         }
-        List<BatchTaxonomyItem> items = llm.entity(LlmRequest.of(BATCH_PROMPT_TEMPLATE.formatted(numbered.toString()))
+        List<BatchTaxonomyItem> items = llm.entity(LlmRequest.of("taxonomy", BATCH_PROMPT_TEMPLATE.formatted(numbered.toString()))
                         .withModel(modelOverride)
                         .withTemperature(assignmentTemperature),
                 new ParameterizedTypeReference<List<BatchTaxonomyItem>>() {});

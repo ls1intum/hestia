@@ -95,7 +95,7 @@ public class ExamGoalGenerator {
                 taskType == null || taskType.isBlank() ? "unspecified" : taskType,
                 taskDescription);
 
-        List<GeneratedExamGoal> goals = llm.entity(LlmRequest.of(prompt)
+        List<GeneratedExamGoal> goals = llm.entity(LlmRequest.of("exam-goals", prompt)
                         .withSystem(LanguagePrompt.systemInstruction(languageName))
                         .withModel(modelOverride)
                         .withTemperature(temperature),
