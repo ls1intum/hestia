@@ -554,9 +554,6 @@
             "required": false,
             "schema": {
               "type": "array",
-              "default": [
-                "id,ASC"
-              ],
               "items": {
                 "type": "string"
               }

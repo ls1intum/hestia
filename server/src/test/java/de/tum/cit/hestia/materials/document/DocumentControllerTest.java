@@ -89,7 +89,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].filename").value("lecture-01.pdf"))
-                .andExpect(jsonPath("$[0].courseId").value(courseId))
+                .andExpect(jsonPath("$[0].courseId").value(courseId.toString()))
                 .andExpect(jsonPath("$[0].contentType").value(MediaType.APPLICATION_PDF_VALUE))
                 .andExpect(jsonPath("$[0].uploadedAt").exists())
                 .andExpect(jsonPath("$[1].filename").value("exercise-01.pdf"));

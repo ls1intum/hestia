@@ -38,7 +38,11 @@ public class ExamGoalDerivationService implements ExamGoalDerivation {
         courseAccess.requireWrite(courseId);
         CourseContext course = settingsService.context(courseId);
         List<ExamBlock> blocks = tasks == null ? List.of() : tasks.stream().map(ExamGoalDerivationService::toBlock).toList();
-        ExamGoalController.validate(new ExamGoalController.GenerateExamGoalsRequest(blocks));
+        try {
+            ExamGoalController.validate(new ExamGoalController.GenerateExamGoalsRequest(blocks));
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            throw new IllegalArgumentException(e.getReason(), e);
+        }
         return examGoalService.generateForBlocks(course, blocks, null, DomainModule.ASSESSMENT).stream()
                 .map(task -> new TaskGoals(task.blockId(), task.goals().stream().map(goal -> goal.info()).toList()))
                 .toList();
