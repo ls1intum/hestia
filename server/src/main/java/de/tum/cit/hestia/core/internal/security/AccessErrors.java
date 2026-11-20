@@ -2,6 +2,7 @@ package de.tum.cit.hestia.core.internal.security;
 
 import de.tum.cit.hestia.core.CourseAccessDeniedException;
 import de.tum.cit.hestia.core.CourseNotFoundException;
+import de.tum.cit.hestia.core.GoalNotFoundException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -22,8 +23,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class AccessErrors {
 
-    @ExceptionHandler(CourseNotFoundException.class)
-    ResponseEntity<Map<String, String>> notFound(CourseNotFoundException e) {
+    @ExceptionHandler({CourseNotFoundException.class, GoalNotFoundException.class})
+    ResponseEntity<Map<String, String>> notFound(RuntimeException e) {
         return body(HttpStatus.NOT_FOUND, "Not found");
     }
 

@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.materials.exam.submission;
 
 import de.tum.cit.hestia.core.OrgScoped;
-import de.tum.cit.hestia.materials.course.Course;
+import java.util.UUID;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -32,9 +32,8 @@ public class ExamSubmission extends OrgScoped {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @Column(name = "course_id", nullable = false, updatable = false)
+    private UUID courseId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -47,8 +46,8 @@ public class ExamSubmission extends OrgScoped {
     protected ExamSubmission() {
     }
 
-    public ExamSubmission(Course course) {
-        this.course = course;
+    public ExamSubmission(UUID courseId) {
+        this.courseId = courseId;
     }
 
     /** Appends a block in exam order; it is persisted with the submission. */
@@ -62,8 +61,8 @@ public class ExamSubmission extends OrgScoped {
         return id;
     }
 
-    public Course getCourse() {
-        return course;
+    public UUID getCourseId() {
+        return courseId;
     }
 
     public OffsetDateTime getCreatedAt() {

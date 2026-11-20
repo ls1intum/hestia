@@ -11,7 +11,7 @@ const PAGE_SIZE = 500;
  * Topic tree look like it was never built and leaves the skill review empty. Shared by every
  * caller of the `["goals", courseId]` query so they cannot disagree about what "all goals" means.
  */
-export async function fetchAllGoals(courseId: number): Promise<LearningGoal[]> {
+export async function fetchAllGoals(courseId: string): Promise<LearningGoal[]> {
   const first = await api.GET("/api/courses/{courseId}/learning-goals", {
     params: { path: { courseId }, query: { size: PAGE_SIZE } },
   });

@@ -1,7 +1,8 @@
 package de.tum.cit.hestia.materials.exam;
 
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlock;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlockType;
 import de.tum.cit.hestia.materials.goal.LearningGoalResponse;
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,11 +32,11 @@ public class ExamGoalController {
     static final int MAX_BLOCKS = 100;
     static final int MAX_DESCRIPTION_CHARS = 20_000;
 
-    private final CourseRepository courseRepository;
+    private final MaterialSettingsService settingsService;
     private final ExamGoalService examGoalService;
 
-    public ExamGoalController(CourseRepository courseRepository, ExamGoalService examGoalService) {
-        this.courseRepository = courseRepository;
+    public ExamGoalController(MaterialSettingsService settingsService, ExamGoalService examGoalService) {
+        this.settingsService = settingsService;
         this.examGoalService = examGoalService;
     }
 
@@ -44,12 +46,12 @@ public class ExamGoalController {
                     + "persists them under the course's EXAM hierarchy root and returns them per task block. "
                     + "Synchronous — expect a few seconds per task block.")
     @PostMapping("/learning-goals")
-    public List<ExamTaskGoalsResponse> generate(@PathVariable Long courseId,
+    public List<ExamTaskGoalsResponse> generate(@PathVariable UUID courseId,
                                                 @RequestBody GenerateExamGoalsRequest request) {
-        Course course = courseRepository.findOrThrow(courseId);
+        CourseContext course = settingsService.context(courseId);
         validate(request);
 
-        return examGoalService.generateForBlocks(course, request.blocks(), null).stream()
+        return examGoalService.generateForBlocks(course, request.blocks(), null, DomainModule.MATERIALS).stream()
                 .map(taskGoals -> new ExamTaskGoalsResponse(
                         taskGoals.blockId(),
                         taskGoals.goals().stream()

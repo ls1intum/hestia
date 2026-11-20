@@ -14,7 +14,7 @@ function renderDialog(onClose = () => {}) {
   const queryClient = new QueryClient();
   render(
     <QueryClientProvider client={queryClient}>
-      <RenameCourseDialog course={{ id: 3, name: "Algorithms" }} onClose={onClose} />
+      <RenameCourseDialog course={{ id: "3", name: "Algorithms" }} onClose={onClose} />
     </QueryClientProvider>,
   );
 }
@@ -38,7 +38,7 @@ describe("RenameCourseDialog", () => {
     await renameTo("Data Structures");
 
     expect(patch).toHaveBeenCalledWith("/api/courses/{id}", {
-      params: { path: { id: 3 } },
+      params: { path: { id: "3" } },
       body: { name: "Data Structures" },
     });
     await vi.waitFor(() => expect(onClose).toHaveBeenCalled());

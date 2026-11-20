@@ -2,6 +2,7 @@ package de.tum.cit.hestia.materials.course;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * The status of each course's latest extraction run, for the course summaries. Implemented by the
@@ -10,5 +11,5 @@ import java.util.Map;
 public interface ExtractionStatusLookup {
 
     /** The latest run's status per course; a course that never ran is missing from the map. */
-    Map<Long, ExtractionStatus> latestByCourse(List<Long> courseIds);
+    Map<UUID, ExtractionStatus> latestByCourse(List<UUID> courseIds);
 }

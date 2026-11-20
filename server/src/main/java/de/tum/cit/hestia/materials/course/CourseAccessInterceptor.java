@@ -1,8 +1,10 @@
 package de.tum.cit.hestia.materials.course;
 
+import de.tum.cit.hestia.core.CourseAccess;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
@@ -11,16 +13,16 @@ import org.springframework.web.servlet.HandlerMapping;
  * Checks the caller's role in the course for every endpoint of the module that carries a course id in
  * its path ({@code /api/courses/{courseId}/**} and {@code /api/courses/{id}}): reading needs a
  * membership, anything but GET/HEAD (content changes, extraction and other model calls) needs editor.
- * Deleting a course needs owner; {@link CourseService#delete} checks that itself. Every object under
+ * Deleting a course needs owner; {@code CourseApi.delete} checks that itself. Every object under
  * a course is addressed through its course id, so no endpoint reaches an object around this check.
  */
 class CourseAccessInterceptor implements HandlerInterceptor {
 
     private static final String MODULE_PACKAGE = "de.tum.cit.hestia.materials";
 
-    private final CourseGuard guard;
+    private final CourseAccess guard;
 
-    CourseAccessInterceptor(CourseGuard guard) {
+    CourseAccessInterceptor(CourseAccess guard) {
         this.guard = guard;
     }
 
@@ -43,10 +45,10 @@ class CourseAccessInterceptor implements HandlerInterceptor {
         if (raw == null) {
             return true;
         }
-        long courseId;
+        UUID courseId;
         try {
-            courseId = Long.parseLong(raw);
-        } catch (NumberFormatException e) {
+            courseId = UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
             return true; // the controller answers 400 for a malformed id
         }
         String httpMethod = request.getMethod();

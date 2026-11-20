@@ -116,13 +116,13 @@ public class SectionController {
         summary = "Confirm a section",
         description = """
             Marks the section ready to solve and kicks off learning-goal generation in the \
-            background: the section's context blocks and tasks are posted to LearningGoalHub \
-            and the returned goal ids are stored on the tasks.
+            background: goals are derived for each task from the section's context blocks and \
+            tasks, stored in the exam's course and linked to the tasks.
 
-            Goal generation is fire-and-forget and never fails the confirm — if LGH is down the \
-            section still confirms, just without goals. Re-confirming deletes the previously \
-            generated goals first, since LGH does not deduplicate. Watch the `tasks` SSE event \
-            to know when generation finished.""")
+            Goal generation is fire-and-forget and never fails the confirm — if the derivation \
+            fails the section still confirms, just without goals. Re-confirming removes the \
+            previously derived goals first, since the derivation does not deduplicate. Watch the \
+            `tasks` SSE event to know when generation finished.""")
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")
     @PostMapping("/sections/{id}/confirm")
@@ -130,7 +130,7 @@ public class SectionController {
         Section s = load(id, true);
         s.setConfirmedAt(OffsetDateTime.now());
         SectionDtos.SectionDto dto = SectionDtos.SectionDto.from(sectionRepository.save(s));
-        // Fire-and-forget LGH goal generation; must never fail the confirm.
+        // Fire-and-forget goal generation; must never fail the confirm.
         try {
             goalGeneration.dispatchGenerate(s.getExamId(), s.getId());
         } catch (RuntimeException ignored) {}
@@ -141,7 +141,7 @@ public class SectionController {
         summary = "Unconfirm a section",
         description = """
             Reopens the section for editing: clears `confirmed_at`, drops the AI answers for its \
-            tasks, and clears their learning-goal ids, deleting the goals from LGH on a \
+            tasks, and unlinks their learning goals; the goals derived for them are removed on a \
             best-effort basis.""")
     @ApiResponse(responseCode = "403", description = "The section's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such section, or `id` is not a valid UUID.")

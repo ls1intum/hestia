@@ -39,6 +39,7 @@ class ExaminationProgressServiceIT extends AbstractIntegrationTest {
     private Examination newExamination() {
         Examination e = new Examination();
         e.setCreatedBy(userId("alice"));
+        e.setCourseId(courseOf("alice"));
         e.setSource("manual");
         e.setTitle("Progress");
         e.setStatus("grading");

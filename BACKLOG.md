@@ -28,3 +28,22 @@ behaviour below. Until these are built, the tools do not match the published pol
 - [ ] **Bring your own key for external models** — let users run ExamLense's benchmark against
       their own provider account (their OpenAI/Anthropic/Gemini key) instead of the project's.
       Logos stays the central gateway for everything else. Not needed yet.
+
+## Core data model (follow-ups from the review of package 6)
+
+- [ ] **Personal course without membership** — `CourseService.personalCourse()` answers `OWNER`
+      without checking the membership, so a creator removed from their own catch-all course
+      still gets it back as owner. Check the membership (or refuse removing the last owner of a
+      personal course).
+- [ ] **Role checks in every `AlignmentApi` method** — `link` needs only read access to the
+      goal's course; `unlink*` and `goalsFor*` check nothing and rely on the calling module.
+      Check course roles in core as the other core APIs do.
+- [ ] **Optimistic locking for sessions and exams** — no `@Version`: `WorkshopService.saveDraft`
+      and `ExaminationController.patch` with a stale `courseId` can undo a move.
+- [ ] **Smaller points:**
+      - `alignment_link.course_id` is not tied to the goal's course by a foreign key.
+      - Deleting the personal course answers 500 (`IllegalArgumentException`) instead of 400/409.
+      - Two concurrent `LearningGoalApi.update` calls on one goal answer 500 instead of 409.
+      - `WorkshopService.saveDraft` is not transactional.
+      - Course lists stop at `listMine(0, 1000)`.
+      - Migration V14 deleted all `teaching.slide_templates` (disposable data at the time).

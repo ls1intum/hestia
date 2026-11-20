@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
 import java.util.List;
+import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -23,11 +24,6 @@ public class GoalSource extends OrgScoped {
 
     @EmbeddedId
     private GoalSourceId id;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @MapsId("goalId")
-    @JoinColumn(name = "goal_id")
-    private LearningGoal goal;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @MapsId("documentId")
@@ -61,16 +57,16 @@ public class GoalSource extends OrgScoped {
     protected GoalSource() {
     }
 
-    public GoalSource(LearningGoal goal, Document document, String snippet) {
-        this(goal, document, snippet, null, false);
+    public GoalSource(UUID goalId, Document document, String snippet) {
+        this(goalId, document, snippet, null, false);
     }
 
-    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page) {
-        this(goal, document, snippet, page, false);
+    public GoalSource(UUID goalId, Document document, String snippet, Integer page) {
+        this(goalId, document, snippet, page, false);
     }
 
-    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page, boolean grounded) {
-        this(goal, document, snippet, page, grounded, null,
+    public GoalSource(UUID goalId, Document document, String snippet, Integer page, boolean grounded) {
+        this(goalId, document, snippet, page, grounded, null,
                 grounded ? EvidenceKind.TEXT : EvidenceKind.UNSUPPORTED);
     }
 
@@ -80,9 +76,9 @@ public class GoalSource extends OrgScoped {
      * the text is never presented as a quote and the unit's page is dropped rather than suggesting a
      * find; the rejected text is kept only so extraction quality remains measurable.
      */
-    public GoalSource(LearningGoal goal, Document document, String snippet, Integer page,
+    public GoalSource(UUID goalId, Document document, String snippet, Integer page,
                       SourceMatchQuality groundingQuality) {
-        this(goal, document,
+        this(goalId, document,
                 groundingQuality == SourceMatchQuality.NONE ? "" : snippet,
                 groundingQuality == SourceMatchQuality.NONE ? null : page,
                 groundingQuality != null && groundingQuality != SourceMatchQuality.NONE, groundingQuality,
@@ -94,15 +90,14 @@ public class GoalSource extends OrgScoped {
     }
 
     /** Builds a non-verbatim source backed by a persisted page figure description. */
-    public static GoalSource figure(LearningGoal goal, Document document, Integer page) {
-        return new GoalSource(goal, document, "", page, false, SourceMatchQuality.NONE, EvidenceKind.FIGURE);
+    public static GoalSource figure(UUID goalId, Document document, Integer page) {
+        return new GoalSource(goalId, document, "", page, false, SourceMatchQuality.NONE, EvidenceKind.FIGURE);
     }
 
-    private GoalSource(LearningGoal goal, Document document, String snippet, Integer page,
+    private GoalSource(UUID goalId, Document document, String snippet, Integer page,
                        boolean grounded, SourceMatchQuality groundingQuality, EvidenceKind evidenceKind) {
-        this.goal = goal;
-        this.document = document;
-        this.id = new GoalSourceId(goal.getId(), document.getId());
+                this.document = document;
+        this.id = new GoalSourceId(goalId, document.getId());
         this.snippet = snippet;
         this.page = page;
         this.grounded = grounded;
@@ -114,8 +109,8 @@ public class GoalSource extends OrgScoped {
         return id;
     }
 
-    public LearningGoal getGoal() {
-        return goal;
+    public UUID getGoalId() {
+        return id.getGoalId();
     }
 
     public Document getDocument() {

@@ -56,14 +56,14 @@ describe("CoursePage", () => {
 
   it("shows not found for a course the server does not know", async () => {
     get.mockResolvedValue({
-      error: { code: "NOT_FOUND", message: "Course not found: 999" },
+      error: { code: "NOT_FOUND", message: "Course not found" },
       response: new Response(null, { status: 404 }),
     });
 
-    renderAt("/courses/999");
+    renderAt("/courses/00000000-0000-4000-8000-000000000999");
 
     expect(await screen.findByText("This course does not exist or was deleted.")).toBeTruthy();
-    expect(get).toHaveBeenCalledWith("/api/courses/{id}", { params: { path: { id: 999 } } });
+    expect(get).toHaveBeenCalledWith("/api/courses/{id}", { params: { path: { id: "00000000-0000-4000-8000-000000000999" } } });
   });
 
   it("reports a server failure as an error, not as a missing course", async () => {
@@ -72,7 +72,7 @@ describe("CoursePage", () => {
       response: new Response(null, { status: 500 }),
     });
 
-    renderAt("/courses/7");
+    renderAt("/courses/00000000-0000-4000-8000-000000000007");
 
     expect(await screen.findByText("Could not load the course.")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Not found" })).toBeNull();
@@ -82,7 +82,7 @@ describe("CoursePage", () => {
     const ok = (data: unknown) => ({ data, response: new Response(null, { status: 200 }) });
     get.mockImplementation((path: string) => {
       if (path === "/api/courses/{id}") {
-        return ok({ id: 7, name: "Algorithms", documentCount: 2, goalCount: 0, topicCount: 0 });
+        return ok({ id: "00000000-0000-4000-8000-000000000007", name: "Algorithms", documentCount: 2, goalCount: 0, topicCount: 0 });
       }
       if (path === "/api/courses/{courseId}/learning-goals") {
         return ok({ content: [], page: { totalElements: 0 } });
@@ -92,24 +92,24 @@ describe("CoursePage", () => {
     post.mockResolvedValue({ data: { status: "RUNNING" }, response: new Response(null, { status: 202 }) });
     const user = userEvent.setup();
 
-    renderAt("/courses/7");
+    renderAt("/courses/00000000-0000-4000-8000-000000000007");
 
     expect(await screen.findByText("2 documents uploaded, not analysed yet.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Start analysis" }));
     expect(post).toHaveBeenCalledWith("/api/courses/{courseId}/extract", {
-      params: { path: { courseId: 7 }, query: {} },
+      params: { path: { courseId: "00000000-0000-4000-8000-000000000007" }, query: {} },
     });
   });
 
   it("does not offer to start an analysis for a course that already has one", async () => {
     get.mockImplementation((path: string) => ({
       data: path === "/api/courses/{id}"
-        ? { id: 7, name: "Algorithms", documentCount: 2, goalCount: 0, extractionStatus: "RUNNING" }
+        ? { id: "00000000-0000-4000-8000-000000000007", name: "Algorithms", documentCount: 2, goalCount: 0, extractionStatus: "RUNNING" }
         : { content: [], page: { totalElements: 0 } },
       response: new Response(null, { status: 200 }),
     }));
 
-    renderAt("/courses/7");
+    renderAt("/courses/00000000-0000-4000-8000-000000000007");
 
     expect(await screen.findByRole("heading", { name: "Algorithms" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Start analysis" })).toBeNull();

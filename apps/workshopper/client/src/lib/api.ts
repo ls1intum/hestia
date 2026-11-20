@@ -11,6 +11,7 @@ import type {
   SessionSummary,
   SessionDetail,
   DraftState,
+  CourseGoal,
 } from "./workshop-generator";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL + "api";
@@ -93,8 +94,6 @@ const get = <T>(path: string) => send(path).then(res => parseJson<T>(res));
 const post = <T>(path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => parseJson<T>(res));
 const put = <T>(path: string, body: unknown) => send(path, jsonBody("PUT", body)).then(res => parseJson<T>(res));
 const del = <T>(path: string) => send(path, { method: "DELETE" }).then(res => parseJson<T>(res));
-/** LearningGoalHub reads, forwarded by the Workshopper server (it holds LGH's service key). */
-export const getFromLearningGoalHub = <T>(path: string) => get<T>(`/workshop/lgh${path}`);
 /** POSTs JSON and returns the answer as a file (exports). */
 const postForBlob = (path: string, body: unknown) => send(path, jsonBody("POST", body)).then(res => res.blob());
 const postForm = (path: string, form: FormData) => send(path, { method: "POST", body: form });
@@ -157,7 +156,7 @@ export async function saveDraft(
   sessionId: string | null,
   currentStep: string,
   courseId?: string
-): Promise<string> {
+): Promise<{ id: string; courseId?: string }> {
   const title = draft.session?.title ?? draft.workshopInput?.title ?? (draft.workshopInput?.sessionType
     ? `${draft.workshopInput.sessionType.charAt(0).toUpperCase() + draft.workshopInput.sessionType.slice(1)} Session`
     : "Workshop Session");
@@ -169,8 +168,8 @@ export async function saveDraft(
     courseId
   };
 
-  const res = await post<{ id: string }>("/workshop/sessions/draft", body);
-  return res.id;
+  // The answer names the session's course too: without a chosen one it is the personal course
+  return post<{ id: string; courseId?: string }>("/workshop/sessions/draft", body);
 }
 
 /** Mark a session as fully finished (Finish & Save clicked) */
@@ -193,9 +192,22 @@ export function renameCourse(id: string, title: string): Promise<void> {
   return put<void>(`/workshop/courses/${id}/rename`, { title });
 }
 
-/** Move a session to a course */
-export function moveSession(id: string, courseId: string): Promise<void> {
-  return put<void>(`/workshop/sessions/${id}/move`, { courseId });
+/** Moves a session to another course; the server removes its links to goals of the old course. */
+export function moveSessionToCourse(id: string, courseId: string): Promise<void> {
+  return put<void>(`/workshop/sessions/${id}/course`, { courseId });
+}
+
+/** The learning goals of a course (core), for the goal picker */
+export function listCourseGoals(courseId: string): Promise<CourseGoal[]> {
+  return get<CourseGoal[]>(`/workshop/courses/${courseId}/goals`);
+}
+
+/**
+ * Saves the goals of the Goals step in the course: goals with a core id are changed if their text
+ * differs, goals without one are created. Returns them in the same order.
+ */
+export function saveCourseGoals(courseId: string, goals: { id?: string; text: string }[]): Promise<CourseGoal[]> {
+  return put<CourseGoal[]>(`/workshop/courses/${courseId}/goals`, goals);
 }
 
 /** Reorder sessions */

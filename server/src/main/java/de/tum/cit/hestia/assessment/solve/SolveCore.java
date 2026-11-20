@@ -217,7 +217,7 @@ class SolveCore {
         return Prompts.buildSystemPrompt(new Prompts.ExaminationPromptInfo(
             exam.getId().toString(),
             exam.getTitle(),
-            exam.getCourse()
+            null
         ));
     }
 

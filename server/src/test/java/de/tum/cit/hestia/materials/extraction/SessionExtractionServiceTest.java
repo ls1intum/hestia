@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
-import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.core.GoalKind;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import de.tum.cit.hestia.materials.document.DocumentKind;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;
@@ -254,14 +254,14 @@ class SessionExtractionServiceTest {
                 GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, 9, 9, List.of());
         FakeLlm llm = FakeLlm.replying(List.of(invalidFirst), List.of(validSkill, invalidSkill));
         ExtractionProgressTracker tracker = new ExtractionProgressTracker();
-        ExtractionProgressTracker.Run run = tracker.tryStart(1L, null).orElseThrow();
+        ExtractionProgressTracker.Run run = tracker.tryStart(java.util.UUID.nameUUIDFromBytes(new byte[]{1}), null).orElseThrow();
 
         new SessionExtractionService(llm.client(), mock(LanguageDetectionService.class), tracker, 0.2)
                 .extract("Lecture", "method\nassumption", null, "English", null, List.of());
 
         // The invalid skill and the uncited knowledge item under the kept skill.
         assertThat(run.droppedOutcomes()).isEqualTo(2);
-        assertThat(tracker.snapshot(1L).orElseThrow().droppedOutcomes()).isEqualTo(2);
+        assertThat(tracker.snapshot(java.util.UUID.nameUUIDFromBytes(new byte[]{1})).orElseThrow().droppedOutcomes()).isEqualTo(2);
     }
 
     @Test

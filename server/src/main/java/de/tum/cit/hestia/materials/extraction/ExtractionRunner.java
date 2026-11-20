@@ -3,8 +3,13 @@ package de.tum.cit.hestia.materials.extraction;
 import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.CompetencyTreeResult;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContent;
@@ -24,24 +29,19 @@ import de.tum.cit.hestia.materials.extraction.UnitExtractor.SourceLineSelection;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.UnitExtraction;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.UnitGoal;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.Window;
-import de.tum.cit.hestia.materials.goal.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRole;
-import de.tum.cit.hestia.materials.goal.GoalSource;
-import de.tum.cit.hestia.materials.goal.GoalSourceId;
-import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.materials.goal.NewPlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.materials.goal.GoalRelationship;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
 import de.tum.cit.hestia.materials.goal.RelationshipType;
 import de.tum.cit.hestia.materials.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.materials.web.ExtractionErrors;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
@@ -67,14 +68,13 @@ public class ExtractionRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractionRunner.class);
 
-    private final CourseRepository courseRepository;
+    private final MaterialSettingsService settingsService;
     private final DocumentRepository documentRepository;
     private final DocumentContentRepository documentContentRepository;
     private final PageDescriptionService pageDescriptionService;
     private final PageDescriptionRepository pageDescriptionRepository;
-    private final LearningGoalRepository goalRepository;
-    private final GoalSourceRepository goalSourceRepository;
-    private final GoalRelationshipRepository goalRelationshipRepository;
+    private final PlacedGoals goals;
+    private final LearningGoalApi goalApi;
     private final UnitExtractor unitExtractor;
     private final ExtractionRunAuditService extractionRunAuditService;
     private final DocumentSectionRepository documentSectionRepository;
@@ -87,14 +87,13 @@ public class ExtractionRunner {
     private final int figureParallelism;
     private final String configuredDefaultModel;
 
-    public ExtractionRunner(CourseRepository courseRepository,
+    public ExtractionRunner(MaterialSettingsService settingsService,
                             DocumentRepository documentRepository,
                             DocumentContentRepository documentContentRepository,
                             PageDescriptionService pageDescriptionService,
                             PageDescriptionRepository pageDescriptionRepository,
-                            LearningGoalRepository goalRepository,
-                            GoalSourceRepository goalSourceRepository,
-                            GoalRelationshipRepository goalRelationshipRepository,
+                            PlacedGoals goals,
+                            LearningGoalApi goalApi,
                             UnitExtractor unitExtractor,
                             ExtractionRunAuditService extractionRunAuditService,
                             DocumentSectionRepository documentSectionRepository,
@@ -106,14 +105,13 @@ public class ExtractionRunner {
                             @Value("${hestia.figures.parallelism:4}") int figureParallelism,
                             @Value("${hestia.extraction.keep-empty-units:false}") boolean keepEmptyUnits,
                             @Value("${spring.ai.openai.chat.options.model:}") String configuredDefaultModel) {
-        this.courseRepository = courseRepository;
+        this.settingsService = settingsService;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.pageDescriptionService = pageDescriptionService;
         this.pageDescriptionRepository = pageDescriptionRepository;
-        this.goalRepository = goalRepository;
-        this.goalSourceRepository = goalSourceRepository;
-        this.goalRelationshipRepository = goalRelationshipRepository;
+        this.goals = goals;
+        this.goalApi = goalApi;
         this.unitExtractor = unitExtractor;
         this.extractionRunAuditService = extractionRunAuditService;
         this.documentSectionRepository = documentSectionRepository;
@@ -127,15 +125,15 @@ public class ExtractionRunner {
         this.configuredDefaultModel = configuredDefaultModel;
     }
 
-    public ExtractionSummary runForCourse(Long courseId, String modelOverride, boolean force) {
+    public ExtractionSummary runForCourse(UUID courseId, String modelOverride, boolean force) {
         ExtractionProgressTracker.Run run = progressTracker.start(courseId, modelOverride);
         AtomicReference<Long> auditRunId = new AtomicReference<>();
         ExtractionStageSummary[] persistedStage = new ExtractionStageSummary[1];
         try {
             ExtractionInput input = extractionTransactions.execute(status -> {
-                Course course = courseRepository.findOrThrow(courseId);
-                boolean hasExtractedGoals = !goalRepository.findByCourseIdAndOriginIn(
-                        courseId, List.of(GoalOrigin.EXTRACTED)).isEmpty();
+                CourseContext course = settingsService.context(courseId);
+                boolean hasExtractedGoals = goals.list(courseId).stream()
+                        .anyMatch(goal -> goal.origin() == GoalOrigin.EXTRACTED);
                 boolean hasExtractionHierarchy = hierarchyNodeRepository.existsByCourseIdAndLevel(
                         courseId, HierarchyLevel.MODULE)
                         || hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY);
@@ -156,7 +154,7 @@ public class ExtractionRunner {
                     effectiveModel = null;
                 }
                 auditRunId.set(extractionRunAuditService.start(courseId, effectiveModel, promptVersion,
-                        runParams(courseLanguage, course.isFiguresEnabled())));
+                        runParams(courseLanguage, course.figuresEnabled())));
                 return new ExtractionInput(course, documents, dominantLanguage,
                         LanguageUtils.englishName(courseLanguage), promptVersion);
             });
@@ -177,7 +175,7 @@ public class ExtractionRunner {
             // failed run still leaves the previous extraction in place.
             ExtractionStageSummary stage = extractionTransactions.execute(status -> {
                 if (force) {
-                    clearExtractionArtifacts(input.course());
+                    clearExtractionArtifacts(courseId);
                 }
                 return persist(input.course(), input.documents(), extracted, input.courseLanguageName(),
                         input.promptVersion(), run);
@@ -220,7 +218,7 @@ public class ExtractionRunner {
     }
 
     /** What the setup transaction read: the course, its documents in order, and the run's language. */
-    private record ExtractionInput(Course course, List<Document> documents, String dominantLanguage,
+    private record ExtractionInput(CourseContext course, List<Document> documents, String dominantLanguage,
                                    String courseLanguageName, String promptVersion) {
     }
 
@@ -233,10 +231,10 @@ public class ExtractionRunner {
      * the figure descriptions, each document in a transaction of its own; the hierarchy nodes are
      * built but left for {@link #persist} to store.
      */
-    private ExtractedCourse extract(Course course, List<Document> documents, String modelOverride,
+    private ExtractedCourse extract(CourseContext course, List<Document> documents, String modelOverride,
                                     String dominantLanguage, ExtractionProgressTracker.Run run) {
         Map<Long, List<PageDescriptionService.FigureDescription>> figuresByDocument;
-        if (course.isFiguresEnabled()) {
+        if (course.figuresEnabled()) {
             // The width is spent on batches, not documents: a document is taken at a time so it keeps
             // its own transaction and the commit-per-document guarantee, while the executor runs that
             // document's page batches concurrently. Spreading across documents instead capped a
@@ -281,7 +279,7 @@ public class ExtractionRunner {
         // Structural pass: turn each document into its sessions, built as hierarchy nodes under one
         // module root and stored with the goals. Sessions come from the document's persisted structural sections (PDF
         // bookmarks, detected deterministically at upload); a document with none is one session.
-        HierarchyNode moduleRoot = new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName());
+        HierarchyNode moduleRoot = new HierarchyNode(course.id(), null, HierarchyLevel.MODULE, course.name());
         Map<Long, List<Unit>> unitsByDocument = new HashMap<>();
         Set<HierarchyNode> nodes = new LinkedHashSet<>(List.of(moduleRoot));
         for (Document d : documents) {
@@ -319,7 +317,7 @@ public class ExtractionRunner {
     }
 
     /** Stores the hierarchy nodes, goals, sources and knowledge edges of an extracted course. */
-    private ExtractionStageSummary persist(Course course, List<Document> documents, ExtractedCourse extracted,
+    private ExtractionStageSummary persist(CourseContext course, List<Document> documents, ExtractedCourse extracted,
                                            String courseLanguageName, String promptVersion,
                                            ExtractionProgressTracker.Run run) {
         hierarchyNodeRepository.saveAll(extracted.nodes());
@@ -329,37 +327,38 @@ public class ExtractionRunner {
         int textSources = 0;
         int figureSources = 0;
         int unsupportedSources = 0;
-        Map<ExtractedGoal, LearningGoal> persistedGoals = new IdentityHashMap<>();
+        Map<ExtractedGoal, PlacedGoal> persistedGoals = new IdentityHashMap<>();
+        List<NewPlacedGoal> items = new ArrayList<>();
+        for (int i = 0; i < classified.size(); i++) {
+            ClassifiedGoal classifiedGoal = classified.get(i);
+            ExtractedGoal e = classifiedGoal.extracted();
+            TaxonomyClassification classification = classifiedGoal.classification();
+            items.add(new NewPlacedGoal(
+                    new NewGoal(e.text(), e.shortLabel(), e.kind(), classifiedGoal.role(),
+                            classification == null || classification.bloom() == null
+                                    ? null : classification.bloom().name(),
+                            classification == null || classification.solo() == null
+                                    ? null : classification.solo().name(),
+                            GoalStatus.PENDING, GoalOrigin.EXTRACTED, null, DomainModule.MATERIALS),
+                    classifiedGoal.node(), null, i));
+        }
+        List<PlacedGoal> created = goals.createAll(course.id(), items);
         try (UnitExtractor.PdfCache pdfCache = unitExtractor.pdfCache()) {
-            for (ClassifiedGoal classifiedGoal : classified) {
+            for (int i = 0; i < classified.size(); i++) {
+                ClassifiedGoal classifiedGoal = classified.get(i);
                 ExtractedGoal e = classifiedGoal.extracted();
                 Document document = classifiedGoal.document();
-
-                LearningGoal goal = new LearningGoal(course, e.text(), e.kind());
-                goal.setShortLabel(e.shortLabel());
-                goal.setRole(classifiedGoal.role());
-                goal.setLectureOrder(goalsCreated);
-                if (classifiedGoal.node() != null) {
-                    goal.setHierarchyNode(classifiedGoal.node());
-                }
-                if (classifiedGoal.classification() != null) {
-                    goal.setBloomLevel(classifiedGoal.classification().bloom());
-                    goal.setSoloLevel(classifiedGoal.classification().solo());
-                }
-                LearningGoal target = goalRepository.saveAndFlush(goal);
+                PlacedGoal target = created.get(i);
                 persistedGoals.put(e, target);
                 goalsCreated++;
 
-                GoalSourceId sourceId = new GoalSourceId(target.getId(), document.getId());
-                if (!goalSourceRepository.existsById(sourceId)) {
-                    UnitExtractor.ResolvedSource source = unitExtractor.resolve(document, classifiedGoal.window(),
-                            classifiedGoal.sourceLineSelection(), classifiedGoal.figures(), e.sourceSnippet());
-                    unitExtractor.persistSource(target, document, source, pdfCache);
-                    switch (source.evidenceKind()) {
-                        case TEXT -> textSources++;
-                        case FIGURE -> figureSources++;
-                        case UNSUPPORTED -> unsupportedSources++;
-                    }
+                UnitExtractor.ResolvedSource source = unitExtractor.resolve(document, classifiedGoal.window(),
+                        classifiedGoal.sourceLineSelection(), classifiedGoal.figures(), e.sourceSnippet());
+                unitExtractor.persistSource(target.id(), document, source, pdfCache);
+                switch (source.evidenceKind()) {
+                    case TEXT -> textSources++;
+                    case FIGURE -> figureSources++;
+                    case UNSUPPORTED -> unsupportedSources++;
                 }
 
                 run.increment();
@@ -370,23 +369,24 @@ public class ExtractionRunner {
             if (classifiedGoal.role() != GoalRole.KNOWLEDGE || classifiedGoal.parentSkill() == null) {
                 continue;
             }
-            LearningGoal knowledge = persistedGoals.get(classifiedGoal.extracted());
-            LearningGoal skill = persistedGoals.get(classifiedGoal.parentSkill());
-            if (knowledge != null && skill != null) {
-                linkContributors(List.of(knowledge), skill);
+            PlacedGoal knowledge = persistedGoals.get(classifiedGoal.extracted());
+            PlacedGoal skill = persistedGoals.get(classifiedGoal.parentSkill());
+            if (knowledge != null && skill != null && !knowledge.id().equals(skill.id())) {
+                goalApi.relate(knowledge.id(), skill.id(), RelationshipType.CONTRIBUTES_TO.name(), 1.0,
+                        RelationshipOrigin.HIERARCHY.name());
             }
         }
 
         // Drop units the outline detected but the extraction routed no goals to (e.g. a session with
         // no extractable outcomes). Without this the tree carries empty phantom sections.
-        pruneEmptyUnits(course);
+        pruneEmptyUnits(course.id());
 
         return new ExtractionStageSummary(documents.size(), goalsCreated, textSources, figureSources,
                 unsupportedSources, courseLanguageName, promptVersion);
     }
 
     /** Runs one extraction call per unit; every unit is within the direct path by construction. */
-    private List<SessionExtraction<HierarchyNode>> extractSessions(Course course,
+    private List<SessionExtraction<HierarchyNode>> extractSessions(CourseContext course,
                                                                    List<SessionUnit<HierarchyNode>> sessions,
                                                                    String dominantLanguage, String modelOverride,
                                                                    ExtractionProgressTracker.Run run) {
@@ -437,69 +437,46 @@ public class ExtractionRunner {
      * Deletes SESSION/EXERCISE units that ended up with no goals. Only leaf units are removed and only when no goal
      * references them, so nothing is orphaned; the MODULE root is always kept as the tree's anchor.
      */
-    private int pruneEmptyUnits(Course course) {
+    private int pruneEmptyUnits(UUID courseId) {
         if (keepEmptyUnits) {
             // A unit that returned no skill is a finding, not debris: whether a lecture teaches any
             // performance at all is what the APPLY-or-above contract is being measured on, and a
             // pruned node cannot be told apart from one that was never uploaded.
-            log.info("Keeping empty units in course {} (hestia.extraction.keep-empty-units)",
-                    course.getId());
+            log.info("Keeping empty units in course {} (hestia.extraction.keep-empty-units)", courseId);
             return 0;
         }
-        Set<Long> nodesWithGoals = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
-                .map(g -> g.getHierarchyNode().getId())
+        Set<Long> nodesWithGoals = goals.list(courseId).stream()
+                .map(PlacedGoal::hierarchyNode)
+                .filter(java.util.Objects::nonNull)
+                .map(HierarchyNode::getId)
                 .collect(Collectors.toSet());
-        List<HierarchyNode> empty = hierarchyNodeRepository.findByCourseId(course.getId()).stream()
+        List<HierarchyNode> empty = hierarchyNodeRepository.findByCourseId(courseId).stream()
                 .filter(n -> n.getLevel() != HierarchyLevel.MODULE)
                 .filter(n -> !nodesWithGoals.contains(n.getId()))
                 .toList();
         if (!empty.isEmpty()) {
             hierarchyNodeRepository.deleteAll(empty);
-            log.info("Pruned {} empty unit(s) from course {}", empty.size(), course.getId());
+            log.info("Pruned {} empty unit(s) from course {}", empty.size(), courseId);
         }
         return empty.size();
-    }
-
-    /** Materializes the extraction's own knowledge to skill edges, skipping edges that already exist. */
-    private void linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
-        for (LearningGoal source : supporters) {
-            if (source.getId().equals(targetGoal.getId())) {
-                continue;
-            }
-            if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
-                    source.getId(), targetGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
-                continue;
-            }
-            goalRelationshipRepository.save(new GoalRelationship(
-                    source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        }
     }
 
     /**
      * Clears every artefact owned by a previous full extraction while leaving uploaded documents in place.
      * The Topic tree is cleared first through the same path as the standalone tree rebuild; the
-     * remaining extracted goals then lose their sources, candidates, relationships and module hierarchy.
+     * extracted goals are then removed (with their sources, placements and relationships) and the
+     * module hierarchy deleted.
      */
-    private void clearExtractionArtifacts(Course course) {
-        List<LearningGoal> extracted = goalRepository.findByCourseIdAndOriginIn(
-                course.getId(), List.of(GoalOrigin.EXTRACTED));
-        List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getId)
+    private void clearExtractionArtifacts(UUID courseId) {
+        topicTrees.clearTree(courseId);
+
+        List<UUID> extractedIds = goals.list(courseId).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
+                .map(PlacedGoal::id)
                 .toList();
-        Set<Long> extractedIds = extracted.stream().map(LearningGoal::getId).collect(Collectors.toSet());
+        goals.removeAll(extractedIds);
 
-        topicTrees.clearTree(course);
-
-        if (!extracted.isEmpty()) {
-            List<GoalSource> sources = goalSourceRepository.findByGoalIdIn(extractedIds);
-            goalSourceRepository.deleteAll(sources);
-            goalSourceRepository.flush();
-            topicTrees.clearRelationshipsForGoals(courseGoalIds, extractedIds, false);
-            goalRepository.deleteAll(extracted);
-            goalRepository.flush();
-        }
-
-        List<HierarchyNode> moduleHierarchy = hierarchyNodeRepository.findByCourseId(course.getId()).stream()
+        List<HierarchyNode> moduleHierarchy = hierarchyNodeRepository.findByCourseId(courseId).stream()
                 .filter(node -> node.getLevel() == HierarchyLevel.MODULE
                         || node.getLevel() == HierarchyLevel.SESSION
                         || node.getLevel() == HierarchyLevel.EXERCISE)
@@ -543,7 +520,7 @@ public class ExtractionRunner {
      * several, which is why unit and session are not the same thing: the windows below all belong to
      * the one session node their section created, and the split is invisible to the reader.
      */
-    private List<Unit> buildUnits(Course course, HierarchyNode moduleRoot, Document document) {
+    private List<Unit> buildUnits(CourseContext course, HierarchyNode moduleRoot, Document document) {
         String text = document.getRawText();
         if (text == null || text.isBlank()) {
             return List.of();
@@ -553,13 +530,13 @@ public class ExtractionRunner {
             int start = Math.max(0, Math.min(s.getStartOffset(), text.length()));
             int end = Math.max(start, Math.min(s.getEndOffset(), text.length()));
             HierarchyNode node =
-                    new HierarchyNode(course, moduleRoot, levelFor(document, s.getTitle()), s.getTitle(), document);
+                    new HierarchyNode(course.id(), moduleRoot, levelFor(document, s.getTitle()), s.getTitle(), document);
             unitExtractor.windows(node.getLabel(), document, text, start, end, s.getStartPage(), s.getEndPage())
                     .forEach(window -> units.add(new Unit(node, window)));
         }
         if (units.isEmpty()) {
             HierarchyNode node = new HierarchyNode(
-                    course, moduleRoot, levelFor(document, document.getFilename()), document.getFilename(), document);
+                    course.id(), moduleRoot, levelFor(document, document.getFilename()), document.getFilename(), document);
             int pageCount = document.getPageOffsets() == null ? 0 : document.getPageOffsets().length - 1;
             unitExtractor.windows(node.getLabel(), document, text, 0, text.length(), pageCount > 0 ? 1 : null,
                             pageCount > 0 ? pageCount : null)

@@ -20,8 +20,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.TestEdge;
+import de.tum.cit.hestia.materials.TestGoal;
+import de.tum.cit.hestia.materials.TestGoalRepository;
+import java.util.UUID;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.GoalStatus;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContent;
 import de.tum.cit.hestia.materials.document.DocumentContentRepository;
@@ -69,16 +75,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
     private MockMvc mockMvc;
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private DocumentRepository documentRepository;
 
     @Autowired
     private DocumentContentRepository documentContentRepository;
 
-    @Autowired
-    private LearningGoalRepository goalRepository;
+    private final TestGoalRepository goalRepository = new TestGoalRepository();
 
     @Autowired
     private GoalSourceRepository goalSourceRepository;
@@ -89,8 +91,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
     @Autowired
     private HierarchyNodeRepository hierarchyRepository;
 
-    @Autowired
-    private GoalRelationshipRepository goalRelationshipRepository;
+    private final TestGoalRepository.Edges goalRelationshipRepository = new TestGoalRepository.Edges();
 
     @MockitoBean
     private TaxonomyService taxonomyService;
@@ -100,18 +101,18 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void returnsPaginatedGoalsWithKindAndSources() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise"));
         documentContentRepository.save(new DocumentContent(lecture, new byte[]{1, 2, 3}));
 
-        LearningGoal tdd = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
-        LearningGoal refactor = goalRepository.save(new LearningGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
-        goalSourceRepository.save(new GoalSource(tdd, lecture, "...failing test first..."));
-        goalSourceRepository.save(new GoalSource(tdd, exercise, "...red-green-refactor..."));
-        goalSourceRepository.save(new GoalSource(refactor, lecture, "...small steps..."));
+        TestGoal tdd = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        TestGoal refactor = goalRepository.save(new TestGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
+        goalSourceRepository.save(new GoalSource(tdd.getId(), lecture, "...failing test first..."));
+        goalSourceRepository.save(new GoalSource(tdd.getId(), exercise, "...red-green-refactor..."));
+        goalSourceRepository.save(new GoalSource(refactor.getId(), lecture, "...small steps..."));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(2))
@@ -137,14 +138,14 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void joinsFigureDescriptionIntoFigureSourceResponse() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Figure source API"));
+        UUID course = TestTenant.course("Figure source API");
         Document document = documentRepository.save(new Document(
                 course, "figures.pdf", "application/pdf", "text"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Explain the diagram.", GoalKind.IMPLICIT));
-        goalSourceRepository.save(GoalSource.figure(goal, document, 3));
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Explain the diagram.", GoalKind.IMPLICIT));
+        goalSourceRepository.save(GoalSource.figure(goal.getId(), document, 3));
         pageDescriptionRepository.save(new PageDescription(document, 3, "A diagram shows the data flow.", "vision"));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId()).param("size", "10"))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course).param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].sources[0].evidenceKind").value("FIGURE"))
                 .andExpect(jsonPath("$.content[0].sources[0].page").value(3))
@@ -155,43 +156,43 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void exposesHierarchyTaxonomyAndRelationshipsInJson() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
                 new HierarchyNode(course, module, HierarchyLevel.SESSION, "Session 3: Testing"));
 
-        LearningGoal tdd = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        TestGoal tdd = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         tdd.setHierarchyNode(session);
         tdd.setBloomLevel(BloomLevel.APPLY);
         tdd.setSoloLevel(SoloLevel.RELATIONAL);
         tdd = goalRepository.save(tdd);
 
-        LearningGoal unitTests = goalRepository.save(
-                new LearningGoal(course, "Understand unit testing.", GoalKind.EXPLICIT));
+        TestGoal unitTests = goalRepository.save(
+                new TestGoal(course, "Understand unit testing.", GoalKind.EXPLICIT));
 
         // tdd PREREQUISITE_OF nothing here, but unitTests CONTRIBUTES_TO tdd and OVERLAPS_WITH it;
         // assert grouping order CONTRIBUTES_TO before OVERLAPS_WITH within the same source goal.
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 unitTests, tdd, RelationshipType.OVERLAPS_WITH, 0.85, RelationshipOrigin.EMBEDDING));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 unitTests, tdd, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].text").value("Apply TDD."))
                 .andExpect(jsonPath("$.content[0].hierarchy.module").value("Software Engineering"))
                 .andExpect(jsonPath("$.content[0].hierarchy.session").value("Session 3: Testing"))
-                .andExpect(jsonPath("$.content[0].hierarchy.sessionId").value(session.getId().intValue()))
+                .andExpect(jsonPath("$.content[0].hierarchy.sessionId").value(session.getId().toString()))
                 .andExpect(jsonPath("$.content[0].hierarchy.exercise").doesNotExist())
                 .andExpect(jsonPath("$.content[0].bloomLevel").value("APPLY"))
                 .andExpect(jsonPath("$.content[0].soloLevel").value("RELATIONAL"))
                 .andExpect(jsonPath("$.content[1].text").value("Understand unit testing."))
                 .andExpect(jsonPath("$.content[1].relationships", Matchers.hasSize(2)))
                 .andExpect(jsonPath("$.content[1].relationships[0].type").value("CONTRIBUTES_TO"))
-                .andExpect(jsonPath("$.content[1].relationships[0].targetGoalId").value(tdd.getId().intValue()))
+                .andExpect(jsonPath("$.content[1].relationships[0].targetGoalId").value(tdd.getId().toString()))
                 .andExpect(jsonPath("$.content[1].relationships[0].targetText").value("Apply TDD."))
                 .andExpect(jsonPath("$.content[1].relationships[0].origin").value("HIERARCHY"))
                 .andExpect(jsonPath("$.content[1].relationships[1].type").value("OVERLAPS_WITH"));
@@ -199,12 +200,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void honoursPageSizeAndPageNumber() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Databases"));
+        UUID course = TestTenant.course("Databases");
         for (int i = 0; i < 5; i++) {
-            goalRepository.save(new LearningGoal(course, "Goal " + i, GoalKind.EXPLICIT));
+            goalRepository.save(new TestGoal(course, "Goal " + i, GoalKind.EXPLICIT));
         }
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("page", "1")
                         .param("size", "2"))
                 .andExpect(status().isOk())
@@ -212,25 +213,25 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.page.number").value(1))
                 .andExpect(jsonPath("$.page.size").value(2))
                 .andExpect(jsonPath("$.content", Matchers.hasSize(2)))
-                .andExpect(jsonPath("$.content[0].text").value("Goal 2"))
-                .andExpect(jsonPath("$.content[1].text").value("Goal 3"));
+                // Goals saved in one transaction share a creation time, so only the page shape is fixed.
+                .andExpect(jsonPath("$.content[0].text").value(Matchers.startsWith("Goal ")));
     }
 
     @Test
     void filtersByStatus() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal approved = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal approved = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         approved.setStatus(GoalStatus.APPROVED);
         goalRepository.save(approved);
-        goalRepository.save(new LearningGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
+        goalRepository.save(new TestGoal(course, "Value refactoring.", GoalKind.IMPLICIT));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("status", "APPROVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].text").value("Apply TDD."));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("status", "PENDING"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
@@ -239,22 +240,22 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void filtersByRoleWithoutChangingTheDefaultList() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Role filter"));
-        LearningGoal skill = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        UUID course = TestTenant.course("Role filter");
+        TestGoal skill = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         skill.setRole(GoalRole.SKILL);
         goalRepository.save(skill);
-        LearningGoal knowledge = new LearningGoal(course, "Explain tests.", GoalKind.EXPLICIT);
+        TestGoal knowledge = new TestGoal(course, "Explain tests.", GoalKind.EXPLICIT);
         knowledge.setRole(GoalRole.KNOWLEDGE);
         goalRepository.save(knowledge);
-        goalRepository.save(new LearningGoal(course, "Legacy goal.", GoalKind.IMPLICIT));
+        goalRepository.save(new TestGoal(course, "Legacy goal.", GoalKind.IMPLICIT));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course)
                         .param("role", "KNOWLEDGE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].role").value("KNOWLEDGE"));
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course)
                         .param("role", "SKILL"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].goals[0].role").value("SKILL"));
@@ -262,34 +263,34 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listsGoalsGroupedBySession() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
                 new HierarchyNode(course, module, HierarchyLevel.SESSION, "Session 3: Testing"));
 
-        LearningGoal moduleGoal = new LearningGoal(course, "Engineer software.", GoalKind.IMPLICIT);
+        TestGoal moduleGoal = new TestGoal(course, "Engineer software.", GoalKind.IMPLICIT);
         moduleGoal.setHierarchyNode(module);
         goalRepository.save(moduleGoal);
-        LearningGoal tdd = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        TestGoal tdd = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         tdd.setHierarchyNode(session);
         tdd.setStatus(GoalStatus.APPROVED);
         goalRepository.save(tdd);
-        LearningGoal refactor = new LearningGoal(course, "Value refactoring.", GoalKind.EXPLICIT);
+        TestGoal refactor = new TestGoal(course, "Value refactoring.", GoalKind.EXPLICIT);
         refactor.setHierarchyNode(session);
         goalRepository.save(refactor);
-        goalRepository.save(new LearningGoal(course, "Unlinked.", GoalKind.IMPLICIT));
+        goalRepository.save(new TestGoal(course, "Unlinked.", GoalKind.IMPLICIT));
 
         // groups follow node creation order (module root first), the node-less bucket comes last
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(3)))
-                .andExpect(jsonPath("$[0].nodeId").value(module.getId().intValue()))
+                .andExpect(jsonPath("$[0].nodeId").value(module.getId().toString()))
                 .andExpect(jsonPath("$[0].level").value("MODULE"))
                 .andExpect(jsonPath("$[0].label").value("Software Engineering"))
                 .andExpect(jsonPath("$[0].goals[0].text").value("Engineer software."))
-                .andExpect(jsonPath("$[1].nodeId").value(session.getId().intValue()))
+                .andExpect(jsonPath("$[1].nodeId").value(session.getId().toString()))
                 .andExpect(jsonPath("$[1].level").value("SESSION"))
                 .andExpect(jsonPath("$[1].label").value("Session 3: Testing"))
                 .andExpect(jsonPath("$[1].goals", Matchers.hasSize(2)))
@@ -300,7 +301,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$[2].goals[0].text").value("Unlinked."));
 
         // the status filter drops empty groups entirely
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course)
                         .param("status", "APPROVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
@@ -311,31 +312,31 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listBySessionFiltersToSingleNode() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
         HierarchyNode session = hierarchyRepository.save(
                 new HierarchyNode(course, module, HierarchyLevel.SESSION, "Session 3: Testing"));
 
-        LearningGoal moduleGoal = new LearningGoal(course, "Engineer software.", GoalKind.IMPLICIT);
+        TestGoal moduleGoal = new TestGoal(course, "Engineer software.", GoalKind.IMPLICIT);
         moduleGoal.setHierarchyNode(module);
         goalRepository.save(moduleGoal);
-        LearningGoal tdd = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        TestGoal tdd = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         tdd.setHierarchyNode(session);
         goalRepository.save(tdd);
-        goalRepository.save(new LearningGoal(course, "Unlinked.", GoalKind.IMPLICIT));
+        goalRepository.save(new TestGoal(course, "Unlinked.", GoalKind.IMPLICIT));
 
         // nodeId narrows to exactly that node's group, dropping the other node and the node-less bucket
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course)
                         .param("nodeId", session.getId().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
-                .andExpect(jsonPath("$[0].nodeId").value(session.getId().intValue()))
+                .andExpect(jsonPath("$[0].nodeId").value(session.getId().toString()))
                 .andExpect(jsonPath("$[0].goals", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].goals[0].text").value("Apply TDD."));
 
         // an unknown nodeId yields an empty list rather than an error
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course.getId())
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", course)
                         .param("nodeId", "999999"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", Matchers.hasSize(0)));
@@ -343,27 +344,28 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listBySessionUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void unknownCourseErrorBodyHasCodeAndMessage() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
+        UUID missing = UUID.randomUUID();
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", missing))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
-                .andExpect(jsonPath("$.message").value(Matchers.containsString("999999")));
+                .andExpect(jsonPath("$.message").isNotEmpty());
     }
 
     @Test
     void unknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void exportCsvReturnsAllGoalsWithHierarchyAndSources() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise"));
 
@@ -374,28 +376,28 @@ class LearningGoalControllerTest extends MaterialsTestBase {
         HierarchyNode exerciseNode = hierarchyRepository.save(
                 new HierarchyNode(course, session, HierarchyLevel.EXERCISE, "Exercise 3.2: TDD Kata"));
 
-        LearningGoal sessionGoal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        TestGoal sessionGoal = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         sessionGoal.setHierarchyNode(session);
         sessionGoal = goalRepository.save(sessionGoal);
-        LearningGoal exerciseGoal = new LearningGoal(course, "Practise the kata.", GoalKind.EXPLICIT);
+        TestGoal exerciseGoal = new TestGoal(course, "Practise the kata.", GoalKind.EXPLICIT);
         exerciseGoal.setHierarchyNode(exerciseNode);
         exerciseGoal = goalRepository.save(exerciseGoal);
-        LearningGoal orphan = goalRepository.save(new LearningGoal(course, "Unlinked.", GoalKind.IMPLICIT));
+        TestGoal orphan = goalRepository.save(new TestGoal(course, "Unlinked.", GoalKind.IMPLICIT));
 
-        goalSourceRepository.save(new GoalSource(sessionGoal, lecture, "snippet a"));
-        goalSourceRepository.save(new GoalSource(sessionGoal, exercise, "snippet b"));
-        goalSourceRepository.save(new GoalSource(exerciseGoal, exercise, "snippet c"));
-        LearningGoal topic = new LearningGoal(course, "Testing", GoalKind.IMPLICIT);
+        goalSourceRepository.save(new GoalSource(sessionGoal.getId(), lecture, "snippet a"));
+        goalSourceRepository.save(new GoalSource(sessionGoal.getId(), exercise, "snippet b"));
+        goalSourceRepository.save(new GoalSource(exerciseGoal.getId(), exercise, "snippet c"));
+        TestGoal topic = new TestGoal(course, "Testing", GoalKind.IMPLICIT);
         topic.setOrigin(GoalOrigin.TERMINAL);
         topic = goalRepository.save(topic);
-        goalRelationshipRepository.save(new GoalRelationship(sessionGoal, topic, RelationshipType.CONTRIBUTES_TO,
+        goalRelationshipRepository.save(new TestEdge(sessionGoal, topic, RelationshipType.CONTRIBUTES_TO,
                 1.0, RelationshipOrigin.SYNTHESIS));
 
-        String csv = mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", course.getId()))
+        String csv = mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", course))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(header().string("Content-Disposition",
-                        Matchers.containsString("course-" + course.getId() + "-learning-goals.csv")))
+                        Matchers.containsString("course-" + course + "-learning-goals.csv")))
                 .andReturn().getResponse().getContentAsString();
 
         String[] lines = csv.split("\\r?\\n");
@@ -416,18 +418,18 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void exportCsvUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void patchUpdatesText() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setShortLabel("Test-Driven Development");
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  Apply test-driven development.  \"}"))
                 .andExpect(status().isOk())
@@ -435,29 +437,29 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.shortLabel").doesNotExist())
                 .andExpect(jsonPath("$.status").value("PENDING"));
 
-        LearningGoal reloaded = goalRepository.findById(goal.getId()).orElseThrow();
+        TestGoal reloaded = goalRepository.findById(goal.getId()).orElseThrow();
         assertThat(reloaded.getText()).isEqualTo("Apply test-driven development.");
         assertThat(reloaded.getShortLabel()).isNull();
     }
 
     @Test
     void patchKeepsGeneratedWordingOnFirstRenameOnly() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originalText").doesNotExist());
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.originalText").value("Apply TDD."));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Practise test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -467,12 +469,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchKeepsNoOriginalForInstructorCreatedGoal() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -481,10 +483,10 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchApprovesAndUnapprovesGoal() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isOk())
@@ -492,7 +494,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 // status-only updates keep the text untouched
                 .andExpect(jsonPath("$.text").value("Apply TDD."));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"PENDING\"}"))
                 .andExpect(status().isOk())
@@ -501,12 +503,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchUpdatesTaxonomyLevels() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
         goal.setBloomLevel(BloomLevel.UNDERSTAND);
         goal = goalRepository.save(goal);
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"bloomLevel\": \"APPLY\", \"soloLevel\": \"RELATIONAL\"}"))
                 .andExpect(status().isOk())
@@ -516,7 +518,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.text").value("Apply TDD."));
 
         // a text-only update keeps the levels untouched
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Apply test-driven development.\"}"))
                 .andExpect(status().isOk())
@@ -526,10 +528,10 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -537,11 +539,11 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void patchGoalFromOtherCourseReturns404() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        Course other = courseRepository.save(TestTenant.course("Databases"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Software Engineering");
+        UUID other = TestTenant.course("Databases");
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other, goal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"APPROVED\"}"))
                 .andExpect(status().isNotFound());
@@ -549,22 +551,22 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deleteRemovesGoalWithSourcesAndRelationships() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture"));
-        LearningGoal tdd = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
-        LearningGoal unitTests = goalRepository.save(
-                new LearningGoal(course, "Understand unit testing.", GoalKind.EXPLICIT));
-        goalSourceRepository.save(new GoalSource(tdd, lecture, "...failing test first..."));
+        TestGoal tdd = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        TestGoal unitTests = goalRepository.save(
+                new TestGoal(course, "Understand unit testing.", GoalKind.EXPLICIT));
+        goalSourceRepository.save(new GoalSource(tdd.getId(), lecture, "...failing test first..."));
         // SUPPORTS is not a tree edge, so the supporting goal is not beneath the deleted one and survives.
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 unitTests, tdd, RelationshipType.SUPPORTS, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), tdd.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, tdd.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(tdd.getId())).isEmpty();
         // the surviving goal no longer reports a relationship to the deleted one
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.content[0].relationships", Matchers.hasSize(0)));
@@ -572,11 +574,11 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deleteGoalFromOtherCourseReturns404() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        Course other = courseRepository.save(TestTenant.course("Databases"));
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Software Engineering");
+        UUID other = TestTenant.course("Databases");
+        TestGoal goal = goalRepository.save(new TestGoal(course, "Apply TDD.", GoalKind.EXPLICIT));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other.getId(), goal.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", other, goal.getId()))
                 .andExpect(status().isNotFound());
 
         assertThat(goalRepository.findById(goal.getId())).isPresent();
@@ -584,9 +586,9 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillPersistsUserCreatedTerminalUnderCompetencyRoot() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  Design a REST API.  \"}"))
                 .andExpect(status().isCreated())
@@ -598,12 +600,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.hierarchy").exists());
 
         // a second skill reuses the same lazily created COMPETENCY root instead of creating another
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Secure a web application.\"}"))
                 .andExpect(status().isCreated());
 
-        assertThat(hierarchyRepository.findByCourseId(course.getId()).stream()
+        assertThat(hierarchyRepository.findByCourseId(course).stream()
                 .filter(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
                 .count()).isEqualTo(1);
     }
@@ -611,31 +613,31 @@ class LearningGoalControllerTest extends MaterialsTestBase {
     /** Adding a topic by hand stays manual: nothing is generated beneath it. */
     @Test
     void manualTopicCreationGeneratesNothingBeneathIt() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.origin").value("TERMINAL"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
 
-        assertThat(goalRepository.findByCourseId(course.getId())).singleElement()
+        assertThat(goalRepository.findByCourseId(course)).singleElement()
                 .satisfies(goal -> {
                     assertThat(goal.getText()).isEqualTo("Automate secure deployments.");
                     assertThat(goal.getCreationProvenance()).isEqualTo(GoalCreationProvenance.USER_CREATED);
                 });
         assertThat(goalRelationshipRepository.findBySourceIdIn(
-                goalRepository.findByCourseId(course.getId()).stream().map(LearningGoal::getId).toList()))
+                goalRepository.findByCourseId(course).stream().map(TestGoal::getId).toList()))
                 .isEmpty();
         verifyNoInteractions(subtreeSynthesizer);
     }
 
     @Test
     void createTerminalSkillLeavesTaxonomyLevelsUnset() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isCreated())
@@ -648,9 +650,9 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -658,14 +660,14 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  design a rest api.  \"}"))
                 .andExpect(status().isConflict());
@@ -673,7 +675,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", 999999L)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isNotFound());
@@ -681,7 +683,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatingATopicCallsTheModelsWithoutHoldingATransaction() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
             inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
@@ -693,19 +695,19 @@ class LearningGoalControllerTest extends MaterialsTestBase {
             return List.of();
         });
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andExpect(status().isCreated());
 
         // A model call can take minutes; it must not pin a database connection meanwhile.
         assertThat(inTransaction).containsExactly(false, false);
-        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(4);
+        assertThat(goalRepository.findByCourseId(course)).hasSize(4);
     }
 
     @Test
     void twoRequestsGeneratingTheSameTopicAtOnceCreateItOnce() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         CountDownLatch bothGenerating = new CountDownLatch(2);
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any())).thenAnswer(inv -> {
             // Both requests pass the duplicate check before either stores its topic.
@@ -716,7 +718,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
         });
         when(taxonomyService.classifyBatch(anyList(), any())).thenReturn(List.of());
         Callable<Integer> request = () -> mockMvc.perform(
-                        post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+                        post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"text\": \"Automate secure deployments.\"}"))
                 .andReturn().getResponse().getStatus();
@@ -730,13 +732,13 @@ class LearningGoalControllerTest extends MaterialsTestBase {
         } finally {
             pool.shutdownNow();
         }
-        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.TERMINAL)))
+        assertThat(goalRepository.findByCourseIdAndOriginIn(course, List.of(GoalOrigin.TERMINAL)))
                 .hasSize(1);
     }
 
     @Test
     void generatedTerminalSkillPersistsFullSubtreeAndHierarchyEdges() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         GeneratedSubtree subtree = new GeneratedSubtree(List.of(
                 new GeneratedSkill("Automate the release process", "Automate releases", List.of(
                         new GeneratedSubSkill("Configure deployment pipelines.", "Deployment Pipelines",
@@ -753,7 +755,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL),
                 new TaxonomyClassification(BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL)));
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\","
                                 + "\"shortLabel\": \"Secure Deployment Automation\"}"))
@@ -762,7 +764,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.origin").value("TERMINAL"))
                 .andExpect(jsonPath("$.creationProvenance").value("WIZARD_AI_SUBTREE"));
 
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
+        List<TestGoal> goals = goalRepository.findByCourseId(course);
         assertThat(goals).hasSize(6);
         assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.TERMINAL)
                 .singleElement()
@@ -773,17 +775,17 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                         .isEqualTo(GoalCreationProvenance.WIZARD_AI_SUBTREE));
         // Every generated node states its tier: skills and sub-skills are SKILL, knowledge is KNOWLEDGE.
         assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.SYNTHESIZED)
-                .extracting(LearningGoal::getText, LearningGoal::getRole)
+                .extracting(TestGoal::getText, TestGoal::getRole)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("Automate the release process", GoalRole.SKILL),
                         org.assertj.core.groups.Tuple.tuple("Configure deployment pipelines.", GoalRole.SKILL),
                         org.assertj.core.groups.Tuple.tuple("Explain pipeline stages.", GoalRole.KNOWLEDGE),
                         org.assertj.core.groups.Tuple.tuple("Automate release checks.", GoalRole.SKILL),
                         org.assertj.core.groups.Tuple.tuple("Identify release criteria.", GoalRole.KNOWLEDGE));
-        Map<String, Long> idByText = goals.stream()
-                .collect(Collectors.toMap(LearningGoal::getText, LearningGoal::getId));
-        List<GoalRelationship> relationships = goalRelationshipRepository.findBySourceIdIn(
-                goals.stream().map(LearningGoal::getId).toList());
+        Map<String, UUID> idByText = goals.stream()
+                .collect(Collectors.toMap(TestGoal::getText, TestGoal::getId));
+        List<TestEdge> relationships = goalRelationshipRepository.findBySourceIdIn(
+                goals.stream().map(TestGoal::getId).toList());
         assertThat(relationships).hasSize(5);
         assertThat(relationships)
                 .extracting(relationship -> relationship.getSource().getId(),
@@ -820,9 +822,9 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillBlankTextReturns400() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -830,12 +832,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillRejectsDuplicateIgnoringCaseAndWhitespace() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal existing = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal existing = new TestGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         existing.setOrigin(GoalOrigin.TERMINAL);
         goalRepository.save(existing);
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"  automate SECURE deployments.  \"}"))
                 .andExpect(status().isConflict());
@@ -843,18 +845,18 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void generatedTerminalSkillPersistsWhenClassificationFails() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         when(subtreeSynthesizer.generateSubtree(anyString(), anyString(), any()))
                 .thenReturn(subtree("Run deployments", "Configure deployments.", "Explain deployment stages."));
         when(taxonomyService.classifyBatch(anyList(), any()))
                 .thenThrow(new IllegalStateException("taxonomy unavailable"));
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal/generated", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate deployments.\"}"))
                 .andExpect(status().isCreated());
 
-        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(4)
+        assertThat(goalRepository.findByCourseId(course)).hasSize(4)
                 .allSatisfy(goal -> {
                     assertThat(goal.getBloomLevel()).isNull();
                     assertThat(goal.getSoloLevel()).isNull();
@@ -863,12 +865,12 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildToTerminal() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), terminal.getId())
+                        course, terminal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Review deployment risks.\","
                                 + "\"shortLabel\": \"Deployment Risks\"}"))
@@ -884,7 +886,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.soloLevel").doesNotExist());
         verify(taxonomyService, never()).classify(any());
 
-        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+        TestGoal child = goalRepository.findByCourseId(course).stream()
                 .filter(goal -> "Review deployment risks.".equals(goal.getText()))
                 .findFirst()
                 .orElseThrow();
@@ -896,25 +898,25 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualChildToSubSkill() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
-        LearningGoal subSkill = goalRepository.saveAndFlush(
+        TestGoal subSkill = goalRepository.saveAndFlush(
                 generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
         // A sub-skill is tier 2 by virtue of contributing to a terminal, which is what makes it
         // eligible to take knowledge children.
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), subSkill.getId())
+                        course, subSkill.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Explain pipeline stages.\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.origin").value("SYNTHESIZED"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
 
-        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+        TestGoal child = goalRepository.findByCourseId(course).stream()
                 .filter(goal -> "Explain pipeline stages.".equals(goal.getText()))
                 .findFirst()
                 .orElseThrow();
@@ -925,45 +927,45 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void acceptsSixthManualSkillUnderTopic() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.USER_CREATED));
         for (int index = 1; index <= 5; index++) {
-            LearningGoal child = goalRepository.saveAndFlush(
+            TestGoal child = goalRepository.saveAndFlush(
                     generatedGoal(course, "Sub-skill " + index + ".", GoalOrigin.SYNTHESIZED));
-            goalRelationshipRepository.save(new GoalRelationship(
+            goalRelationshipRepository.save(new TestEdge(
                     child, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
         }
         goalRelationshipRepository.flush();
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), terminal.getId())
+                        course, terminal.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"A sixth skill.\", \"role\": \"SKILL\"}"))
                 .andExpect(status().isCreated());
 
-        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(7);
+        assertThat(goalRepository.findByCourseId(course)).hasSize(7);
     }
 
     @Test
     void addsManualChildToExtractedGoal() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
-        LearningGoal extracted = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        TestGoal extracted = goalRepository.saveAndFlush(
+                new TestGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), extracted.getId())
+                        course, extracted.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Identify release criteria.\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.origin").value("SYNTHESIZED"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
 
-        LearningGoal child = goalRepository.findByCourseId(course.getId()).stream()
+        TestGoal child = goalRepository.findByCourseId(course).stream()
                 .filter(goal -> "Identify release criteria.".equals(goal.getText()))
                 .findFirst()
                 .orElseThrow();
@@ -974,36 +976,36 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsManualChildUnderKnowledge() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal terminal = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal terminal = goalRepository.saveAndFlush(terminalGoal(
                 course, "Automate secure deployments.", GoalCreationProvenance.WIZARD_AI_SUBTREE));
-        LearningGoal subSkill = goalRepository.saveAndFlush(
+        TestGoal subSkill = goalRepository.saveAndFlush(
                 generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
-        LearningGoal knowledge = goalRepository.saveAndFlush(
+        TestGoal knowledge = goalRepository.saveAndFlush(
                 generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         // Knowledge takes no children, so a child here would never render in any view.
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), knowledge.getId())
+                        course, knowledge.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Name the stage order.\"}"))
                 .andExpect(status().isConflict());
 
-        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(3);
+        assertThat(goalRepository.findByCourseId(course)).hasSize(3);
     }
 
     @Test
     void addsManualChildWithTheRoleItWasAddedAs() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.USER_CREATED));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), topic.getId())
+                        course, topic.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Automate secure deployments.\", \"role\": \"SKILL\"}"))
                 .andExpect(status().isCreated())
@@ -1012,23 +1014,23 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void addsManualKnowledgeToSubSkillBeneathASkill() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.WIZARD_AI_SUBTREE));
-        LearningGoal skill = generatedGoal(course, "Automate secure deployments.", GoalOrigin.SYNTHESIZED);
+        TestGoal skill = generatedGoal(course, "Automate secure deployments.", GoalOrigin.SYNTHESIZED);
         skill.setRole(GoalRole.SKILL);
         goalRepository.saveAndFlush(skill);
-        LearningGoal subSkill = generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED);
+        TestGoal subSkill = generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED);
         subSkill.setRole(GoalRole.SKILL);
         goalRepository.saveAndFlush(subSkill);
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         // The sub-skill sits two tiers below the topic, which the three-tier rule used to refuse.
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), subSkill.getId())
+                        course, subSkill.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Explain pipeline stages.\", \"role\": \"KNOWLEDGE\"}"))
                 .andExpect(status().isCreated())
@@ -1039,52 +1041,52 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsManualChildUnderKnowledgeDirectlyBeneathATopic() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(
                 course, "Deployment automation", GoalCreationProvenance.WIZARD_AI_SUBTREE));
-        LearningGoal knowledge = generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED);
+        TestGoal knowledge = generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED);
         knowledge.setRole(GoalRole.KNOWLEDGE);
         goalRepository.saveAndFlush(knowledge);
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 knowledge, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}/children",
-                        course.getId(), knowledge.getId())
+                        course, knowledge.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Name the stage order.\"}"))
                 .andExpect(status().isConflict());
 
-        assertThat(goalRepository.findByCourseId(course.getId())).hasSize(2);
+        assertThat(goalRepository.findByCourseId(course)).hasSize(2);
     }
 
     @Test
     void deletingGeneratedTopicRemovesEverythingBeneathIt() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
         HierarchyNode rootNode = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.COMPETENCY, "Terminal Competencies"));
-        LearningGoal terminal = generatedGoal(course, "Automate deployments.", GoalOrigin.TERMINAL);
+        TestGoal terminal = generatedGoal(course, "Automate deployments.", GoalOrigin.TERMINAL);
         terminal.setHierarchyNode(rootNode);
         terminal = goalRepository.save(terminal);
-        LearningGoal subSkill = goalRepository.save(generatedGoal(
+        TestGoal subSkill = goalRepository.save(generatedGoal(
                 course, "Configure deployments.", GoalOrigin.SYNTHESIZED));
-        LearningGoal knowledge = goalRepository.save(generatedGoal(
+        TestGoal knowledge = goalRepository.save(generatedGoal(
                 course, "Explain deployment stages.", GoalOrigin.SYNTHESIZED));
-        LearningGoal manualChild = goalRepository.save(userCreatedGoal(
+        TestGoal manualChild = goalRepository.save(userCreatedGoal(
                 course, "Review deployment risks.", GoalOrigin.SYNTHESIZED));
-        LearningGoal extracted = goalRepository.save(
-                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
-        goalSourceRepository.save(new GoalSource(extracted, lecture, "deployment pipeline evidence"));
-        goalRelationshipRepository.save(new GoalRelationship(
+        TestGoal extracted = goalRepository.save(
+                new TestGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        goalSourceRepository.save(new GoalSource(extracted.getId(), lecture, "deployment pipeline evidence"));
+        goalRelationshipRepository.save(new TestEdge(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 subSkill, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 manualChild, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 extracted, terminal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), terminal.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, terminal.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(terminal.getId())).isEmpty();
@@ -1092,21 +1094,21 @@ class LearningGoalControllerTest extends MaterialsTestBase {
         assertThat(goalRepository.findById(knowledge.getId())).isEmpty();
         assertThat(goalRepository.findById(manualChild.getId())).isEmpty();
         assertThat(goalRepository.findById(extracted.getId())).isEmpty();
-        assertThat(goalSourceRepository.findByGoalId(extracted.getId())).isEmpty();
+        assertThat(goalSourceRepository.findByIdGoalId(extracted.getId())).isEmpty();
         assertThat(goalRelationshipRepository.findBySourceId(extracted.getId())).isEmpty();
     }
 
     @Test
     void deletingSubSkillRemovesOwnedKnowledge() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal subSkill = goalRepository.save(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal subSkill = goalRepository.save(
                 generatedGoal(course, "Configure deployment pipelines.", GoalOrigin.SYNTHESIZED));
-        LearningGoal knowledge = goalRepository.saveAndFlush(
+        TestGoal knowledge = goalRepository.saveAndFlush(
                 generatedGoal(course, "Explain pipeline stages.", GoalOrigin.SYNTHESIZED));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), subSkill.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, subSkill.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(subSkill.getId())).isEmpty();
@@ -1115,56 +1117,56 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingPipelineTopicRemovesItsSkillsAndExtractedGoals() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "evidence"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
-        LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
+        TestGoal skill = new TestGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         skill.setOrigin(GoalOrigin.SYNTHESIZED);
         skill.setRole(GoalRole.SKILL);
         skill = goalRepository.saveAndFlush(skill);
-        LearningGoal subSkill = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
-        LearningGoal knowledge = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
-        LearningGoal directSubSkill = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
-        goalSourceRepository.save(new GoalSource(subSkill, lecture, "deployment pipeline evidence"));
-        goalRelationshipRepository.save(new GoalRelationship(
+        TestGoal subSkill = goalRepository.saveAndFlush(
+                new TestGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        TestGoal knowledge = goalRepository.saveAndFlush(
+                new TestGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
+        TestGoal directSubSkill = goalRepository.saveAndFlush(
+                new TestGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
+        goalSourceRepository.save(new GoalSource(subSkill.getId(), lecture, "deployment pipeline evidence"));
+        goalRelationshipRepository.save(new TestEdge(
                 skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 knowledge, subSkill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 directSubSkill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, topic.getId()))
                 .andExpect(status().isNoContent());
 
-        assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
-        assertThat(goalSourceRepository.findByGoalId(subSkill.getId())).isEmpty();
+        assertThat(goalRepository.findByCourseId(course)).isEmpty();
+        assertThat(goalSourceRepository.findByIdGoalId(subSkill.getId())).isEmpty();
     }
 
     @Test
     void deletingPipelineSkillRemovesItsExtractedSubSkills() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
-        LearningGoal skill = new LearningGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
+        TestGoal skill = new TestGoal(course, "Automate secure deployments.", GoalKind.IMPLICIT);
         skill.setOrigin(GoalOrigin.SYNTHESIZED);
         skill.setRole(GoalRole.SKILL);
         skill = goalRepository.saveAndFlush(skill);
-        LearningGoal subSkill = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
-        LearningGoal sibling = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
-        goalRelationshipRepository.save(new GoalRelationship(
+        TestGoal subSkill = goalRepository.saveAndFlush(
+                new TestGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        TestGoal sibling = goalRepository.saveAndFlush(
+                new TestGoal(course, "Roll back a failed release.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.save(new TestEdge(
                 skill, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 sibling, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 subSkill, skill, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), skill.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, skill.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(topic.getId())).isPresent();
@@ -1175,21 +1177,21 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void deletingKeepsADescendantThatStillContributesElsewhere() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
-        LearningGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
-        LearningGoal otherTopic = goalRepository.saveAndFlush(terminalGoal(course, "Release management", null));
-        LearningGoal shared = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
-        LearningGoal knowledge = goalRepository.saveAndFlush(
-                new LearningGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
-        goalRelationshipRepository.save(new GoalRelationship(
+        UUID course = TestTenant.course("Software Engineering");
+        TestGoal topic = goalRepository.saveAndFlush(terminalGoal(course, "Deployment automation", null));
+        TestGoal otherTopic = goalRepository.saveAndFlush(terminalGoal(course, "Release management", null));
+        TestGoal shared = goalRepository.saveAndFlush(
+                new TestGoal(course, "Configure deployment pipelines.", GoalKind.EXPLICIT));
+        TestGoal knowledge = goalRepository.saveAndFlush(
+                new TestGoal(course, "Explain pipeline stages.", GoalKind.EXPLICIT));
+        goalRelationshipRepository.save(new TestEdge(
                 shared, topic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.save(new GoalRelationship(
+        goalRelationshipRepository.save(new TestEdge(
                 shared, otherTopic, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.SYNTHESIS));
-        goalRelationshipRepository.saveAndFlush(new GoalRelationship(
+        goalRelationshipRepository.saveAndFlush(new TestEdge(
                 knowledge, shared, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
 
-        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course.getId(), topic.getId()))
+        mockMvc.perform(delete("/learninggoalhub/api/courses/{courseId}/learning-goals/{goalId}", course, topic.getId()))
                 .andExpect(status().isNoContent());
 
         assertThat(goalRepository.findById(topic.getId())).isEmpty();
@@ -1206,24 +1208,24 @@ class LearningGoalControllerTest extends MaterialsTestBase {
                 new GeneratedSubSkill(subSkill, null, List.of(new GeneratedKnowledge(knowledge, null)))))));
     }
 
-    private LearningGoal generatedGoal(Course course, String text, GoalOrigin origin) {
-        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+    private TestGoal generatedGoal(UUID course, String text, GoalOrigin origin) {
+        TestGoal goal = new TestGoal(course, text, GoalKind.IMPLICIT);
         goal.setOrigin(origin);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.WIZARD_AI_SUBTREE);
         return goal;
     }
 
-    private LearningGoal terminalGoal(Course course, String text, GoalCreationProvenance provenance) {
-        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+    private TestGoal terminalGoal(UUID course, String text, GoalCreationProvenance provenance) {
+        TestGoal goal = new TestGoal(course, text, GoalKind.IMPLICIT);
         goal.setOrigin(GoalOrigin.TERMINAL);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(provenance);
         return goal;
     }
 
-    private LearningGoal userCreatedGoal(Course course, String text, GoalOrigin origin) {
-        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
+    private TestGoal userCreatedGoal(UUID course, String text, GoalOrigin origin) {
+        TestGoal goal = new TestGoal(course, text, GoalKind.IMPLICIT);
         goal.setOrigin(origin);
         goal.setStatus(GoalStatus.PENDING);
         goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);

@@ -15,7 +15,7 @@ import { requestError } from "../lib/requestError.ts";
  * Mount this only when the row is expanded — the documents query fires on mount, so keeping it
  * unmounted while collapsed keeps the overview from firing one request per course up front.
  */
-export default function CourseDocuments({ courseId }: { courseId: number }) {
+export default function CourseDocuments({ courseId }: { courseId: string }) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<number | null>(null);
 

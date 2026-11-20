@@ -54,15 +54,12 @@ export type TreeNode = {
   children: TreeNode[];
 };
 
-/** Lecture order first; legacy/unpositioned goals remain stable by database id and then text. */
+/** Lecture order first; goals without one keep the server's order (oldest first), as sorting is stable. */
 function compareLectureOrder(a: LearningGoal, b: LearningGoal): number {
   const aOrder = a.lectureOrder ?? Number.MAX_SAFE_INTEGER;
   const bOrder = b.lectureOrder ?? Number.MAX_SAFE_INTEGER;
   if (aOrder !== bOrder) return aOrder - bOrder;
-  const aId = a.id ?? Number.MAX_SAFE_INTEGER;
-  const bId = b.id ?? Number.MAX_SAFE_INTEGER;
-  if (aId !== bId) return aId - bId;
-  return (a.text ?? "").localeCompare(b.text ?? "");
+  return 0;
 }
 
 // Role colours are drawn from the HESTIA styleguide's text-safe palette (primary / accent /
@@ -113,10 +110,10 @@ export function displayedGoalLabel(goal: LearningGoal, full = false): string {
  * change both together.
  */
 export function buildTopicForest(goals: LearningGoal[]): TreeNode[] {
-  const byId = new Map<number, LearningGoal>();
+  const byId = new Map<string, LearningGoal>();
   for (const g of goals) if (g.id != null) byId.set(g.id, g);
 
-  const childrenOf = new Map<number, LearningGoal[]>();
+  const childrenOf = new Map<string, LearningGoal[]>();
   for (const g of goals) {
     if (g.id == null) continue;
     for (const rel of g.relationships ?? []) {
@@ -138,7 +135,7 @@ export function buildTopicForest(goals: LearningGoal[]): TreeNode[] {
   const build = (
     goal: LearningGoal,
     depth: number,
-    onPath: Set<number>,
+    onPath: Set<string>,
     parentRole: TreeRole | null,
   ): TreeNode => {
     const childGoals = (
@@ -269,8 +266,8 @@ const bloomRank = (goal: LearningGoal) => BLOOM_RANK.indexOf(goal.bloomLevel ?? 
  * APPLY is how teaching is meant to work and is never flagged. A goal without a Bloom level takes
  * part on neither side.
  */
-export function levelFlags(forest: TreeNode[]): Map<number, string> {
-  const flags = new Map<number, string>();
+export function levelFlags(forest: TreeNode[]): Map<string, string> {
+  const flags = new Map<string, string>();
   for (const topic of forest) {
     const subSkills = subSkillsOf(topic);
     const lectureSide = (coverage: Coverage | null) => coverage === "lecture" || coverage === "both";

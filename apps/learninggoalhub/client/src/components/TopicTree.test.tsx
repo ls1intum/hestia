@@ -25,7 +25,7 @@ beforeAll(() => {
 
 function goal(id: number, text: string, parent?: number): LearningGoal {
   return {
-    id,
+    id: `g${id}`,
     text,
     shortLabel: text,
     // A topic is a TERMINAL goal; the server marks skills and sub-skills alike as SKILL.
@@ -33,7 +33,7 @@ function goal(id: number, text: string, parent?: number): LearningGoal {
     origin: parent ? "EXTRACTED" : "TERMINAL",
     sources: [],
     relationships: parent
-      ? [{ type: "CONTRIBUTES_TO", targetGoalId: parent, targetText: "", confidence: 1, origin: "HIERARCHY" }]
+      ? [{ type: "CONTRIBUTES_TO", targetGoalId: `g${parent}`, targetText: "", confidence: 1, origin: "HIERARCHY" }]
       : [],
   } as LearningGoal;
 }
@@ -47,7 +47,7 @@ const goals = [
 function renderTree() {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <TopicTree courseId={1} goals={goals} onUpdate={() => {}} onDelete={() => {}} />
+      <TopicTree courseId="1" goals={goals} onUpdate={() => {}} onDelete={() => {}} />
     </QueryClientProvider>,
   );
   return screen.getByRole("treegrid", { name: "Topic tree" });

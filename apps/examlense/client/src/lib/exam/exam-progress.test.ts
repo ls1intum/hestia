@@ -6,7 +6,7 @@ import { isParseFailure } from "./exam-helpers";
 const exam = (over: Partial<ExaminationListItem>): ExaminationListItem => ({
   id: "e1",
   title: "Exam",
-  course: null,
+  course_id: "c1",
   source: "manual",
   source_file_url: null,
   status: "draft",
@@ -14,7 +14,6 @@ const exam = (over: Partial<ExaminationListItem>): ExaminationListItem => ({
   parse_phase: null,
   parser_model: null,
   solver_model: null,
-  lgh_course_id: null,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
   task_count: 0,

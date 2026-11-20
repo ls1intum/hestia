@@ -43,6 +43,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     private Examination newExamination(String status) {
         Examination e = new Examination();
         e.setCreatedBy(owner());
+        e.setCourseId(courseOf("alice"));
         e.setSource("manual");
         e.setStatus(status);
         return exams.save(e);
@@ -154,7 +155,8 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     @Test
     void invalidStatusIsRejectedByTheCheckConstraint() {
         Examination bad = new Examination();
-        bad.setCreatedBy(owner()); // a real user, so the failure can only be the status CHECK
+        bad.setCreatedBy(owner()); // a real user and course, so the failure can only be the status CHECK
+        bad.setCourseId(courseOf("alice"));
         bad.setSource("manual");
         bad.setStatus("not-a-real-status");
 
@@ -180,6 +182,7 @@ class SchemaIntegrityIT extends AbstractIntegrationTest {
     void examCreatorMustReferenceARealUser() {
         Examination orphan = new Examination();
         orphan.setCreatedBy(UUID.randomUUID());
+        orphan.setCourseId(courseOf("alice"));
         orphan.setSource("manual");
         orphan.setStatus("draft");
 

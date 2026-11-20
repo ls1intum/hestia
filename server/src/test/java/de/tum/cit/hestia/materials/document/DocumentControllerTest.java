@@ -16,14 +16,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
+import de.tum.cit.hestia.materials.TestTenant;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
-import de.tum.cit.hestia.materials.course.CourseRepository;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -56,9 +57,6 @@ class DocumentControllerTest extends MaterialsTestBase {
     private DocumentRepository documentRepository;
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private DocumentSectionRepository documentSectionRepository;
 
     // Bookmark-less PDFs would otherwise trigger a real vision-model call at upload; the default mock
@@ -79,7 +77,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode course = objectMapper.readTree(courseResult.getResponse().getContentAsString());
-        long courseId = course.get("id").asLong();
+        UUID courseId = UUID.fromString(course.get("id").asText());
 
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         MockMultipartFile lecture = new MockMultipartFile("files", "lecture-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf);
@@ -91,7 +89,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].filename").value("lecture-01.pdf"))
-                .andExpect(jsonPath("$[0].courseId").value(courseId))
+                .andExpect(jsonPath("$[0].courseId").value(courseId.toString()))
                 .andExpect(jsonPath("$[0].contentType").value(MediaType.APPLICATION_PDF_VALUE))
                 .andExpect(jsonPath("$[0].uploadedAt").exists())
                 .andExpect(jsonPath("$[1].filename").value("exercise-01.pdf"));
@@ -105,7 +103,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode course = objectMapper.readTree(courseResult.getResponse().getContentAsString());
-        long courseId = course.get("id").asLong();
+        UUID courseId = UUID.fromString(course.get("id").asText());
 
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -124,7 +122,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void uploadsAndServesDocumentContentForBrowserViewer() throws Exception {
-        long courseId = createCourse("Distributed Systems");
+        UUID courseId = createCourse("Distributed Systems");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         MvcResult upload = mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
                         .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
@@ -144,8 +142,8 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void persistsPdfPageOffsetsAndRejectsWrongCourseOrLegacyContent() throws Exception {
-        long courseId = createCourse("Programming Languages");
-        long otherCourseId = createCourse("Databases");
+        UUID courseId = createCourse("Programming Languages");
+        UUID otherCourseId = createCourse("Databases");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         MvcResult upload = mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
                         .file(new MockMultipartFile("files", "lecture.pdf", MediaType.APPLICATION_PDF_VALUE, pdf)))
@@ -165,7 +163,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isNotFound());
 
         Document legacy = documentRepository.save(
-                new Document(courseRepository.findById(courseId).orElseThrow(),
+                new Document(courseId,
                         "legacy.pdf", MediaType.APPLICATION_PDF_VALUE, "legacy"));
         mockMvc.perform(get("/learninggoalhub/api/courses/{courseId}/documents/{documentId}/content",
                         courseId, legacy.getId()))
@@ -174,13 +172,13 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void listReturns404WhenCourseMissing() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/documents", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/documents", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void renamesDocumentAndClearsBackToFilename() throws Exception {
-        long courseId = createCourse("Operating Systems");
+        UUID courseId = createCourse("Operating Systems");
         long documentId = uploadDocument(courseId, "lecture-01.pdf");
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
@@ -200,7 +198,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsBlankDisplayName() throws Exception {
-        long courseId = createCourse("Compilers");
+        UUID courseId = createCourse("Compilers");
         long documentId = uploadDocument(courseId, "lecture-01.pdf");
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
@@ -211,8 +209,8 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void renameReturns404WhenDocumentBelongsToOtherCourse() throws Exception {
-        long courseId = createCourse("Networks");
-        long otherCourseId = createCourse("Security");
+        UUID courseId = createCourse("Networks");
+        UUID otherCourseId = createCourse("Security");
         long documentId = uploadDocument(courseId, "lecture-01.pdf");
 
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/documents/{documentId}", otherCourseId, documentId)
@@ -223,7 +221,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void uploadsWithAndWithoutKind() throws Exception {
-        long courseId = createCourse("Algorithms");
+        UUID courseId = createCourse("Algorithms");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         MvcResult exercises = mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -250,7 +248,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsAnUnknownKind() throws Exception {
-        long courseId = createCourse("Graphics");
+        UUID courseId = createCourse("Graphics");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -261,7 +259,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void patchesKindWithoutTouchingTheDisplayName() throws Exception {
-        long courseId = createCourse("Machine Learning");
+        UUID courseId = createCourse("Machine Learning");
         long documentId = uploadDocument(courseId, "lecture-01.pdf");
         mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/documents/{documentId}", courseId, documentId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -284,16 +282,16 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.displayName").doesNotExist());
     }
 
-    private long createCourse(String name) throws Exception {
+    private UUID createCourse(String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/learninggoalhub/api/courses")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"" + name + "\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText());
     }
 
-    private long uploadDocument(long courseId, String filename) throws Exception {
+    private long uploadDocument(UUID courseId, String filename) throws Exception {
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         MvcResult result = mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
                         .file(new MockMultipartFile("files", filename, MediaType.APPLICATION_PDF_VALUE, pdf)))
@@ -306,13 +304,13 @@ class DocumentControllerTest extends MaterialsTestBase {
     void returns404WhenCourseMissing() throws Exception {
         MockMultipartFile file = new MockMultipartFile("files", "x.pdf", MediaType.APPLICATION_PDF_VALUE, new byte[]{1, 2, 3});
 
-        mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", 999999L).file(file))
+        mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", UUID.randomUUID()).file(file))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void rejectsNonPdfUploadsWithoutStoringAnyFile() throws Exception {
-        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
+        UUID courseId = TestTenant.course("Course");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -331,7 +329,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsAScannedPdfWithoutStoringAnyFile() throws Exception {
-        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
+        UUID courseId = TestTenant.course("Course");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
 
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
@@ -368,7 +366,7 @@ class DocumentControllerTest extends MaterialsTestBase {
 
     @Test
     void uploadNamesTheSessionWithoutHoldingATransaction() throws Exception {
-        long courseId = courseRepository.save(de.tum.cit.hestia.materials.TestTenant.course("Course")).getId();
+        UUID courseId = TestTenant.course("Course");
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         List<Boolean> inTransaction = new ArrayList<>();
         when(titleService.deriveTitle(any(), any(), anyString())).thenAnswer(invocation -> {

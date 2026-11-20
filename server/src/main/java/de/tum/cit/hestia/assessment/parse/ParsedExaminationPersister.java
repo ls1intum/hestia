@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment.parse;
 
 import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.assessment.lgh.TaskGoalLinks;
 import de.tum.cit.hestia.assessment.parse.figures.FigurePlacement;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.section.SectionBlock;
@@ -54,6 +55,7 @@ class ParsedExaminationPersister {
     private final FigureCleanupService figureCleanup;
     private final TransactionTemplate txTemplate;
     private final ParseProgress progress;
+    private final TaskGoalLinks goalLinks;
 
     ParsedExaminationPersister(
         ExaminationRepository examRepository,
@@ -62,8 +64,10 @@ class ParsedExaminationPersister {
         SectionBlockRepository sectionBlockRepository,
         FigureCleanupService figureCleanup,
         PlatformTransactionManager txManager,
-        ParseProgress progress
+        ParseProgress progress,
+        TaskGoalLinks goalLinks
     ) {
+        this.goalLinks = goalLinks;
         this.examRepository = examRepository;
         this.sectionRepository = sectionRepository;
         this.taskRepository = taskRepository;
@@ -146,6 +150,16 @@ class ParsedExaminationPersister {
         }
 
         List<TaskBlock> taskRows = buildTaskBlockRows(examId, tasks, sectionIdByName);
+
+        // A re-parse replaces the tasks, so the links of the old ones go too (best effort: the
+        // links are harmless without their tasks, and a failure must not fail the parse).
+        try {
+            goalLinks.unlinkAll(taskRepository.findByExamIdOrderByPositionAsc(examId).stream()
+                .map(TaskBlock::getId).toList());
+        } catch (RuntimeException e) {
+            log.warn("parse-exam-pdf[{}] could not remove the goal links of the previous tasks: {}",
+                examId, e.getMessage());
+        }
 
         // -- Structural write: one transaction. Deletes any artifacts from a
         // previous parse first, so a re-parse (or a failed attempt's leftovers)
@@ -386,7 +400,6 @@ class ParsedExaminationPersister {
                 return false;
             }
             if (parsed.get("title") instanceof String ts && !ts.isEmpty()) exam.setTitle(ts);
-            exam.setCourse(asString(parsed.get("course")));
             exam.setStatus("draft");
             exam.setParseError(null);
             exam.setParsePhase(null);

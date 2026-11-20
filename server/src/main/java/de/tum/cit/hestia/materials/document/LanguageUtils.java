@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.document;
 
-import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.materials.course.CourseContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -24,9 +24,9 @@ public final class LanguageUtils {
      * The language generated text is written in: the course override, else the document's own
      * language, else the course's dominant language, else English.
      */
-    public static String resolveLanguage(Course course, String documentLanguage, String dominantLanguage) {
-        if (course != null && course.getOutputLanguage() != null) {
-            return course.getOutputLanguage();
+    public static String resolveLanguage(CourseContext course, String documentLanguage, String dominantLanguage) {
+        if (course != null && course.outputLanguage() != null) {
+            return course.outputLanguage();
         }
         if (documentLanguage != null && !documentLanguage.isBlank()) {
             return documentLanguage;
@@ -38,7 +38,7 @@ public final class LanguageUtils {
     }
 
     /** The English name of the language text generated for the course as a whole is written in. */
-    public static String courseLanguageName(Course course, List<Document> documents) {
+    public static String courseLanguageName(CourseContext course, List<Document> documents) {
         return englishName(resolveLanguage(course, null, dominantLanguage(documents)));
     }
 

@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
-import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.core.GoalKind;
 
 /**
  * A single learning goal as returned by the extraction LLM. Where the goal sits in the course

@@ -3,8 +3,13 @@ package de.tum.cit.hestia.materials.extraction;
 import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalRelationInfo;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentOrder;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
@@ -22,15 +27,15 @@ import de.tum.cit.hestia.materials.extraction.UnitExtractor.UnitGoal;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.Window;
 import de.tum.cit.hestia.materials.goal.EvidenceKind;
 import de.tum.cit.hestia.materials.goal.GoalCreationProvenance;
-import de.tum.cit.hestia.materials.goal.GoalKind;
-import de.tum.cit.hestia.materials.goal.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRelationship;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
-import de.tum.cit.hestia.materials.goal.GoalRole;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.materials.goal.GoalSource;
 import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.GoalStatus;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.materials.goal.NewPlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
 import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
 import de.tum.cit.hestia.materials.goal.RelationshipType;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
@@ -108,13 +113,13 @@ public class TopicSearchService {
      */
     static final int MIN_SUB_SKILLS_TO_STRUCTURE = 4;
 
-    private final CourseRepository courseRepository;
+    private final MaterialSettingsService settingsService;
     private final DocumentRepository documentRepository;
     private final DocumentSectionRepository documentSectionRepository;
     private final PageDescriptionRepository pageDescriptionRepository;
-    private final LearningGoalRepository goalRepository;
+    private final PlacedGoals goals;
+    private final LearningGoalApi goalApi;
     private final GoalSourceRepository goalSourceRepository;
-    private final GoalRelationshipRepository goalRelationshipRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final UnitExtractor unitExtractor;
     private final TopicSearchSynthesizer topicSearchSynthesizer;
@@ -129,13 +134,13 @@ public class TopicSearchService {
     private final Set<UUID> accepting = ConcurrentHashMap.newKeySet();
 
     @Autowired
-    public TopicSearchService(CourseRepository courseRepository,
+    public TopicSearchService(MaterialSettingsService settingsService,
                               DocumentRepository documentRepository,
                               DocumentSectionRepository documentSectionRepository,
                               PageDescriptionRepository pageDescriptionRepository,
-                              LearningGoalRepository goalRepository,
+                              PlacedGoals goals,
+                              LearningGoalApi goalApi,
                               GoalSourceRepository goalSourceRepository,
-                              GoalRelationshipRepository goalRelationshipRepository,
                               HierarchyNodeRepository hierarchyNodeRepository,
                               UnitExtractor unitExtractor,
                               TopicSearchSynthesizer topicSearchSynthesizer,
@@ -144,19 +149,19 @@ public class TopicSearchService {
                               TransactionOperations transactions,
                               @Value("${hestia.extraction.parallelism:8}") int parallelism,
                               @Value("${hestia.topic-search.max-pages:80}") int maxPages) {
-        this(courseRepository, documentRepository, documentSectionRepository, pageDescriptionRepository,
-                goalRepository, goalSourceRepository, goalRelationshipRepository, hierarchyNodeRepository,
+        this(settingsService, documentRepository, documentSectionRepository, pageDescriptionRepository,
+                goals, goalApi, goalSourceRepository, hierarchyNodeRepository,
                 unitExtractor, topicSearchSynthesizer, topicTreeSynthesizer, taxonomyService, transactions,
                 parallelism, maxPages, Clock.systemUTC());
     }
 
-    TopicSearchService(CourseRepository courseRepository,
+    TopicSearchService(MaterialSettingsService settingsService,
                        DocumentRepository documentRepository,
                        DocumentSectionRepository documentSectionRepository,
                        PageDescriptionRepository pageDescriptionRepository,
-                       LearningGoalRepository goalRepository,
+                       PlacedGoals goals,
+                       LearningGoalApi goalApi,
                        GoalSourceRepository goalSourceRepository,
-                       GoalRelationshipRepository goalRelationshipRepository,
                        HierarchyNodeRepository hierarchyNodeRepository,
                        UnitExtractor unitExtractor,
                        TopicSearchSynthesizer topicSearchSynthesizer,
@@ -166,13 +171,13 @@ public class TopicSearchService {
                        int parallelism,
                        int maxPages,
                        Clock clock) {
-        this.courseRepository = courseRepository;
+        this.settingsService = settingsService;
         this.documentRepository = documentRepository;
         this.documentSectionRepository = documentSectionRepository;
         this.pageDescriptionRepository = pageDescriptionRepository;
-        this.goalRepository = goalRepository;
+        this.goals = goals;
+        this.goalApi = goalApi;
         this.goalSourceRepository = goalSourceRepository;
-        this.goalRelationshipRepository = goalRelationshipRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.unitExtractor = unitExtractor;
         this.topicSearchSynthesizer = topicSearchSynthesizer;
@@ -192,8 +197,8 @@ public class TopicSearchService {
      * Proposes the page runs that mention the topic, labelled by bookmark or file name. Not
      * transactional: the search-terms call must not hold a database connection.
      */
-    public PagePlan planPages(Long courseId, String topicText, String modelOverride) {
-        Course course = course(courseId);
+    public PagePlan planPages(UUID courseId, String topicText, String modelOverride) {
+        CourseContext course = course(courseId);
         String topic = requireTopic(topicText);
         List<Document> documents = documentRepository.findByCourseId(courseId).stream()
                 .sorted(DocumentOrder.comparator())
@@ -282,8 +287,8 @@ public class TopicSearchService {
      * Reads the chosen pages and holds the resulting proposal; nothing is persisted. Not
      * transactional: the model calls must not hold a database connection.
      */
-    public ProposalResponse search(Long courseId, String topicText, List<PageRange> ranges, String modelOverride) {
-        Course course = course(courseId);
+    public ProposalResponse search(UUID courseId, String topicText, List<PageRange> ranges, String modelOverride) {
+        CourseContext course = course(courseId);
         String topic = requireTopic(topicText);
         // Checked before reading any pages, so a full store does not cost a search's model calls.
         sweep();
@@ -308,7 +313,7 @@ public class TopicSearchService {
             int end = Math.max(start, Math.min(offsets[range.endPage()], text.length()));
             String label = rangeLabel(document, documentSectionRepository.findByDocumentIdOrderByOrdinal(
                     document.getId()), range.startPage(), range.endPage());
-            List<FigureDescription> figures = course.isFiguresEnabled()
+            List<FigureDescription> figures = course.figuresEnabled()
                     ? figuresByDocument.computeIfAbsent(document.getId(), id -> figureDescriptions(document))
                     : List.of();
             for (Window window : unitExtractor.windows(label, document, text, start, end,
@@ -371,7 +376,7 @@ public class TopicSearchService {
         return pages;
     }
 
-    private List<SessionExtraction<PageRange>> extractAll(Course course, List<SessionUnit<PageRange>> units,
+    private List<SessionExtraction<PageRange>> extractAll(CourseContext course, List<SessionUnit<PageRange>> units,
                                                           String dominantLanguage, String modelOverride) {
         ExecutorService executor = OrgExecutors.newFixedThreadPool(Math.max(1, Math.min(parallelism, units.size())));
         try {
@@ -422,7 +427,7 @@ public class TopicSearchService {
      * Marks candidates the course already has: extracted sub-skills whose quotes lie on the chosen
      * pages are compared in one call. A failed call marks nothing, so the instructor still decides.
      */
-    private Map<Integer, DuplicateOf> duplicates(Long courseId, List<Candidate> candidates, List<PageRange> ranges,
+    private Map<Integer, DuplicateOf> duplicates(UUID courseId, List<Candidate> candidates, List<PageRange> ranges,
                                                  String modelOverride) {
         if (candidates.isEmpty()) {
             return Map.of();
@@ -453,43 +458,50 @@ public class TopicSearchService {
     }
 
     /** The course's extracted sub-skills quoted on the chosen pages, with the topic each sits under. */
-    private List<DuplicateOf> existingOnPages(Long courseId, List<PageRange> ranges) {
-        List<LearningGoal> skills = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.EXTRACTED))
-                .stream()
-                .filter(goal -> goal.getRole() == GoalRole.SKILL)
+    private List<DuplicateOf> existingOnPages(UUID courseId, List<PageRange> ranges) {
+        List<GoalInfo> courseGoals = goalApi.goals(courseId);
+        List<GoalInfo> skills = courseGoals.stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED && goal.role() == GoalRole.SKILL)
                 .toList();
         if (skills.isEmpty()) {
             return List.of();
         }
-        Set<Long> onPages = goalSourceRepository.findByGoalIdIn(skills.stream().map(LearningGoal::getId).toList())
+        Set<UUID> onPages = goalSourceRepository.findByIdGoalIdIn(skills.stream().map(GoalInfo::id).toList())
                 .stream()
                 .filter(source -> source.getPage() != null && ranges.stream().anyMatch(range ->
                         range.documentId().equals(source.getDocument().getId())
                                 && source.getPage() >= range.startPage() && source.getPage() <= range.endPage()))
-                .map(source -> source.getGoal().getId())
+                .map(GoalSource::getGoalId)
                 .collect(Collectors.toSet());
+        Map<UUID, GoalInfo> byId = courseGoals.stream().collect(Collectors.toMap(GoalInfo::id, goal -> goal));
+        Map<UUID, List<UUID>> parents = new HashMap<>();
+        for (GoalRelationInfo relationship : goalApi.relationships(courseId)) {
+            if (RelationshipType.CONTRIBUTES_TO.name().equals(relationship.type())) {
+                parents.computeIfAbsent(relationship.sourceGoalId(), id -> new ArrayList<>())
+                        .add(relationship.targetGoalId());
+            }
+        }
         return skills.stream()
-                .filter(goal -> onPages.contains(goal.getId()))
-                .sorted(Comparator.comparing(LearningGoal::getId))
-                .map(goal -> new DuplicateOf(goal.getId(), goal.getText(), topicTextOf(goal)))
+                .filter(goal -> onPages.contains(goal.id()))
+                .map(goal -> new DuplicateOf(goal.id(), goal.text(), topicTextOf(goal, byId, parents)))
                 .toList();
     }
 
     /** The text of the nearest topic above a goal in the Topic tree, or null outside the tree. */
-    private String topicTextOf(LearningGoal goal) {
-        Deque<LearningGoal> pending = new ArrayDeque<>(List.of(goal));
-        Set<Long> visited = new HashSet<>();
+    private static String topicTextOf(GoalInfo goal, Map<UUID, GoalInfo> byId, Map<UUID, List<UUID>> parents) {
+        Deque<GoalInfo> pending = new ArrayDeque<>(List.of(goal));
+        Set<UUID> visited = new HashSet<>();
         while (!pending.isEmpty()) {
-            LearningGoal current = pending.removeFirst();
-            if (!visited.add(current.getId())) {
+            GoalInfo current = pending.removeFirst();
+            if (!visited.add(current.id())) {
                 continue;
             }
-            if (current.getOrigin() == GoalOrigin.TERMINAL) {
-                return current.getText();
+            if (current.origin() == GoalOrigin.TERMINAL) {
+                return current.text();
             }
-            for (GoalRelationship relationship : goalRelationshipRepository.findBySourceId(current.getId())) {
-                if (relationship.getType() == RelationshipType.CONTRIBUTES_TO) {
-                    pending.addLast(relationship.getTarget());
+            for (UUID parent : parents.getOrDefault(current.id(), List.of())) {
+                if (byId.containsKey(parent)) {
+                    pending.addLast(byId.get(parent));
                 }
             }
         }
@@ -589,7 +601,7 @@ public class TopicSearchService {
      * @return the created topic.
      */
     @Transactional
-    public LearningGoal accept(Long courseId, UUID proposalId, List<String> subSkillKeys) {
+    public PlacedGoal accept(UUID courseId, UUID proposalId, List<String> subSkillKeys) {
         sweep();
         Proposal proposal = proposals.get(proposalId);
         if (proposal == null || !proposal.courseId().equals(courseId)) {
@@ -611,7 +623,7 @@ public class TopicSearchService {
             }
         });
         // Locked so a concurrent request cannot add the same topic between the check and the insert.
-        Course course = courseRepository.lockOrThrow(courseId);
+        CourseContext course = settingsService.lock(courseId);
         Set<Integer> ticked = new HashSet<>();
         for (String key : subSkillKeys == null ? List.<String>of() : subSkillKeys) {
             Integer index = subSkillIndex(key, proposal.candidates().size());
@@ -622,40 +634,68 @@ public class TopicSearchService {
         if (ticked.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Keep at least one sub-skill.");
         }
-        goalRepository.rejectDuplicateTopic(courseId, proposal.topic());
+        goals.rejectDuplicateTopic(courseId, proposal.topic());
 
-        LearningGoal topic = new LearningGoal(course, proposal.topic(), GoalKind.IMPLICIT);
-        topic.setOrigin(GoalOrigin.TERMINAL);
-        topic.setStatus(GoalStatus.PENDING);
-        topic.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        topic.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
-        goalRepository.saveAndFlush(topic);
+        PlacedGoal topic = goals.create(courseId, new NewPlacedGoal(
+                new NewGoal(proposal.topic(), null, GoalKind.IMPLICIT, null, null, null, GoalStatus.PENDING,
+                        GoalOrigin.TERMINAL, GoalCreationProvenance.USER_CREATED.name(), DomainModule.MATERIALS),
+                hierarchyNodeRepository.findOrCreateCompetencyRoot(courseId), null, null));
 
-        Map<Integer, LearningGoal> subSkills = new HashMap<>();
+        // The sub-skills and their knowledge are created in one call; sources and edges follow.
+        List<PlacedGoal> existing = goals.list(courseId);
+        List<Integer> order = ticked.stream().sorted().toList();
         Map<String, HierarchyNode> nodes = new HashMap<>();
         Map<Long, Integer> orders = new HashMap<>();
-        try (UnitExtractor.PdfCache pdfCache = unitExtractor.pdfCache()) {
-            for (int index : ticked.stream().sorted().toList()) {
-                Candidate candidate = proposal.candidates().get(index);
-                Document document = documentRepository.findById(candidate.documentId())
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                                "A document this search read was deleted. Search the slides again."));
-                HierarchyNode node = sessionNode(course, document, candidate.page(), nodes);
-                int order = orders.computeIfAbsent(node.getId(), id -> lectureOrderFor(course, node));
-                LearningGoal subSkill = extractedGoal(course, candidate.goal(), node, order);
-                unitExtractor.persistSource(subSkill, document, candidate.source(), pdfCache);
-                subSkills.put(index, subSkill);
-                for (KnowledgeCandidate knowledge : candidate.knowledge()) {
-                    LearningGoal knowledgeGoal = extractedGoal(course, knowledge.goal(), node, order);
-                    unitExtractor.persistSource(knowledgeGoal, document, knowledge.source(), pdfCache);
-                    link(knowledgeGoal, subSkill, RelationshipOrigin.HIERARCHY);
-                }
+        int[] highest = {existing.stream().map(PlacedGoal::lectureOrder).filter(Objects::nonNull)
+                .max(Comparator.naturalOrder()).orElse(-1)};
+        List<NewPlacedGoal> items = new ArrayList<>();
+        List<Document> itemDocuments = new ArrayList<>();
+        List<ResolvedSource> itemSources = new ArrayList<>();
+        Map<Integer, Integer> subSkillItem = new HashMap<>();
+        List<int[]> knowledgeEdges = new ArrayList<>(); // {knowledge item, sub-skill item}
+        for (int index : order) {
+            Candidate candidate = proposal.candidates().get(index);
+            Document document = documentRepository.findById(candidate.documentId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "A document this search read was deleted. Search the slides again."));
+            HierarchyNode node = sessionNode(course, document, candidate.page(), nodes);
+            int lectureOrder = orders.computeIfAbsent(node.getId(), id -> {
+                int onNode = existing.stream()
+                        .filter(goal -> goal.hierarchyNode() != null && node.getId().equals(goal.hierarchyNode().getId()))
+                        .map(PlacedGoal::lectureOrder).filter(Objects::nonNull)
+                        .max(Comparator.naturalOrder()).orElse(highest[0] + 1);
+                highest[0] = Math.max(highest[0], onNode);
+                return onNode;
+            });
+            subSkillItem.put(index, items.size());
+            items.add(extractedGoal(candidate.goal(), node, lectureOrder));
+            itemDocuments.add(document);
+            itemSources.add(candidate.source());
+            int subSkill = items.size() - 1;
+            for (KnowledgeCandidate knowledge : candidate.knowledge()) {
+                knowledgeEdges.add(new int[]{items.size(), subSkill});
+                items.add(extractedGoal(knowledge.goal(), node, lectureOrder));
+                itemDocuments.add(document);
+                itemSources.add(knowledge.source());
             }
         }
+        List<PlacedGoal> created = goals.createAll(courseId, items);
+        try (UnitExtractor.PdfCache pdfCache = unitExtractor.pdfCache()) {
+            for (int i = 0; i < created.size(); i++) {
+                unitExtractor.persistSource(created.get(i).id(), itemDocuments.get(i), itemSources.get(i), pdfCache);
+            }
+        }
+        for (int[] edge : knowledgeEdges) {
+            link(created.get(edge[0]), created.get(edge[1]), RelationshipOrigin.HIERARCHY);
+        }
+        Map<Integer, PlacedGoal> subSkills = new HashMap<>();
+        subSkillItem.forEach((index, item) -> subSkills.put(index, created.get(item)));
 
-        List<LearningGoal> direct = new ArrayList<>();
+        List<PlacedGoal> direct = new ArrayList<>();
+        List<NewPlacedGoal> skillItems = new ArrayList<>();
+        List<List<PlacedGoal>> skillMembers = new ArrayList<>();
         for (SkillPlan plan : proposal.skills()) {
-            List<LearningGoal> members = plan.members().stream()
+            List<PlacedGoal> members = plan.members().stream()
                     .filter(ticked::contains)
                     .map(subSkills::get)
                     .toList();
@@ -663,27 +703,27 @@ public class TopicSearchService {
                 direct.addAll(members);
                 continue;
             }
-            LearningGoal skill = new LearningGoal(course, plan.name(), GoalKind.IMPLICIT);
-            skill.setOrigin(GoalOrigin.SYNTHESIZED);
-            skill.setRole(GoalRole.SKILL);
-            skill.setShortLabel(plan.shortLabel());
-            skill.setLectureOrder(median(members));
             TaxonomyClassification levels = TopicTreeService.atLeastChildLevels(plan.classification(),
-                    members.stream().map(LearningGoal::getBloomLevel).filter(Objects::nonNull).toList(),
-                    members.stream().map(LearningGoal::getSoloLevel).filter(Objects::nonNull).toList());
-            if (levels != null) {
-                skill.setBloomLevel(levels.bloom());
-                skill.setSoloLevel(levels.solo());
-            }
-            goalRepository.saveAndFlush(skill);
-            link(skill, topic, RelationshipOrigin.SYNTHESIS);
-            members.forEach(member -> link(member, skill, RelationshipOrigin.SYNTHESIS));
+                    members.stream().map(PlacedGoal::bloomLevel).filter(Objects::nonNull).toList(),
+                    members.stream().map(PlacedGoal::soloLevel).filter(Objects::nonNull).toList());
+            skillItems.add(new NewPlacedGoal(
+                    new NewGoal(plan.name(), plan.shortLabel(), GoalKind.IMPLICIT, GoalRole.SKILL,
+                            levels == null || levels.bloom() == null ? null : levels.bloom().name(),
+                            levels == null || levels.solo() == null ? null : levels.solo().name(),
+                            GoalStatus.PENDING, GoalOrigin.SYNTHESIZED, null, DomainModule.MATERIALS),
+                    null, null, median(members)));
+            skillMembers.add(members);
+        }
+        List<PlacedGoal> skills = goals.createAll(courseId, skillItems);
+        for (int i = 0; i < skills.size(); i++) {
+            link(skills.get(i), topic, RelationshipOrigin.SYNTHESIS);
+            PlacedGoal skill = skills.get(i);
+            skillMembers.get(i).forEach(member -> link(member, skill, RelationshipOrigin.SYNTHESIS));
         }
         proposal.direct().stream().filter(ticked::contains).map(subSkills::get).forEach(direct::add);
         direct.forEach(member -> link(member, topic, RelationshipOrigin.SYNTHESIS));
 
-        topic.setLectureOrder(median(new ArrayList<>(subSkills.values())));
-        goalRepository.save(topic);
+        goals.placementFor(topic.id()).setLectureOrder(median(new ArrayList<>(subSkills.values())));
         log.info("Created topic '{}' in course {} from a slide search with {} sub-skills",
                 proposal.topic(), courseId, subSkills.size());
         return topic;
@@ -701,22 +741,19 @@ public class TopicSearchService {
         }
     }
 
-    private LearningGoal extractedGoal(Course course, UnitGoal unitGoal, HierarchyNode node, int lectureOrder) {
+    private static NewPlacedGoal extractedGoal(UnitGoal unitGoal, HierarchyNode node, int lectureOrder) {
         ExtractedGoal extracted = unitGoal.extracted();
-        LearningGoal goal = new LearningGoal(course, extracted.text(), extracted.kind());
-        goal.setShortLabel(extracted.shortLabel());
-        goal.setRole(unitGoal.role());
-        goal.setHierarchyNode(node);
-        goal.setLectureOrder(lectureOrder);
-        if (unitGoal.classification() != null) {
-            goal.setBloomLevel(unitGoal.classification().bloom());
-            goal.setSoloLevel(unitGoal.classification().solo());
-        }
-        return goalRepository.saveAndFlush(goal);
+        TaxonomyClassification classification = unitGoal.classification();
+        return new NewPlacedGoal(
+                new NewGoal(extracted.text(), extracted.shortLabel(), extracted.kind(), unitGoal.role(),
+                        classification == null || classification.bloom() == null ? null : classification.bloom().name(),
+                        classification == null || classification.solo() == null ? null : classification.solo().name(),
+                        GoalStatus.PENDING, GoalOrigin.EXTRACTED, null, DomainModule.MATERIALS),
+                node, null, lectureOrder);
     }
 
-    private void link(LearningGoal source, LearningGoal target, RelationshipOrigin origin) {
-        goalRelationshipRepository.save(new GoalRelationship(source, target, RelationshipType.CONTRIBUTES_TO, 1.0, origin));
+    private void link(PlacedGoal source, PlacedGoal target, RelationshipOrigin origin) {
+        goalApi.relate(source.id(), target.id(), RelationshipType.CONTRIBUTES_TO.name(), 1.0, origin.name());
     }
 
     /**
@@ -724,45 +761,30 @@ public class TopicSearchService {
      * section holding that page, or for the whole file when it has no bookmarks. Created under the
      * module root, as the extraction would, when it does not exist yet.
      */
-    private HierarchyNode sessionNode(Course course, Document document, Integer page, Map<String, HierarchyNode> cache) {
+    private HierarchyNode sessionNode(CourseContext course, Document document, Integer page, Map<String, HierarchyNode> cache) {
         String label = documentSectionRepository.findByDocumentIdOrderByOrdinal(document.getId()).stream()
                 .filter(section -> page != null && covers(section, page))
                 .map(DocumentSection::getTitle)
                 .findFirst()
                 .orElse(document.getFilename());
         return cache.computeIfAbsent(document.getId() + "\n" + label, key -> hierarchyNodeRepository
-                .findByCourseId(course.getId()).stream()
+                .findByCourseId(course.id()).stream()
                 .filter(node -> node.getLevel() == HierarchyLevel.SESSION || node.getLevel() == HierarchyLevel.EXERCISE)
                 .filter(node -> node.getDocument() != null && document.getId().equals(node.getDocument().getId()))
                 .filter(node -> Objects.equals(label, node.getLabel()))
                 .findFirst()
-                .orElseGet(() -> hierarchyNodeRepository.save(new HierarchyNode(course, moduleRoot(course),
+                .orElseGet(() -> hierarchyNodeRepository.save(new HierarchyNode(course.id(), moduleRoot(course),
                         ExtractionRunner.levelFor(document, label), label, document))));
     }
 
-    private HierarchyNode moduleRoot(Course course) {
-        return hierarchyNodeRepository.findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.MODULE)
+    private HierarchyNode moduleRoot(CourseContext course) {
+        return hierarchyNodeRepository.findFirstByCourseIdAndLevelOrderByIdAsc(course.id(), HierarchyLevel.MODULE)
                 .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.MODULE, course.getName())));
+                        new HierarchyNode(course.id(), null, HierarchyLevel.MODULE, course.name())));
     }
 
-    /** Places new goals among the goals already on their session, or after every goal of the course. */
-    private int lectureOrderFor(Course course, HierarchyNode node) {
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
-        return goals.stream()
-                .filter(goal -> goal.getHierarchyNode() != null && node.getId().equals(goal.getHierarchyNode().getId()))
-                .map(LearningGoal::getLectureOrder)
-                .filter(Objects::nonNull)
-                .max(Comparator.naturalOrder())
-                .orElseGet(() -> goals.stream()
-                        .map(LearningGoal::getLectureOrder)
-                        .filter(Objects::nonNull)
-                        .max(Comparator.naturalOrder())
-                        .orElse(-1) + 1);
-    }
-
-    private static Integer median(List<LearningGoal> goals) {
-        List<Integer> orders = goals.stream().map(LearningGoal::getLectureOrder).filter(Objects::nonNull).sorted().toList();
+    private static Integer median(List<PlacedGoal> goals) {
+        List<Integer> orders = goals.stream().map(PlacedGoal::lectureOrder).filter(Objects::nonNull).sorted().toList();
         return orders.isEmpty() ? null : orders.get(orders.size() / 2);
     }
 
@@ -775,8 +797,8 @@ public class TopicSearchService {
         proposals.values().removeIf(proposal -> !proposal.expiresAt().isAfter(now));
     }
 
-    private Course course(Long courseId) {
-        return courseRepository.findOrThrow(courseId);
+    private CourseContext course(UUID courseId) {
+        return settingsService.context(courseId);
     }
 
     private static String requireTopic(String text) {
@@ -933,10 +955,10 @@ public class TopicSearchService {
     }
 
     /** The existing sub-skill a proposed one repeats, and the topic it sits under, if any. */
-    public record DuplicateOf(Long goalId, String text, String topicText) {
+    public record DuplicateOf(UUID goalId, String text, String topicText) {
     }
 
-    private record Proposal(UUID id, Long courseId, String topic, Instant expiresAt, List<Candidate> candidates,
+    private record Proposal(UUID id, UUID courseId, String topic, Instant expiresAt, List<Candidate> candidates,
                             List<SkillPlan> skills, List<Integer> direct, Set<Integer> duplicates) {
     }
 

@@ -44,14 +44,14 @@ abstract class FlowApplication extends MaterialsTestBase {
     }
 
     /** Creates a course and returns its id; fails the test when the server does not answer 201. */
-    long createCourse(String name) {
+    String createCourse(String name) {
         HubApi.Response created = api().postJson("/courses", Map.of("name", name));
         assertThat(created.status()).as(created.raw()).isEqualTo(201);
-        return created.json().path("id").asLong();
+        return created.json().path("id").asText();
     }
 
     /** Uploads the two synthetic lectures and returns the response. */
-    HubApi.Response uploadLectures(long courseId) {
+    HubApi.Response uploadLectures(String courseId) {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("sorting.pdf", TestPdfs.textPdf(TestPdfs.SORTING_LECTURE));
         files.put("searching.pdf", TestPdfs.textPdf(TestPdfs.SEARCHING_LECTURE));
@@ -59,12 +59,12 @@ abstract class FlowApplication extends MaterialsTestBase {
     }
 
     /** Starts the extraction and waits until it has finished; fails the test if it did not succeed. */
-    void extractAndWait(long courseId) {
+    void extractAndWait(String courseId) {
         extractAndWait(courseId, 90_000);
     }
 
-    /** As {@link #extractAndWait(long)}, with a longer wait for a real model. */
-    void extractAndWait(long courseId, long timeoutMillis) {
+    /** As {@link #extractAndWait(String)}, with a longer wait for a real model. */
+    void extractAndWait(String courseId, long timeoutMillis) {
         HubApi.Response started = api().post("/courses/" + courseId + "/extract");
         assertThat(started.status()).as(started.raw()).isEqualTo(202);
 
@@ -90,7 +90,7 @@ abstract class FlowApplication extends MaterialsTestBase {
     }
 
     /** The goals of a course (the "content" list of the paged response); query is e.g. "&role=SKILL". */
-    JsonNode goalsOf(long courseId, String query) {
+    JsonNode goalsOf(String courseId, String query) {
         HubApi.Response goals = api().get("/courses/" + courseId + "/learning-goals?size=200" + query);
         assertThat(goals.status()).as(goals.raw()).isEqualTo(200);
         return goals.json().path("content");

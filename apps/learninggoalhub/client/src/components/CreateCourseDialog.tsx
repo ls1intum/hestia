@@ -53,7 +53,7 @@ export default function CreateCourseDialog({
   const [uploadPercent, setUploadPercent] = useState(0);
   // Set once the course exists, so retrying after a failed upload or start carries on with that
   // course instead of creating a second one. Its settings are fixed from then on.
-  const [createdCourseId, setCreatedCourseId] = useState<number | null>(null);
+  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
 
   // Accumulate across drops/picks, skipping files already staged in either box (name + size).
   const addFiles = (kind: DocumentKind, incoming: FileList | null) => {
@@ -536,7 +536,7 @@ function MaterialsBox({
 
 /** The staged files the course does not hold yet, matched by file name. */
 async function notYetUploaded(
-  courseId: number,
+  courseId: string,
   staged: Record<DocumentKind, File[]>,
 ): Promise<Record<DocumentKind, File[]>> {
   const { data, error } = await api.GET("/api/courses/{courseId}/documents", {
@@ -551,7 +551,7 @@ async function notYetUploaded(
   };
 }
 
-async function startExtraction(courseId: number): Promise<void> {
+async function startExtraction(courseId: string): Promise<void> {
   const result = await api.POST("/api/courses/{courseId}/extract", {
     params: { path: { courseId }, query: {} },
   });
@@ -572,7 +572,7 @@ async function startExtraction(courseId: number): Promise<void> {
  * progress to report.
  */
 async function uploadDocuments(
-  courseId: number,
+  courseId: string,
   staged: Record<DocumentKind, File[]>,
   onPercent: (percent: number) => void,
   onTransferred: () => void,
@@ -608,7 +608,7 @@ async function uploadDocuments(
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 function uploadBatch(
-  courseId: number,
+  courseId: string,
   kind: DocumentKind,
   files: File[],
   onFraction: (fraction: number) => void,

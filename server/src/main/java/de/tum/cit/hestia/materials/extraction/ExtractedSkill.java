@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
-import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.core.GoalKind;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import java.util.List;

@@ -1,6 +1,9 @@
 package de.tum.cit.hestia.materials.goal;
 
 import com.opencsv.CSVWriter;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRelationInfo;
+import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyPath;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import java.io.IOException;
@@ -13,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
@@ -67,33 +71,33 @@ public class LearningGoalCsvWriter {
     /** Lets Excel detect UTF-8, so umlauts and other non-ASCII text open intact. */
     static final char BOM = '﻿';
 
-    private static final Comparator<LearningGoal> LECTURE_ORDER = Comparator
-            .comparing(LearningGoal::getLectureOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparing(LearningGoal::getId, Comparator.nullsLast(Comparator.naturalOrder()));
+    private static final Comparator<PlacedGoal> LECTURE_ORDER = Comparator
+            .comparing(PlacedGoal::lectureOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(PlacedGoal::id, Comparator.nullsLast(Comparator.naturalOrder()));
 
     public void write(Writer writer,
-                      List<LearningGoal> goals,
+                      List<PlacedGoal> goals,
                       List<GoalSource> sources,
-                      List<GoalRelationship> relationships) throws IOException {
-        List<LearningGoal> exported = goals.stream()
-                .filter(g -> g.getOrigin() != GoalOrigin.GAP)
+                      List<GoalRelationInfo> relationships) throws IOException {
+        List<PlacedGoal> exported = goals.stream()
+                .filter(g -> g.origin() != GoalOrigin.GAP)
                 .toList();
-        Map<Long, LearningGoal> byId = exported.stream()
-                .collect(Collectors.toMap(LearningGoal::getId, g -> g));
-        Map<Long, List<GoalSource>> sourcesByGoal = sources.stream()
-                .collect(Collectors.groupingBy(s -> s.getGoal().getId()));
+        Map<UUID, PlacedGoal> byId = exported.stream()
+                .collect(Collectors.toMap(PlacedGoal::id, g -> g));
+        Map<UUID, List<GoalSource>> sourcesByGoal = sources.stream()
+                .collect(Collectors.groupingBy(s -> s.getGoalId()));
 
-        Map<Long, List<Long>> parentIds = new HashMap<>();
-        Map<Long, List<LearningGoal>> children = new HashMap<>();
-        for (GoalRelationship r : relationships) {
-            Long child = r.getSource().getId();
-            Long parent = r.getTarget().getId();
-            if (r.getType() != RelationshipType.CONTRIBUTES_TO
+        Map<UUID, List<UUID>> parentIds = new HashMap<>();
+        Map<UUID, List<PlacedGoal>> children = new HashMap<>();
+        for (GoalRelationInfo r : relationships) {
+            UUID child = r.sourceGoalId();
+            UUID parent = r.targetGoalId();
+            if (!RelationshipType.CONTRIBUTES_TO.name().equals(r.type())
                     || !byId.containsKey(child) || !byId.containsKey(parent)) {
                 continue;
             }
             // Extraction and Topic tree synthesis can both store the same edge.
-            List<Long> parents = parentIds.computeIfAbsent(child, k -> new ArrayList<>());
+            List<UUID> parents = parentIds.computeIfAbsent(child, k -> new ArrayList<>());
             if (!parents.contains(parent)) {
                 parents.add(parent);
                 children.computeIfAbsent(parent, k -> new ArrayList<>()).add(byId.get(child));
@@ -101,26 +105,26 @@ public class LearningGoalCsvWriter {
         }
 
         // Insertion order is the row order; a null placement marks a goal outside the tree.
-        Map<Long, Placement> placements = new LinkedHashMap<>();
+        Map<UUID, Placement> placements = new LinkedHashMap<>();
         exported.stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+                .filter(g -> g.origin() == GoalOrigin.TERMINAL)
                 .sorted(LECTURE_ORDER)
                 .forEach(topic -> walk(topic, 0, null, children, placements));
         exported.stream()
-                .filter(g -> !placements.containsKey(g.getId()))
+                .filter(g -> !placements.containsKey(g.id()))
                 .sorted(LECTURE_ORDER)
-                .forEach(g -> placements.put(g.getId(), null));
+                .forEach(g -> placements.put(g.id(), null));
 
         writer.write(BOM);
         try (CSVWriter csv = new CSVWriter(writer)) {
             csv.writeNext(HEADER);
-            for (Map.Entry<Long, Placement> e : placements.entrySet()) {
-                LearningGoal g = byId.get(e.getKey());
+            for (Map.Entry<UUID, Placement> e : placements.entrySet()) {
+                PlacedGoal g = byId.get(e.getKey());
                 csv.writeNext(neutralizeFormulas(toRow(
                         g,
                         e.getValue(),
-                        parentIds.getOrDefault(g.getId(), List.of()),
-                        sourcesByGoal.getOrDefault(g.getId(), List.of()))));
+                        parentIds.getOrDefault(g.id(), List.of()),
+                        sourcesByGoal.getOrDefault(g.id(), List.of()))));
             }
             csv.flushQuietly();
         }
@@ -131,16 +135,16 @@ public class LearningGoalCsvWriter {
      * Knowledge takes no children and the tree stops at {@link #MAX_DEPTH}, as in the client, so
      * goals hanging below either end up outside the tree.
      */
-    private void walk(LearningGoal goal, int depth, Tier parentTier,
-                      Map<Long, List<LearningGoal>> children, Map<Long, Placement> placements) {
-        if (placements.containsKey(goal.getId())) {
+    private void walk(PlacedGoal goal, int depth, Tier parentTier,
+                      Map<UUID, List<PlacedGoal>> children, Map<UUID, Placement> placements) {
+        if (placements.containsKey(goal.id())) {
             return;
         }
-        List<LearningGoal> goalChildren = depth < MAX_DEPTH
-                ? children.getOrDefault(goal.getId(), List.of())
+        List<PlacedGoal> goalChildren = depth < MAX_DEPTH
+                ? children.getOrDefault(goal.id(), List.of())
                 : List.of();
         Tier tier = tierOf(goal, depth, parentTier, goalChildren);
-        placements.put(goal.getId(), new Placement(depth, tier));
+        placements.put(goal.id(), new Placement(depth, tier));
         if (tier == Tier.KNOWLEDGE) {
             return;
         }
@@ -153,13 +157,13 @@ public class LearningGoalCsvWriter {
      * The server marks skills and sub-skills alike with role SKILL, so the position decides. Mirrors
      * {@code buildTopicForest} in the client's {@code lib/goals.ts}; change both together.
      */
-    private static Tier tierOf(LearningGoal goal, int depth, Tier parentTier, List<LearningGoal> children) {
-        boolean userCreated = goal.getCreationProvenance() == GoalCreationProvenance.USER_CREATED;
+    private static Tier tierOf(PlacedGoal goal, int depth, Tier parentTier, List<PlacedGoal> children) {
+        boolean userCreated = goal.creationProvenance() == GoalCreationProvenance.USER_CREATED;
         if (depth == 0) {
             return Tier.TOPIC;
         }
-        if (depth == 1 && (children.stream().anyMatch(c -> c.getRole() == GoalRole.SKILL)
-                || (userCreated && goal.getRole() == GoalRole.SKILL))) {
+        if (depth == 1 && (children.stream().anyMatch(c -> c.role() == GoalRole.SKILL)
+                || (userCreated && goal.role() == GoalRole.SKILL))) {
             return Tier.SKILL;
         }
         if ((depth == 1 && (!children.isEmpty() || isSkillTier(goal) || userCreated))
@@ -169,15 +173,15 @@ public class LearningGoalCsvWriter {
         return Tier.KNOWLEDGE;
     }
 
-    private static boolean isSkillTier(LearningGoal goal) {
-        return goal.getRole() != null
-                ? goal.getRole() == GoalRole.SKILL
-                : DOING_BLOOM.contains(goal.getBloomLevel());
+    private static boolean isSkillTier(PlacedGoal goal) {
+        return goal.role() != null
+                ? goal.role() == GoalRole.SKILL
+                : DOING_BLOOM.contains(goal.bloomLevel());
     }
 
-    private String[] toRow(LearningGoal goal, Placement placement, List<Long> parentIds,
+    private String[] toRow(PlacedGoal goal, Placement placement, List<UUID> parentIds,
                            List<GoalSource> goalSources) {
-        HierarchyPath path = HierarchyPath.from(goal.getHierarchyNode());
+        HierarchyPath path = HierarchyPath.from(goal.hierarchyNode());
         String sources = goalSources.stream()
                 .map(s -> s.getPage() == null
                         ? s.getDocument().getFilename()
@@ -191,19 +195,19 @@ public class LearningGoalCsvWriter {
                 ? ""
                 : String.valueOf(goalSources.stream().allMatch(GoalSource::isGrounded));
         return new String[]{
-                String.valueOf(goal.getId()),
+                String.valueOf(goal.id()),
                 parentIds.stream().map(String::valueOf).collect(Collectors.joining("; ")),
                 placement == null ? "" : String.valueOf(placement.depth()),
                 placement == null ? "" : placement.tier().name(),
-                nameOrEmpty(goal.getRole()),
-                nameOrEmpty(goal.getOrigin()),
-                nameOrEmpty(goal.getCreationProvenance()),
-                goal.getText(),
-                orEmpty(goal.getShortLabel()),
-                nameOrEmpty(goal.getKind()),
-                nameOrEmpty(goal.getBloomLevel()),
-                nameOrEmpty(goal.getSoloLevel()),
-                goal.getStatus().name(),
+                nameOrEmpty(goal.role()),
+                nameOrEmpty(goal.origin()),
+                nameOrEmpty(goal.creationProvenance()),
+                goal.text(),
+                orEmpty(goal.shortLabel()),
+                nameOrEmpty(goal.kind()),
+                nameOrEmpty(goal.bloomLevel()),
+                nameOrEmpty(goal.soloLevel()),
+                goal.status().name(),
                 orEmpty(path.module()),
                 orEmpty(path.session()),
                 orEmpty(path.exercise()),

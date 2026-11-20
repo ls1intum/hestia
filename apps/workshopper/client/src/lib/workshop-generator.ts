@@ -153,6 +153,11 @@ export interface SessionSummary {
   status: "draft" | "complete";
   currentStep?: string;
   courseId?: string;
+  /** The session's course is the user's personal catch-all course ("Einzelkram") */
+  personalCourse?: boolean;
+  /** Set on course entries of the dashboard: the user's personal course, and the user's role in it */
+  personal?: boolean;
+  role?: "VIEWER" | "EDITOR" | "OWNER";
   /** May be an ISO string or a Java-serialized array [year, month, day, hour, minute, second] */
   createdAt: unknown;
   updatedAt: unknown;
@@ -165,6 +170,7 @@ export interface SessionDetail {
   status: "draft" | "complete";
   currentStep?: string;
   courseId?: string;
+  personalCourse?: boolean;
   draftStateJson?: string;
   /** Where the applied template comes from; null means the default design */
   templateSource?: "SESSION" | "COURSE" | null;
@@ -172,6 +178,20 @@ export interface SessionDetail {
   templateName?: string | null;
   session?: WorkshopSession;
 }
+
+/** A learning goal of a course (core), as returned by GET /api/workshop/courses/{id}/goals */
+export interface CourseGoal {
+  /** The core goal id (a UUID) */
+  id: string;
+  text: string;
+  originalText?: string;
+  bloomLevel?: string;
+  soloLevel?: string;
+  status: string;
+}
+
+/** The label of the personal catch-all course; the server stores a title, the clients show this. */
+export const PERSONAL_COURSE_LABEL = "Einzelkram";
 
 /** The slide template that applies to the session or course being edited. */
 export interface TemplateInfo {

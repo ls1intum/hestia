@@ -37,6 +37,7 @@ class FileControllerIT extends AbstractIntegrationTest {
     private Examination ownExamination() {
         Examination e = new Examination();
         e.setCreatedBy(userId("alice"));
+        e.setCourseId(courseOf("alice"));
         e.setSource("pdf");
         e.setStatus("draft");
         return exams.save(e);

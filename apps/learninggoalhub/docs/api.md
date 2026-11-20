@@ -252,9 +252,9 @@ human-readable `message`:
 ## Other modules of the server
 
 The `assessment` and `teaching` modules run in the same server process and do not call these
-endpoints. They use the ports `de.tum.cit.hestia.core.spi.GoalDirectory` (courses, goals, goals by
-session, delete a goal) and `de.tum.cit.hestia.core.spi.ExamGoalDerivation` (goals for exam tasks),
-which `materials` implements with the services behind the endpoints below. The endpoints
+endpoints. Courses and learning goals live in `core` (`CourseApi`, `LearningGoalApi`,
+`AlignmentApi`), which every module uses; `materials` implements the port
+`de.tum.cit.hestia.core.spi.ExamGoalDerivation` (goals for exam tasks). The endpoints
 stay for the browser client and for external API consumers; every one of them needs a login.
 
 ## Consuming from Java (Spring Boot)

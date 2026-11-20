@@ -38,7 +38,7 @@ class ParseExamHttpFlowTest extends AbstractHttpFlowTest {
             .as("exam status after parse, parse_error=%s", exam.json().path("parse_error").asText())
             .isEqualTo("draft");
         assertThat(exam.json().get("title").asText()).isEqualTo(FakeModelServer.EXAM_TITLE);
-        assertThat(exam.json().get("course").asText()).isEqualTo(FakeModelServer.EXAM_COURSE);
+        assertThat(exam.json().get("course_id").asText()).as("the exam sits in a course").isNotBlank();
 
         FlowHttp.Reply tasks = http.get(FlowPaths.api("/exams/" + examId + "/tasks"));
         assertThat(tasks.status()).isEqualTo(200);

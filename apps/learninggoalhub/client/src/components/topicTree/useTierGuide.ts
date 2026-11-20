@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
 /** Set once a reader dismissed a course's first-visit hint on how to read the table. */
-const tierGuideSeenKey = (courseId: number) => `learninggoalhub.tierGuide.seen.${courseId}`;
+const tierGuideSeenKey = (courseId: string) => `learninggoalhub.tierGuide.seen.${courseId}`;
 
 /**
  * The strip explaining the tiers shows on a reader's first visit to a course; once dismissed it
  * folds into the toolbar's "How to read this" button, which flashes briefly to show where it went.
  */
-export function useTierGuide(courseId: number) {
+export function useTierGuide(courseId: string) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(() => {
     try {

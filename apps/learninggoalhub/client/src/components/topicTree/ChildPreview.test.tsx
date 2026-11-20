@@ -8,7 +8,8 @@ import { ChildPreview } from "./DiagramRows.tsx";
 import type { Row } from "./model.ts";
 
 function row(id: number, role: TreeRole, shortLabel: string): Row {
-  return { id, parent: 1, number: "", role, session: "", goal: { id, shortLabel } as LearningGoal };
+  const goalId = `g${id}`;
+  return { id: goalId, parent: "g1", number: "", role, session: "", goal: { id: goalId, shortLabel } as LearningGoal };
 }
 
 describe("ChildPreview", () => {

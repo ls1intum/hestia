@@ -7,7 +7,7 @@ import type { LearningGoal } from "../api/client.ts";
  * Shared by the table and the review so both report the same errors.
  */
 export async function createTopic(
-  courseId: number,
+  courseId: string,
   text: string,
   generate: boolean,
 ): Promise<LearningGoal> {

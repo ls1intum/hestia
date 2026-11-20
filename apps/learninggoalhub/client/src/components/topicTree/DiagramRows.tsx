@@ -34,7 +34,7 @@ export function LooseGroupRow({
   columns,
   onToggle,
 }: {
-  id: number;
+  id: string;
   depth: number;
   zebra: boolean;
   open: boolean;
@@ -42,7 +42,7 @@ export function LooseGroupRow({
   items: Row[];
   gridCols: string;
   columns: AttributeKey[];
-  onToggle: (id: number) => void;
+  onToggle: (id: string) => void;
 }) {
   return (
     <div
@@ -175,7 +175,7 @@ export function DiagramAttributes({
   openLevel: LevelScale | null;
   onToggleLevel: (row: Row, scale: LevelScale) => void;
   onCloseLevel: () => void;
-  onUpdate: (goalId: number, changes: GoalChanges) => void;
+  onUpdate: (goalId: string, changes: GoalChanges) => void;
   sourceOpen: boolean;
   onOpenSource: (row: Row, trigger: HTMLElement) => void;
   /** A skill's sub-skills, which its generated name sums up. */

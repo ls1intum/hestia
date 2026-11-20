@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,14 +31,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/exams")
 @Tag(name = "Exams", description = """
     Exam lifecycle. Status moves `parsing → draft → ready → evaluating → grading → finished`, \
-    or `failed`. Every endpoint is scoped to the exams the caller may see: those of their courses, or their own without a course.""")
+    or `failed`. Every exam belongs to a course; every endpoint is scoped to the exams of the courses the caller is a member of.""")
 public class ExaminationController {
 
     public record CreateExaminationRequest(
-        String title, String course,
+        String title,
         String source, String status, String source_file_url,
-        String parser_model, String solver_model, Long lgh_course_id
+        String parser_model, String solver_model, String course_id
     ) {}
+
+    public record MoveExaminationRequest(String courseId) {}
 
     /** Optional overrides for a duplicate; null/blank fields fall back to the copy defaults. */
     public record DuplicateExaminationRequest(String title, String solver_model) {}
@@ -67,13 +70,9 @@ public class ExaminationController {
         description = "Newest first, each with its task and graded-task counts for the dashboard's progress column.")
     @GetMapping
     public List<ExaminationDtos.ExaminationListItemDto> list() {
-        List<Examination> exams = new java.util.ArrayList<>(
-            examRepository.findByCourseIdIsNullAndCreatedByOrderByCreatedAtDesc(currentUser.userId()));
         List<UUID> courseIds = courses.idsMine(CourseRole.VIEWER);
-        if (!courseIds.isEmpty()) {
-            exams.addAll(examRepository.findByCourseIdInOrderByCreatedAtDesc(courseIds));
-            exams.sort(java.util.Comparator.comparing(Examination::getCreatedAt).reversed());
-        }
+        List<Examination> exams = courseIds.isEmpty()
+            ? List.of() : examRepository.findByCourseIdInOrderByCreatedAtDesc(courseIds);
         var counts = progress.countsFor(exams.stream().map(Examination::getId).toList());
         return exams.stream()
             .map(e -> ExaminationDtos.ExaminationListItemDto.from(e,
@@ -97,25 +96,50 @@ public class ExaminationController {
             default (`title` empty, `status` `draft`). `created_by` is stamped from the caller and \
             cannot be set.
 
-            Link `lgh_course_id` here to enable learning-goal derivation — omitting it disables \
-            goal insights for the exam's whole life.""")
+            `course_id` (a core course id) puts the exam into that course; without it the exam goes \
+            into the caller's personal course. The caller needs editor rights in the course.""")
+    @ApiResponse(responseCode = "403", description = "The caller may only read the course.")
+    @ApiResponse(responseCode = "404", description = "The course does not exist or the caller is not a member.")
     @ApiResponse(responseCode = "409", description = "A required field was omitted — most often `source`.")
     @PostMapping
     public ExaminationDtos.ExaminationDto create(@RequestBody CreateExaminationRequest req) {
         Examination e = new Examination();
         e.setCreatedBy(currentUser.userId());
+        if (req.course_id() == null || req.course_id().isBlank()) {
+            e.setCourseId(courses.personalCourse().id());
+        } else {
+            UUID courseId = Access.courseId(req.course_id());
+            access.requireCourseWrite(courseId);
+            e.setCourseId(courseId);
+        }
         if (req.title() != null) e.setTitle(req.title());
-        if (req.course() != null) e.setCourse(req.course());
         if (req.source() != null) e.setSource(req.source());
         if (req.status() != null) e.setStatus(req.status());
         if (req.source_file_url() != null) e.setSourceFileUrl(req.source_file_url());
         if (req.parser_model() != null) e.setParserModel(req.parser_model());
         if (req.solver_model() != null) e.setSolverModel(req.solver_model());
-        if (req.lgh_course_id() != null) {
-            e.setCourseId(access.linkCourse(req.lgh_course_id()));
-            e.setLghCourseId(req.lgh_course_id());
-        }
         return ExaminationDtos.ExaminationDto.from(examRepository.save(e));
+    }
+
+    @Operation(
+        summary = "Move an exam to another course",
+        description = """
+            Puts the exam into the course `courseId`. The links of the exam's tasks to learning \
+            goals of the old course are removed; links to goals of other courses stay. Needs \
+            editor rights in both courses.""")
+    @ApiResponse(responseCode = "400", description = "`courseId` is missing.")
+    @ApiResponse(responseCode = "403", description = "The caller may only read one of the courses.")
+    @ApiResponse(responseCode = "404", description = "No such exam or course, or the caller is not a member.")
+    @PutMapping("/{id}/course")
+    public ExaminationDtos.ExaminationDto moveToCourse(@PathVariable String id,
+                                                       @RequestBody MoveExaminationRequest req) {
+        if (req == null || req.courseId() == null || req.courseId().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "courseId is required");
+        }
+        Examination e = access.requireExaminationForWrite(Access.id(id));
+        UUID target = Access.courseId(req.courseId());
+        access.requireCourseWrite(target);
+        return ExaminationDtos.ExaminationDto.from(examService.moveToCourse(e, target));
     }
 
     /** Statuses the client may set directly (mirrors the DB check constraint). */
@@ -126,8 +150,8 @@ public class ExaminationController {
         summary = "Update an exam",
         description = """
             Sparse update — only the keys present in the body are written. Accepts `title`, \
-            `course`, `status`, `parse_error`, `parser_model`, `solver_model`, \
-            `source_file_url`, and `lgh_course_id`.
+            `status`, `parse_error`, `parser_model`, `solver_model` and \
+            `source_file_url`. The course changes through `PUT /api/exams/{id}/course`.
 
             `parse_phase` is internal progress state and deliberately not patchable. `status` \
             must be one of `draft`, `parsing`, `failed`, `ready`, `evaluating`, `grading`, \
@@ -140,7 +164,6 @@ public class ExaminationController {
     public ExaminationDtos.ExaminationDto patch(@PathVariable String id, @RequestBody Map<String, Object> body) {
         Examination e = access.requireExaminationForWrite(Access.id(id));
         if (Patch.has(body, "title")) e.setTitle(Patch.str(body.get("title")));
-        if (Patch.has(body, "course")) e.setCourse(Patch.str(body.get("course")));
         // status/parse_error stay client-writable — the frontend's retry-parse,
         // cancel-recovery, and finish-grading flows patch them — but the status
         // value is validated so a bad one is a 400, not an opaque constraint 500.
@@ -166,11 +189,6 @@ public class ExaminationController {
         if (Patch.has(body, "parser_model")) e.setParserModel(Patch.str(body.get("parser_model")));
         if (Patch.has(body, "solver_model")) e.setSolverModel(Patch.str(body.get("solver_model")));
         if (Patch.has(body, "source_file_url")) e.setSourceFileUrl(Patch.str(body.get("source_file_url")));
-        if (Patch.has(body, "lgh_course_id")) {
-            Long lghId = Patch.longVal(body.get("lgh_course_id"));
-            e.setCourseId(lghId == null ? null : access.linkCourse(lghId));
-            e.setLghCourseId(lghId);
-        }
         return ExaminationDtos.ExaminationDto.from(examRepository.save(e));
     }
 
@@ -193,7 +211,7 @@ public class ExaminationController {
             try { storage.delete("exam-pdfs", e.getSourceFileUrl()); } catch (RuntimeException ignored) {}
         }
         try { storage.deletePrefix("exam-figures", OrgContext.require() + "/" + e.getId()); } catch (RuntimeException ignored) {}
-        examRepository.delete(e);
+        examService.deleteExamination(e);
         return ResponseEntity.noContent().build();
     }
 
@@ -235,8 +253,8 @@ public class ExaminationController {
         description = """
             Copies the exam's content — sections, tasks, blocks, figures, and the source PDF — \
             into a fresh `draft` owned by the caller. Answers and grades are **not** copied, and \
-            neither are learning-goal ids: those identify goals owned by the source exam's \
-            sections, and are regenerated when the copy's sections are confirmed.
+            neither are learning-goal links: the copy gets its goals when its \
+            sections are confirmed.
 
             The body is optional; `title` and `solver_model` override the copy defaults when \
             given, otherwise the title gets a `(Copy)` suffix.""")

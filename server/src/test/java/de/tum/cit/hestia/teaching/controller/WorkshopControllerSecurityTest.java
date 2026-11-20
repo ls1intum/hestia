@@ -6,7 +6,6 @@ import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.core.CourseNotFoundException;
 import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Login, organisation and course roles of the teaching endpoints, against the real filter chain and
  * database: 401 without login, another organisation sees nothing, a VIEWER cannot write, a session
- * without a course belongs to its creator.
+ * without a course lands in the creator's personal course.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -54,7 +53,6 @@ class WorkshopControllerSecurityTest {
 
     @Autowired MockMvc mvc;
     @Autowired IdentityService identities;
-    @Autowired CourseRepository courses;
     @Autowired CourseApi courseApi;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -82,7 +80,7 @@ class WorkshopControllerSecurityTest {
     }
 
     private UUID coreIdOf(String org, String user, String courseId) {
-        return TestLogin.runAs(identities, org, user, () -> courses.findById(courseId).orElseThrow().getCoreCourseId());
+        return UUID.fromString(courseId); // a Workshopper course is the core course
     }
 
     private void addMember(String course, String member, String role) throws Exception {
@@ -106,6 +104,11 @@ class WorkshopControllerSecurityTest {
         mvc.perform(put(API + "/sessions/some-id/rename").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"hacked\"}")).andExpect(status().isUnauthorized());
         mvc.perform(delete(API + "/sessions/some-id").with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(put(API + "/sessions/some-id/course").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"courseId\":\"" + UUID.randomUUID() + "\"}")).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/courses/" + UUID.randomUUID() + "/goals")).andExpect(status().isUnauthorized());
+        mvc.perform(put(API + "/courses/" + UUID.randomUUID() + "/goals").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("[]")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -142,6 +145,12 @@ class WorkshopControllerSecurityTest {
         mvc.perform(put(API + "/sessions/" + session + "/rename").with(other).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"x\"}")).andExpect(status().isNotFound());
         mvc.perform(get(API + "/export/course/" + course + "/zip").with(other)).andExpect(status().isNotFound());
+        mvc.perform(get(API + "/courses/" + course + "/goals").with(other)).andExpect(status().isNotFound());
+        mvc.perform(put(API + "/courses/" + course + "/goals").with(other).contentType(MediaType.APPLICATION_JSON)
+                .content("[{\"text\":\"x\"}]")).andExpect(status().isNotFound());
+        String otherOrgsCourse = createCourse(other, "Theirs");
+        mvc.perform(put(API + "/sessions/" + session + "/course").with(other).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"courseId\":\"" + otherOrgsCourse + "\"}")).andExpect(status().isNotFound());
     }
 
     @Test
@@ -193,6 +202,16 @@ class WorkshopControllerSecurityTest {
                 .content("{\"title\":\"x\"}")).andExpect(status().isForbidden());
         mvc.perform(delete(API + "/courses/" + course).with(viewer)).andExpect(status().isForbidden());
         mvc.perform(delete(API + "/courses/" + course + "/template").with(viewer)).andExpect(status().isForbidden());
+        mvc.perform(put(API + "/courses/" + course + "/goals").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("[{\"text\":\"A goal the viewer wrote\"}]")).andExpect(status().isForbidden());
+        mvc.perform(get(API + "/courses/" + course + "/goals").with(viewer)).andExpect(status().isOk());
+        // ... nor move a session out of the course, or into it
+        String ownCourse = createCourse(viewer, "Veras own course");
+        mvc.perform(put(API + "/sessions/" + session + "/course").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"courseId\":\"" + ownCourse + "\"}")).andExpect(status().isForbidden());
+        String veraSession = createSession(viewer, ownCourse);
+        mvc.perform(put(API + "/sessions/" + veraSession + "/course").with(viewer).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"courseId\":\"" + course + "\"}")).andExpect(status().isForbidden());
 
         // EDITOR: writes, renames, but does not delete the course
         mvc.perform(post(API + "/sessions/draft").with(editor).contentType(MediaType.APPLICATION_JSON).content(draft))
@@ -211,12 +230,16 @@ class WorkshopControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("a session without a course is visible to its creator only")
+    @DisplayName("a session without a course lands in the personal course and is visible to its creator only")
     void sessionWithoutCourseIsPrivate() throws Exception {
         String session = createSession(as(uniA, "alice"), null);
         TestLogin.login(identities, uniA, "bob");
 
-        mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "alice"))).andExpect(status().isOk());
+        var detail = json.readTree(mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "alice")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(detail.path("personalCourse").asBoolean()).isTrue();
+        UUID personal = TestLogin.runAs(identities, uniA, "alice", () -> courseApi.personalCourse().id());
+        assertThat(detail.path("courseId").asText()).isEqualTo(personal.toString());
         mvc.perform(get(API + "/sessions/" + session).with(as(uniA, "bob"))).andExpect(status().isNotFound());
         mvc.perform(delete(API + "/sessions/" + session).with(as(uniA, "bob"))).andExpect(status().isNotFound());
         mvc.perform(get(API + "/sessions").with(as(uniA, "bob"))).andExpect(jsonPath("$.length()").value(0));

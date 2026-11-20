@@ -18,7 +18,7 @@ export interface TaskBlock {
   reference_answer: string | null;
   points: number | null;
   parse_confidence: "high" | "medium" | "low" | null;
-  learning_goal_ids?: number[] | null;
+  learning_goal_ids?: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -103,7 +103,8 @@ export const mergeSectionItems = (
 export interface Examination {
   id: string;
   title: string;
-  course: string | null;
+  /** The core course the exam belongs to (the user's personal course when none was chosen). */
+  course_id: string;
   source: "pdf" | "manual";
   source_file_url: string | null;
   status:
@@ -125,7 +126,6 @@ export interface Examination {
   parsed_at?: string | null;
   parser_model?: string | null;
   solver_model?: string | null;
-  lgh_course_id?: number | null;
   /** Source document page count (PDF/converted docx); null for manual exams or if unknown. */
   page_count?: number | null;
   created_at: string;

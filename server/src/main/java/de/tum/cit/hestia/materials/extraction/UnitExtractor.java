@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.materials.extraction;
 
-import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.materials.course.CourseContext;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContentRepository;
 import de.tum.cit.hestia.materials.document.DocumentKind;
@@ -9,10 +9,9 @@ import de.tum.cit.hestia.materials.document.HighlightRect;
 import de.tum.cit.hestia.materials.document.LanguageUtils;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
 import de.tum.cit.hestia.materials.goal.EvidenceKind;
-import de.tum.cit.hestia.materials.goal.GoalRole;
+import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.GoalSource;
-import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
 import de.tum.cit.hestia.materials.goal.SourceMatchQuality;
 import de.tum.cit.hestia.materials.taxonomy.TaxonomyClassification;
 import java.io.IOException;
@@ -25,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
@@ -49,7 +49,7 @@ public class UnitExtractor {
     private final SessionExtractionService sessionExtractionService;
     private final DocumentContentRepository documentContentRepository;
     private final HighlightGeometryService highlightGeometryService;
-    private final GoalSourceRepository goalSourceRepository;
+    private final PlacedGoals placedGoals;
     private final int unitMaxChars;
     private final int skillTargetChars;
     private final int exerciseSkillTargetChars;
@@ -57,7 +57,7 @@ public class UnitExtractor {
     public UnitExtractor(SessionExtractionService sessionExtractionService,
                          DocumentContentRepository documentContentRepository,
                          HighlightGeometryService highlightGeometryService,
-                         GoalSourceRepository goalSourceRepository,
+                         PlacedGoals placedGoals,
                          @Value("${hestia.extraction.unit-max-chars:12000}") int unitMaxChars,
                          @Value("${hestia.extraction.skill-target-chars:3000}") int skillTargetChars,
                          @Value("${hestia.extraction.exercise-skill-target-chars:${hestia.extraction.skill-target-chars:3000}}")
@@ -65,7 +65,7 @@ public class UnitExtractor {
         this.sessionExtractionService = sessionExtractionService;
         this.documentContentRepository = documentContentRepository;
         this.highlightGeometryService = highlightGeometryService;
-        this.goalSourceRepository = goalSourceRepository;
+        this.placedGoals = placedGoals;
         this.unitMaxChars = unitMaxChars;
         this.skillTargetChars = skillTargetChars;
         this.exerciseSkillTargetChars = exerciseSkillTargetChars;
@@ -159,7 +159,7 @@ public class UnitExtractor {
      * Runs the extraction prompt over one unit: the exercise prompt and skill budget for a unit of a
      * document uploaded as an exercise, the lecture prompt and budget for everything else.
      */
-    public <T> SessionExtraction<T> extract(Course course, SessionUnit<T> session, String dominantLanguage,
+    public <T> SessionExtraction<T> extract(CourseContext course, SessionUnit<T> session, String dominantLanguage,
                                             String modelOverride) {
         String languageCode = LanguageUtils.resolveLanguage(
                 course, session.document().getLanguage(), dominantLanguage);
@@ -303,12 +303,12 @@ public class UnitExtractor {
     }
 
     /** Stores a goal's source, with highlight geometry when the quote is grounded in a PDF page. */
-    public void persistSource(LearningGoal goal, Document document, ResolvedSource source, PdfCache pdfCache) {
+    public void persistSource(UUID goalId, Document document, ResolvedSource source, PdfCache pdfCache) {
         SourcePageResolver.Resolution resolution = source.resolution();
         String persistedSnippet = snippetOf(document, source);
         GoalSource goalSource = source.evidenceKind() == EvidenceKind.FIGURE
-                ? GoalSource.figure(goal, document, resolution.page())
-                : new GoalSource(goal, document, persistedSnippet, resolution.page(), resolution.quality());
+                ? GoalSource.figure(goalId, document, resolution.page())
+                : new GoalSource(goalId, document, persistedSnippet, resolution.page(), resolution.quality());
         if (resolution.grounded() && resolution.page() != null
                 && resolution.matchStart() != null && resolution.matchEnd() != null
                 && document.getPageOffsets() != null
@@ -331,7 +331,7 @@ public class UnitExtractor {
                 }
             }
         }
-        goalSourceRepository.save(goalSource);
+        placedGoals.saveSource(goalSource);
     }
 
     /** Opens each document's PDF at most once while sources are persisted; close it when done. */

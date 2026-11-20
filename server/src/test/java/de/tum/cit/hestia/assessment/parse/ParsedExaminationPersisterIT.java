@@ -32,6 +32,7 @@ class ParsedExaminationPersisterIT extends AbstractIntegrationTest {
     void reparseRemovesObjectsForReplacedFigureRows() {
         Examination exam = new Examination();
         exam.setCreatedBy(userId("alice"));
+        exam.setCourseId(courseOf("alice"));
         exam.setSource("pdf");
         exam.setStatus("parsing");
         exams.save(exam);

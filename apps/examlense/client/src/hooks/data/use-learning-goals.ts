@@ -6,9 +6,9 @@ export const examLearningGoalsKey = (examId: string) =>
   ["exam-learning-goals", examId] as const;
 
 /**
- * The resolved learning goals of an exam's tasks, proxied through our backend
- * to LearningGoalHub (VPN-only). Callers should handle `isError` and degrade
- * gracefully — goal ids stay usable on the tasks even when LGH is down.
+ * The resolved learning goals of an exam's tasks, read from the course goals so
+ * a renamed goal shows its new text. Callers should handle `isError` and
+ * degrade gracefully — goal ids stay usable on the tasks.
  */
 export function useExamLearningGoals(examId: string | undefined) {
   return useQuery({
@@ -20,36 +20,29 @@ export function useExamLearningGoals(examId: string | undefined) {
   });
 }
 
-export const lghCoursesKey = ["lgh-courses"] as const;
+export const coursesKey = ["courses"] as const;
 
-/**
- * LearningGoalHub course list for the exam-creation course picker, also used as
- * the dashboard's LGH-availability probe: a successful fetch means LGH is
- * reachable, an error means it is down. Pass `refetchInterval` to poll.
- */
-export function useLghCourses(
-  options: { enabled?: boolean; refetchInterval?: number } = {},
-) {
+/** The courses the user belongs to, for the course pickers (create and move). */
+export function useCourses(options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: lghCoursesKey,
+    queryKey: coursesKey,
     queryFn: listLghCourses,
     enabled: options.enabled ?? true,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 60 * 1000,
     retry: 1,
-    refetchInterval: options.refetchInterval,
   });
 }
 
 /**
- * Create a new, empty LearningGoalHub course. Invalidates the course list so a
- * freshly created course shows up the next time the picker opens.
+ * Create a new, empty course. Invalidates the course list so a freshly created
+ * course shows up the next time a picker opens.
  */
-export function useCreateLghCourse() {
+export function useCreateCourse() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => createLghCourse(name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: lghCoursesKey });
+      queryClient.invalidateQueries({ queryKey: coursesKey });
     },
   });
 }

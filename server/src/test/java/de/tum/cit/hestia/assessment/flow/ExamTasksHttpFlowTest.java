@@ -15,7 +15,7 @@ class ExamTasksHttpFlowTest extends AbstractHttpFlowTest {
     @Test
     void createExam_addTasks_fetchTasksAndList() {
         FlowHttp.Reply created = http.postJson(FlowPaths.api("/exams"), Map.of(
-            "title", "Manual Flow Exam", "course", "Flow Testing 101", "source", "manual"));
+            "title", "Manual Flow Exam", "source", "manual"));
         assertThat(created.status()).isEqualTo(200);
         String examId = created.json().get("id").asText();
         assertThat(created.json().get("title").asText()).isEqualTo("Manual Flow Exam");

@@ -3,6 +3,7 @@ package de.tum.cit.hestia.assessment.section;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.lgh.TaskBlockGoalGenerationService;
+import de.tum.cit.hestia.assessment.lgh.TaskGoalLinks;
 import de.tum.cit.hestia.assessment.sse.SseHub;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
@@ -16,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Multi-step section/block operations that must be atomic: position-shifting
  * inserts (ports of the {@code shift_and_insert_*} DB functions), section
- * unconfirm (which also clears the section's AI answers and detaches LGH goals),
+ * unconfirm (which also clears the section's AI answers and detaches its goals),
  * and section delete with full child cleanup.
  */
 @Service
@@ -29,12 +30,14 @@ public class SectionService {
     private final AIAnswerRepository answers;
     private final FigureCleanupService figureCleanup;
     private final TaskBlockGoalGenerationService goalGeneration;
+    private final TaskGoalLinks goalLinks;
     private final SseHub sse;
 
     public SectionService(ExaminationRepository exams, SectionRepository sections, TaskBlockRepository tasks,
                           SectionBlockRepository blocks, AIAnswerRepository answers,
                           FigureCleanupService figureCleanup,
-                          TaskBlockGoalGenerationService goalGeneration, SseHub sse) {
+                          TaskBlockGoalGenerationService goalGeneration, TaskGoalLinks goalLinks, SseHub sse) {
+        this.goalLinks = goalLinks;
         this.exams = exams;
         this.sections = sections;
         this.tasks = tasks;
@@ -76,33 +79,23 @@ public class SectionService {
 
     /**
      * Clear a section's confirmation, drop the AI answers for its tasks, and
-     * detach the LGH-derived learning goals (deleted in LGH async best-effort
-     * — the goals were generated for the now-retracted content).
+     * detach their learning goals: the links go now, and the goals that were derived for the
+     * now-retracted content are removed in the background (best-effort).
      */
     @Transactional
     public void unconfirmSection(Section section) {
         List<UUID> taskIds = new ArrayList<>();
-        List<Long> goalIds = new ArrayList<>();
         List<TaskBlock> sectionTaskBlocks = tasks.findBySectionIdOrderByPositionAsc(section.getId());
-        for (TaskBlock t : sectionTaskBlocks) {
-            taskIds.add(t.getId());
-            if (t.getLearningGoalIds() != null) {
-                goalIds.addAll(t.getLearningGoalIds());
-                t.setLearningGoalIds(null);
-            }
-        }
+        for (TaskBlock t : sectionTaskBlocks) taskIds.add(t.getId());
         if (!taskIds.isEmpty()) answers.deleteByTaskIdIn(taskIds);
-        tasks.saveAll(sectionTaskBlocks);
         section.setConfirmedAt(null);
         sections.save(section);
 
-        if (!goalIds.isEmpty()) {
-            Examination exam = exams.findById(section.getExamId()).orElse(null);
-            if (exam != null && exam.getLghCourseId() != null) {
-                try {
-                    goalGeneration.dispatchCleanup(exam.getLghCourseId(), goalIds);
-                } catch (RuntimeException ignored) {}
-            }
+        List<UUID> derived = goalGeneration.detachGoals(taskIds);
+        if (!derived.isEmpty()) {
+            try {
+                goalGeneration.dispatchCleanup(derived);
+            } catch (RuntimeException ignored) {}
         }
         // Answers were dropped regardless of whether goals existed — always
         // tell SSE subscribers the tasks changed.
@@ -111,7 +104,7 @@ public class SectionService {
 
     /**
      * Delete a section with full cleanup, server-side: unconfirm first when
-     * needed (drops AI answers + detaches LGH goals), then remove its tasks
+     * needed (drops AI answers + detaches goals), then remove its tasks
      * and blocks along with the section — the frontend is not trusted to call
      * the delete-by-section endpoints beforehand.
      */
@@ -121,6 +114,7 @@ public class SectionService {
         if (section.getConfirmedAt() != null) {
             unconfirmSection(section);
         }
+        goalLinks.unlinkAll(tasks.findBySectionIdOrderByPositionAsc(section.getId()).stream().map(TaskBlock::getId).toList());
         tasks.deleteByExamIdAndSectionId(section.getExamId(), section.getId());
         blocks.deleteByExamIdAndSectionId(section.getExamId(), section.getId());
         sections.delete(section);

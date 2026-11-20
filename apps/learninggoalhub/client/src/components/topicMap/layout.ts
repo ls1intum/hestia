@@ -47,7 +47,7 @@ export type MapCreation = {
   pending: boolean;
   /** The failure of the creation currently open, if any. */
   error: string | undefined;
-  begin: (tier: 2 | 3 | 4, parentGoalId: number) => void;
+  begin: (tier: 2 | 3 | 4, parentGoalId: string) => void;
   change: (value: string) => void;
   submit: () => void;
   cancel: () => void;
@@ -57,8 +57,14 @@ export const LOOSE_GROUP_LABEL = "Additional sub-skills";
 
 /** The first row's box gathering the topic's goals that sit in no skill. */
 export function isLooseGroup(node: TreeNode) {
-  return node.goal.id! < 0;
+  return isLooseGroupId(node.goal.id!);
 }
+
+/** Goal ids are UUIDs, so the group of a topic's loose goals is keyed by a prefixed id no UUID has. */
+const LOOSE_PREFIX = "loose:";
+export const looseGroupId = (topicId: string) => `${LOOSE_PREFIX}${topicId}`;
+export const isLooseGroupId = (id: string) => id.startsWith(LOOSE_PREFIX);
+export const looseGroupTopicId = (id: string) => id.slice(LOOSE_PREFIX.length);
 
 /** Skills and sub-skills that hold goals unfold into a row of their own; knowledge and gaps don't. */
 export function canDrill(node: TreeNode) {

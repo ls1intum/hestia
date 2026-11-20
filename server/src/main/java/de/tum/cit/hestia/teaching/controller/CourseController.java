@@ -1,9 +1,12 @@
 package de.tum.cit.hestia.teaching.controller;
 
+import de.tum.cit.hestia.teaching.dto.CourseGoalDto;
+import de.tum.cit.hestia.teaching.dto.CourseGoalInputDto;
 import de.tum.cit.hestia.teaching.dto.CourseSummaryDto;
 import de.tum.cit.hestia.teaching.dto.SaveDraftRequestDto;
 import de.tum.cit.hestia.teaching.dto.SessionDetailDto;
 import de.tum.cit.hestia.teaching.facade.WorkshopSessionFacade;
+import de.tum.cit.hestia.teaching.service.SessionGoals;
 import de.tum.cit.hestia.teaching.service.WorkshopService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,10 +21,29 @@ public class CourseController {
 
     private final WorkshopService workshopService;
     private final WorkshopSessionFacade facade;
+    private final SessionGoals goals;
 
-    public CourseController(WorkshopService workshopService, WorkshopSessionFacade facade) {
+    public CourseController(WorkshopService workshopService, WorkshopSessionFacade facade, SessionGoals goals) {
         this.workshopService = workshopService;
         this.facade = facade;
+        this.goals = goals;
+    }
+
+    /** The learning goals of the course (core), for the goal picker; needs VIEWER. */
+    @GetMapping("/{id}/goals")
+    public List<CourseGoalDto> courseGoals(@PathVariable String id) {
+        facade.verifyCourseRead(id);
+        return goals.courseGoals(WorkshopService.uuid(id));
+    }
+
+    /**
+     * Saves the goals written or edited on the goal step in core (without id: created, with id: changed
+     * if the text differs) and returns them in the given order; needs EDITOR.
+     */
+    @PutMapping("/{id}/goals")
+    public List<CourseGoalDto> saveCourseGoals(@PathVariable String id, @RequestBody List<CourseGoalInputDto> inputs) {
+        facade.verifyCourseWrite(id);
+        return goals.saveCourseGoals(WorkshopService.uuid(id), inputs);
     }
 
     @GetMapping

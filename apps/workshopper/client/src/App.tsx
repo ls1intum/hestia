@@ -10,6 +10,8 @@ import SessionsDashboard from "@/components/SessionsDashboard";
 import CourseSummary from "@/components/CourseSummary";
 import CourseTemplateStep from "@/components/CourseTemplateStep";
 import WorkshopFinalReview from "@/components/WorkshopFinalReview";
+import { MoveSessionDialog } from "@/components/MoveSessionDialog";
+import { PERSONAL_COURSE_LABEL } from "@/lib/workshop-generator";
 import { Toaster } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
@@ -30,6 +32,7 @@ export default function App() {
   /** Open while asking about unsaved settings on the form steps. */
   const [settingsLeaveDialog, setSettingsLeaveDialog] = useState<{ proceed: () => void } | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [isSlideWorkstationOpen, setIsSlideWorkstationOpen] = useState(true);
   const {
     view, setView, step, setStep, highestStepIdx, setHighestStepIdx,
@@ -40,7 +43,7 @@ export default function App() {
     startNewSession, startNewCourse, startSessionFromCourse, resumeSession, persistDraft,
     setSlidesCache, setWorkshopInput, setCompletedTasks,
     setSession, setIsFinished, showTimelineBackConfirm, setShowTimelineBackConfirm, STEPS,
-    originalSession, currentCourseId, buildDraft, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
+    originalSession, currentCourseId, sessionCourse, moveCurrentSession, buildDraft, flushDraft, leaveGuardRef, confirmLeave, keptGoals, keepGoalDraft,
     hasUnsavedSettings, saveSettings, discardSettings,
     templateInfo, setTemplateInfo
   } = wizard;
@@ -147,11 +150,23 @@ export default function App() {
             })}
           </div>
 
+          {entityType === "SESSION" && sessionId && sessionCourse && (
+            <Button variant="outline" size="sm" onClick={() => setMoveDialogOpen(true)} className="shrink-0" title="Move this session to another course">
+              {sessionCourse.personal ? PERSONAL_COURSE_LABEL : "Course"}: Move…
+            </Button>
+          )}
+
           <Button variant="ghost" size="icon" onClick={toggleDark} aria-label="Toggle dark mode" className="shrink-0">
             {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
         </div>
       </header>
+      <MoveSessionDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        currentCourseId={sessionCourse?.id}
+        onMove={(course) => moveCurrentSession(course.id, course.personal)}
+      />
 
       {/* Main */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -228,6 +243,7 @@ export default function App() {
         {step === "goals" && (
           <WorkshopGoalEntry
             initialInput={workshopInput}
+            courseId={sessionCourse?.id ?? null}
             onBack={() => { flushDraft(); setStep(currentCourseId ? "course-summary" : "input-2b"); }}
             onContinue={handleGoalsEntered}
             isLoading={isLoading}

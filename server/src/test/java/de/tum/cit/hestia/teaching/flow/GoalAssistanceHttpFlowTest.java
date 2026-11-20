@@ -10,7 +10,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** AI-assisted steps, answered by the fake model (no real key, no network), and the LearningGoalHub import. */
+/** AI-assisted steps, answered by the fake model (no real key, no network), and the goals of a course. */
 @Tag("http-flow")
 @ActiveProfiles(FlowAuth.SIGNED_IN_PROFILE)
 class GoalAssistanceHttpFlowTest extends FlowTestSupport {
@@ -46,13 +46,30 @@ class GoalAssistanceHttpFlowTest extends FlowTestSupport {
     }
 
     @Test
-    void goalImport_passesLearningGoalHubAnswerThrough() {
-        FAKE_LEARNING_GOAL_HUB.respondWith("{\"content\":[{\"id\":7,\"name\":\"Fake LGH Course\"}],\"totalElements\":1}");
+    void goalPicker_listsTheCoursesCoreGoals_andGoalsAreSavedThroughThePlanEndpoint() {
+        FlowClient api = signedIn();
+        String courseId = api.post(FlowPaths.COURSE_DRAFT,
+                Map.of("title", "Goal Course", "currentStep", "settings", "draftStateJson", "{}")).json().path("id").asText();
 
-        FlowResponse response = signedIn().get(FlowPaths.LGH_COURSES);
+        FlowResponse saved = api.put(FlowPaths.courseGoals(courseId),
+                List.of(Map.of("text", "Students can explain recursion")));
+        assertThat(saved.status()).isEqualTo(200);
+        String goalId = saved.json().get(0).path("id").asText();
+        assertThat(java.util.UUID.fromString(goalId)).isNotNull();
 
-        assertThat(response.status()).isEqualTo(200);
-        assertThat(response.json().path("content").get(0).path("name").asText()).isEqualTo("Fake LGH Course");
-        assertThat(FAKE_LEARNING_GOAL_HUB.requests).anyMatch(r -> r.startsWith("GET ") && r.contains("courses"));
+        FlowResponse listed = api.get(FlowPaths.courseGoals(courseId));
+        assertThat(listed.status()).isEqualTo(200);
+        assertThat(listed.json()).hasSize(1);
+        assertThat(listed.json().get(0).path("id").asText()).isEqualTo(goalId);
+        assertThat(listed.json().get(0).path("text").asText()).isEqualTo("Students can explain recursion");
+
+        // The goal is edited by id: same goal, new wording
+        FlowResponse edited = api.put(FlowPaths.courseGoals(courseId),
+                List.of(Map.of("id", goalId, "text", "Students can trace recursion")));
+        assertThat(edited.json().get(0).path("id").asText()).isEqualTo(goalId);
+        assertThat(api.get(FlowPaths.courseGoals(courseId)).json().get(0).path("text").asText())
+                .isEqualTo("Students can trace recursion");
+
+        api.delete(FlowPaths.course(courseId));
     }
 }

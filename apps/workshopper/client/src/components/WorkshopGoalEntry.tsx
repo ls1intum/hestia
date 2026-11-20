@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { LearningGoalPlan, KeptGoal, GoalSuggestion } from "@/lib/workshop-generator";
+import { LearningGoalPlan, KeptGoal, GoalSuggestion, CourseGoal } from "@/lib/workshop-generator";
 import { refineGoal, fixGoalsGrammar, handleAuthError } from "@/lib/api";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import {
@@ -14,7 +14,8 @@ import {
   ArrowLeft, Plus, Trash2, Check, X, Loader2,
   Sparkles, ArrowRight, AlertCircle,
 } from "lucide-react";
-import { LGHImportModal, SelectedSkillData } from "./LGHImportModal";
+import { CoreGoalPicker } from "./CoreGoalPicker";
+import { isCoreGoalId } from "@/lib/core-goals";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface GoalDraft {
@@ -41,6 +42,8 @@ interface Props {
     sessionType?: string;
     studentBackground?: string;
   };
+  /** The course of the session (goals live there); null until the session is saved. */
+  courseId?: string | null;
   onBack: () => void;
   onContinue: (goals: LearningGoalPlan[]) => void;
   isLoading?: boolean;
@@ -63,7 +66,7 @@ const goalsKey = (goals: { id: string; text: string }[]) =>
 
 
 // ── Main component ────────────────────────────────────────────────────
-export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, isLoading, initialGoals, keptGoals, onKeepDraft, registerLeaveGuard }: Props) {
+export default function WorkshopGoalEntry({ initialInput, courseId = null, onBack, onContinue, isLoading, initialGoals, keptGoals, onKeepDraft, registerLeaveGuard }: Props) {
   const goalsFromSession = (): GoalDraft[] => {
     if (initialGoals && initialGoals.length > 0) {
       return initialGoals.map((g) => ({
@@ -204,14 +207,13 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
   const removeGoal = (id: string) => setGoals((prev) => prev.filter((g) => g.id !== id));
 
-  const handleAddSkillsFromLGH = useCallback((selectedSkills: SelectedSkillData[]) => {
-    const newDrafts: GoalDraft[] = selectedSkills.map((skill) => ({
-      id: skill.id,
-      text: skill.goal,
-      bloomLevel: skill.bloomLevel,
-      soloLevel: skill.soloLevel,
-      session: skill.session,
-      subSkills: skill.subSkills,
+  /** Adds goals picked from the course (by core id); their text and levels come from core. */
+  const handleAddCourseGoals = useCallback((picked: CourseGoal[]) => {
+    const newDrafts: GoalDraft[] = picked.map((goal) => ({
+      id: goal.id,
+      text: goal.text,
+      bloomLevel: goal.bloomLevel,
+      soloLevel: goal.soloLevel,
       suggestions: [],
       checking: false,
       dirty: false,
@@ -231,7 +233,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
     if (submittingRef.current) return;
     const validGoals = goals.filter((g) => g.text.trim().length > 0);
     if (validGoals.length === 0) return;
-    // Splitting goals or importing from the Learning Goal Hub can go past the limit
+    // Splitting goals or picking goals from the course can go past the limit
     if (validGoals.length > MAX_GOALS) {
       toast({ title: "Too many learning goals", description: `A session can have at most ${MAX_GOALS} learning goals; please remove ${validGoals.length - MAX_GOALS}.`, variant: "destructive" });
       return;
@@ -272,8 +274,8 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
 
   const canContinue = goals.some((g) => g.text.trim().length > 5) && !isLoading;
 
-  const lghDrafts = goals.filter((g) => g.id.startsWith("lgh-"));
-  const manualDrafts = goals.filter((g) => !g.id.startsWith("lgh-"));
+  const coreDrafts = goals.filter((g) => isCoreGoalId(g.id));
+  const newDrafts = goals.filter((g) => !isCoreGoalId(g.id));
 
   const renderGoal = (g: GoalDraft) => (
     <div key={g.id} className="space-y-2 border-b border-border/40 pb-4 mb-4 last:border-0 last:pb-0 last:mb-0">
@@ -294,7 +296,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
             }}
             rows={2}
             className="resize-none h-[60px] min-h-[60px] font-body text-sm leading-relaxed"
-            disabled={isLoading || g.id.startsWith("lgh-")}
+            disabled={isLoading}
           />
           {g.checking && (
             <div className="absolute bottom-2 right-2 flex items-center gap-1 text-xs text-muted-foreground">
@@ -303,7 +305,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           )}
         </div>
         <div className="flex flex-col items-stretch gap-1 shrink-0 pt-1">
-          {!g.id.startsWith("lgh-") && (
+          {(
             <Button
               type="button"
               variant="outline"
@@ -418,12 +420,17 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
           )}
 
           <div>
-            <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Import from LearningGoalHub</h3>
-            <LGHImportModal onAddSkills={handleAddSkillsFromLGH} disabled={isLoading} />
+            <h3 className="font-display font-semibold text-foreground text-lg mb-4">Option A: Pick from the course's goals</h3>
+            <CoreGoalPicker
+              courseId={courseId}
+              takenIds={coreDrafts.map(g => g.id)}
+              onAdd={handleAddCourseGoals}
+              disabled={isLoading}
+            />
 
-            {lghDrafts.length > 0 && (
+            {coreDrafts.length > 0 && (
               <div className="mt-4 space-y-4">
-                {lghDrafts.map(renderGoal)}
+                {coreDrafts.map(renderGoal)}
               </div>
             )}
           </div>
@@ -434,7 +441,7 @@ export default function WorkshopGoalEntry({ initialInput, onBack, onContinue, is
               Participants will be able to...
             </h4>
             <div className="space-y-4">
-              {manualDrafts.map(renderGoal)}
+              {newDrafts.map(renderGoal)}
             </div>
           </div>
 

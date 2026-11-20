@@ -82,6 +82,7 @@ class SolveCoreIT extends AbstractIntegrationTest {
     private Examination examination() {
         Examination exam = new Examination();
         exam.setCreatedBy(userId("alice"));
+        exam.setCourseId(courseOf("alice"));
         exam.setSource("manual");
         exam.setStatus("grading");
         return exams.save(exam);

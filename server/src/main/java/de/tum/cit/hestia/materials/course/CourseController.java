@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
+import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -35,11 +36,11 @@ public class CourseController {
     static final int MAX_NAME_LENGTH = 255;
 
     @PostMapping
-    public ResponseEntity<CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
-        Course saved = courseService.create(request.name(), request.outputLanguage(), request.figuresEnabled());
+    public ResponseEntity<CourseService.CourseResponse> create(@Valid @RequestBody CreateCourseRequest request) {
+        CourseService.CourseResponse saved = courseService.create(request.name(), request.outputLanguage(), request.figuresEnabled());
         return ResponseEntity
-                .created(URI.create("/api/courses/" + saved.getId()))
-                .body(CourseResponse.from(saved));
+                .created(URI.create("/api/courses/" + saved.id()))
+                .body(saved);
     }
 
     @GetMapping
@@ -52,7 +53,7 @@ public class CourseController {
     }
 
     @GetMapping("/{id}")
-    public CourseSummaryResponse getCourse(@PathVariable Long id) {
+    public CourseSummaryResponse getCourse(@PathVariable UUID id) {
         return courseService.summary(id);
     }
 
@@ -64,7 +65,7 @@ public class CourseController {
      */
     @ApiResponse(responseCode = "204", description = "No Content", content = @Content)
     @PostMapping("/{id}/skills-reviewed")
-    public ResponseEntity<Void> markSkillsReviewed(@PathVariable Long id) {
+    public ResponseEntity<Void> markSkillsReviewed(@PathVariable UUID id) {
         courseService.markSkillsReviewed(id);
         return ResponseEntity.noContent().build();
     }
@@ -74,8 +75,8 @@ public class CourseController {
      * course's other settings; an explicit {@code outputLanguage: null} means "back to auto-detect".
      */
     @PatchMapping("/{id}")
-    public CourseResponse update(@PathVariable Long id, @RequestBody UpdateCourseRequest request) {
-        return CourseResponse.from(courseService.update(id, request));
+    public CourseService.CourseResponse update(@PathVariable UUID id, @RequestBody UpdateCourseRequest request) {
+        return courseService.update(id, request);
     }
 
     /**
@@ -84,20 +85,13 @@ public class CourseController {
      * goal sources, hierarchy nodes and goal relationships), so removing the course row is enough.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
         courseService.delete(id);
         return ResponseEntity.noContent().build();
     }
 
     public record CreateCourseRequest(@NotBlank @Size(min = 1, max = MAX_NAME_LENGTH) String name, String outputLanguage,
                                       Boolean figuresEnabled) {
-    }
-
-    public record CourseResponse(Long id, String name, String outputLanguage, boolean figuresEnabled) {
-        static CourseResponse from(Course course) {
-            return new CourseResponse(course.getId(), course.getName(), course.getOutputLanguage(),
-                    course.isFiguresEnabled());
-        }
     }
 
 }

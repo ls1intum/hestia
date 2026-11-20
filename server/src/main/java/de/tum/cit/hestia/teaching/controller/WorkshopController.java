@@ -194,18 +194,19 @@ public class WorkshopController {
         return Map.of("success", true);
     }
 
-    /** Moves a session into a course ({"courseId": "..."}), or back to the top level with an empty courseId. */
-    @PutMapping("/sessions/{id}/move")
+    /**
+     * Moves a session into another course ({"courseId": "..."}); needs EDITOR in both courses. The
+     * session's alignment links to goals of the old course are removed.
+     */
+    @PutMapping("/sessions/{id}/course")
     public Map<String, Boolean> moveSession(@PathVariable String id, @RequestBody Map<String, String> body) {
         facade.verifyWrite(id);
         String courseId = body.get("courseId");
-        if (courseId != null && courseId.isBlank()) {
-            courseId = null; // "" = move back to top level (an empty FK value would violate fk_workshop_sessions_course)
+        if (courseId == null || courseId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "courseId is required");
         }
-        if (courseId != null) {
-            facade.verifyCourseWrite(courseId);
-        }
-        service.moveSession(id, courseId);
+        facade.verifyCourseWrite(courseId);
+        service.moveSession(id, WorkshopService.uuid(courseId));
         return Map.of("success", true);
     }
 

@@ -13,7 +13,7 @@ describe("fetchAllGoals", () => {
       .mockResolvedValueOnce({ data: { content: [{ id: 1 }], page: { totalElements: 2 } } })
       .mockResolvedValueOnce({ data: { content: [{ id: 2 }], page: { totalElements: 2 } } });
 
-    await expect(fetchAllGoals(7)).resolves.toEqual([{ id: 1 }, { id: 2 }]);
+    await expect(fetchAllGoals("7")).resolves.toEqual([{ id: 1 }, { id: 2 }]);
   });
 
   it("leaves out the legacy gap-analysis goals of earlier prototypes", async () => {
@@ -21,7 +21,7 @@ describe("fetchAllGoals", () => {
       data: { content: [{ id: 1, origin: "EXTRACTED" }, { id: 2, origin: "GAP" }], page: { totalElements: 2 } },
     });
 
-    await expect(fetchAllGoals(7)).resolves.toEqual([{ id: 1, origin: "EXTRACTED" }]);
+    await expect(fetchAllGoals("7")).resolves.toEqual([{ id: 1, origin: "EXTRACTED" }]);
   });
 
   it("fails instead of returning a partial list when a later page fails", async () => {
@@ -29,6 +29,6 @@ describe("fetchAllGoals", () => {
       .mockResolvedValueOnce({ data: { content: [{ id: 1 }], page: { totalElements: 2 } } })
       .mockResolvedValueOnce({ error: { status: 500 } });
 
-    await expect(fetchAllGoals(7)).rejects.toThrow("Could not load learning goals.");
+    await expect(fetchAllGoals("7")).rejects.toThrow("Could not load learning goals.");
   });
 });

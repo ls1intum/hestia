@@ -1,9 +1,9 @@
 package de.tum.cit.hestia.teaching.service;
 
-import de.tum.cit.hestia.teaching.model.CourseEntity;
+import de.tum.cit.hestia.teaching.model.TeachingPlanEntity;
 import de.tum.cit.hestia.teaching.model.SlideTemplateEntity;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
+import de.tum.cit.hestia.teaching.repository.TeachingPlanRepository;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
 import de.tum.cit.hestia.core.CourseAccess;
@@ -25,7 +25,9 @@ class WorkshopServiceTemplateTest {
     private static final byte[] SESSION_FILE = {2};
 
     private WorkshopSessionRepository sessions;
-    private CourseRepository courses;
+    private TeachingPlanRepository courses;
+    private final java.util.UUID courseId = java.util.UUID.randomUUID();
+    private final java.util.UUID otherCourseId = java.util.UUID.randomUUID();
     private SlideTemplateRepository templates;
     private WorkshopService service;
     private WorkshopSessionEntity session;
@@ -33,22 +35,20 @@ class WorkshopServiceTemplateTest {
     @BeforeEach
     void setUp() {
         sessions = mock(WorkshopSessionRepository.class);
-        courses = mock(CourseRepository.class);
+        courses = mock(TeachingPlanRepository.class);
         templates = mock(SlideTemplateRepository.class);
         service = new WorkshopService(sessions, courses, templates, mock(CourseApi.class),
-                mock(CourseAccess.class), mock(CurrentUser.class));
+                mock(CourseAccess.class), mock(CurrentUser.class), mock(SessionGoals.class));
 
-        CourseEntity course = new CourseEntity();
-        course.setId("course-1");
-        course.setCoreCourseId(java.util.UUID.randomUUID());
+        TeachingPlanEntity course = new TeachingPlanEntity(courseId);
         course.setTemplateId("course-1");
-        when(courses.findById("course-1")).thenReturn(Optional.of(course));
+        when(courses.findById(courseId)).thenReturn(Optional.of(course));
         when(templates.findById("course-1")).thenReturn(Optional.of(template("course-1", COURSE_FILE)));
         when(templates.findById("session-1")).thenReturn(Optional.of(template("session-1", SESSION_FILE)));
 
         session = new WorkshopSessionEntity();
         session.setId("session-1");
-        session.setCourseId("course-1");
+        session.setCourseId(courseId);
         when(sessions.findById("session-1")).thenReturn(Optional.of(session));
         when(sessions.save(any())).thenAnswer(i -> i.getArgument(0));
     }
@@ -94,9 +94,9 @@ class WorkshopServiceTemplateTest {
 
     @Test
     void movingSessionToAnotherCourseInheritsThatCourseTemplate() {
-        session.setCourseId("course-0");
+        session.setCourseId(otherCourseId);
         service.deleteTemplate("session-1");
-        service.moveSession("session-1", "course-1");
+        service.moveSession("session-1", courseId);
 
         assertThat(service.getTemplate("session-1")).isEqualTo(COURSE_FILE);
     }
@@ -104,7 +104,7 @@ class WorkshopServiceTemplateTest {
     @Test
     void reorderingWithinTheSameCourseKeepsTheOptOut() {
         service.deleteTemplate("session-1");
-        service.moveSession("session-1", "course-1");
+        service.moveSession("session-1", courseId);
 
         assertThat(service.getTemplate("session-1")).isNull();
     }

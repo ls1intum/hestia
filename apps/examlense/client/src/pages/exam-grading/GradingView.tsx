@@ -96,12 +96,12 @@ export const GradingView = ({ examId }: Props) => {
   });
 
   const goalsById = useMemo(() => {
-    const m = new Map<number, LearningGoalResponse>();
+    const m = new Map<string, LearningGoalResponse>();
     (learningGoals ?? []).forEach((g) => m.set(g.id, g));
     return m;
   }, [learningGoals]);
 
-  /** Falls back to id-only placeholders when LGH is down. */
+  /** Falls back to id-only placeholders when the goals could not be loaded. */
   const goalsForTask = (task: TaskBlock): TaskGoalDisplay[] =>
     (task.learning_goal_ids ?? []).map(
       (gid) => goalsById.get(gid) ?? { id: gid },
@@ -317,7 +317,7 @@ export const GradingView = ({ examId }: Props) => {
             <div className="mx-auto w-full max-w-[1050px] px-hestia-6 pb-hestia-8 pt-hestia-5">
               {goalsError && anyTaskHasGoals && (
                 <p className="mb-hestia-3 rounded-hestia-md border border-hestia-border bg-hestia-primary-muted/10 px-hestia-3 py-hestia-2 text-sm text-hestia-text-muted">
-                  Learning goals could not be loaded from LearningGoalHub — showing
+                  Learning goals could not be loaded — showing
                   goal ids only.
                 </p>
               )}

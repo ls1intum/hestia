@@ -216,6 +216,9 @@ export const patchExam = (id: string, patch: Record<string, unknown>) =>
   apiRequest<Examination>(`/api/exams/${id}`, { method: "PATCH", json: patch });
 export const deleteExam = (id: string) =>
   apiRequest<void>(`/api/exams/${id}`, { method: "DELETE" });
+/** Move an exam to another course; links of its tasks to goals of the old course are removed. */
+export const moveExamToCourse = (id: string, courseId: string) =>
+  apiRequest<Examination>(`/api/exams/${id}/course`, { method: "PUT", json: { courseId } });
 export const duplicateExam = (
   id: string,
   body?: { title?: string; solver_model?: string },
@@ -288,10 +291,10 @@ export const upsertGrade = (body: Record<string, unknown>) =>
   apiRequest<Grade>("/api/task-grades", { method: "PUT", json: body });
 
 // ---------------------------------------------------------------------------
-// LearningGoalHub proxy (backend-mediated; LGH itself is VPN-only)
+// Courses and learning goals
 // ---------------------------------------------------------------------------
 interface LearningGoalDto {
-  id: number;
+  id: string;
   text: string;
   bloom_level: BloomLevel | null;
   solo_level: SoloLevel | null;
@@ -300,7 +303,7 @@ interface LearningGoalDto {
 
 export const listLghCourses = () => apiRequest<LghCourse[]>("/api/lgh/courses");
 
-/** Create a new, empty LearningGoalHub course (name only) and return it with its id. */
+/** Create a new, empty course (name only; the caller owns it) and return it with its id. */
 export const createLghCourse = (name: string) =>
   apiRequest<LghCourse>("/api/lgh/courses", { method: "POST", json: { name } });
 

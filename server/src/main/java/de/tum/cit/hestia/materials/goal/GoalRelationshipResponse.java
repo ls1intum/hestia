@@ -1,9 +1,11 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.GoalRelationInfo;
 import java.util.Comparator;
+import java.util.UUID;
 
 public record GoalRelationshipResponse(RelationshipType type,
-                                       Long targetGoalId,
+                                       UUID targetGoalId,
                                        String targetText,
                                        double confidence,
                                        RelationshipOrigin origin) {
@@ -12,12 +14,12 @@ public record GoalRelationshipResponse(RelationshipType type,
             Comparator.comparing(GoalRelationshipResponse::type)
                     .thenComparing(GoalRelationshipResponse::targetText);
 
-    static GoalRelationshipResponse from(GoalRelationship r) {
+    static GoalRelationshipResponse from(GoalRelationInfo r, String targetText) {
         return new GoalRelationshipResponse(
-                r.getType(),
-                r.getTarget().getId(),
-                r.getTarget().getText(),
-                r.getConfidence(),
-                r.getOrigin());
+                RelationshipType.valueOf(r.type()),
+                r.targetGoalId(),
+                targetText,
+                r.confidence(),
+                RelationshipOrigin.valueOf(r.origin()));
     }
 }

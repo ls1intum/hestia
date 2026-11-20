@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.assessment;
 
 import de.tum.cit.hestia.TestDatabase;
+import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.core.OrgContext;
 import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
@@ -34,6 +35,7 @@ public abstract class AbstractIntegrationTest {
     private RelyingPartyRegistrationRepository relyingPartyRegistrationRepository;
 
     @Autowired protected IdentityService identities;
+    @Autowired protected CourseApi courseApi;
 
     /** Direct repository access in a test needs the organisation, like any thread of the server. */
     @BeforeEach
@@ -61,6 +63,11 @@ public abstract class AbstractIntegrationTest {
     /** The id of {@code user} in this test's organisation (created on first use). */
     protected UUID userId(String user) {
         return TestLogin.login(identities, uni, user).userId();
+    }
+
+    /** The personal course of {@code user}: where an exam without a chosen course goes. */
+    protected UUID courseOf(String user) {
+        return runAs(user, () -> courseApi.personalCourse().id());
     }
 
     protected UUID orgId() {

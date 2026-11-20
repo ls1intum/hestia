@@ -12,7 +12,7 @@ class AuthenticationHttpFlowTest extends HttpFlowTestBase {
 
     @Test
     void callsWithoutCredentialsAreRejectedWith401() {
-        long courseId = createCourse("Flow test: auth");
+        String courseId = createCourse("Flow test: auth");
 
         assertThat(anonymousApi().get("/courses").status()).isEqualTo(401);
         assertThat(anonymousApi().get("/courses/" + courseId).status()).isEqualTo(401);
