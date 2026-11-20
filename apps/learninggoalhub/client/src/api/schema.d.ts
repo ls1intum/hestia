@@ -433,10 +433,11 @@ export interface components {
         };
         CourseResponse: {
             figuresEnabled?: boolean;
-            /** Format: int64 */
-            id?: number;
+            /** Format: uuid */
+            id?: string;
             name?: string;
             outputLanguage?: string;
+            personal?: boolean;
         };
         CourseSummaryResponse: {
             /** Format: date-time */
@@ -448,10 +449,11 @@ export interface components {
             figuresEnabled?: boolean;
             /** Format: int64 */
             goalCount?: number;
-            /** Format: int64 */
-            id?: number;
+            /** Format: uuid */
+            id?: string;
             name?: string;
             outputLanguage?: string;
+            personal?: boolean;
             /** Format: int64 */
             skillCount?: number;
             /** Format: date-time */
@@ -472,8 +474,8 @@ export interface components {
             text?: string;
         };
         CurrentExtractionResponse: {
-            /** Format: int64 */
-            courseId?: number;
+            /** Format: uuid */
+            courseId?: string;
             courseName?: string;
             /** Format: int32 */
             percent?: number;
@@ -484,8 +486,8 @@ export interface components {
         };
         DocumentResponse: {
             contentType?: string;
-            /** Format: int64 */
-            courseId?: number;
+            /** Format: uuid */
+            courseId?: string;
             displayName?: string;
             filename?: string;
             /** Format: int64 */
@@ -496,8 +498,8 @@ export interface components {
             uploadedAt?: string;
         };
         DuplicateOf: {
-            /** Format: int64 */
-            goalId?: number;
+            /** Format: uuid */
+            goalId?: string;
             text?: string;
             topicText?: string;
         };
@@ -524,8 +526,8 @@ export interface components {
             text?: string;
         };
         ExtractionStartResponse: {
-            /** Format: int64 */
-            courseId?: number;
+            /** Format: uuid */
+            courseId?: string;
             /** @enum {string} */
             status?: "RUNNING" | "SUCCEEDED" | "FAILED";
         };
@@ -560,8 +562,8 @@ export interface components {
             confidence?: number;
             /** @enum {string} */
             origin?: "HIERARCHY" | "EMBEDDING" | "LLM" | "SYNTHESIS";
-            /** Format: int64 */
-            targetGoalId?: number;
+            /** Format: uuid */
+            targetGoalId?: string;
             targetText?: string;
             /** @enum {string} */
             type?: "CONTRIBUTES_TO" | "SUPPORTS" | "PREREQUISITE_OF" | "OVERLAPS_WITH";
@@ -586,8 +588,8 @@ export interface components {
             snippet?: string;
         };
         HierarchyNodeResponse: {
-            /** Format: int64 */
-            courseId?: number;
+            /** Format: uuid */
+            courseId?: string;
             /** Format: int64 */
             id?: number;
             label?: string;
@@ -620,14 +622,14 @@ export interface components {
             creationProvenance?: "USER_CREATED" | "WIZARD_AI_SUBTREE";
             examTask?: components["schemas"]["ExamTaskResponse"];
             hierarchy?: components["schemas"]["HierarchyPath"];
-            /** Format: int64 */
-            id?: number;
+            /** Format: uuid */
+            id?: string;
             /** @enum {string} */
             kind?: "EXPLICIT" | "IMPLICIT";
             /** Format: int32 */
             lectureOrder?: number;
             /** @enum {string} */
-            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP";
+            origin?: "EXTRACTED" | "SYNTHESIZED" | "EXAM" | "TERMINAL" | "GAP" | "MANUAL";
             originalText?: string;
             relationships?: components["schemas"]["GoalRelationshipResponse"][];
             /** @enum {string} */
@@ -877,7 +879,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -899,7 +901,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -925,7 +927,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -947,7 +949,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
                 documentId: number;
             };
             cookie?: never;
@@ -974,7 +976,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
                 documentId: number;
             };
             cookie?: never;
@@ -997,7 +999,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1025,7 +1027,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1054,7 +1056,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1083,7 +1085,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
                 nodeId: number;
             };
             cookie?: never;
@@ -1120,7 +1122,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1149,7 +1151,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1171,7 +1173,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1191,7 +1193,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1217,7 +1219,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1243,7 +1245,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1269,7 +1271,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
             };
             cookie?: never;
         };
@@ -1295,7 +1297,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
+                courseId: string;
                 proposalId: string;
             };
             cookie?: never;
@@ -1322,8 +1324,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
-                goalId: number;
+                courseId: string;
+                goalId: string;
             };
             cookie?: never;
         };
@@ -1343,8 +1345,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
-                goalId: number;
+                courseId: string;
+                goalId: string;
             };
             cookie?: never;
         };
@@ -1370,8 +1372,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                courseId: number;
-                goalId: number;
+                courseId: string;
+                goalId: string;
             };
             cookie?: never;
         };
@@ -1397,7 +1399,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
@@ -1419,7 +1421,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
@@ -1439,7 +1441,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
@@ -1465,7 +1467,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
