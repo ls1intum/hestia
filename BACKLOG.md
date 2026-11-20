@@ -10,18 +10,21 @@ behaviour below. Until these are built, the tools do not match the published pol
 - [ ] **Upload confirmation** — the first time a user uploads content, they must tick a
       checkbox confirming that the upload contains no personal data (e.g. student names,
       student ID numbers).
-- [ ] **Separate consent for external LLMs** — every use of a language model outside Logos
+- [x] **Separate consent for external LLMs** — every use of a language model outside Logos
       (Gemini, OpenAI, Anthropic, …) needs its own opt-in consent, since it is an external
-      service with transfer to the USA. Without it, only Logos may be used.
-- [ ] **Consent log** — log every consent (who, what, which policy version, timestamp) and
-      every withdrawal, so consent can be proven (Art. 7(1) GDPR).
+      service with transfer to the USA. Without it, only Logos may be used. Done in module `ai`:
+      the gateway refuses external models without consent, asked when such a model is used.
+- [x] **Consent log** — log every consent (who, what, which policy version, timestamp) and
+      every withdrawal, so consent can be proven (Art. 7(1) GDPR). Done: `ai.consent_event`
+      (append-only).
 - [ ] **Inactivity deletion** — built into the tools: delete accounts and their content
       after 365 days without sign-in; warn users at 300 days and again at 350 days. A sign-in
       resets the timer.
-- [ ] **Migrate from SAIA (GWDG) to Logos** — LearningGoalHub and Workshopper still call
-      SAIA / Chat AI (`chat-ai.academiccloud.de`), including the shared default in
-      `libs/shared-llm` (`HestiaLlmDefaults`), their `compose.prod.yaml`, `.env.example`,
-      `application.yml`, the LearningGoalHub CI/CD workflow and their docs. ExamLense has
-      already dropped its GWDG endpoint, but its `server/.env.example` still points at
-      `chat-ai.academiccloud.de`. Work in progress on branch `feat/logos-provider` (Logos
-      as the `shared-llm` default, SAIA behind a profile).
+- [x] **Migrate from SAIA (GWDG) to Logos** — all chat and vision calls run on Logos through
+      module `ai`; `libs/shared-llm` is gone.
+
+## AI
+
+- [ ] **Bring your own key for external models** — let users run ExamLense's benchmark against
+      their own provider account (their OpenAI/Anthropic/Gemini key) instead of the project's.
+      Logos stays the central gateway for everything else. Not needed yet.

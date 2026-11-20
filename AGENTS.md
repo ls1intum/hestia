@@ -4,7 +4,7 @@ Repository-wide instructions for AI coding agents working anywhere in the hestia
 
 ## Repository Context
 
-Hestia is a public academic monorepo under the ls1intum organization. It started as three separate thesis projects in `apps/` (`examlense`, `learninggoalhub`, `workshopper`) and is being merged into one application with one server and one database. Shared libraries in `libs/` are used by several apps; each has an `AGENTS.md` naming the apps that use it.
+Hestia is a public academic monorepo under the ls1intum organization. It started as three separate thesis projects in `apps/` (`examlense`, `learninggoalhub`, `workshopper`) and is being merged into one application with one server (`server/`, one Spring Boot application with one module per former app plus `core` and `ai`) and one database. Every model call goes through the `ai` module (`server/docs/ai.md`).
 
 ## Architecture Is Binding
 
