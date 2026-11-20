@@ -36,6 +36,7 @@ import { SectionTitleInput } from "@/pages/exam-edit/components/SectionTitleInpu
 import { useItemCollapseState } from "@/hooks/ui/use-item-collapse-state";
 import { useSectionScrollMemory } from "@/hooks/ui/use-section-scroll-memory";
 import { BlockItem as BlockItemComponent } from "@/pages/exam-edit/components/BlockItem";
+import { MoveCourseDialog } from "@/pages/exam-edit/components/MoveCourseDialog";
 import { ExamEditFooter } from "@/pages/exam-edit/components/ExamEditFooter";
 import { ScoreNeededIndicator } from "@/pages/exam-edit/components/ScoreNeededIndicator";
 import { InlineTitle } from "@/components/shared/chrome/InlineTitle";
@@ -676,7 +677,12 @@ const ExamEditInner = () => {
           title={
             <InlineTitle value={exam.title} onSave={(v) => patchExam({ title: v })} />
           }
-          titleTrailing={<SaveIndicator />}
+          titleTrailing={
+            <>
+              <SaveIndicator />
+              <MoveCourseDialog examId={exam.id} courseId={exam.course_id} />
+            </>
+          }
         />
         <main className="relative flex min-w-0 flex-1 flex-col">
           {introPending && (

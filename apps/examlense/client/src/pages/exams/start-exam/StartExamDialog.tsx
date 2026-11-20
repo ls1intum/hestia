@@ -24,7 +24,7 @@ import { UploadStep } from "./UploadStep";
 import { SolverModelStep } from "./SolverModelStep";
 import { MetadataStep } from "./MetadataStep";
 import { CoursePickerStep, CREATE_COURSE, NO_COURSE } from "./CoursePickerStep";
-import { useCreateLghCourse } from "@/hooks/data/use-learning-goals";
+import { useCreateCourse } from "@/hooks/data/use-learning-goals";
 
 export type StartExamMode = "pdf" | "manual";
 
@@ -40,13 +40,13 @@ const SCAFFOLD_TASK =
 
 /**
  * Guided, one-question-per-step exam creation. Driven by `mode`:
- * - "pdf":    Drop PDF → link course → pick solver →
+ * - "pdf":    Drop PDF → choose course → pick solver →
  *             lands on the parsing loading screen. Nothing is created until the
  *             final confirm: the exam is created, the PDF uploaded, and parsing
  *             fired only when the last step ("Open exam") is confirmed. The
  *             backend owns the parser model choice (no client-side model
  *             selection). One exam per PDF.
- * - "manual": Metadata → link course → pick solver → creates a scaffolded exam
+ * - "manual": Metadata → choose course → pick solver → creates a scaffolded exam
  *             and drops the author into the editor.
  * Open when `mode` is non-null; `onClose` clears it in the parent.
  */
@@ -91,7 +91,7 @@ export const StartExamDialog = ({
   const onError = (msg: string) =>
     toast({ title: msg, variant: "destructive" });
 
-  const createCourse = useCreateLghCourse();
+  const createCourse = useCreateCourse();
   const { data: solverCatalog } = useSolverModels();
   const defaultSolverId = resolveSelectableDefault(
     selectableModels(solverCatalog?.models ?? []),
@@ -119,16 +119,17 @@ export const StartExamDialog = ({
 
   const goBack = () => setStepIndex(Math.max(0, stepIndex - 1));
 
-  // Resolve the LGH course id to link. When the author chose "create new", the
-  // empty course is created in LGH now (once) and its id reused. Throws on
-  // failure so callers can abort instead of silently linking nothing.
-  const resolveCourseId = async (): Promise<number | null> => {
+  // Resolve the course id to put the exam into. Nothing chosen means null: the
+  // server then uses the personal course ("Einzelkram"). When the author chose
+  // "create new", the empty course is created now (once) and its id reused.
+  // Throws on failure so callers can abort instead of silently using another course.
+  const resolveCourseId = async (): Promise<string | null> => {
     if (courseValue === NO_COURSE) return null;
     if (courseValue === CREATE_COURSE) {
       const course = await createCourse.mutateAsync(newCourseName.trim());
       return course.id;
     }
-    return Number(courseValue);
+    return courseValue;
   };
 
   // PDF: create the exam (with the chosen solver), upload the PDF, and fire
@@ -139,13 +140,13 @@ export const StartExamDialog = ({
     if (!file) return null;
     setBusy(true);
 
-    let courseId: number | null;
+    let courseId: string | null;
     try {
       courseId = await resolveCourseId();
     } catch (e) {
-      console.error("create LGH course failed", e);
+      console.error("create course failed", e);
       setBusy(false);
-      onError("Couldn't create the LearningGoalHub course. Please try again.");
+      onError("Couldn't create the course. Please try again.");
       return null;
     }
 
@@ -158,7 +159,7 @@ export const StartExamDialog = ({
         source: "pdf",
         status: "parsing",
         solver_model: solverId,
-        lgh_course_id: courseId,
+        course_id: courseId,
       });
     } catch (e) {
       console.error("exam insert failed", e);
@@ -211,13 +212,13 @@ export const StartExamDialog = ({
   // then open the editor.
   const finishManual = async () => {
     setBusy(true);
-    let courseId: number | null;
+    let courseId: string | null;
     try {
       courseId = await resolveCourseId();
     } catch (e) {
-      console.error("create LGH course failed", e);
+      console.error("create course failed", e);
       setBusy(false);
-      onError("Couldn't create the LearningGoalHub course. Please try again.");
+      onError("Couldn't create the course. Please try again.");
       return;
     }
     let exam;
@@ -227,7 +228,7 @@ export const StartExamDialog = ({
         source: "manual",
         status: "draft",
         solver_model: solverId,
-        lgh_course_id: courseId,
+        course_id: courseId,
       });
     } catch {
       setBusy(false);
@@ -364,16 +365,15 @@ export const StartExamDialog = ({
         };
       }
       case "course": {
-        // Nothing picked yet → the step is skippable, but skipping means no
-        // learning-goal insights, so the primary button greys out into "Skip"
-        // with a caveat instead of a confident "Continue".
+        // Nothing picked yet → the step is skippable: the exam goes into the
+        // personal course, so the primary button greys out into "Skip" with a note.
         const skipping = courseValue === NO_COURSE;
         return {
-          heading: "Connect to LearningGoalHub",
+          heading: "Choose a course",
           nextLabel: skipping ? "Skip" : "Continue",
           nextVariant: skipping ? "muted" : "primary",
           nextNote: skipping
-            ? "No learning goal insights without a course"
+            ? "The exam goes into Einzelkram; you can move it to a course later"
             : undefined,
           disabled: courseValue === CREATE_COURSE && !newCourseName.trim(),
           body: (

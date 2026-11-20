@@ -116,7 +116,7 @@ export const formatScoreSummary = ({
 }): string => `${count} tasks · ${earned}/${max} (${pct}%)`;
 
 export interface GoalRollup {
-  goalId: number;
+  goalId: string;
   count: number;
   earned: number;
   max: number;
@@ -126,16 +126,16 @@ export interface GoalRollup {
 /**
  * Per-learning-goal score rollup, in first-seen order across the tasks. Goal ids
  * live on `tasks.learning_goal_ids`, so this works even when the goal texts
- * can't be resolved from LearningGoalHub.
+ * can't be resolved.
  */
 export const goalRollup = (
   tasks: TaskBlock[],
   grades: Map<string, Grade>,
   answers: Map<string, AIAnswer>,
 ): GoalRollup[] => {
-  const tasksByGoal = new Map<number, TaskBlock[]>();
+  const tasksByGoal = new Map<string, TaskBlock[]>();
   for (const tk of tasks) {
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const id of tk.learning_goal_ids ?? []) {
       if (seen.has(id)) continue;
       seen.add(id);

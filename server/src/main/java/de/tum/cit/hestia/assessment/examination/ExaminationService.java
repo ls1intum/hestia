@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.assessment.examination;
 
+import de.tum.cit.hestia.assessment.lgh.TaskGoalLinks;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.section.SectionBlock;
 import de.tum.cit.hestia.assessment.section.SectionBlockRepository;
@@ -37,16 +38,42 @@ public class ExaminationService {
     private final SectionBlockRepository blocks;
     private final SectionFigureRepository figures;
     private final StorageService storage;
+    private final TaskGoalLinks goalLinks;
 
     public ExaminationService(ExaminationRepository exams, SectionRepository sections, TaskBlockRepository tasks,
                        SectionBlockRepository blocks, SectionFigureRepository figures,
-                       StorageService storage) {
+                       StorageService storage, TaskGoalLinks goalLinks) {
+        this.goalLinks = goalLinks;
         this.exams = exams;
         this.sections = sections;
         this.tasks = tasks;
         this.blocks = blocks;
         this.figures = figures;
         this.storage = storage;
+    }
+
+    /**
+     * Put the exam into another course. Its tasks lose their links to goals of the old course
+     * (the goals stay where they are); links to goals of other courses are kept.
+     */
+    @Transactional
+    public Examination moveToCourse(Examination exam, UUID targetCourseId) {
+        UUID oldCourseId = exam.getCourseId();
+        if (oldCourseId.equals(targetCourseId)) return exam;
+        goalLinks.unlinkInCourse(taskIds(exam.getId()), oldCourseId);
+        exam.setCourseId(targetCourseId);
+        return exams.save(exam);
+    }
+
+    /** Delete the exam (its children cascade in the database) and the links of its tasks. */
+    @Transactional
+    public void deleteExamination(Examination exam) {
+        goalLinks.unlinkAll(taskIds(exam.getId()));
+        exams.delete(exam);
+    }
+
+    private List<UUID> taskIds(UUID examId) {
+        return tasks.findByExamIdOrderByPositionAsc(examId).stream().map(TaskBlock::getId).toList();
     }
 
     /**
@@ -64,12 +91,10 @@ public class ExaminationService {
         copy.setTitle((titleOverride != null && !titleOverride.isBlank())
             ? titleOverride.trim()
             : (src.getTitle() == null ? "" : src.getTitle()) + " (Copy)");
-        copy.setCourse(src.getCourse());
         copy.setSource(src.getSource());
         copy.setStatus("draft");
         copy.setSolverModel((solverOverride != null && !solverOverride.isBlank())
             ? solverOverride : src.getSolverModel());
-        copy.setLghCourseId(src.getLghCourseId());
         exams.save(copy);
         copy.setSourceFileUrl(copyPdf(src.getSourceFileUrl(), copy.getId()));
 
@@ -113,8 +138,7 @@ public class ExaminationService {
             nt.setReferenceAnswer(t.getReferenceAnswer());
             nt.setPoints(t.getPoints());
             nt.setParseConfidence(t.getParseConfidence());
-            // Goal ids are NOT copied: they identify LGH goals owned by the
-            // source exam's sections — regenerated when the copy is confirmed.
+            // Goal links are NOT copied: the copy gets its goals when its sections are confirmed.
             newTaskBlocks.add(nt);
         }
         tasks.saveAll(newTaskBlocks);

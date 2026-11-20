@@ -20,8 +20,6 @@ public class Examination extends OrgScoped {
     @Column(nullable = false)
     private String title = "";
 
-    private String course;
-
     @Column(nullable = false)
     private String source;
 
@@ -34,7 +32,7 @@ public class Examination extends OrgScoped {
     @Column(name = "created_by")
     private UUID createdBy;
 
-    @Column(name = "course_id")
+    @Column(name = "course_id", nullable = false)
     private UUID courseId;
 
     @Column(name = "parse_error")
@@ -48,9 +46,6 @@ public class Examination extends OrgScoped {
 
     @Column(name = "solver_model")
     private String solverModel;
-
-    @Column(name = "lgh_course_id")
-    private Long lghCourseId;
 
     @Column(name = "page_count")
     private Integer pageCount;
@@ -80,8 +75,6 @@ public class Examination extends OrgScoped {
     public void setId(UUID id) { this.id = id; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
-    public String getCourse() { return course; }
-    public void setCourse(String course) { this.course = course; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public String getSourceFileUrl() { return sourceFileUrl; }
@@ -100,8 +93,6 @@ public class Examination extends OrgScoped {
     public void setParserModel(String parserModel) { this.parserModel = parserModel; }
     public String getSolverModel() { return solverModel; }
     public void setSolverModel(String solverModel) { this.solverModel = solverModel; }
-    public Long getLghCourseId() { return lghCourseId; }
-    public void setLghCourseId(Long lghCourseId) { this.lghCourseId = lghCourseId; }
     public Integer getPageCount() { return pageCount; }
     public void setPageCount(Integer pageCount) { this.pageCount = pageCount; }
     public OffsetDateTime getParseStartedAt() { return parseStartedAt; }

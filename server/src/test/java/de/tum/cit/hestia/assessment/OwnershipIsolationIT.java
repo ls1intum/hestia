@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,8 +14,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
-import de.tum.cit.hestia.core.CourseApi;
-import de.tum.cit.hestia.core.spi.GoalDirectory;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,13 +22,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * Who sees which exam. An exam without a course is its creator's alone; an exam of a course follows
- * the course roles (viewer reads, editor writes); another organisation sees nothing; and nothing
+ * Who sees which exam. An exam follows the roles in its course (viewer reads, editor writes); an exam
+ * in a user's personal course is that user's alone; another organisation sees nothing; and nothing
  * answers without a login. Every endpoint family that reaches an exam or its children is covered.
  */
 @AutoConfigureMockMvc
@@ -39,8 +35,6 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired ExaminationRepository exams;
-    @Autowired CourseApi courseApi;
-    @MockitoBean GoalDirectory goalDirectory;
 
     private UUID privateExam;
     private UUID courseExam;
@@ -54,11 +48,9 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
         userId("editor");
         member("viewer", "VIEWER");
         member("editor", "EDITOR");
-        when(goalDirectory.listCourses(0, 100)).thenReturn(new GoalDirectory.Page<>(
-            List.of(new GoalDirectory.Course(42, "Algorithms", coreCourse)), 0, 100, 1, 1));
 
         privateExam = createExam("private", null);
-        courseExam = createExam("shared", 42L);
+        courseExam = createExam("shared", coreCourse);
     }
 
     private void member(String user, String role) throws Exception {
@@ -68,9 +60,9 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
             .andExpect(status().isOk());
     }
 
-    private UUID createExam(String title, Long lghCourse) throws Exception {
+    private UUID createExam(String title, UUID course) throws Exception {
         String body = "{\"title\":\"" + title + "\",\"source\":\"manual\""
-            + (lghCourse == null ? "" : ",\"lgh_course_id\":" + lghCourse) + "}";
+            + (course == null ? "" : ",\"course_id\":\"" + course + "\"") + "}";
         String json = mvc.perform(post("/examlense/api/exams").with(as("alice"))
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isOk())
@@ -100,6 +92,8 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
             new Call("patch exam", true, patch(base + "/exams/" + exam).contentType(json()).content("{\"title\":\"x\"}")),
             new Call("delete exam", true, delete(base + "/exams/" + exam)),
             new Call("cancel", true, post(base + "/exams/" + exam + "/cancel")),
+            new Call("move to course", true, put(base + "/exams/" + exam + "/course").contentType(json())
+                .content("{\"courseId\":\"" + UUID.randomUUID() + "\"}")),
             new Call("duplicate", true, post(base + "/exams/" + exam + "/duplicate")),
             new Call("upload pdf", true, multipart(base + "/exams/" + exam + "/pdf").file(pdf)),
             new Call("create task", true, post(base + "/tasks").contentType(json())
@@ -140,39 +134,39 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     // creator
 
     @Test
-    void theCreatorReadsAndChangesTheirOwnCourselessExam() throws Exception {
+    void theCreatorReadsAndChangesTheirExamInThePersonalCourse() throws Exception {
         mvc.perform(get("/examlense/api/exams/" + privateExam).with(as("alice")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.created_by").value(userId("alice").toString()))
-            .andExpect(jsonPath("$.course_id").doesNotExist());
+            .andExpect(jsonPath("$.course_id").value(courseOf("alice").toString()));
         mvc.perform(patch("/examlense/api/exams/" + privateExam).with(as("alice"))
                 .contentType(json()).content("{\"title\":\"renamed\"}"))
             .andExpect(status().isOk());
     }
 
     @Test
-    void linkingALghCourseSetsTheCoreCourse() throws Exception {
+    void anExamCreatedWithACourseIdSitsInThatCourse() throws Exception {
         mvc.perform(get("/examlense/api/exams/" + courseExam).with(as("alice")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.course_id").value(coreCourse.toString()))
-            .andExpect(jsonPath("$.lgh_course_id").value(42));
+            .andExpect(jsonPath("$.course_id").value(coreCourse.toString()));
     }
 
     @Test
-    void anExamCannotBeLinkedToACourseTheCallerDoesNotBelongTo() throws Exception {
+    void anExamCannotBePutIntoACourseTheCallerDoesNotBelongTo() throws Exception {
+        String body = "{\"title\":\"x\",\"source\":\"manual\",\"course_id\":\"" + coreCourse + "\"}";
         mvc.perform(post("/examlense/api/exams").with(as("bob"))
-                .contentType(json()).content("{\"title\":\"x\",\"source\":\"manual\",\"lgh_course_id\":42}"))
+                .contentType(json()).content(body))
             .andExpect(status().isNotFound());
         // A viewer is a member, but may not put content into the course.
         mvc.perform(post("/examlense/api/exams").with(as("viewer"))
-                .contentType(json()).content("{\"title\":\"x\",\"source\":\"manual\",\"lgh_course_id\":42}"))
+                .contentType(json()).content(body))
             .andExpect(status().isForbidden());
     }
 
     // (b) another user / another organisation sees nothing
 
     @Test
-    void anotherUserOfTheSameOrganisationSeesNothingOfACourselessExam() throws Exception {
+    void anotherUserOfTheSameOrganisationSeesNothingOfAnExamInAPersonalCourse() throws Exception {
         for (Call c : callsOn(privateExam)) {
             assertThat(statusOf(c, as("bob"))).as(c.name()).isEqualTo(404);
         }
@@ -218,7 +212,7 @@ class OwnershipIsolationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void listShowsPrivateExamsToTheCreatorAndCourseExamsToMembers() throws Exception {
+    void listShowsPersonalCourseExamsToTheirOwnerAndCourseExamsToMembers() throws Exception {
         mvc.perform(get("/examlense/api/exams").with(as("alice")))
             .andExpect(jsonPath("$[?(@.id == '" + privateExam + "')]").exists())
             .andExpect(jsonPath("$[?(@.id == '" + courseExam + "')]").exists());

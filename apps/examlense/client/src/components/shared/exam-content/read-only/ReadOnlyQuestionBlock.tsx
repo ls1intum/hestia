@@ -12,9 +12,9 @@ import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals"
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 
-/** A resolved (or placeholder, when LGH is unreachable) learning goal to display. */
+/** A resolved (or placeholder, when the goals could not be loaded) learning goal to display. */
 export interface TaskGoalDisplay {
-  id: number;
+  id: string;
   text?: string | null;
   bloomLevel?: BloomLevel | null;
   soloLevel?: SoloLevel | null;

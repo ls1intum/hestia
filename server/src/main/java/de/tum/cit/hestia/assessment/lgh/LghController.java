@@ -1,20 +1,20 @@
 package de.tum.cit.hestia.assessment.lgh;
 
-import de.tum.cit.hestia.assessment.shared.Access;
-import de.tum.cit.hestia.core.spi.GoalDirectory;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
+import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlock;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
+import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CourseInfo;
+import de.tum.cit.hestia.core.GoalInfo;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,124 +24,93 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Read-only proxy in front of LearningGoalHub. The frontend cannot reach LGH
- * directly (LRZ-VPN-only, no CORS), so course lists and goal lookups go
- * through here. LGH being down maps to 502 so the UI can degrade instead of
- * crash.
+ * Courses and learning goals for the exam pages, served from {@code core}: the courses the caller
+ * belongs to (for the picker shown when an exam is created or moved) and the goals of an exam's
+ * tasks.
  */
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Learning goals", description = """
-    Proxy in front of LearningGoalHub. The browser cannot reach LGH directly (VPN-only, no \
-    CORS), so course lookups and goal resolution go through here. LGH being unreachable is a \
-    502 the UI degrades on rather than an error state.""")
+    Courses of the caller (ids are UUID strings; the personal course is flagged) and the learning \
+    goals linked to an exam's tasks, read from the shared goal catalogue so a renamed goal shows \
+    its new text.""")
 public class LghController {
 
-    private static final Logger log = LoggerFactory.getLogger(LghController.class);
-
-    public record CourseDto(long id, String name) {}
+    public record CourseDto(String id, String name, String role, boolean personal) {
+        static CourseDto from(CourseInfo c) {
+            return new CourseDto(c.id().toString(), c.title(), c.role().name(), c.personal());
+        }
+    }
 
     public record CreateCourseReq(String name) {}
 
-    public record LearningGoalDto(long id, String text, String bloom_level, String solo_level, String status) {}
+    public record LearningGoalDto(String id, String text, String bloom_level, String solo_level, String status) {
+        static LearningGoalDto from(GoalInfo g) {
+            return new LearningGoalDto(g.id().toString(), g.text(), g.bloomLevel(), g.soloLevel(),
+                g.status() == null ? null : g.status().name());
+        }
+    }
 
     private static final int PAGE_SIZE = 100;
 
-    private final GoalDirectory client;
+    private final CourseApi courses;
     private final Access access;
     private final TaskBlockRepository taskRepository;
+    private final TaskGoalLinks goalLinks;
 
-    public LghController(GoalDirectory client, Access access, TaskBlockRepository taskRepository) {
-        this.client = client;
+    public LghController(CourseApi courses, Access access, TaskBlockRepository taskRepository,
+                         TaskGoalLinks goalLinks) {
+        this.courses = courses;
         this.access = access;
         this.taskRepository = taskRepository;
+        this.goalLinks = goalLinks;
     }
 
     @Operation(
-        summary = "List LGH courses",
-        description = "Every course LGH knows about, for the picker shown when an exam is created.")
-    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
+        summary = "List the caller's courses",
+        description = "Every course the caller is a member of, for the picker shown when an exam is created or moved.")
     @GetMapping("/lgh/courses")
     public List<CourseDto> courses() {
-        return viaLgh("list LGH courses", () -> listAllCourses().stream()
-            .map(c -> new CourseDto(c.id(), c.name()))
-            .toList());
+        List<CourseDto> all = new java.util.ArrayList<>();
+        for (int page = 0; ; page++) {
+            List<CourseInfo> batch = courses.listMine(page, PAGE_SIZE);
+            batch.forEach(c -> all.add(CourseDto.from(c)));
+            if (batch.size() < PAGE_SIZE) break;
+        }
+        return all;
     }
 
-    /** Create a new, empty LGH course (name only) and return it for linking to an exam. */
     @Operation(
-        summary = "Create an LGH course",
-        description = "Creates an empty course in LGH and returns it, so a new exam can be linked to it.")
+        summary = "Create a course",
+        description = "Creates a course with the caller as owner and returns it, so a new exam can be put into it.")
     @ApiResponse(responseCode = "400", description = "`name` is missing or blank.")
-    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable.")
     @PostMapping("/lgh/courses")
     public CourseDto createCourse(@RequestBody CreateCourseReq req) {
         String name = req.name() == null ? "" : req.name().trim();
         if (name.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Course name is required");
         }
-        return viaLgh("create LGH course", () -> {
-            var c = client.createCourse(name);
-            return new CourseDto(c.id(), c.name());
-        });
+        return CourseDto.from(courses.create(name));
     }
 
-    /**
-     * The resolved learning goals of an exam: the goals of its linked LGH
-     * course, narrowed to the ids actually stored on the exam's tasks.
-     */
+    /** The goals linked to the exam's tasks, each once, with their current wording. */
     @Operation(
         summary = "Resolve an exam's learning goals",
         description = """
-            The goals of the exam's linked LGH course, narrowed to the ids actually stored on \
-            its tasks. Only ids live in this database — the text, Bloom, and SOLO levels are \
-            resolved through LGH at read time.
+            The goals linked to the exam's tasks, each once, with the text, Bloom and SOLO levels \
+            they currently have in their course.
 
-            Returns an empty list (not an error) when the exam has no linked course or its \
-            tasks carry no goal ids.""")
-    @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
+            Returns an empty list (not an error) when the tasks carry no goals.""")
+    @ApiResponse(responseCode = "403", description = "The caller has no access to the exam's course.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `id` is not a valid UUID.")
-    @ApiResponse(responseCode = "502", description = "LearningGoalHub is unreachable; the client falls back to `Goal #id` placeholders.")
     @GetMapping("/exams/{id}/learning-goals")
     public List<LearningGoalDto> examLearningGoals(@PathVariable String id) {
         Examination exam = access.requireExamination(Access.id(id));
-        if (exam.getLghCourseId() == null) return List.of();
-
-        Set<Long> taskGoalIds = new HashSet<>();
-        for (TaskBlock t : taskRepository.findByExamIdOrderByPositionAsc(exam.getId())) {
-            if (t.getLearningGoalIds() != null) taskGoalIds.addAll(t.getLearningGoalIds());
-        }
-        if (taskGoalIds.isEmpty()) return List.of();
-
-        // Note: fetches ALL goals of the course (paged) and filters — O(course
-        // size), fine at current scale.
-        return viaLgh("resolve LGH goals for exam " + exam.getId(),
-            () -> client.goals(exam.getLghCourseId()).stream()
-                .filter(g -> taskGoalIds.contains(g.id()))
-                .map(g -> new LearningGoalDto(g.id(), g.text(), g.bloomLevel(), g.soloLevel(), g.status()))
-                .toList());
-    }
-
-    /** Pages through all courses, like the former HTTP client did. */
-    private List<GoalDirectory.Course> listAllCourses() {
-        List<GoalDirectory.Course> all = new java.util.ArrayList<>();
-        int totalPages = 1;
-        for (int page = 0; page < totalPages; page++) {
-            GoalDirectory.Page<GoalDirectory.Course> res = client.listCourses(page, PAGE_SIZE);
-            if (res == null || res.content() == null) break;
-            all.addAll(res.content());
-            totalPages = res.totalPages();
-        }
-        return all;
-    }
-
-    /** Run an LGH call, mapping any failure to a 502 the UI degrades on. */
-    private <T> T viaLgh(String what, java.util.function.Supplier<T> call) {
-        try {
-            return call.get();
-        } catch (RuntimeException e) {
-            log.warn("Could not {}: {}", what, e.getMessage());
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "LearningGoalHub unreachable");
-        }
+        List<UUID> taskIds = taskRepository.findByExamIdOrderByPositionAsc(exam.getId()).stream()
+            .map(TaskBlock::getId).toList();
+        Map<UUID, LearningGoalDto> goals = new LinkedHashMap<>();
+        goalLinks.goalsOf(taskIds).values().forEach(list ->
+            list.forEach(g -> goals.putIfAbsent(g.id(), LearningGoalDto.from(g))));
+        return List.copyOf(goals.values());
     }
 }

@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.assessment.taskblock;
 
+import de.tum.cit.hestia.core.GoalInfo;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -13,14 +14,29 @@ public final class TaskBlockDtos {
     public record TaskBlockDto(
         UUID id, UUID exam_id, UUID section_id, int position, String section, String type,
         String prompt, List<AnswerOption> options, String reference_answer, BigDecimal points,
-        String parse_confidence, List<Long> learning_goal_ids,
+        String parse_confidence, List<String> learning_goal_ids, List<LearningGoalDto> learning_goals,
         OffsetDateTime created_at, OffsetDateTime updated_at
     ) {
         public static TaskBlockDto from(TaskBlock t) {
+            return from(t, List.of());
+        }
+
+        /** The task with its goals as they currently read in {@code core}. */
+        public static TaskBlockDto from(TaskBlock t, List<GoalInfo> goals) {
+            List<LearningGoalDto> dtos = goals.stream().map(LearningGoalDto::from).toList();
             return new TaskBlockDto(t.getId(), t.getExamId(), t.getSectionId(), t.getPosition(),
                 t.getSection(), t.getType(), t.getPrompt(), t.getOptions(), t.getReferenceAnswer(),
-                t.getPoints(), t.getParseConfidence(), t.getLearningGoalIds(),
+                t.getPoints(), t.getParseConfidence(),
+                dtos.stream().map(LearningGoalDto::id).toList(), dtos,
                 t.getCreatedAt(), t.getUpdatedAt());
+        }
+    }
+
+    /** A learning goal of a task; the id is the {@code core} goal id as a string. */
+    public record LearningGoalDto(String id, String text, String bloom_level, String solo_level, String status) {
+        public static LearningGoalDto from(GoalInfo g) {
+            return new LearningGoalDto(g.id().toString(), g.text(), g.bloomLevel(), g.soloLevel(),
+                g.status() == null ? null : g.status().name());
         }
     }
 

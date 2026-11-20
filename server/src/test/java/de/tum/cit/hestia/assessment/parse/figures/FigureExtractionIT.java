@@ -52,6 +52,7 @@ class FigureExtractionIT extends AbstractIntegrationTest {
     private Fixture seed() {
         Examination exam = new Examination();
         exam.setCreatedBy(userId("alice"));
+        exam.setCourseId(courseOf("alice"));
         exam.setSource("pdf");
         exam.setStatus("draft");
         exam.setParsedAt(OffsetDateTime.now());

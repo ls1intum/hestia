@@ -14,8 +14,6 @@ import {
   type ExaminationListItem,
 } from "@/lib/api/api-client";
 import { subscribeExamsList } from "@/lib/api/sse";
-import { useLghCourses } from "@/hooks/data/use-learning-goals";
-import { WarningBanner } from "@/components/shared/exam-content/WarningBanner";
 import { useToast } from "@/hooks/ui/use-toast";
 import { useParseFailureToasts } from "@/hooks/ui/use-parse-failure-toasts";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
@@ -76,11 +74,6 @@ const Exams = () => {
 
   // Slim "Parsing failed" toast when a background parse fails while on the dashboard.
   useParseFailureToasts(exams);
-
-  // Proactive LGH-availability probe: reuses the course fetch (which also warms
-  // the creation wizard's cache) and polls so the banner clears itself once LGH
-  // is reachable again.
-  const { isError: lghUnavailable } = useLghCourses({ refetchInterval: 60_000 });
 
   // Live updates so rows reflect parsing → draft/failed transitions and progress
   // advances without a manual refresh.
@@ -188,11 +181,6 @@ const Exams = () => {
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1120px] px-hestia-5 py-hestia-10">
-        {lghUnavailable && (
-          <div className="mb-hestia-5">
-            <WarningBanner text="LearningGoalHub is currently unavailable — learning-goal insights won't be generated or shown until it's reachable again. You can still create and grade exams." />
-          </div>
-        )}
         <div className="mb-hestia-6 flex items-end justify-between gap-hestia-3">
           <div>
             <h1 className="font-display text-3xl md:text-4xl font-bold text-hestia-text">
