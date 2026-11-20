@@ -1,7 +1,11 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import java.util.Optional;
+
+import java.util.UUID;
+
 import de.tum.cit.hestia.core.CourseAccess;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.CourseApi;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.http.ResponseEntity;
@@ -14,15 +18,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class CurrentExtractionController {
 
     private final ExtractionProgressTracker progressTracker;
-    private final CourseRepository courseRepository;
+    private final CourseApi courseApi;
     private final CourseAccess courseAccess;
 
     public CurrentExtractionController(ExtractionProgressTracker progressTracker,
-                                       CourseRepository courseRepository,
+                                       CourseApi courseApi,
                                        CourseAccess courseAccess) {
         this.courseAccess = courseAccess;
         this.progressTracker = progressTracker;
-        this.courseRepository = courseRepository;
+        this.courseApi = courseApi;
     }
 
     @ApiResponse(responseCode = "200", description = "OK")
@@ -33,11 +37,11 @@ public class CurrentExtractionController {
                 .flatMap(current -> {
                     ExtractionProgressTracker.Snapshot snapshot = current.snapshot();
                     // Another organisation's course is not found; a course the user is no member of is not shown.
-                    return courseRepository.findById(current.courseId())
-                            .filter(course -> courseAccess.canRead(course.getCoreCourseId()))
-                            .map(course -> new CurrentExtractionResponse(
+                    return Optional.of(current.courseId())
+                            .filter(courseAccess::canRead)
+                            .map(courseId -> new CurrentExtractionResponse(
                                     current.courseId(),
-                                    course.getName(),
+                                    courseApi.get(courseId).title(),
                                     snapshot.phase(),
                                     snapshot.percent(),
                                     snapshot.status()));
@@ -47,7 +51,7 @@ public class CurrentExtractionController {
     }
 
     public record CurrentExtractionResponse(
-            Long courseId,
+            UUID courseId,
             String courseName,
             ExtractionProgressTracker.Phase phase,
             int percent,

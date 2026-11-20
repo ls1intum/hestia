@@ -1,19 +1,23 @@
 package de.tum.cit.hestia.materials.topictree;
 
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalRelationInfo;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentKind;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
 import de.tum.cit.hestia.materials.document.LanguageUtils;
-import de.tum.cit.hestia.materials.goal.GoalKind;
-import de.tum.cit.hestia.materials.goal.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRelationship;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
-import de.tum.cit.hestia.materials.goal.GoalRole;
-import de.tum.cit.hestia.materials.goal.GoalStatus;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.materials.goal.NewPlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
 import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
 import de.tum.cit.hestia.materials.goal.RelationshipType;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
@@ -30,8 +34,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -54,27 +60,27 @@ public class TopicTreeService {
 
     private static final Logger log = LoggerFactory.getLogger(TopicTreeService.class);
 
-    private final CourseRepository courseRepository;
+    private final MaterialSettingsService settingsService;
     private final DocumentRepository documentRepository;
-    private final LearningGoalRepository goalRepository;
-    private final GoalRelationshipRepository goalRelationshipRepository;
+    private final PlacedGoals goals;
+    private final LearningGoalApi goalApi;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TopicTreeSynthesizer topicTreeSynthesizer;
     private final TaxonomyService taxonomyService;
     private final TransactionOperations transactions;
 
-    public TopicTreeService(CourseRepository courseRepository,
+    public TopicTreeService(MaterialSettingsService settingsService,
                                  DocumentRepository documentRepository,
-                                 LearningGoalRepository goalRepository,
-                                 GoalRelationshipRepository goalRelationshipRepository,
+                                 PlacedGoals goals,
+                                 LearningGoalApi goalApi,
                                  HierarchyNodeRepository hierarchyNodeRepository,
                                  TopicTreeSynthesizer topicTreeSynthesizer,
                                  TaxonomyService taxonomyService,
                                  TransactionOperations transactions) {
-        this.courseRepository = courseRepository;
+        this.settingsService = settingsService;
         this.documentRepository = documentRepository;
-        this.goalRepository = goalRepository;
-        this.goalRelationshipRepository = goalRelationshipRepository;
+        this.goals = goals;
+        this.goalApi = goalApi;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.topicTreeSynthesizer = topicTreeSynthesizer;
         this.taxonomyService = taxonomyService;
@@ -85,9 +91,13 @@ public class TopicTreeService {
     private static final Set<BloomLevel> SUB_SKILL_BLOOM =
             EnumSet.of(BloomLevel.APPLY, BloomLevel.ANALYZE, BloomLevel.EVALUATE, BloomLevel.CREATE);
 
-    public static boolean isSkillTier(LearningGoal goal) {
-        return goal.getRole() == GoalRole.SKILL
-                || (goal.getRole() == null && SUB_SKILL_BLOOM.contains(goal.getBloomLevel()));
+    public static boolean isSkillTier(PlacedGoal goal) {
+        return isSkillTier(goal.role(), goal.bloomLevel());
+    }
+
+    /** {@link #isSkillTier(PlacedGoal)} for a goal known by its role and Bloom level only. */
+    public static boolean isSkillTier(GoalRole role, BloomLevel bloomLevel) {
+        return role == GoalRole.SKILL || (role == null && SUB_SKILL_BLOOM.contains(bloomLevel));
     }
 
     /**
@@ -104,9 +114,9 @@ public class TopicTreeService {
      *
      * @return the freshly built tree; synthesis failures leave the existing tree untouched.
      */
-    public CompetencyTreeResult rebuildTopicTree(Long courseId, String modelOverride, boolean force) {
+    public CompetencyTreeResult rebuildTopicTree(UUID courseId, String modelOverride, boolean force) {
         RebuildInput input = transactions.execute(status -> {
-            Course course = courseRepository.findOrThrow(courseId);
+            CourseContext course = settingsService.context(courseId);
             rejectManualWorkUnlessForced(courseId, force);
             List<Document> documents = documentRepository.findByCourseId(courseId);
             String courseLanguage = LanguageUtils.resolveLanguage(course, null, LanguageUtils.dominantLanguage(documents));
@@ -134,12 +144,12 @@ public class TopicTreeService {
         }
 
         CompetencyTreeResult result = transactions.execute(status -> {
-            Course course = courseRepository.lockOrThrow(courseId);
+            settingsService.lock(courseId);
             // Checked again under the course lock: an instructor may have added to the tree while
             // the replacement was being planned.
-            List<LearningGoal> terminals = rejectManualWorkUnlessForced(courseId, force);
-            clearTopicTree(course, terminals, manualTreeGoals(courseId, terminals));
-            persistTopicTree(course, plan);
+            List<PlacedGoal> terminals = rejectManualWorkUnlessForced(courseId, force);
+            clearTopicTree(courseId, terminals, manualTreeGoals(courseId, terminals));
+            persistTopicTree(courseId, plan);
             return new CompetencyTreeResult(plan.topics().size(), plan.unmatchedGoals());
         });
         log.info("Rebuilt Topic tree for course {}: {} topics, {} unmatched goal(s)",
@@ -148,7 +158,7 @@ public class TopicTreeService {
     }
 
     /** What the rebuild's read transaction hands to the planning calls. */
-    private record RebuildInput(Course course, String languageName, TreeSeeds seeds) {
+    private record RebuildInput(CourseContext course, String languageName, TreeSeeds seeds) {
     }
 
     /**
@@ -156,9 +166,9 @@ public class TopicTreeService {
      *
      * @return the course's terminals, which the rebuild replaces.
      */
-    private List<LearningGoal> rejectManualWorkUnlessForced(Long courseId, boolean force) {
-        List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(courseId, List.of(GoalOrigin.TERMINAL));
-        List<LearningGoal> manual = manualTreeGoals(courseId, terminals);
+    private List<PlacedGoal> rejectManualWorkUnlessForced(UUID courseId, boolean force) {
+        List<PlacedGoal> terminals = goals.list(courseId, g -> g.origin() == GoalOrigin.TERMINAL);
+        List<PlacedGoal> manual = manualTreeGoals(courseId, terminals);
         if (!manual.isEmpty() && !force) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "The Topic tree contains " + manual.size() + " hand-made or approved node(s). "
@@ -172,15 +182,15 @@ public class TopicTreeService {
      * approved, plus the hand-added and wizard-generated children hanging beneath the tree (those
      * carry a creation provenance and, unlike extracted goals, no hierarchy node of their own).
      */
-    private List<LearningGoal> manualTreeGoals(Long courseId, List<LearningGoal> terminals) {
-        List<LearningGoal> manual = new ArrayList<>();
-        for (LearningGoal terminal : terminals) {
-            if (terminal.getCreationProvenance() != null || terminal.getStatus() == GoalStatus.APPROVED) {
+    private List<PlacedGoal> manualTreeGoals(UUID courseId, List<PlacedGoal> terminals) {
+        List<PlacedGoal> manual = new ArrayList<>();
+        for (PlacedGoal terminal : terminals) {
+            if (terminal.creationProvenance() != null || terminal.status() == GoalStatus.APPROVED) {
                 manual.add(terminal);
             }
         }
-        for (LearningGoal goal : goalRepository.findByCourseId(courseId)) {
-            if (goal.getHierarchyNode() == null && goal.getCreationProvenance() != null) {
+        for (PlacedGoal goal : goals.list(courseId)) {
+            if (goal.hierarchyNode() == null && goal.creationProvenance() != null) {
                 manual.add(goal);
             }
         }
@@ -199,36 +209,28 @@ public class TopicTreeService {
      * as today. Do not use "target is a TERMINAL" as the predicate: legacy knowledge → sub-skill
      * edges must not survive.
      */
-    private void clearTopicTree(Course course, List<LearningGoal> terminals, List<LearningGoal> manual) {
-        List<LearningGoal> doomed = new ArrayList<>(terminals);
-        for (LearningGoal goal : manual) {
-            if (doomed.stream().noneMatch(g -> g.getId().equals(goal.getId()))) {
-                doomed.add(goal);
-            }
-        }
+    private void clearTopicTree(UUID courseId, List<PlacedGoal> terminals, List<PlacedGoal> manual) {
+        List<PlacedGoal> courseGoals = goals.list(courseId);
+        Set<UUID> doomedIds = new java.util.LinkedHashSet<>();
+        terminals.forEach(goal -> doomedIds.add(goal.id()));
+        manual.forEach(goal -> doomedIds.add(goal.id()));
         // Overfull extracted branches create source-less synthesized grouping nodes. They are fully
         // reproducible tree artefacts, not instructor work, so rebuilds remove them without tripping
         // the manual-work guard above.
-        for (LearningGoal goal : goalRepository.findByCourseId(course.getId())) {
-            boolean consolidatedGroup = goal.getOrigin() == GoalOrigin.SYNTHESIZED
-                    && goal.getRole() == GoalRole.SKILL
-                    && goal.getHierarchyNode() == null
-                    && goal.getCreationProvenance() == null;
-            if (consolidatedGroup && doomed.stream().noneMatch(g -> g.getId().equals(goal.getId()))) {
-                doomed.add(goal);
+        for (PlacedGoal goal : courseGoals) {
+            boolean consolidatedGroup = goal.origin() == GoalOrigin.SYNTHESIZED
+                    && goal.role() == GoalRole.SKILL
+                    && goal.hierarchyNode() == null
+                    && goal.creationProvenance() == null;
+            if (consolidatedGroup) {
+                doomedIds.add(goal.id());
             }
         }
-        // Load the edges before deleting anything: Hibernate keeps loaded edges managed and would
-        // fail the flush against a removed goal.
-        List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getId)
-                .toList();
-        Set<Long> doomedIds = doomed.stream().map(LearningGoal::getId).collect(Collectors.toSet());
-        clearRelationshipsForGoals(courseGoalIds, doomedIds, true);
-        goalRepository.deleteAll(doomed);
-        goalRepository.flush();
+        unrelateTreeEdges(courseId, courseGoals);
+        // Removing a goal in core deletes its remaining relationships.
+        goals.removeAll(doomedIds);
 
-        List<HierarchyNode> competencyRoots = hierarchyNodeRepository.findByCourseId(course.getId()).stream()
+        List<HierarchyNode> competencyRoots = hierarchyNodeRepository.findByCourseId(courseId).stream()
                 .filter(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
                 .toList();
         hierarchyNodeRepository.deleteAll(competencyRoots);
@@ -239,44 +241,34 @@ public class TopicTreeService {
      * Removes the course's whole Topic tree, instructor work included. A forced re-extraction
      * clears it this way before it replaces the extracted goals.
      */
-    public void clearTree(Course course) {
-        List<LearningGoal> terminals = goalRepository.findByCourseIdAndOriginIn(
-                course.getId(), List.of(GoalOrigin.TERMINAL));
-        clearTopicTree(course, terminals, manualTreeGoals(course.getId(), terminals));
+    public void clearTree(UUID courseId) {
+        List<PlacedGoal> terminals = goals.list(courseId, g -> g.origin() == GoalOrigin.TERMINAL);
+        clearTopicTree(courseId, terminals, manualTreeGoals(courseId, terminals));
     }
 
-    /** Deletes loaded relationship entities before deleting any of their goals. */
-    public void clearRelationshipsForGoals(Collection<Long> courseGoalIds, Set<Long> doomedIds,
-                                            boolean allContributes) {
-        List<GoalRelationship> edges = new ArrayList<>();
-        for (GoalRelationship relationship : goalRelationshipRepository.findBySourceIdIn(courseGoalIds)) {
-            boolean extractionEdge = relationship.getType() == RelationshipType.CONTRIBUTES_TO
-                    && relationship.getSource().getRole() == GoalRole.KNOWLEDGE
-                    && relationship.getTarget().getRole() == GoalRole.SKILL;
-            // Anything synthesis laid down is reproducible and always goes. The type checks below
-            // stay for trees built before edges carried that marker: SUPPORTS has no other producer,
-            // and a CONTRIBUTES_TO that is not the extraction's own knowledge edge came from a tree.
-            boolean treeEdge = allContributes
-                    && (relationship.getOrigin() == RelationshipOrigin.SYNTHESIS
-                        || relationship.getType() == RelationshipType.SUPPORTS
-                        || (relationship.getType() == RelationshipType.CONTRIBUTES_TO && !extractionEdge));
-            boolean touchesDoomed = doomedIds.contains(relationship.getSource().getId())
-                    || doomedIds.contains(relationship.getTarget().getId());
-            if (treeEdge || touchesDoomed) {
-                edges.add(relationship);
+    /**
+     * Deletes the relationships a tree synthesis laid down. Anything synthesis laid down is
+     * reproducible and always goes. The type checks below stay for trees built before edges carried
+     * that marker: SUPPORTS has no other producer, and a CONTRIBUTES_TO that is not the extraction's
+     * own knowledge edge came from a tree. Knowledge to skill edges are created during extraction and
+     * survive. Do not use "target is a TERMINAL" as the predicate: legacy knowledge to sub-skill edges
+     * must not survive.
+     */
+    private void unrelateTreeEdges(UUID courseId, List<PlacedGoal> courseGoals) {
+        Map<UUID, PlacedGoal> byId = courseGoals.stream().collect(Collectors.toMap(PlacedGoal::id, g -> g));
+        for (GoalRelationInfo relationship : goalApi.relationships(courseId)) {
+            PlacedGoal source = byId.get(relationship.sourceGoalId());
+            PlacedGoal target = byId.get(relationship.targetGoalId());
+            boolean contributes = RelationshipType.CONTRIBUTES_TO.name().equals(relationship.type());
+            boolean extractionEdge = contributes
+                    && source != null && source.role() == GoalRole.KNOWLEDGE
+                    && target != null && target.role() == GoalRole.SKILL;
+            boolean treeEdge = RelationshipOrigin.SYNTHESIS.name().equals(relationship.origin())
+                    || RelationshipType.SUPPORTS.name().equals(relationship.type())
+                    || (contributes && !extractionEdge);
+            if (treeEdge) {
+                goalApi.unrelate(relationship.id());
             }
-        }
-        // A doomed node may be the target of an edge whose source sits outside the course goal list.
-        for (Long doomedId : doomedIds) {
-            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(doomedId)) {
-                if (edges.stream().noneMatch(edge -> edge.getId().equals(relationship.getId()))) {
-                    edges.add(relationship);
-                }
-            }
-        }
-        if (!edges.isEmpty()) {
-            goalRelationshipRepository.deleteAll(edges);
-            goalRelationshipRepository.flush();
         }
     }
 
@@ -291,10 +283,10 @@ public class TopicTreeService {
      * <p>The goals are read in one transaction, planned with none open, and the tree is written in
      * a second one, separate from extraction persistence.
      */
-    public CompetencyTreeResult buildTopicTree(Long courseId, String modelOverride,
+    public CompetencyTreeResult buildTopicTree(UUID courseId, String modelOverride,
                                                     String languageName) {
         Optional<TreeInput> input = transactions.execute(status -> {
-            Course course = courseRepository.findOrThrow(courseId);
+            CourseContext course = settingsService.context(courseId);
             if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
                 return Optional.empty();
             }
@@ -312,11 +304,11 @@ public class TopicTreeService {
             return CompetencyTreeResult.NONE;
         }
         CompetencyTreeResult result = transactions.execute(status -> {
-            Course course = courseRepository.lockOrThrow(courseId);
+            settingsService.lock(courseId);
             if (hierarchyNodeRepository.existsByCourseIdAndLevel(courseId, HierarchyLevel.COMPETENCY)) {
                 return CompetencyTreeResult.NONE;
             }
-            persistTopicTree(course, plan);
+            persistTopicTree(courseId, plan);
             return new CompetencyTreeResult(plan.topics().size(), plan.unmatchedGoals());
         });
         if (result == null) {
@@ -327,7 +319,7 @@ public class TopicTreeService {
         return result;
     }
 
-    private record TreeInput(Course course, TreeSeeds seeds) {
+    private record TreeInput(CourseContext course, TreeSeeds seeds) {
     }
 
     /**
@@ -338,27 +330,26 @@ public class TopicTreeService {
      * @param exercises  exercise skill-tier outcomes, placed into the finished topics.
      * @param examGoals  exam goals, placed the same way.
      */
-    private record TreeSeeds(List<LearningGoal> candidates, List<LearningGoal> exercises,
-                             List<LearningGoal> examGoals) {
+    private record TreeSeeds(List<PlacedGoal> candidates, List<PlacedGoal> exercises,
+                             List<PlacedGoal> examGoals) {
     }
 
-    private TreeSeeds loadTreeSeeds(Course course) {
+    private TreeSeeds loadTreeSeeds(CourseContext course) {
         // Only skill-tier session/exercise goals are tree candidates. Role is structural for V24+
         // data, while role-null legacy goals retain the Bloom fallback. Exam goals are role-null
         // too, so the level check keeps them out: they are assigned onto the finished topics later.
-        List<LearningGoal> skillTier = goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(course.getId()).stream()
-                .filter(g -> g.getHierarchyNode().getLevel() == HierarchyLevel.SESSION
-                        || g.getHierarchyNode().getLevel() == HierarchyLevel.EXERCISE)
+        List<PlacedGoal> skillTier = goals.list(course.id(), g -> g.hierarchyNode() != null).stream()
+                .filter(g -> g.hierarchyNode().getLevel() == HierarchyLevel.SESSION
+                        || g.hierarchyNode().getLevel() == HierarchyLevel.EXERCISE)
                 .filter(TopicTreeService::isSkillTier)
                 .sorted(Comparator.comparing(
-                                LearningGoal::getLectureOrder,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(LearningGoal::getId))
+                        PlacedGoal::lectureOrder,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
         return new TreeSeeds(
                 skillTier.stream().filter(g -> !isExerciseOutcome(g)).toList(),
                 skillTier.stream().filter(TopicTreeService::isExerciseOutcome).toList(),
-                goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXAM)));
+                goals.list(course.id(), g -> g.origin() == GoalOrigin.EXAM));
     }
 
     /**
@@ -374,10 +365,10 @@ public class TopicTreeService {
      * validated structuring prompt only ever groups lecture outcomes. An exercise outcome no topic
      * covers is practised but not introduced; it is counted and left out, not forced in.
      */
-    private TopicTreePlan planFullTopicTree(Course course, TreeSeeds seeds, String modelOverride,
+    private TopicTreePlan planFullTopicTree(CourseContext course, TreeSeeds seeds, String modelOverride,
                                                       String languageName) {
-        List<LearningGoal> exercises = seeds.exercises();
-        List<LearningGoal> candidates = seeds.candidates();
+        List<PlacedGoal> exercises = seeds.exercises();
+        List<PlacedGoal> candidates = seeds.candidates();
         // The skill tier IS the seed set. Bloom must not narrow it any further: extraction now
         // decides the tier, and the session prompt deliberately keeps verbs low ("when in doubt,
         // prefer understand/know"), so a course whose skills all classify as UNDERSTAND would
@@ -386,7 +377,7 @@ public class TopicTreeService {
         if (candidates.isEmpty()) {
             if (!exercises.isEmpty()) {
                 log.info("Course {} has {} exercise outcome(s) but no lecture outcome to name topics from; "
-                        + "no Topic tree is built", course.getId(), exercises.size());
+                        + "no Topic tree is built", course.id(), exercises.size());
             }
             return null;
         }
@@ -394,7 +385,7 @@ public class TopicTreeService {
         TopicTreeSynthesizer.Plan plan;
         try {
             plan = topicTreeSynthesizer.synthesize(
-                    candidates.stream().map(LearningGoal::getText).toList(), languageName, modelOverride);
+                    candidates.stream().map(PlacedGoal::text).toList(), languageName, modelOverride);
         } catch (RuntimeException ex) {
             throw new IllegalStateException("Topic tree synthesis failed: " + errorMessage(ex), ex);
         }
@@ -417,14 +408,15 @@ public class TopicTreeService {
                 .map(topic -> new TopicTreeSynthesizer.MenuTopic(topic.label(),
                         topic.capabilities().stream().map(TopicTreeSynthesizer.PlannedCapability::name).toList()))
                 .toList();
-        TreePlacement practised;
+        TreePlacement<PlacedGoal> practised;
         try {
-            practised = TreePlacement.place(topicTreeSynthesizer, menu, exercises, modelOverride);
+            practised = TreePlacement.place(topicTreeSynthesizer, menu, exercises, PlacedGoal::text,
+                    TopicTreeService::isSkillTier, modelOverride);
         } catch (RuntimeException ex) {
             throw new IllegalStateException("Exercise outcome assignment failed: " + errorMessage(ex), ex);
         }
-        List<LearningGoal> notIntroduced = practised.unplaced();
-        TreePlacement examined = placeExamGoals(course, menu, seeds.examGoals(), modelOverride);
+        List<PlacedGoal> notIntroduced = practised.unplaced();
+        TreePlacement<PlacedGoal> examined = placeExamGoals(course, menu, seeds.examGoals(), modelOverride);
         List<TopicPlan> planned = new ArrayList<>();
         int capabilityIndex = 0;
         int topicIndex = 0;
@@ -432,16 +424,16 @@ public class TopicTreeService {
             List<PlannedCapability> capabilities = new ArrayList<>();
             int skillIndex = 0;
             for (TopicTreeSynthesizer.PlannedCapability capability : topic.capabilities()) {
-                List<LearningGoal> members = capability.outcomes().stream().map(candidates::get).toList();
-                List<LearningGoal> placed = new ArrayList<>(practised.underSkill().get(topicIndex).get(skillIndex));
+                List<PlacedGoal> members = capability.outcomes().stream().map(candidates::get).toList();
+                List<PlacedGoal> placed = new ArrayList<>(practised.underSkill().get(topicIndex).get(skillIndex));
                 placed.addAll(examined.underSkill().get(topicIndex).get(skillIndex++));
                 capabilities.add(new PlannedCapability(capability.name(), capability.shortLabel(),
                         atLeastChildLevels(classifications.get(capabilityIndex++),
                                 bloomLevels(members), soloLevels(members)),
                         members, placed));
             }
-            List<LearningGoal> direct = topic.direct().stream().map(candidates::get).toList();
-            List<LearningGoal> placed = new ArrayList<>(practised.underTopic().get(topicIndex));
+            List<PlacedGoal> direct = topic.direct().stream().map(candidates::get).toList();
+            List<PlacedGoal> placed = new ArrayList<>(practised.underTopic().get(topicIndex));
             placed.addAll(examined.underTopic().get(topicIndex++));
             planned.add(new TopicPlan(topic.label(), capabilities, direct, placed));
         }
@@ -451,11 +443,11 @@ public class TopicTreeService {
         // label. The count is reported so a reviewer can tell how much of the course that is.
         if (unmatched > 0) {
             log.info("Topic tree for course {} leaves {} of {} source outcomes under no topic",
-                    course.getId(), unmatched, candidates.size());
+                    course.id(), unmatched, candidates.size());
         }
         if (!notIntroduced.isEmpty()) {
             log.info("Topic tree for course {}: {} of {} exercise outcomes are practised but not introduced "
-                    + "(no lecture topic covers them)", course.getId(), notIntroduced.size(), exercises.size());
+                    + "(no lecture topic covers them)", course.id(), notIntroduced.size(), exercises.size());
         }
         return new TopicTreePlan(planned, unmatched + notIntroduced.size());
     }
@@ -466,27 +458,28 @@ public class TopicTreeService {
      * all unplaced instead of failing the tree. An exam goal no topic covers is examined but not
      * taught; it stays under the EXAM root.
      */
-    private TreePlacement placeExamGoals(Course course, List<TopicTreeSynthesizer.MenuTopic> menu,
-                                         List<LearningGoal> examGoals, String modelOverride) {
-        TreePlacement placement;
+    private TreePlacement<PlacedGoal> placeExamGoals(CourseContext course, List<TopicTreeSynthesizer.MenuTopic> menu,
+                                         List<PlacedGoal> examGoals, String modelOverride) {
+        TreePlacement<PlacedGoal> placement;
         try {
-            placement = TreePlacement.place(topicTreeSynthesizer, menu, examGoals, modelOverride);
+            placement = TreePlacement.place(topicTreeSynthesizer, menu, examGoals, PlacedGoal::text,
+                    TopicTreeService::isSkillTier, modelOverride);
         } catch (RuntimeException ex) {
             log.warn("Exam goal placement failed for course {}, leaving {} exam goal(s) unplaced: {}",
-                    course.getId(), examGoals.size(), errorMessage(ex));
+                    course.id(), examGoals.size(), errorMessage(ex));
             return TreePlacement.empty(menu);
         }
         if (!placement.unplaced().isEmpty()) {
             log.info("Topic tree for course {}: {} of {} exam goals are examined but not taught "
-                    + "(no lecture topic covers them)", course.getId(), placement.unplaced().size(), examGoals.size());
+                    + "(no lecture topic covers them)", course.id(), placement.unplaced().size(), examGoals.size());
         }
         return placement;
     }
 
     /** An outcome extracted from a document uploaded as an exercise. */
-    private static boolean isExerciseOutcome(LearningGoal goal) {
-        return goal.getHierarchyNode().getDocument() != null
-                && goal.getHierarchyNode().getDocument().getKind() == DocumentKind.EXERCISE;
+    private static boolean isExerciseOutcome(PlacedGoal goal) {
+        return goal.hierarchyNode().getDocument() != null
+                && goal.hierarchyNode().getDocument().getKind() == DocumentKind.EXERCISE;
     }
 
     /**
@@ -512,7 +505,7 @@ public class TopicTreeService {
      *                     not decide where the topic sits in the course.
      */
     private record TopicPlan(String text, List<PlannedCapability> capabilities,
-                             List<LearningGoal> direct, List<LearningGoal> placed) {}
+                             List<PlacedGoal> direct, List<PlacedGoal> placed) {}
 
     /**
      * A generated capability: its name, its levels, the lecture outcomes it was built from, and the
@@ -520,14 +513,14 @@ public class TopicTreeService {
      * are at least the highest among its members; placed goals do not raise them.
      */
     private record PlannedCapability(String text, String shortLabel, TaxonomyClassification classification,
-                                     List<LearningGoal> members, List<LearningGoal> placed) {}
+                                     List<PlacedGoal> members, List<PlacedGoal> placed) {}
 
-    private static List<BloomLevel> bloomLevels(List<LearningGoal> goals) {
-        return goals.stream().map(LearningGoal::getBloomLevel).filter(java.util.Objects::nonNull).toList();
+    private static List<BloomLevel> bloomLevels(List<PlacedGoal> goals) {
+        return goals.stream().map(PlacedGoal::bloomLevel).filter(java.util.Objects::nonNull).toList();
     }
 
-    private static List<SoloLevel> soloLevels(List<LearningGoal> goals) {
-        return goals.stream().map(LearningGoal::getSoloLevel).filter(java.util.Objects::nonNull).toList();
+    private static List<SoloLevel> soloLevels(List<PlacedGoal> goals) {
+        return goals.stream().map(PlacedGoal::soloLevel).filter(java.util.Objects::nonNull).toList();
     }
 
     /**
@@ -569,14 +562,14 @@ public class TopicTreeService {
      * to the top of the tree.
      */
     private static int medianLectureOrder(TopicPlan topic) {
-        List<LearningGoal> goals = new ArrayList<>(topic.direct());
+        List<PlacedGoal> goals = new ArrayList<>(topic.direct());
         topic.capabilities().forEach(capability -> goals.addAll(capability.members()));
         return medianOrderOf(goals);
     }
 
-    private static int medianOrderOf(List<LearningGoal> goals) {
+    private static int medianOrderOf(List<PlacedGoal> goals) {
         List<Integer> orders = goals.stream()
-                .map(LearningGoal::getLectureOrder)
+                .map(PlacedGoal::lectureOrder)
                 .filter(java.util.Objects::nonNull)
                 .sorted()
                 .toList();
@@ -589,29 +582,42 @@ public class TopicTreeService {
      * capability, exercise or exam goal → capability, and ungrouped, exercise or exam goal → topic. Knowledge → skill edges were created during extraction.
      * All LLM work is already done by the time this runs.
      */
-    private void persistTopicTree(Course course, TopicTreePlan plan) {
-        HierarchyNode competencyRoot = hierarchyNodeRepository.findOrCreateCompetencyRoot(course);
+    private void persistTopicTree(UUID courseId, TopicTreePlan plan) {
+        HierarchyNode competencyRoot = hierarchyNodeRepository.findOrCreateCompetencyRoot(courseId);
 
+        // One creation call for every node of the tree; the edges follow once the goals have ids.
+        List<NewPlacedGoal> items = new ArrayList<>();
+        Map<TopicPlan, Integer> topicIndex = new java.util.IdentityHashMap<>();
+        Map<PlannedCapability, Integer> capabilityIndex = new java.util.IdentityHashMap<>();
         for (TopicPlan topic : plan.topics()) {
-            LearningGoal terminal = new LearningGoal(course, topic.text(), GoalKind.IMPLICIT);
-            terminal.setShortLabel(topic.text());
-            terminal.setOrigin(GoalOrigin.TERMINAL);
-            terminal.setHierarchyNode(competencyRoot);
             int medianLectureOrder = medianLectureOrder(topic);
-            terminal.setLectureOrder(medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder);
-            goalRepository.saveAndFlush(terminal);
-
+            topicIndex.put(topic, items.size());
+            items.add(new NewPlacedGoal(
+                    new NewGoal(topic.text(), topic.text(), GoalKind.IMPLICIT, null, null, null, GoalStatus.PENDING,
+                            GoalOrigin.TERMINAL, null, DomainModule.MATERIALS),
+                    competencyRoot, null, medianLectureOrder == Integer.MAX_VALUE ? null : medianLectureOrder));
             for (PlannedCapability planned : topic.capabilities()) {
                 // A generated grouping node without a source of its own. Its members keep their
                 // quotes, pages and levels, and each keeps the knowledge extraction hung beneath it.
-                LearningGoal capability = new LearningGoal(course, planned.text(), GoalKind.IMPLICIT);
-                capability.setOrigin(GoalOrigin.SYNTHESIZED);
-                capability.setRole(GoalRole.SKILL);
-                capability.setShortLabel(planned.shortLabel());
                 int capabilityOrder = medianOrderOf(planned.members());
-                capability.setLectureOrder(capabilityOrder == Integer.MAX_VALUE ? null : capabilityOrder);
-                applyLevels(capability, planned.classification());
-                goalRepository.saveAndFlush(capability);
+                TaxonomyClassification classification = planned.classification();
+                capabilityIndex.put(planned, items.size());
+                items.add(new NewPlacedGoal(
+                        new NewGoal(planned.text(), planned.shortLabel(), GoalKind.IMPLICIT, GoalRole.SKILL,
+                                classification == null || classification.bloom() == null
+                                        ? null : classification.bloom().name(),
+                                classification == null || classification.solo() == null
+                                        ? null : classification.solo().name(),
+                                GoalStatus.PENDING, GoalOrigin.SYNTHESIZED, null, DomainModule.MATERIALS),
+                        null, null, capabilityOrder == Integer.MAX_VALUE ? null : capabilityOrder));
+            }
+        }
+        List<PlacedGoal> created = goals.createAll(courseId, items);
+
+        for (TopicPlan topic : plan.topics()) {
+            PlacedGoal terminal = created.get(topicIndex.get(topic));
+            for (PlannedCapability planned : topic.capabilities()) {
+                PlacedGoal capability = created.get(capabilityIndex.get(planned));
                 linkSynthesized(List.of(capability), terminal, RelationshipType.CONTRIBUTES_TO);
                 linkSynthesized(planned.members(), capability, RelationshipType.CONTRIBUTES_TO);
                 linkSynthesized(planned.placed(), capability, RelationshipType.CONTRIBUTES_TO);
@@ -621,41 +627,18 @@ public class TopicTreeService {
         }
     }
 
-    private static void applyLevels(LearningGoal goal, TaxonomyClassification classification) {
-        if (classification != null) {
-            goal.setBloomLevel(classification.bloom());
-            goal.setSoloLevel(classification.solo());
-        }
-    }
-
     /**
      * Materializes an edge laid down by tree synthesis. Marked {@link RelationshipOrigin#SYNTHESIS}
      * so a rebuild can delete exactly the edges it created: with elected sub-skills both ends of a
      * tree edge are surviving extracted goals, so nothing else distinguishes it from the extraction
      * edge beside it, and a rebuild would otherwise stack a second copy on every re-run.
      */
-    private int linkSynthesized(Collection<LearningGoal> supporters, LearningGoal targetGoal,
-                                RelationshipType type) {
-        return linkRelationships(supporters, targetGoal, type, RelationshipOrigin.SYNTHESIS);
-    }
-
-    /** Materializes idempotent edges between goals. */
-    private int linkRelationships(Collection<LearningGoal> supporters, LearningGoal targetGoal,
-                                  RelationshipType type, RelationshipOrigin origin) {
-        int created = 0;
-        for (LearningGoal source : supporters) {
-            if (source.getId().equals(targetGoal.getId())) {
-                continue;
+    private void linkSynthesized(Collection<PlacedGoal> supporters, PlacedGoal targetGoal, RelationshipType type) {
+        for (PlacedGoal source : supporters) {
+            if (!source.id().equals(targetGoal.id())) {
+                goalApi.relate(source.id(), targetGoal.id(), type.name(), 1.0, RelationshipOrigin.SYNTHESIS.name());
             }
-            if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
-                    source.getId(), targetGoal.getId(), type)) {
-                continue;
-            }
-            goalRelationshipRepository.save(new GoalRelationship(
-                    source, targetGoal, type, 1.0, origin));
-            created++;
         }
-        return created;
     }
 
     /**

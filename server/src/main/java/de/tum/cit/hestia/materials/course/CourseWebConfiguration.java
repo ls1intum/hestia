@@ -1,5 +1,6 @@
 package de.tum.cit.hestia.materials.course;
 
+import de.tum.cit.hestia.core.CourseAccess;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -8,9 +9,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration(proxyBeanMethods = false)
 class CourseWebConfiguration implements WebMvcConfigurer {
 
-    private final CourseGuard guard;
+    private final CourseAccess guard;
 
-    CourseWebConfiguration(CourseGuard guard) {
+    CourseWebConfiguration(CourseAccess guard) {
         this.guard = guard;
     }
 

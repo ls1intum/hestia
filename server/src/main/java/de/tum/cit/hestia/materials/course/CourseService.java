@@ -1,85 +1,99 @@
 package de.tum.cit.hestia.materials.course;
 
-import de.tum.cit.hestia.core.CourseAccess;
 import de.tum.cit.hestia.core.CourseApi;
+import de.tum.cit.hestia.core.CourseInfo;
 import de.tum.cit.hestia.core.CourseRole;
-import java.util.UUID;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRelationInfo;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.LearningGoalApi;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Creates, lists, updates and deletes courses, and summarises what each course holds. */
+/**
+ * Lists, creates, renames and deletes the courses of {@code core} for the materials clients and
+ * summarises what each holds. The roles are checked by {@code core}.
+ */
 @Service
 public class CourseService {
 
-    private final CourseRepository courseRepository;
+    private static final String CONTRIBUTES_TO = "CONTRIBUTES_TO";
+
+    private final MaterialSettingsRepository settingsRepository;
+    private final MaterialSettingsService settingsService;
     private final ExtractionStatusLookup extractionStatuses;
     private final CourseApi courseApi;
-    private final CourseAccess courseAccess;
+    private final LearningGoalApi goalApi;
 
-    public CourseService(CourseRepository courseRepository, ExtractionStatusLookup extractionStatuses,
-                         CourseApi courseApi, CourseAccess courseAccess) {
-        this.courseRepository = courseRepository;
+    public CourseService(MaterialSettingsRepository settingsRepository, MaterialSettingsService settingsService,
+                         ExtractionStatusLookup extractionStatuses, CourseApi courseApi, LearningGoalApi goalApi) {
+        this.settingsRepository = settingsRepository;
+        this.settingsService = settingsService;
         this.extractionStatuses = extractionStatuses;
         this.courseApi = courseApi;
-        this.courseAccess = courseAccess;
+        this.goalApi = goalApi;
     }
 
     @Transactional
-    public Course create(String name, String outputLanguage, Boolean figuresEnabled) {
+    public CourseResponse create(String name, String outputLanguage, Boolean figuresEnabled) {
         // The extraction runs straight after the materials upload that follows this call, so the
-        // instructor's language override has to be settable here — afterwards is too late for the
+        // instructor's language override has to be settable here; afterwards is too late for the
         // first run. Null means "detect the language from the uploaded documents".
         validateOutputLanguage(outputLanguage);
-        // The core course carries the roles; the creator becomes its owner.
-        UUID coreCourseId = courseApi.create(name).id();
-        Course course = new Course(name, coreCourseId);
-        course.setOutputLanguage(outputLanguage);
-        course.setFiguresEnabled(Boolean.TRUE.equals(figuresEnabled));
-        return courseRepository.save(course);
+        CourseInfo course = courseApi.create(name);
+        MaterialSettings settings = settingsService.settings(course.id());
+        settings.setOutputLanguage(outputLanguage);
+        settings.setFiguresEnabled(Boolean.TRUE.equals(figuresEnabled));
+        settingsRepository.save(settings);
+        return CourseResponse.from(course, settings);
     }
 
-    @Transactional(readOnly = true)
+    /** One page of the user's courses, newest first (the sort of the request is not used). */
+    @Transactional
     public Page<CourseSummaryResponse> summaries(Pageable pageable) {
-        List<UUID> mine = courseApi.idsMine(CourseRole.VIEWER);
-        if (mine.isEmpty()) {
-            return Page.empty(pageable);
-        }
-        Page<Course> page = courseRepository.findByCoreCourseIdIn(mine, pageable);
-        Map<Long, CourseSummaryResponse> summaries = summarise(page.getContent());
-        return page.map(course -> summaries.get(course.getId()));
-    }
-
-    @Transactional(readOnly = true)
-    public CourseSummaryResponse summary(Long id) {
-        Course course = courseRepository.findOrThrow(id);
-        return summarise(List.of(course)).get(id);
+        List<CourseInfo> page = courseApi.listMine(pageable.getPageNumber(), pageable.getPageSize());
+        long total = courseApi.idsMine(CourseRole.VIEWER).size();
+        Map<UUID, CourseSummaryResponse> summaries = summarise(page);
+        return new PageImpl<>(page.stream().map(c -> summaries.get(c.id())).toList(), pageable, total);
     }
 
     @Transactional
-    public void markSkillsReviewed(Long id) {
-        Course course = courseRepository.findOrThrow(id);
-        if (course.getSkillsReviewedAt() == null) {
-            course.setSkillsReviewedAt(OffsetDateTime.now());
-            courseRepository.save(course);
+    public CourseSummaryResponse summary(UUID id) {
+        return summarise(List.of(courseApi.get(id))).get(id);
+    }
+
+    @Transactional
+    public void markSkillsReviewed(UUID id) {
+        MaterialSettings settings = settingsService.settings(id);
+        if (settings.getSkillsReviewedAt() == null) {
+            settings.setSkillsReviewedAt(OffsetDateTime.now());
+            settingsRepository.save(settings);
         }
     }
 
     @Transactional
-    public Course update(Long id, UpdateCourseRequest request) {
-        Course course = courseRepository.findOrThrow(id);
+    public CourseResponse update(UUID id, UpdateCourseRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A request body is required");
         }
         validateOutputLanguage(request.getOutputLanguage());
+        CourseInfo course = courseApi.get(id);
+        MaterialSettings settings = settingsService.settings(id);
         if (request.getName() != null) {
             String name = request.getName().trim();
             if (name.isEmpty()) {
@@ -89,54 +103,89 @@ public class CourseService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "name must be at most " + CourseController.MAX_NAME_LENGTH + " characters");
             }
-            course.setName(name);
-            courseApi.rename(course.getCoreCourseId(), name);
+            course = courseApi.rename(id, name);
         }
         if (request.hasOutputLanguage()) {
-            course.setOutputLanguage(request.getOutputLanguage());
+            settings.setOutputLanguage(request.getOutputLanguage());
         }
         if (request.getFiguresEnabled() != null) {
-            course.setFiguresEnabled(request.getFiguresEnabled());
+            settings.setFiguresEnabled(request.getFiguresEnabled());
         }
-        return courseRepository.save(course);
+        return CourseResponse.from(course, settingsRepository.save(settings));
     }
 
+    /**
+     * Deletes a course and everything that hangs off it. Every {@code course_id} foreign key of the
+     * module (documents, hierarchy nodes, runs, exams, settings) and of {@code core} (goals, links)
+     * cascades, so removing the course is enough.
+     */
     @Transactional
-    public void delete(Long id) {
-        Course course = courseRepository.findOrThrow(id);
-        courseAccess.requireOwner(course.getCoreCourseId());
-        courseRepository.delete(course);
-        courseRepository.flush();
-        courseApi.delete(course.getCoreCourseId());
+    public void delete(UUID id) {
+        courseApi.delete(id);
     }
 
-    /** One summary per course, with every count read in one grouped query per kind. */
-    private Map<Long, CourseSummaryResponse> summarise(List<Course> courses) {
-        List<Long> ids = courses.stream().map(Course::getId).toList();
-        Map<Long, CourseSummaryResponse> summaries = new LinkedHashMap<>();
-        if (ids.isEmpty()) {
+    /** One summary per course, with the document counts read in one grouped query. */
+    private Map<UUID, CourseSummaryResponse> summarise(List<CourseInfo> courses) {
+        Map<UUID, CourseSummaryResponse> summaries = new LinkedHashMap<>();
+        if (courses.isEmpty()) {
             return summaries;
         }
-        Map<Long, Long> goalCounts = toCountMap(courseRepository.countGoalsByCourseIds(ids));
-        Map<Long, Long> topicCounts = toCountMap(courseRepository.countTopicsByCourseIds(ids));
-        Map<Long, Long> skillCounts = toCountMap(courseRepository.countSkillsByCourseIds(ids));
-        Map<Long, Long> documentCounts = toCountMap(courseRepository.countDocumentsByCourseIds(ids));
-        Map<Long, ExtractionStatus> latestStatuses = extractionStatuses.latestByCourse(ids);
-        for (Course course : courses) {
-            summaries.put(course.getId(), new CourseSummaryResponse(
-                    course.getId(),
-                    course.getName(),
-                    course.getOutputLanguage(),
-                    course.isFiguresEnabled(),
-                    course.getCreatedAt(),
-                    documentCounts.getOrDefault(course.getId(), 0L),
-                    goalCounts.getOrDefault(course.getId(), 0L),
-                    topicCounts.getOrDefault(course.getId(), 0L),
-                    skillCounts.getOrDefault(course.getId(), 0L),
-                    course.getSkillsReviewedAt(),
-                    latestStatuses.get(course.getId())));
+        List<UUID> ids = courses.stream().map(CourseInfo::id).toList();
+        Map<UUID, MaterialSettings> settings = settingsRepository.findByCourseIdIn(ids).stream()
+                .collect(Collectors.toMap(MaterialSettings::getCourseId, s -> s));
+        Map<UUID, Long> documentCounts = settingsRepository.countDocumentsByCourseIds(ids).stream()
+                .collect(Collectors.toMap(MaterialSettingsRepository.CourseCount::getCourseId,
+                        MaterialSettingsRepository.CourseCount::getCount));
+        Map<UUID, ExtractionStatus> latestStatuses = extractionStatuses.latestByCourse(ids);
+        for (CourseInfo course : courses) {
+            MaterialSettings s = settings.get(course.id());
+            List<GoalInfo> goals = goalApi.goals(course.id());
+            List<GoalRelationInfo> relationships = goalApi.relationships(course.id());
+            summaries.put(course.id(), new CourseSummaryResponse(
+                    course.id(),
+                    course.title(),
+                    s == null ? null : s.getOutputLanguage(),
+                    s != null && s.isFiguresEnabled(),
+                    course.createdAt().atOffset(ZoneOffset.UTC),
+                    course.personal(),
+                    documentCounts.getOrDefault(course.id(), 0L),
+                    goals.size(),
+                    goals.stream().filter(g -> g.origin() == GoalOrigin.TERMINAL).count(),
+                    countSkills(goals, relationships),
+                    s == null ? null : s.getSkillsReviewedAt(),
+                    latestStatuses.get(course.id())));
         }
         return summaries;
+    }
+
+    /**
+     * Skill count of a course (a capability in code terms). Mirrors the client's
+     * {@code buildTopicForest}: a direct CONTRIBUTES_TO child of a topic is a capability when one of
+     * its own children has the SKILL role, or when an instructor added it by hand with the SKILL role.
+     */
+    static long countSkills(List<GoalInfo> goals, List<GoalRelationInfo> relationships) {
+        Map<UUID, GoalInfo> byId = goals.stream().collect(Collectors.toMap(GoalInfo::id, g -> g));
+        Set<UUID> withSkillChild = new HashSet<>();
+        for (GoalRelationInfo r : relationships) {
+            GoalInfo source = byId.get(r.sourceGoalId());
+            if (CONTRIBUTES_TO.equals(r.type()) && source != null && source.role() == GoalRole.SKILL) {
+                withSkillChild.add(r.targetGoalId());
+            }
+        }
+        Set<UUID> capabilityIds = new HashSet<>();
+        for (GoalRelationInfo r : relationships) {
+            GoalInfo child = byId.get(r.sourceGoalId());
+            GoalInfo topic = byId.get(r.targetGoalId());
+            if (child == null || topic == null || !CONTRIBUTES_TO.equals(r.type())
+                    || topic.origin() != GoalOrigin.TERMINAL || child.origin() == GoalOrigin.GAP) {
+                continue;
+            }
+            boolean userSkill = "USER_CREATED".equals(child.creationProvenance()) && child.role() == GoalRole.SKILL;
+            if (withSkillChild.contains(child.id()) || userSkill) {
+                capabilityIds.add(child.id());
+            }
+        }
+        return capabilityIds.size();
     }
 
     /** Null means auto-detect; otherwise only the languages the pipeline is validated for. */
@@ -147,9 +196,12 @@ public class CourseService {
         }
     }
 
-    private static Map<Long, Long> toCountMap(List<CourseRepository.CourseCount> counts) {
-        return counts.stream().collect(Collectors.toMap(
-                CourseRepository.CourseCount::getCourseId,
-                CourseRepository.CourseCount::getCount));
+    /** The response of creating and updating a course. */
+    public record CourseResponse(UUID id, String name, String outputLanguage, boolean figuresEnabled,
+                                 boolean personal) {
+        static CourseResponse from(CourseInfo course, MaterialSettings settings) {
+            return new CourseResponse(course.id(), course.title(), settings.getOutputLanguage(),
+                    settings.isFiguresEnabled(), course.personal());
+        }
     }
 }

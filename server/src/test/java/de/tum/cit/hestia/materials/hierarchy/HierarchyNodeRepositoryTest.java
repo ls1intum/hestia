@@ -7,7 +7,7 @@ import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.course.Course;
 import de.tum.cit.hestia.materials.course.CourseRepository;
-import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.core.GoalKind;
 import de.tum.cit.hestia.materials.goal.LearningGoal;
 import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import java.util.List;

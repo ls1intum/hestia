@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
-import de.tum.cit.hestia.materials.goal.GoalKind;
+import de.tum.cit.hestia.core.GoalKind;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import de.tum.cit.hestia.materials.document.DocumentKind;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;

@@ -1,22 +1,22 @@
 package de.tum.cit.hestia.materials.hierarchy;
 
-import de.tum.cit.hestia.materials.course.Course;
+import java.util.UUID;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface HierarchyNodeRepository extends JpaRepository<HierarchyNode, Long> {
 
-    List<HierarchyNode> findByCourseId(Long courseId);
+    List<HierarchyNode> findByCourseId(UUID courseId);
 
-    Optional<HierarchyNode> findFirstByCourseIdAndLevelOrderByIdAsc(Long courseId, HierarchyLevel level);
+    Optional<HierarchyNode> findFirstByCourseIdAndLevelOrderByIdAsc(UUID courseId, HierarchyLevel level);
 
-    boolean existsByCourseIdAndLevel(Long courseId, HierarchyLevel level);
+    boolean existsByCourseIdAndLevel(UUID courseId, HierarchyLevel level);
 
     /** All terminal skills of a course share one COMPETENCY root node, created on first use. */
-    default HierarchyNode findOrCreateCompetencyRoot(Course course) {
-        return findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.COMPETENCY)
-                .orElseGet(() -> save(new HierarchyNode(course, null, HierarchyLevel.COMPETENCY,
+    default HierarchyNode findOrCreateCompetencyRoot(UUID courseId) {
+        return findFirstByCourseIdAndLevelOrderByIdAsc(courseId, HierarchyLevel.COMPETENCY)
+                .orElseGet(() -> save(new HierarchyNode(courseId, null, HierarchyLevel.COMPETENCY,
                         HierarchyNode.COMPETENCY_ROOT_LABEL)));
     }
 }

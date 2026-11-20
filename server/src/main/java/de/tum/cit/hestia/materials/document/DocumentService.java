@@ -1,8 +1,10 @@
 package de.tum.cit.hestia.materials.document;
 
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.AlignmentApi;
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.DomainModule;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class DocumentService {
 
-    private final CourseRepository courseRepository;
+    private final CourseAccess courseAccess;
+    private final AlignmentApi alignmentApi;
     private final DocumentRepository documentRepository;
     private final DocumentContentRepository documentContentRepository;
     private final DocumentSectionRepository documentSectionRepository;
@@ -21,14 +24,16 @@ public class DocumentService {
     private final LanguageDetectionService languageDetectionService;
     private final TransactionOperations transactions;
 
-    public DocumentService(CourseRepository courseRepository,
+    public DocumentService(CourseAccess courseAccess,
+                           AlignmentApi alignmentApi,
                            DocumentRepository documentRepository,
                            DocumentContentRepository documentContentRepository,
                            DocumentSectionRepository documentSectionRepository,
                            DocumentTitleService titleService,
                            LanguageDetectionService languageDetectionService,
                            TransactionOperations transactions) {
-        this.courseRepository = courseRepository;
+        this.courseAccess = courseAccess;
+        this.alignmentApi = alignmentApi;
         this.documentRepository = documentRepository;
         this.documentContentRepository = documentContentRepository;
         this.documentSectionRepository = documentSectionRepository;
@@ -39,21 +44,21 @@ public class DocumentService {
 
     /** The course's documents in course order. */
     @Transactional(readOnly = true)
-    public List<Document> list(Long courseId) {
-        courseRepository.requireExists(courseId);
+    public List<Document> list(UUID courseId) {
+        courseAccess.requireRead(courseId);
         return documentRepository.findByCourseId(courseId).stream()
                 .sorted(DocumentOrder.comparator())
                 .toList();
     }
 
-    /** The course documents are uploaded to, or a 404. */
-    public Course course(Long courseId) {
-        return courseRepository.findOrThrow(courseId);
+    /** Checks that the user may upload documents to the course (editor), or throws a 404 / 403. */
+    public void requireUploadAccess(UUID courseId) {
+        courseAccess.requireWrite(courseId);
     }
 
     /** A document with its stored bytes, or a 404 when either is missing or the document is in another course. */
     @Transactional(readOnly = true)
-    public StoredDocument content(Long courseId, Long documentId) {
+    public StoredDocument content(UUID courseId, Long documentId) {
         Document document = findInCourse(courseId, documentId);
         DocumentContent content = documentContentRepository.findById(documentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -68,7 +73,7 @@ public class DocumentService {
      * is ignored.
      */
     @Transactional
-    public Document update(Long courseId, Long documentId, UpdateDocumentRequest request) {
+    public Document update(UUID courseId, Long documentId, UpdateDocumentRequest request) {
         Document document = findInCourse(courseId, documentId);
         if (request.hasDisplayName()) {
             String displayName = request.getDisplayName() == null ? null : request.getDisplayName().trim();
@@ -83,9 +88,21 @@ public class DocumentService {
         return documentRepository.save(document);
     }
 
-    private Document findInCourse(Long courseId, Long documentId) {
+    /**
+     * Deletes a document of the course with everything that hangs off it (content, sections, page
+     * descriptions, goal sources) and removes the document's alignment links, which have no
+     * foreign key to it.
+     */
+    @Transactional
+    public void delete(UUID courseId, Long documentId) {
+        Document document = findInCourse(courseId, documentId);
+        alignmentApi.unlinkTarget(DomainModule.MATERIALS, "DOCUMENT", documentId.toString());
+        documentRepository.delete(document);
+    }
+
+    private Document findInCourse(UUID courseId, Long documentId) {
         return documentRepository.findById(documentId)
-                .filter(d -> d.getCourse().getId().equals(courseId))
+                .filter(d -> d.getCourseId().equals(courseId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + documentId));
     }
 
@@ -95,14 +112,14 @@ public class DocumentService {
      * transaction opens, so no connection is held while the model runs. Without a title the
      * document stays section-less and the extraction step titles the session by filename.
      */
-    public Document persist(Course course, String filename, String contentType,
+    public Document persist(UUID courseId, String filename, String contentType,
                             DocumentKind kind, DocumentStructureService.ParsedDocument parsed, byte[] bytes) {
         String title = parsed.sections().isEmpty()
                 ? titleService.deriveTitle(bytes, contentType, filename)
                 : null;
         String storedContentType = contentType != null ? contentType : "application/octet-stream";
         return transactions.execute(status -> {
-            Document document = new Document(course, filename, storedContentType, parsed.rawText());
+            Document document = new Document(courseId, filename, storedContentType, parsed.rawText());
             document.setKind(kind);
             document.setLanguage(languageDetectionService.detect(parsed.rawText()));
             document = documentRepository.save(document);

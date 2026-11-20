@@ -30,9 +30,9 @@ import de.tum.cit.hestia.materials.document.PageDescriptionRepository;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.goal.EvidenceKind;
-import de.tum.cit.hestia.materials.goal.GoalKind;
-import de.tum.cit.hestia.materials.goal.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRole;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.GoalSource;
 import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
 import de.tum.cit.hestia.materials.goal.LearningGoal;
@@ -1070,7 +1070,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
                 .findFirst()
                 .orElseThrow();
-        terminal.setStatus(de.tum.cit.hestia.materials.goal.GoalStatus.APPROVED);
+        terminal.setStatus(de.tum.cit.hestia.core.GoalStatus.APPROVED);
         goalRepository.save(terminal);
 
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
@@ -1085,7 +1085,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
                 .singleElement()
                 .satisfies(g -> assertThat(g.getStatus())
-                        .isEqualTo(de.tum.cit.hestia.materials.goal.GoalStatus.PENDING));
+                        .isEqualTo(de.tum.cit.hestia.core.GoalStatus.PENDING));
     }
 
     /**

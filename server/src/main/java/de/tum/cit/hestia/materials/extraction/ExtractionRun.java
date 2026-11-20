@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.materials.extraction;
 
 import de.tum.cit.hestia.core.OrgScoped;
-import de.tum.cit.hestia.materials.course.Course;
+import java.util.UUID;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,9 +25,8 @@ public class ExtractionRun extends OrgScoped {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @Column(name = "course_id", nullable = false, updatable = false)
+    private UUID courseId;
 
     @Column
     private String model;
@@ -65,8 +64,8 @@ public class ExtractionRun extends OrgScoped {
     protected ExtractionRun() {
     }
 
-    public ExtractionRun(Course course, String model, String promptVersion, String params) {
-        this.course = course;
+    public ExtractionRun(UUID courseId, String model, String promptVersion, String params) {
+        this.courseId = courseId;
         this.model = model;
         this.promptVersion = promptVersion;
         this.params = params;
@@ -78,8 +77,8 @@ public class ExtractionRun extends OrgScoped {
         return id;
     }
 
-    public Course getCourse() {
-        return course;
+    public UUID getCourseId() {
+        return courseId;
     }
 
     public String getModel() {

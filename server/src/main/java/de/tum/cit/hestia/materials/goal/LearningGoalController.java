@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.GoalStatus;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -7,9 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpStatus;
@@ -42,11 +44,11 @@ public class LearningGoalController {
     }
 
     @GetMapping
-    public PagedModel<LearningGoalResponse> list(@PathVariable Long courseId,
+    public PagedModel<LearningGoalResponse> list(@PathVariable UUID courseId,
                                                  @RequestParam(required = false) GoalStatus status,
                                                  @Parameter(description = "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.")
                                                  @RequestParam(required = false) GoalRole role,
-                                                 @ParameterObject @PageableDefault(size = 50, sort = "id", direction = Sort.Direction.ASC)
+                                                 @ParameterObject @PageableDefault(size = 50)
                                                  Pageable pageable) {
         // PagedModel serializes a stable {content, page} JSON shape, unlike PageImpl whose format
         // is an implementation detail that has changed across Spring Data versions.
@@ -65,7 +67,7 @@ public class LearningGoalController {
      * excluded, and an unknown {@code nodeId} simply yields an empty list.
      */
     @GetMapping("/by-session")
-    public List<SessionGoalsResponse> listBySession(@PathVariable Long courseId,
+    public List<SessionGoalsResponse> listBySession(@PathVariable UUID courseId,
                                                     @Parameter(description = "Optional review-status filter: PENDING or APPROVED. Omit for all goals.")
                                                     @RequestParam(required = false) GoalStatus status,
                                                     @Parameter(description = "Optional extraction-tier filter: SKILL or KNOWLEDGE. Omit for all goals.")
@@ -78,29 +80,29 @@ public class LearningGoalController {
 
     @PostMapping("/terminal")
     @ResponseStatus(HttpStatus.CREATED)
-    public LearningGoalResponse createTerminalSkill(@PathVariable Long courseId,
+    public LearningGoalResponse createTerminalSkill(@PathVariable UUID courseId,
                                                     @RequestBody CreateTerminalSkillRequest request) {
         return edits.createTerminalSkill(courseId, request.text());
     }
 
     @PostMapping("/terminal/generated")
     @ResponseStatus(HttpStatus.CREATED)
-    public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable Long courseId,
+    public LearningGoalResponse createGeneratedTerminalSkill(@PathVariable UUID courseId,
                                                              @RequestBody CreateGeneratedTerminalSkillRequest request) {
         return edits.createGeneratedTerminalSkill(courseId, request.text(), request.shortLabel());
     }
 
     @PostMapping("/{goalId}/children")
     @ResponseStatus(HttpStatus.CREATED)
-    public LearningGoalResponse addChild(@PathVariable Long courseId,
-                                         @PathVariable Long goalId,
+    public LearningGoalResponse addChild(@PathVariable UUID courseId,
+                                         @PathVariable UUID goalId,
                                          @RequestBody AddChildRequest request) {
         return edits.addChild(courseId, goalId, request.text(), request.shortLabel(), request.role());
     }
 
     @PatchMapping("/{goalId}")
-    public LearningGoalResponse update(@PathVariable Long courseId,
-                                       @PathVariable Long goalId,
+    public LearningGoalResponse update(@PathVariable UUID courseId,
+                                       @PathVariable UUID goalId,
                                        @RequestBody UpdateLearningGoalRequest request) {
         return edits.update(courseId, goalId, request.text(), request.status(), request.bloomLevel(),
                 request.soloLevel());
@@ -108,12 +110,12 @@ public class LearningGoalController {
 
     @DeleteMapping("/{goalId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long courseId, @PathVariable Long goalId) {
+    public void delete(@PathVariable UUID courseId, @PathVariable UUID goalId) {
         edits.delete(courseId, goalId);
     }
 
     @GetMapping(value = "/export.csv", produces = "text/csv")
-    public void exportCsv(@PathVariable Long courseId, HttpServletResponse response) throws IOException {
+    public void exportCsv(@PathVariable UUID courseId, HttpServletResponse response) throws IOException {
         queries.exportCsv(courseId, () -> {
             response.setContentType(MediaType.parseMediaType("text/csv").toString());
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());

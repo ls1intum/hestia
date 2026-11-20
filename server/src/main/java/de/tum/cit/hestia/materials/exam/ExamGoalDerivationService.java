@@ -1,38 +1,47 @@
 package de.tum.cit.hestia.materials.exam;
 
+import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.DomainModule;
 import de.tum.cit.hestia.core.spi.ExamGoalDerivation;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.core.CourseNotFoundException;
-import de.tum.cit.hestia.materials.course.CourseGuard;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlock;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlockType;
-import de.tum.cit.hestia.materials.goal.GoalDirectoryService;
-import de.tum.cit.hestia.materials.goal.LearningGoalResponse;
 import java.util.List;
-import java.util.NoSuchElementException;
-import org.springframework.http.HttpStatus;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The {@link ExamGoalDerivation} port: the same derivation as
- * {@code POST /api/courses/{id}/exam-tasks/learning-goals}, with the same checks on the exam.
+ * {@code POST /api/courses/{id}/exam-tasks/learning-goals}, with the same checks on the exam. The
+ * goals are stored in the given course of {@code core} as {@code EXAM} goals created via
+ * {@code ASSESSMENT}; the caller needs EDITOR on the course. The exam is stored as a materials exam
+ * submission, so each goal knows the task it came from.
  */
 @Service
 public class ExamGoalDerivationService implements ExamGoalDerivation {
 
-    private final CourseGuard guard;
+    private final CourseAccess courseAccess;
+    private final MaterialSettingsService settingsService;
     private final ExamGoalService examGoalService;
 
-    public ExamGoalDerivationService(CourseGuard guard, ExamGoalService examGoalService) {
-        this.guard = guard;
+    public ExamGoalDerivationService(CourseAccess courseAccess, MaterialSettingsService settingsService,
+                                     ExamGoalService examGoalService) {
+        this.courseAccess = courseAccess;
+        this.settingsService = settingsService;
         this.examGoalService = examGoalService;
     }
 
     @Override
-    public List<TaskGoals> derive(java.util.UUID courseId, List<ExamTask> tasks) {
-        // TODO(package 6): store the derived goals in core through LearningGoalApi.
-        throw new UnsupportedOperationException("Exam goal derivation is being moved to core goals");
+    public List<TaskGoals> derive(UUID courseId, List<ExamTask> tasks) {
+        // 404 without a membership, 403 below EDITOR: checked before any model call is made.
+        courseAccess.requireWrite(courseId);
+        CourseContext course = settingsService.context(courseId);
+        List<ExamBlock> blocks = tasks == null ? List.of() : tasks.stream().map(ExamGoalDerivationService::toBlock).toList();
+        ExamGoalController.validate(new ExamGoalController.GenerateExamGoalsRequest(blocks));
+        return examGoalService.generateForBlocks(course, blocks, null, DomainModule.ASSESSMENT).stream()
+                .map(task -> new TaskGoals(task.blockId(), task.goals().stream().map(goal -> goal.info()).toList()))
+                .toList();
     }
 
     private static ExamBlock toBlock(ExamTask task) {

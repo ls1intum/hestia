@@ -1,7 +1,10 @@
 package de.tum.cit.hestia.materials.exam;
 
 import de.tum.cit.hestia.materials.topictree.ExamGoalPlacer;
-import de.tum.cit.hestia.materials.course.Course;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.materials.course.CourseContext;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;
 import de.tum.cit.hestia.materials.document.LanguageUtils;
 import de.tum.cit.hestia.materials.exam.submission.ExamBlock;
@@ -9,11 +12,12 @@ import de.tum.cit.hestia.materials.exam.submission.ExamBlockType;
 import de.tum.cit.hestia.materials.exam.submission.ExamSubmission;
 import de.tum.cit.hestia.materials.exam.submission.ExamSubmissionRepository;
 import de.tum.cit.hestia.materials.exam.submission.SubmittedExamBlock;
-import de.tum.cit.hestia.materials.goal.GoalKind;
-import de.tum.cit.hestia.materials.goal.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRole;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.materials.goal.NewPlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
@@ -26,6 +30,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,7 +71,7 @@ public class ExamGoalService {
 
     private final ExamGoalGenerator generator;
     private final TaxonomyService taxonomyService;
-    private final LearningGoalRepository goalRepository;
+    private final PlacedGoals goals;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final LanguageDetectionService languageDetectionService;
     private final ExamSubmissionRepository submissionRepository;
@@ -76,7 +81,7 @@ public class ExamGoalService {
 
     public ExamGoalService(ExamGoalGenerator generator,
                            TaxonomyService taxonomyService,
-                           LearningGoalRepository goalRepository,
+                           PlacedGoals goals,
                            HierarchyNodeRepository hierarchyNodeRepository,
                            LanguageDetectionService languageDetectionService,
                            ExamSubmissionRepository submissionRepository,
@@ -84,7 +89,7 @@ public class ExamGoalService {
                            TransactionOperations transactions) {
         this.generator = generator;
         this.taxonomyService = taxonomyService;
-        this.goalRepository = goalRepository;
+        this.goals = goals;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.languageDetectionService = languageDetectionService;
         this.submissionRepository = submissionRepository;
@@ -93,19 +98,24 @@ public class ExamGoalService {
     }
 
     /** The persisted goals of one TASK block, keyed by the consumer's {@code blockId}. */
-    public record TaskGoals(String blockId, List<LearningGoal> goals) {
+    public record TaskGoals(String blockId, List<PlacedGoal> goals) {
     }
 
     /** What makes two requests identical: the course, the blocks in order, and the model. */
-    private record RequestKey(Long courseId, List<ExamBlock> blocks, String modelOverride) {
+    private record RequestKey(UUID courseId, List<ExamBlock> blocks, String modelOverride, DomainModule createdVia) {
     }
 
-    public List<TaskGoals> generateForBlocks(Course course, List<ExamBlock> blocks, String modelOverride) {
-        RequestKey key = new RequestKey(course.getId(), List.copyOf(blocks), modelOverride);
+    /**
+     * Derives and stores the goals of an exam in the course; {@code createdVia} names the module the
+     * goals are attributed to. The caller needs EDITOR on the course (checked by {@code core}).
+     */
+    public List<TaskGoals> generateForBlocks(CourseContext course, List<ExamBlock> blocks, String modelOverride,
+                                             DomainModule createdVia) {
+        RequestKey key = new RequestKey(course.id(), List.copyOf(blocks), modelOverride, createdVia);
         CompletableFuture<List<TaskGoals>> own = new CompletableFuture<>();
         CompletableFuture<List<TaskGoals>> running = inFlight.putIfAbsent(key, own);
         if (running != null) {
-            log.info("Exam-goal request for course {} is already running, joining it", course.getId());
+            log.info("Exam-goal request for course {} is already running, joining it", course.id());
             try {
                 return running.join();
             } catch (CompletionException ex) {
@@ -116,7 +126,7 @@ public class ExamGoalService {
             }
         }
         try {
-            List<TaskGoals> result = generate(course, blocks, modelOverride);
+            List<TaskGoals> result = generate(course, blocks, modelOverride, createdVia);
             own.complete(result);
             return result;
         } catch (RuntimeException | Error ex) {
@@ -127,11 +137,12 @@ public class ExamGoalService {
         }
     }
 
-    private List<TaskGoals> generate(Course course, List<ExamBlock> blocks, String modelOverride) {
+    private List<TaskGoals> generate(CourseContext course, List<ExamBlock> blocks, String modelOverride,
+                                      DomainModule createdVia) {
         record TaskGeneration(SubmittedExamBlock block, List<GeneratedExamGoal> goals) {
         }
 
-        ExamSubmission submission = new ExamSubmission(course);
+        ExamSubmission submission = new ExamSubmission(course.id());
         List<TaskGeneration> generations = new ArrayList<>();
         StringBuilder context = new StringBuilder();
         for (ExamBlock block : blocks) {
@@ -146,8 +157,8 @@ public class ExamGoalService {
             } else {
                 SubmittedExamBlock stored = submission.addBlock(block, generations.size() + 1,
                         context.isEmpty() ? null : context.toString());
-                String languageName = course.getOutputLanguage() != null
-                        ? LanguageUtils.englishName(course.getOutputLanguage())
+                String languageName = course.outputLanguage() != null
+                        ? LanguageUtils.englishName(course.outputLanguage())
                         : LanguageUtils.englishName(languageDetectionService.detect(
                                 (context.isEmpty() ? "" : context + "\n\n")
                                         + (block.description() == null ? "" : block.description())));
@@ -168,33 +179,39 @@ public class ExamGoalService {
                 .toList();
         List<TaxonomyClassification> classifications = safeClassifyBatch(allTexts, modelOverride);
 
-        List<LearningGoal> goals = new ArrayList<>(allTexts.size());
+        List<NewGoal> newGoals = new ArrayList<>(allTexts.size());
+        List<SubmittedExamBlock> goalBlocks = new ArrayList<>(allTexts.size());
         int i = 0;
         for (TaskGeneration generation : generations) {
             for (GeneratedExamGoal generated : generation.goals()) {
-                LearningGoal goal = new LearningGoal(course, generated.text(), GoalKind.IMPLICIT);
-                goal.setShortLabel(generated.shortLabel());
-                goal.setOrigin(GoalOrigin.EXAM);
-                goal.setExamBlock(generation.block());
                 TaxonomyClassification classification = classifications.get(i);
-                if (classification != null) {
-                    goal.setBloomLevel(classification.bloom());
-                    goal.setSoloLevel(classification.solo());
-                    goal.setRole(tierOf(classification.bloom()));
-                }
-                goals.add(goal);
+                newGoals.add(new NewGoal(generated.text(), generated.shortLabel(), GoalKind.IMPLICIT,
+                        classification == null ? null : tierOf(classification.bloom()),
+                        classification == null || classification.bloom() == null
+                                ? null : classification.bloom().name(),
+                        classification == null || classification.solo() == null
+                                ? null : classification.solo().name(),
+                        GoalStatus.PENDING, GoalOrigin.EXAM, null, createdVia));
+                goalBlocks.add(generation.block());
                 i++;
             }
         }
-        ExamGoalPlacer.PlannedPlacement placement = placer.plan(course, goals, modelOverride);
+        ExamGoalPlacer.PlannedPlacement placement = placer.plan(course.id(), newGoals, modelOverride);
 
-        transactions.executeWithoutResult(status -> {
+        List<PlacedGoal> goals = transactions.execute(status -> {
             submissionRepository.save(submission);
-            HierarchyNode examRoot = examRoot(course);
-            goals.forEach(goal -> goal.setHierarchyNode(examRoot));
-            goalRepository.saveAll(goals);
-            placer.link(placement);
+            HierarchyNode examRoot = examRoot(course.id());
+            List<NewPlacedGoal> items = new ArrayList<>(newGoals.size());
+            for (int g = 0; g < newGoals.size(); g++) {
+                items.add(new NewPlacedGoal(newGoals.get(g), examRoot, goalBlocks.get(g), null));
+            }
+            List<PlacedGoal> created = this.goals.createAll(course.id(), items);
+            placer.link(placement, created);
+            return created;
         });
+        if (goals == null) {
+            throw new IllegalStateException("Exam goal transaction completed without a result.");
+        }
 
         List<TaskGoals> result = new ArrayList<>(generations.size());
         int from = 0;
@@ -235,11 +252,11 @@ public class ExamGoalService {
     }
 
     /** All exam goals of a course share one EXAM root node, created on first use. */
-    private HierarchyNode examRoot(Course course) {
+    private HierarchyNode examRoot(UUID courseId) {
         return hierarchyNodeRepository
-                .findFirstByCourseIdAndLevelOrderByIdAsc(course.getId(), HierarchyLevel.EXAM)
+                .findFirstByCourseIdAndLevelOrderByIdAsc(courseId, HierarchyLevel.EXAM)
                 .orElseGet(() -> hierarchyNodeRepository.save(
-                        new HierarchyNode(course, null, HierarchyLevel.EXAM, EXAM_ROOT_LABEL)));
+                        new HierarchyNode(courseId, null, HierarchyLevel.EXAM, EXAM_ROOT_LABEL)));
     }
 
     private List<TaxonomyClassification> safeClassifyBatch(List<String> texts, String modelOverride) {

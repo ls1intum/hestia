@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.materials.document;
 
-import de.tum.cit.hestia.materials.course.Course;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.IOException;
@@ -8,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -49,7 +49,7 @@ public class DocumentController {
     }
 
     @GetMapping
-    public List<DocumentResponse> list(@PathVariable Long courseId) {
+    public List<DocumentResponse> list(@PathVariable UUID courseId) {
         return documentService.list(courseId).stream()
                 .map(DocumentResponse::from)
                 .toList();
@@ -57,12 +57,12 @@ public class DocumentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public List<DocumentResponse> upload(@PathVariable Long courseId,
+    public List<DocumentResponse> upload(@PathVariable UUID courseId,
                                          @RequestParam("files") MultipartFile[] files,
                                          @Parameter(description = "Optional kind of every file in this upload: LECTURE or EXERCISE. "
                                                  + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
                                          @RequestParam(required = false) DocumentKind kind) {
-        Course course = documentService.course(courseId);
+        documentService.requireUploadAccess(courseId);
 
         // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
         // upload instead of leaving the files before it saved.
@@ -92,7 +92,7 @@ public class DocumentController {
         for (int i = 0; i < files.length; i++) {
             MultipartFile file = files[i];
             Document saved = documentService.persist(
-                    course, file.getOriginalFilename(), file.getContentType(), kind, parsedFiles.get(i), contents.get(i));
+                    courseId, file.getOriginalFilename(), file.getContentType(), kind, parsedFiles.get(i), contents.get(i));
             responses.add(DocumentResponse.from(saved));
         }
         return responses;
@@ -163,7 +163,7 @@ public class DocumentController {
     }
 
     @GetMapping("/{documentId}/content")
-    public ResponseEntity<byte[]> content(@PathVariable Long courseId, @PathVariable Long documentId) {
+    public ResponseEntity<byte[]> content(@PathVariable UUID courseId, @PathVariable Long documentId) {
         DocumentService.StoredDocument stored = documentService.content(courseId, documentId);
         Document document = stored.document();
         byte[] bytes = stored.bytes();
@@ -179,7 +179,7 @@ public class DocumentController {
     }
 
     @PatchMapping("/{documentId}")
-    public DocumentResponse update(@PathVariable Long courseId,
+    public DocumentResponse update(@PathVariable UUID courseId,
                                    @PathVariable Long documentId,
                                    @RequestBody UpdateDocumentRequest request) {
         return DocumentResponse.from(documentService.update(courseId, documentId, request));
@@ -228,7 +228,7 @@ public class DocumentController {
     }
 
     public record DocumentResponse(Long id,
-                                   Long courseId,
+                                   UUID courseId,
                                    String filename,
                                    String displayName,
                                    String contentType,
@@ -237,7 +237,7 @@ public class DocumentController {
         static DocumentResponse from(Document document) {
             return new DocumentResponse(
                     document.getId(),
-                    document.getCourse().getId(),
+                    document.getCourseId(),
                     document.getFilename(),
                     document.getDisplayName(),
                     document.getContentType(),

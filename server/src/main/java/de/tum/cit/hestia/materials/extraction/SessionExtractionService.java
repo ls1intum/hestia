@@ -4,7 +4,7 @@ import de.tum.cit.hestia.materials.document.DocumentKind;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
-import de.tum.cit.hestia.materials.goal.GoalRole;
+import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.OutcomeWording;
 import de.tum.cit.hestia.materials.goal.LanguagePrompt;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;

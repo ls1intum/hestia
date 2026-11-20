@@ -30,14 +30,14 @@ public class TopicSearchController {
 
     /** Proposes page runs that mention the topic. */
     @PostMapping("/pages")
-    public PagePlan pages(@PathVariable Long courseId,
+    public PagePlan pages(@PathVariable UUID courseId,
                           @RequestBody TopicRequest request) {
         return topicSearchService.planPages(courseId, request.text(), null);
     }
 
     /** Reads the chosen pages into a proposal held for thirty minutes; nothing is saved. */
     @PostMapping
-    public ProposalResponse search(@PathVariable Long courseId,
+    public ProposalResponse search(@PathVariable UUID courseId,
                                    @RequestBody SearchRequest request) {
         return topicSearchService.search(courseId, request.text(), request.ranges(), null);
     }
@@ -45,7 +45,7 @@ public class TopicSearchController {
     /** Creates the topic with the kept sub-skills, their sources and knowledge. */
     @PostMapping("/{proposalId}")
     @ResponseStatus(HttpStatus.CREATED)
-    public LearningGoalResponse accept(@PathVariable Long courseId,
+    public LearningGoalResponse accept(@PathVariable UUID courseId,
                                        @PathVariable UUID proposalId,
                                        @RequestBody AcceptRequest request) {
         return LearningGoalResponse.from(

@@ -1,10 +1,11 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import java.util.UUID;
+
 import de.tum.cit.hestia.materials.tenancy.OrgExecutors;
 import de.tum.cit.hestia.materials.topictree.CompetencyTreeResult;
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
-import de.tum.cit.hestia.materials.course.CourseGuard;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.CourseAccess;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.web.ExtractionErrors;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -42,8 +43,7 @@ public class ExtractionController {
     private final ExtractionProgressTracker progressTracker;
     private final ExtractionRunRepository extractionRunRepository;
     private final ExtractionRunAuditService extractionRunAuditService;
-    private final CourseRepository courseRepository;
-    private final CourseGuard courseGuard;
+    private final CourseAccess courseAccess;
     private final ExecutorService extractionExecutor;
 
     public ExtractionController(ExtractionRunner runner,
@@ -51,16 +51,14 @@ public class ExtractionController {
                                 ExtractionProgressTracker progressTracker,
                                 ExtractionRunRepository extractionRunRepository,
                                 ExtractionRunAuditService extractionRunAuditService,
-                                CourseRepository courseRepository,
-                                CourseGuard courseGuard,
+                                CourseAccess courseAccess,
                                 @Qualifier("extractionExecutor") ExecutorService extractionExecutor) {
         this.runner = runner;
         this.topicTrees = topicTrees;
         this.progressTracker = progressTracker;
         this.extractionRunRepository = extractionRunRepository;
         this.extractionRunAuditService = extractionRunAuditService;
-        this.courseRepository = courseRepository;
-        this.courseGuard = courseGuard;
+        this.courseAccess = courseAccess;
         this.extractionExecutor = extractionExecutor;
     }
 
@@ -70,15 +68,15 @@ public class ExtractionController {
     @ApiResponse(responseCode = "409", description = "Conflict", content = @Content)
     @PostMapping("/extract")
     public ResponseEntity<ExtractionStartResponse> extract(
-            @PathVariable Long courseId,
+            @PathVariable UUID courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
-        courseRepository.requireExists(courseId);
+        courseAccess.requireRead(courseId);
 
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
             String runningCourse = progressTracker.current()
                     // Only name a course the caller can see; another organisation's id stays hidden.
-                    .filter(current -> courseGuard.canRead(current.courseId()))
+                    .filter(current -> courseAccess.canRead(current.courseId()))
                     .map(current -> current.courseId().toString())
                     .orElse("another course");
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -120,7 +118,7 @@ public class ExtractionController {
      */
     @PostMapping("/competency-tree")
     public CompetencyTreeResult rebuildCompetencyTree(
-            @PathVariable Long courseId,
+            @PathVariable UUID courseId,
             @RequestParam(name = "force", defaultValue = "false") boolean force) {
         Optional<ExtractionProgressTracker.Run> claimed = progressTracker.tryStart(courseId, null);
         if (claimed.isEmpty()) {
@@ -150,7 +148,7 @@ public class ExtractionController {
     @ApiResponse(responseCode = "200", description = "OK")
     @ApiResponse(responseCode = "204", description = "No Content", content = @Content)
     @GetMapping("/extract/status")
-    public ResponseEntity<ExtractionProgressTracker.Snapshot> extractStatus(@PathVariable Long courseId) {
+    public ResponseEntity<ExtractionProgressTracker.Snapshot> extractStatus(@PathVariable UUID courseId) {
         Optional<ExtractionProgressTracker.Snapshot> live = progressTracker.snapshot(courseId);
         if (live.isPresent()) {
             return ResponseEntity.ok(live.get());
@@ -187,7 +185,7 @@ public class ExtractionController {
                 extractionRun.getDroppedOutcomes() == null ? 0 : extractionRun.getDroppedOutcomes());
     }
 
-    public record ExtractionStartResponse(Long courseId, ExtractionProgressTracker.Status status) {
+    public record ExtractionStartResponse(UUID courseId, ExtractionProgressTracker.Status status) {
     }
 }
 

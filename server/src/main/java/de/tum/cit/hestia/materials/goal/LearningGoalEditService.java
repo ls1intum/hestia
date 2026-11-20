@@ -1,13 +1,24 @@
 package de.tum.cit.hestia.materials.goal;
 
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalChange;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRelationInfo;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
 import de.tum.cit.hestia.materials.document.LanguageUtils;
 import de.tum.cit.hestia.materials.goal.SubtreeSynthesizer.GeneratedKnowledge;
 import de.tum.cit.hestia.materials.goal.SubtreeSynthesizer.GeneratedSkill;
 import de.tum.cit.hestia.materials.goal.SubtreeSynthesizer.GeneratedSubSkill;
 import de.tum.cit.hestia.materials.goal.SubtreeSynthesizer.GeneratedSubtree;
+import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
@@ -15,7 +26,6 @@ import de.tum.cit.hestia.materials.taxonomy.TaxonomyClassification;
 import de.tum.cit.hestia.materials.taxonomy.TaxonomyService;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +33,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,7 +45,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Changes a course's learning goals and its Topic tree: topics typed or generated, children
- * added by hand, goals edited and deleted.
+ * added by hand, goals edited and deleted. The goals live in {@code core}; this service adds their
+ * materials placement.
  *
  * <p>Generation calls the model before any transaction opens and stores the result in one
  * transaction under the course lock, so a slow or failed call holds no locks and writes nothing.
@@ -45,29 +58,31 @@ public class LearningGoalEditService {
 
     static final int MAX_GENERATED_TOPIC_CHARS = 500;
 
-    private final CourseRepository courseRepository;
-    private final LearningGoalRepository goalRepository;
+    private static final String CONTRIBUTES_TO = RelationshipType.CONTRIBUTES_TO.name();
+
+    private final MaterialSettingsService settingsService;
+    private final LearningGoalApi goalApi;
+    private final PlacedGoals goals;
     private final DocumentRepository documentRepository;
-    private final GoalRelationshipRepository goalRelationshipRepository;
     private final HierarchyNodeRepository hierarchyNodeRepository;
     private final TaxonomyService taxonomyService;
     private final SubtreeSynthesizer subtreeSynthesizer;
     private final LearningGoalQueryService queries;
     private final TransactionOperations transactions;
 
-    public LearningGoalEditService(CourseRepository courseRepository,
-                                   LearningGoalRepository goalRepository,
+    public LearningGoalEditService(MaterialSettingsService settingsService,
+                                   LearningGoalApi goalApi,
+                                   PlacedGoals goals,
                                    DocumentRepository documentRepository,
-                                   GoalRelationshipRepository goalRelationshipRepository,
                                    HierarchyNodeRepository hierarchyNodeRepository,
                                    TaxonomyService taxonomyService,
                                    SubtreeSynthesizer subtreeSynthesizer,
                                    LearningGoalQueryService queries,
                                    TransactionOperations transactions) {
-        this.courseRepository = courseRepository;
-        this.goalRepository = goalRepository;
+        this.settingsService = settingsService;
+        this.goalApi = goalApi;
+        this.goals = goals;
         this.documentRepository = documentRepository;
-        this.goalRelationshipRepository = goalRelationshipRepository;
         this.hierarchyNodeRepository = hierarchyNodeRepository;
         this.taxonomyService = taxonomyService;
         this.subtreeSynthesizer = subtreeSynthesizer;
@@ -85,22 +100,20 @@ public class LearningGoalEditService {
      * The goal is attached to the course's COMPETENCY root, reusing it or creating it on first use.
      */
     @Transactional
-    public LearningGoalResponse createTerminalSkill(Long courseId, String requestedText) {
-        Course course = courseRepository.lockOrThrow(courseId);
+    public LearningGoalResponse createTerminalSkill(UUID courseId, String requestedText) {
+        settingsService.lock(courseId);
         String text = requestedText == null ? "" : requestedText.strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
         }
-        goalRepository.rejectDuplicateTopic(courseId, text);
+        goals.rejectDuplicateTopic(courseId, text);
 
-        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
-        goal.setOrigin(GoalOrigin.TERMINAL);
-        goal.setStatus(GoalStatus.PENDING);
-        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        goal.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(course));
-        goal.setLectureOrder(nextLectureOrder(course));
-        goalRepository.save(goal);
-        return LearningGoalResponse.from(goal, List.of(), List.of());
+        NewGoal topic = new NewGoal(text, null, GoalKind.IMPLICIT, null, null, null, GoalStatus.PENDING,
+                GoalOrigin.TERMINAL, GoalCreationProvenance.USER_CREATED.name(), DomainModule.MATERIALS);
+        PlacedGoal created = goals.create(courseId, new NewPlacedGoal(topic,
+                hierarchyNodeRepository.findOrCreateCompetencyRoot(courseId), null,
+                goals.nextLectureOrder(courseId)));
+        return LearningGoalResponse.from(created, List.of(), List.of());
     }
 
     /**
@@ -108,8 +121,8 @@ public class LearningGoalEditService {
      * written from the topic's name alone, so no generated node has a source. The model calls run
      * before the transaction that stores the result.
      */
-    public LearningGoalResponse createGeneratedTerminalSkill(Long courseId, String requestedText, String shortLabel) {
-        Course course = courseRepository.findOrThrow(courseId);
+    public LearningGoalResponse createGeneratedTerminalSkill(UUID courseId, String requestedText, String shortLabel) {
+        CourseContext course = settingsService.context(courseId);
         String text = requestedText == null ? "" : requestedText.strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Topic text must not be blank");
@@ -119,24 +132,44 @@ public class LearningGoalEditService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Topic text must be at most " + MAX_GENERATED_TOPIC_CHARS + " characters");
         }
-        goalRepository.rejectDuplicateTopic(courseId, text);
+        goals.rejectDuplicateTopic(courseId, text);
 
         GeneratedSubtree generated = SubtreeSynthesizer.validate(
-                subtreeSynthesizer.generateSubtree(text, LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(course.getId())), null));
-        GeneratedNodes generatedNodes = buildGeneratedNodes(course, generated);
+                subtreeSynthesizer.generateSubtree(text,
+                        LanguageUtils.courseLanguageName(course, documentRepository.findByCourseId(courseId)), null));
+        List<GeneratedNode> nodes = buildGeneratedNodes(generated);
         // The terminal is a topic, a noun phrase with no level of its own; only the nodes beneath it
         // state a performance.
-        applyClassifications(generatedNodes.nodes());
+        List<TaxonomyClassification> classifications = classify(nodes);
 
         return transactions.execute(status -> {
-            Course locked = courseRepository.lockOrThrow(courseId);
+            settingsService.lock(courseId);
             // Checked again under the lock: the same topic may have been added during generation.
-            goalRepository.rejectDuplicateTopic(courseId, text);
-            LearningGoal created = newGeneratedGoal(locked, text, GoalOrigin.TERMINAL);
-            created.setShortLabel(trimToNull(shortLabel));
-            created.setHierarchyNode(hierarchyNodeRepository.findOrCreateCompetencyRoot(locked));
-            persistGeneratedNodes(created, generatedNodes);
-            return LearningGoalResponse.from(created, List.of(), List.of());
+            goals.rejectDuplicateTopic(courseId, text);
+            HierarchyNode root = hierarchyNodeRepository.findOrCreateCompetencyRoot(courseId);
+            int order = goals.nextLectureOrder(courseId);
+            List<NewPlacedGoal> items = new ArrayList<>();
+            NewGoal terminal = new NewGoal(text, trimToNull(shortLabel), GoalKind.IMPLICIT, null, null, null,
+                    GoalStatus.PENDING, GoalOrigin.TERMINAL, GoalCreationProvenance.WIZARD_AI_SUBTREE.name(),
+                    DomainModule.MATERIALS);
+            items.add(new NewPlacedGoal(terminal, root, null, order++));
+            for (int i = 0; i < nodes.size(); i++) {
+                GeneratedNode node = nodes.get(i);
+                TaxonomyClassification classification = classifications.get(i);
+                NewGoal goal = new NewGoal(node.text().strip(), trimToNull(node.shortLabel()), GoalKind.IMPLICIT,
+                        node.role(), classification == null ? null : name(classification.bloom()),
+                        classification == null ? null : name(classification.solo()), GoalStatus.PENDING,
+                        GoalOrigin.SYNTHESIZED, GoalCreationProvenance.WIZARD_AI_SUBTREE.name(),
+                        DomainModule.MATERIALS);
+                items.add(new NewPlacedGoal(goal, null, null, order++));
+            }
+            List<PlacedGoal> created = goals.createAll(courseId, items);
+            for (int i = 0; i < nodes.size(); i++) {
+                int parent = nodes.get(i).parentIndex() + 1; // 0 is the terminal
+                goalApi.relate(created.get(i + 1).id(), created.get(parent).id(), CONTRIBUTES_TO, 1.0,
+                        RelationshipOrigin.HIERARCHY.name());
+            }
+            return LearningGoalResponse.from(created.get(0), List.of(), List.of());
         });
     }
 
@@ -150,24 +183,23 @@ public class LearningGoalEditService {
      * the model keeps the add instant.
      */
     @Transactional
-    public LearningGoalResponse addChild(Long courseId, Long goalId, String requestedText, String shortLabel,
+    public LearningGoalResponse addChild(UUID courseId, UUID goalId, String requestedText, String shortLabel,
                                          GoalRole role) {
-        LearningGoal parent = findGoal(courseId, goalId);
+        PlacedGoal parent = goals.require(courseId, goalId);
         String text = requestedText == null ? "" : requestedText.strip();
         if (text.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
         }
-        rejectIfKnowledgeTier(parent);
+        rejectIfKnowledgeTier(parent.info());
 
-        Course course = courseRepository.lockOrThrow(courseId);
-        LearningGoal child = newUserCreatedChild(course, text);
-        child.setShortLabel(trimToNull(shortLabel));
-        child.setRole(role);
-        child.setLectureOrder(nextLectureOrder(course));
-        goalRepository.save(child);
-        goalRepository.flush();
-        linkContributors(List.of(child), parent);
-        return LearningGoalResponse.from(child, List.of(), List.of());
+        settingsService.lock(courseId);
+        NewGoal child = new NewGoal(text, trimToNull(shortLabel), GoalKind.IMPLICIT, role, null, null,
+                GoalStatus.PENDING, GoalOrigin.SYNTHESIZED, GoalCreationProvenance.USER_CREATED.name(),
+                DomainModule.MATERIALS);
+        PlacedGoal created = goals.create(courseId,
+                new NewPlacedGoal(child, null, null, goals.nextLectureOrder(courseId)));
+        goalApi.relate(created.id(), parent.id(), CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY.name());
+        return LearningGoalResponse.from(created, List.of(), List.of());
     }
 
     /**
@@ -177,14 +209,19 @@ public class LearningGoalEditService {
      * is a {@link GoalRole#SKILL} beneath a goal that contributes to one. A knowledge goal, and
      * anything outside the Topic tree altogether, cannot take children.
      */
-    private void rejectIfKnowledgeTier(LearningGoal parent) {
-        if (parent.getOrigin() == GoalOrigin.TERMINAL) {
+    private void rejectIfKnowledgeTier(GoalInfo parent) {
+        if (parent.origin() == GoalOrigin.TERMINAL) {
             return;
         }
-        boolean eligible = parent.getRole() != GoalRole.KNOWLEDGE
-                && parentsOf(parent).stream().anyMatch(above -> above.getOrigin() == GoalOrigin.TERMINAL
-                        || (parent.getRole() == GoalRole.SKILL && parentsOf(above).stream()
-                                .anyMatch(top -> top.getOrigin() == GoalOrigin.TERMINAL)));
+        Map<UUID, GoalInfo> byId = goalApi.goals(parent.courseId()).stream()
+                .collect(Collectors.toMap(GoalInfo::id, g -> g));
+        List<GoalRelationInfo> relationships = goalApi.relationships(parent.courseId());
+        boolean eligible = parent.role() != GoalRole.KNOWLEDGE
+                && parentsOf(parent, byId, relationships).stream()
+                        .anyMatch(above -> above.origin() == GoalOrigin.TERMINAL
+                                || (parent.role() == GoalRole.SKILL
+                                        && parentsOf(above, byId, relationships).stream()
+                                                .anyMatch(top -> top.origin() == GoalOrigin.TERMINAL)));
         if (!eligible) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only a topic, a skill or a sub-skill can take children");
@@ -192,139 +229,64 @@ public class LearningGoalEditService {
     }
 
     /** The goals {@code goal} CONTRIBUTES_TO, one tier up in the Topic tree. */
-    private List<LearningGoal> parentsOf(LearningGoal goal) {
-        return goalRelationshipRepository.findBySourceId(goal.getId()).stream()
-                .filter(relationship -> relationship.getType() == RelationshipType.CONTRIBUTES_TO)
-                .map(relationship -> relationship.getTarget())
+    private static List<GoalInfo> parentsOf(GoalInfo goal, Map<UUID, GoalInfo> byId,
+                                            List<GoalRelationInfo> relationships) {
+        return relationships.stream()
+                .filter(r -> r.sourceGoalId().equals(goal.id()) && CONTRIBUTES_TO.equals(r.type()))
+                .map(r -> byId.get(r.targetGoalId()))
+                .filter(java.util.Objects::nonNull)
                 .toList();
     }
 
     /**
-     * Turns a generated subtree into unsaved goals and the edges between them. Every node states its
-     * role: a childless generated node's tier could not be read off its position otherwise.
+     * Flattens a generated subtree into nodes in tree order. Every node states its role: a childless
+     * generated node's tier could not be read off its position otherwise. {@code parentIndex} is the
+     * index of the parent node in the list, -1 for the topic the subtree hangs under.
      */
-    private GeneratedNodes buildGeneratedNodes(Course course, GeneratedSubtree generated) {
-        List<LearningGoal> nodes = new ArrayList<>();
-        List<GeneratedEdge> edges = new ArrayList<>();
+    private List<GeneratedNode> buildGeneratedNodes(GeneratedSubtree generated) {
+        List<GeneratedNode> nodes = new ArrayList<>();
         for (GeneratedSkill generatedSkill : generated.skills()) {
-            LearningGoal skill = newGeneratedNode(course, generatedSkill.text(), generatedSkill.shortLabel(),
-                    GoalRole.SKILL);
-            nodes.add(skill);
-            edges.add(new GeneratedEdge(skill, null));
+            int skillIndex = nodes.size();
+            nodes.add(new GeneratedNode(generatedSkill.text(), generatedSkill.shortLabel(), GoalRole.SKILL, -1));
             for (GeneratedSubSkill generatedSubSkill : generatedSkill.subSkills()) {
-                LearningGoal subSkill = newGeneratedNode(course, generatedSubSkill.text(),
-                        generatedSubSkill.shortLabel(), GoalRole.SKILL);
-                nodes.add(subSkill);
-                edges.add(new GeneratedEdge(subSkill, skill));
+                int subSkillIndex = nodes.size();
+                nodes.add(new GeneratedNode(generatedSubSkill.text(), generatedSubSkill.shortLabel(),
+                        GoalRole.SKILL, skillIndex));
                 for (GeneratedKnowledge generatedKnowledge : generatedSubSkill.knowledge()) {
-                    LearningGoal knowledge = newGeneratedNode(course, generatedKnowledge.text(),
-                            generatedKnowledge.shortLabel(), GoalRole.KNOWLEDGE);
-                    nodes.add(knowledge);
-                    edges.add(new GeneratedEdge(knowledge, subSkill));
+                    nodes.add(new GeneratedNode(generatedKnowledge.text(), generatedKnowledge.shortLabel(),
+                            GoalRole.KNOWLEDGE, subSkillIndex));
                 }
             }
         }
-        return new GeneratedNodes(nodes, edges);
-    }
-
-    private LearningGoal newGeneratedNode(Course course, String text, String shortLabel, GoalRole role) {
-        LearningGoal goal = newGeneratedGoal(course, text, GoalOrigin.SYNTHESIZED);
-        goal.setShortLabel(trimToNull(shortLabel));
-        goal.setRole(role);
-        return goal;
-    }
-
-    private List<LearningGoal> allNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
-        List<LearningGoal> nodes = new ArrayList<>(generatedNodes.nodes());
-        nodes.add(0, terminal);
         return nodes;
     }
 
-    private void persistGeneratedNodes(LearningGoal terminal, GeneratedNodes generatedNodes) {
-        int nextOrder = nextLectureOrder(terminal.getCourse());
-        if (terminal.getLectureOrder() == null) {
-            terminal.setLectureOrder(nextOrder++);
-        }
-        for (LearningGoal node : generatedNodes.nodes()) {
-            if (node.getLectureOrder() == null) {
-                node.setLectureOrder(nextOrder++);
-            }
-        }
-        goalRepository.saveAll(allNodes(terminal, generatedNodes));
-        goalRepository.flush();
-        for (GeneratedEdge edge : generatedNodes.edges()) {
-            linkContributors(List.of(edge.child()), edge.parent() == null ? terminal : edge.parent());
-        }
+    /** One node of a generated subtree; see {@link #buildGeneratedNodes}. */
+    private record GeneratedNode(String text, String shortLabel, GoalRole role, int parentIndex) {
     }
 
-    /** Generated goals in tree order, and the CONTRIBUTES_TO edges between them. */
-    private record GeneratedNodes(List<LearningGoal> nodes, List<GeneratedEdge> edges) {
-    }
-
-    /** One generated edge; a null parent stands for the topic the subtree hangs under. */
-    private record GeneratedEdge(LearningGoal child, LearningGoal parent) {
-    }
-
-    private int nextLectureOrder(Course course) {
-        return goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getLectureOrder)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .max()
-                .orElse(-1) + 1;
-    }
-
-    private LearningGoal newGeneratedGoal(Course course, String text, GoalOrigin origin) {
-        LearningGoal goal = new LearningGoal(course, text.strip(), GoalKind.IMPLICIT);
-        goal.setOrigin(origin);
-        goal.setStatus(GoalStatus.PENDING);
-        goal.setCreationProvenance(GoalCreationProvenance.WIZARD_AI_SUBTREE);
-        return goal;
-    }
-
-    private LearningGoal newUserCreatedChild(Course course, String text) {
-        LearningGoal goal = new LearningGoal(course, text, GoalKind.IMPLICIT);
-        goal.setOrigin(GoalOrigin.SYNTHESIZED);
-        goal.setStatus(GoalStatus.PENDING);
-        goal.setCreationProvenance(GoalCreationProvenance.USER_CREATED);
-        return goal;
-    }
-
-    private void applyClassifications(List<LearningGoal> nodes) {
-        List<String> texts = nodes.stream().map(LearningGoal::getText).toList();
+    /** The levels for the nodes, aligned to them; null entries where there is none. */
+    private List<TaxonomyClassification> classify(List<GeneratedNode> nodes) {
+        List<TaxonomyClassification> none = new ArrayList<>(java.util.Collections.nCopies(nodes.size(), null));
+        List<String> texts = nodes.stream().map(GeneratedNode::text).toList();
         try {
             List<TaxonomyClassification> classifications = taxonomyService.classifyBatch(texts, null);
             if (classifications == null || classifications.size() != nodes.size()) {
                 log.warn("Taxonomy batch returned {} results for {} generated goals; storing them without levels",
                         classifications == null ? 0 : classifications.size(), nodes.size());
-                return;
+                return none;
             }
-            for (int i = 0; i < nodes.size(); i++) {
-                TaxonomyClassification classification = classifications.get(i);
-                if (classification != null) {
-                    nodes.get(i).setBloomLevel(classification.bloom());
-                    nodes.get(i).setSoloLevel(classification.solo());
-                }
-            }
+            return new ArrayList<>(classifications);
         } catch (RuntimeException ex) {
             // Classification is best-effort; the generated subtree must still be persisted.
             log.warn("Taxonomy classification failed for {} generated goals; storing them without levels: {}",
                     nodes.size(), ex.getMessage());
+            return none;
         }
     }
 
-    private void linkContributors(Collection<LearningGoal> supporters, LearningGoal targetGoal) {
-        for (LearningGoal source : supporters) {
-            if (source.getId().equals(targetGoal.getId())) {
-                continue;
-            }
-            if (goalRelationshipRepository.existsBySourceIdAndTargetIdAndType(
-                    source.getId(), targetGoal.getId(), RelationshipType.CONTRIBUTES_TO)) {
-                continue;
-            }
-            goalRelationshipRepository.save(new GoalRelationship(
-                    source, targetGoal, RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
-        }
+    private static String name(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private String trimToNull(String value) {
@@ -335,115 +297,86 @@ public class LearningGoalEditService {
     }
 
     @Transactional
-    public LearningGoalResponse update(Long courseId, Long goalId, String requestedText, GoalStatus status,
+    public LearningGoalResponse update(UUID courseId, UUID goalId, String requestedText, GoalStatus status,
                                        BloomLevel bloomLevel, SoloLevel soloLevel) {
-        LearningGoal goal = findGoal(courseId, goalId);
+        PlacedGoal goal = goals.require(courseId, goalId);
+        GoalChange change = goal.info().asChange();
         if (requestedText != null) {
             String text = requestedText.strip();
             if (text.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal text must not be blank");
             }
-            if (!text.equals(goal.getText())) {
-                // Keep the generated wording on the first rename. An instructor's own goal has no
-                // generated wording to keep.
-                if (goal.getOriginalText() == null
-                        && goal.getCreationProvenance() != GoalCreationProvenance.USER_CREATED) {
-                    goal.setOriginalText(goal.getText());
-                }
-                goal.setText(text);
-                goal.setShortLabel(null);
+            if (!text.equals(goal.text())) {
+                // The generated wording stays as version 1 of the goal ({@code originalText}).
+                change = change.withText(text).withShortLabel(null);
             }
         }
-        if (status != null) {
-            goal.setStatus(status);
-        }
         if (bloomLevel != null) {
-            goal.setBloomLevel(bloomLevel);
+            change = change.withBloomLevel(bloomLevel.name());
         }
         if (soloLevel != null) {
-            goal.setSoloLevel(soloLevel);
+            change = change.withSoloLevel(soloLevel.name());
         }
-        return queries.toResponse(goal);
+        goalApi.update(goalId, change);
+        if (status != null) {
+            goalApi.setStatus(goalId, status);
+        }
+        return queries.toResponse(goals.require(courseId, goalId));
     }
 
     @Transactional
-    public void delete(Long courseId, Long goalId) {
-        // The DB cascades the delete to goal_source rows and to relationships in both directions.
-        LearningGoal goal = findGoal(courseId, goalId);
-        deleteSubtree(goal);
-        goalRepository.delete(goal);
+    public void delete(UUID courseId, UUID goalId) {
+        PlacedGoal goal = goals.require(courseId, goalId);
+        goals.removeAll(subtreeToRemove(goal));
     }
 
     /**
      * DELETE removes everything beneath the goal in the Topic tree: generated, hand-added and
-     * extracted goals alike. Dismissing a goal rejects it, and a rejected goal is deleted (see
+     * extracted goals alike. Dismissing a goal rejects it, and a rejected goal is removed (see
      * {@link GoalStatus}), so nothing beneath a dismissed goal lingers outside the tree, where the
      * instructor can no longer see it but other consumers of the API still would. A descendant that
      * also contributes to a goal outside the removed subtree keeps that parent and stays, with
      * everything beneath it.
+     *
+     * @return the ids of the goal and the descendants that go with it.
      */
-    private void deleteSubtree(LearningGoal root) {
-        Map<Long, LearningGoal> reachable = new LinkedHashMap<>();
-        Map<Long, List<Long>> parentIds = new HashMap<>();
-        Map<Long, GoalRelationship> loadedEdges = new LinkedHashMap<>();
-        Deque<LearningGoal> pending = new ArrayDeque<>();
-        pending.add(root);
+    private Set<UUID> subtreeToRemove(PlacedGoal root) {
+        List<GoalRelationInfo> contributes = goalApi.relationships(root.courseId()).stream()
+                .filter(r -> CONTRIBUTES_TO.equals(r.type()))
+                .toList();
+        Map<UUID, List<UUID>> childrenOf = new HashMap<>();
+        Map<UUID, List<UUID>> parentsOf = new HashMap<>();
+        for (GoalRelationInfo r : contributes) {
+            childrenOf.computeIfAbsent(r.targetGoalId(), k -> new ArrayList<>()).add(r.sourceGoalId());
+            parentsOf.computeIfAbsent(r.sourceGoalId(), k -> new ArrayList<>()).add(r.targetGoalId());
+        }
+        Set<UUID> reachable = new java.util.LinkedHashSet<>();
+        Deque<UUID> pending = new ArrayDeque<>();
+        pending.add(root.id());
         while (!pending.isEmpty()) {
-            LearningGoal target = pending.removeFirst();
-            for (GoalRelationship relationship : goalRelationshipRepository.findByTargetId(target.getId())) {
-                loadedEdges.put(relationship.getId(), relationship);
-                LearningGoal source = relationship.getSource();
-                if (relationship.getType() != RelationshipType.CONTRIBUTES_TO
-                        || source.getId().equals(root.getId())
-                        || reachable.putIfAbsent(source.getId(), source) != null) {
-                    continue;
+            UUID target = pending.removeFirst();
+            for (UUID source : childrenOf.getOrDefault(target, List.of())) {
+                if (!source.equals(root.id()) && reachable.add(source)) {
+                    pending.addLast(source);
                 }
-                List<Long> parents = new ArrayList<>();
-                for (GoalRelationship outgoing : goalRelationshipRepository.findBySourceId(source.getId())) {
-                    loadedEdges.put(outgoing.getId(), outgoing);
-                    if (outgoing.getType() == RelationshipType.CONTRIBUTES_TO) {
-                        parents.add(outgoing.getTarget().getId());
-                    }
-                }
-                parentIds.put(source.getId(), parents);
-                pending.addLast(source);
             }
         }
 
         // Spare every descendant with a parent outside the removed set, repeating until nothing changes:
         // sparing one goal gives its own children a surviving parent too.
-        Set<Long> doomed = new HashSet<>(reachable.keySet());
-        doomed.add(root.getId());
+        Set<UUID> doomed = new HashSet<>(reachable);
+        doomed.add(root.id());
         boolean changed = true;
         while (changed) {
             changed = false;
-            for (Long id : reachable.keySet()) {
-                if (doomed.contains(id) && parentIds.get(id).stream().anyMatch(parent -> !doomed.contains(parent))) {
+            for (UUID id : reachable) {
+                if (doomed.contains(id)
+                        && parentsOf.getOrDefault(id, List.of()).stream().anyMatch(parent -> !doomed.contains(parent))) {
                     doomed.remove(id);
                     changed = true;
                 }
             }
         }
-
-        // Delete the loaded edge entities first: they are managed in the persistence context, so
-        // deleting the goals they reference while they linger would fail the flush with a
-        // TransientObjectException.
-        goalRelationshipRepository.deleteAll(loadedEdges.values().stream()
-                .filter(edge -> doomed.contains(edge.getSource().getId())
-                        || doomed.contains(edge.getTarget().getId()))
-                .toList());
-        goalRelationshipRepository.flush();
-        List<LearningGoal> descendants = new ArrayList<>(reachable.values());
-        for (int i = descendants.size() - 1; i >= 0; i--) {
-            if (doomed.contains(descendants.get(i).getId())) {
-                goalRepository.delete(descendants.get(i));
-            }
-        }
-    }
-
-    private LearningGoal findGoal(Long courseId, Long goalId) {
-        return goalRepository.findByIdAndCourseId(goalId, courseId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Learning goal " + goalId + " not found in course " + courseId));
+        return doomed;
     }
 }

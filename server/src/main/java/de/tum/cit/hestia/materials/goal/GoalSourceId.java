@@ -4,12 +4,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.io.Serializable;
 import java.util.Objects;
+import java.util.UUID;
 
 @Embeddable
 public class GoalSourceId implements Serializable {
 
     @Column(name = "goal_id")
-    private Long goalId;
+    private UUID goalId;
 
     @Column(name = "document_id")
     private Long documentId;
@@ -17,12 +18,12 @@ public class GoalSourceId implements Serializable {
     protected GoalSourceId() {
     }
 
-    public GoalSourceId(Long goalId, Long documentId) {
+    public GoalSourceId(UUID goalId, Long documentId) {
         this.goalId = goalId;
         this.documentId = documentId;
     }
 
-    public Long getGoalId() {
+    public UUID getGoalId() {
         return goalId;
     }
 
