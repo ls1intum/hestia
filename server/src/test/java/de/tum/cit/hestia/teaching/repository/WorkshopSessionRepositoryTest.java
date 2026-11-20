@@ -1,6 +1,7 @@
 package de.tum.cit.hestia.teaching.repository;
 
 import de.tum.cit.hestia.TestDatabase;
+import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
@@ -37,8 +38,15 @@ class WorkshopSessionRepositoryTest {
     private final String uniA = "repo-a-" + run + ".test";
     private final String uniB = "repo-b-" + run + ".test";
 
-    private WorkshopSessionEntity session(UUID createdBy, Integer order, String title) {
+    @Autowired CourseApi courses;
+
+    private UUID courseOf(String org, String user) {
+        return TestLogin.runAs(identities, org, user, () -> courses.create("Repo course").id());
+    }
+
+    private WorkshopSessionEntity session(UUID createdBy, UUID courseId, Integer order, String title) {
         WorkshopSessionEntity e = new WorkshopSessionEntity();
+        e.setCourseId(courseId);
         e.setCreatedBy(createdBy);
         e.setDisplayOrder(order);
         e.setTitle(title);
@@ -46,12 +54,14 @@ class WorkshopSessionRepositoryTest {
     }
 
     @Test
-    void ownSessionsWithoutCourseComeOrdered() {
+    void sessionsOfTheGivenCoursesComeOrdered() {
         UUID a = TestLogin.login(identities, uniA, "alice").userId();
-        UUID b = TestLogin.login(identities, uniA, "bob").userId();
+        UUID course = courseOf(uniA, "alice");
+        UUID otherCourse = courseOf(uniA, "alice");
         List<WorkshopSessionEntity> found = TestLogin.runAs(identities, uniA, "alice", () -> {
-            repository.saveAll(List.of(session(a, 2, "second"), session(a, 1, "first"), session(b, null, "bobs")));
-            return repository.findWithoutCourseOf(a);
+            repository.saveAll(List.of(session(a, course, 2, "second"), session(a, course, 1, "first"),
+                    session(a, otherCourse, null, "elsewhere")));
+            return repository.findVisible(List.of(course));
         });
         assertThat(found).extracting(WorkshopSessionEntity::getTitle).containsExactly("first", "second");
     }
@@ -59,21 +69,22 @@ class WorkshopSessionRepositoryTest {
     @Test
     void anotherOrganisationDoesNotSeeTheRows() {
         UUID a = TestLogin.login(identities, uniA, "alice").userId();
-        UUID other = TestLogin.runAs(identities, uniB, "alice", () -> TestLogin.login(identities, uniB, "alice").userId());
-        String id = TestLogin.runAs(identities, uniA, "alice", () -> repository.save(session(a, null, "mine")).getId());
+        UUID course = courseOf(uniA, "alice");
+        TestLogin.login(identities, uniB, "alice");
+        String id = TestLogin.runAs(identities, uniA, "alice", () -> repository.save(session(a, course, null, "mine")).getId());
 
         assertThat(TestLogin.runAs(identities, uniB, "alice", () -> repository.findById(id))).isEmpty();
-        assertThat(TestLogin.runAs(identities, uniB, "alice", () -> repository.findWithoutCourseOf(a))).isEmpty();
-        assertThat(TestLogin.runAs(identities, uniB, "alice", () -> repository.findWithoutCourseOf(other))).isEmpty();
+        assertThat(TestLogin.runAs(identities, uniB, "alice", () -> repository.findVisible(List.of(course)))).isEmpty();
         assertThat(TestLogin.runAs(identities, uniA, "alice", () -> repository.findById(id))).isPresent();
     }
 
     @Test
     void queriesAreParameterised() {
         UUID a = TestLogin.login(identities, uniA, "alice").userId();
+        UUID course = courseOf(uniA, "alice");
         String jsonInjection = "{\"note\":\"'; DROP TABLE workshop_sessions; --\"}";
         Optional<WorkshopSessionEntity> retrieved = TestLogin.runAs(identities, uniA, "alice", () -> {
-            WorkshopSessionEntity e = session(a, null, "Injection Session");
+            WorkshopSessionEntity e = session(a, course, null, "Injection Session");
             e.setSessionJson(jsonInjection);
             return repository.findById(repository.save(e).getId());
         });

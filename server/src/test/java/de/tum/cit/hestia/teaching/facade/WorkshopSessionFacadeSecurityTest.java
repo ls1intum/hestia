@@ -9,9 +9,9 @@ import de.tum.cit.hestia.core.CurrentUser;
 import de.tum.cit.hestia.teaching.dto.GenerateSessionRequestDto;
 import de.tum.cit.hestia.teaching.dto.SessionSkeletonDto;
 import de.tum.cit.hestia.teaching.dto.WorkshopInputDto;
-import de.tum.cit.hestia.teaching.model.CourseEntity;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
+import de.tum.cit.hestia.teaching.repository.TeachingPlanRepository;
+import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
 import de.tum.cit.hestia.teaching.usecase.GenerateSlideBlockUseCase;
@@ -39,14 +39,15 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Security unit test: the facade checks course roles through {@link CourseAccess} and keeps a session
- * without a course to its creator. Intentionally a unit test (no Spring context, no DB).
+ * Security unit test: the facade checks course roles through {@link CourseAccess}; a session has no
+ * access rules of its own. Intentionally a unit test (no Spring context, no DB).
  */
 @ExtendWith(MockitoExtension.class)
 public class WorkshopSessionFacadeSecurityTest {
 
     @Mock private WorkshopSessionRepository repo;
-    @Mock private CourseRepository courseRepo;
+    @Mock private TeachingPlanRepository plans;
+    @Mock private CourseApi courseApi;
     @Mock private SlideTemplateRepository slideTemplateRepo;
     @Mock private GenerateTimetableUseCase generateTimetableUseCase;
     @Mock private GenerateSlideBlockUseCase generateSlideBlockUseCase;
@@ -76,55 +77,49 @@ public class WorkshopSessionFacadeSecurityTest {
         field.set(facade, new ObjectMapper());
     }
 
-    private CourseEntity course(String id, UUID coreId) {
-        CourseEntity course = new CourseEntity();
-        course.setId(id);
-        course.setCoreCourseId(coreId);
-        when(courseRepo.findById(id)).thenReturn(Optional.of(course));
-        return course;
-    }
 
     @Test
     public void courseRead_needsViewer_andWriteNeedsEditor() {
         UUID core = UUID.randomUUID();
-        course("course-1", core);
 
-        facade.verifyCourseRead("course-1");
+        facade.verifyCourseRead(core.toString());
         verify(courseAccess).requireRead(core);
 
-        facade.verifyCourseWrite("course-1");
+        facade.verifyCourseWrite(core.toString());
         verify(courseAccess).requireWrite(core);
 
-        facade.verifyCourseOwner("course-1");
+        facade.verifyCourseOwner(core.toString());
         verify(courseAccess).requireOwner(core);
+
+        // Not a course id at all
+        assertEquals(404, assertThrows(ResponseStatusException.class, () -> facade.verifyCourseRead("course-1"))
+                .getStatusCode().value());
     }
 
     @Test
     public void viewerCannotWrite() {
         UUID core = UUID.randomUUID();
-        course("course-1", core);
+        when(courseAccess.canRead(core)).thenReturn(true);
         doThrow(new CourseAccessDeniedException(core, CourseRole.EDITOR)).when(courseAccess).requireWrite(core);
 
-        assertDoesNotThrow(() -> facade.verifyRead("course-1"));
-        assertThrows(CourseAccessDeniedException.class, () -> facade.verifyWrite("course-1"));
+        assertDoesNotThrow(() -> facade.verifyRead(core.toString()));
+        assertThrows(CourseAccessDeniedException.class, () -> facade.verifyWrite(core.toString()));
     }
 
     @Test
     public void nonMemberGetsNotFound() {
         UUID core = UUID.randomUUID();
-        course("course-1", core);
         doThrow(new CourseNotFoundException(core)).when(courseAccess).requireRead(core);
 
-        assertThrows(CourseNotFoundException.class, () -> facade.verifyCourseRead("course-1"));
+        assertThrows(CourseNotFoundException.class, () -> facade.verifyCourseRead(core.toString()));
     }
 
     @Test
     public void sessionInACourseIsCheckedOnTheCourse() {
         UUID core = UUID.randomUUID();
-        course("course-1", core);
         WorkshopSessionEntity session = new WorkshopSessionEntity();
         session.setId("s1");
-        session.setCourseId("course-1");
+        session.setCourseId(core);
         session.setCreatedBy(someoneElse);
         when(repo.findById("s1")).thenReturn(Optional.of(session));
 
@@ -134,36 +129,20 @@ public class WorkshopSessionFacadeSecurityTest {
     }
 
     @Test
-    public void sessionWithoutCourseBelongsToItsCreatorOnly() {
-        WorkshopSessionEntity mine = new WorkshopSessionEntity();
-        mine.setCreatedBy(me);
-        WorkshopSessionEntity theirs = new WorkshopSessionEntity();
-        theirs.setCreatedBy(someoneElse);
-        WorkshopSessionEntity orphan = new WorkshopSessionEntity();
-        when(repo.findById("mine")).thenReturn(Optional.of(mine));
-        when(repo.findById("theirs")).thenReturn(Optional.of(theirs));
-        when(repo.findById("orphan")).thenReturn(Optional.of(orphan));
-
-        assertDoesNotThrow(() -> facade.verifyRead("mine"));
-        assertDoesNotThrow(() -> facade.verifyWrite("mine"));
-        for (String id : List.of("theirs", "orphan")) {
-            var ex = assertThrows(ResponseStatusException.class, () -> facade.verifyRead(id));
-            assertEquals(404, ex.getStatusCode().value());
-        }
-    }
-
-    @Test
-    public void generateAndSaveSession_shouldBeRefused_whenTheSessionIsAnotherUsersPrivateOne() {
+    public void generateAndSaveSession_shouldBeRefused_whenTheUserCannotWriteTheSessionsCourse() {
+        UUID core = UUID.randomUUID();
         WorkshopSessionEntity theirs = new WorkshopSessionEntity();
         theirs.setId("some-existing-session-id");
+        theirs.setCourseId(core);
         theirs.setCreatedBy(someoneElse);
         when(repo.findById("some-existing-session-id")).thenReturn(Optional.of(theirs));
+        doThrow(new CourseNotFoundException(core)).when(courseAccess).requireWrite(core);
 
         SessionSkeletonDto skeleton = new SessionSkeletonDto(List.of(), "some-existing-session-id");
         WorkshopInputDto meta = new WorkshopInputDto("Title", 60, 20, "workshop", "", "", List.of());
         GenerateSessionRequestDto request = new GenerateSessionRequestDto(List.of(), meta, "{}", skeleton);
 
-        assertThrows(ResponseStatusException.class, () -> facade.generateAndSaveSession(request));
+        assertThrows(CourseNotFoundException.class, () -> facade.generateAndSaveSession(request));
         verifyNoInteractions(generateTimetableUseCase);
     }
 
@@ -188,9 +167,10 @@ public class WorkshopSessionFacadeSecurityTest {
 
     @Test
     public void exportCourseZip_shouldExplain_whenNoSessionIsReady() {
-        when(courseRepo.findById("course-1")).thenReturn(Optional.empty());
-        when(repo.findAllByCourseIdOrdered("course-1")).thenReturn(List.of());
-        var ex = assertThrows(ResponseStatusException.class, () -> facade.exportCourseZip("course-1"));
+        UUID course = UUID.randomUUID();
+        when(plans.findById(course)).thenReturn(Optional.empty());
+        when(repo.findAllByCourseIdOrdered(course)).thenReturn(List.of());
+        var ex = assertThrows(ResponseStatusException.class, () -> facade.exportCourseZip(course.toString()));
         assertEquals(400, ex.getStatusCode().value());
     }
 }

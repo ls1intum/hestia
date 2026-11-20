@@ -96,7 +96,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns session summaries")
         void returnsSessionSummaries() throws Exception {
-            var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", null, null);
+            var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", false, null, null);
 
             when(workshopService.listSessions()).thenReturn(List.of(summary));
 
@@ -126,7 +126,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns 200 with session detail when found")
         void returns200WithDetail() throws Exception {
-            var detail = new SessionDetailDto("abc123", "My Session", "draft", "goals", "courseId", "{}", false, null, null, null);
+            var detail = new SessionDetailDto("abc123", "My Session", "draft", "goals", "courseId", false, "{}", false, null, null, null);
             when(workshopService.getSession("abc123"))
                     .thenReturn(java.util.Optional.of(detail));
 

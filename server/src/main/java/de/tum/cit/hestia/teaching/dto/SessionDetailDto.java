@@ -13,6 +13,8 @@ public record SessionDetailDto(
         String status,
         String currentStep,
         String courseId,
+        /** Whether the course is the user's personal catch-all course ("Einzelkram") */
+        boolean personalCourse,
         /** Draft state blob (opaque JSON string for the client to parse) */
         String draftStateJson,
         /** Whether a custom slide template applies (the session's own or its course's) */

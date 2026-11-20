@@ -13,18 +13,12 @@ import java.util.UUID;
 @Repository
 public interface WorkshopSessionRepository extends JpaRepository<WorkshopSessionEntity, String> {
 
-    /** The user's own sessions without a course, in dashboard order. */
-    @Query("SELECT w FROM WorkshopSessionEntity w WHERE w.courseId IS NULL AND w.createdBy = :userId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
-    List<WorkshopSessionEntity> findWithoutCourseOf(@Param("userId") UUID userId);
-
-    /** Sessions without a course created by the user, plus all sessions of the courses on the given core courses. */
-    @Query("SELECT w FROM WorkshopSessionEntity w WHERE (w.courseId IS NULL AND w.createdBy = :userId) "
-            + "OR w.courseId IN (SELECT c.id FROM CourseEntity c WHERE c.coreCourseId IN :coreCourseIds) "
-            + "ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
-    List<WorkshopSessionEntity> findVisible(@Param("userId") UUID userId, @Param("coreCourseIds") Collection<UUID> coreCourseIds);
+    /** The sessions of the given courses (the ones the user may see), in dashboard order. */
+    @Query("SELECT w FROM WorkshopSessionEntity w WHERE w.courseId IN :courseIds ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
+    List<WorkshopSessionEntity> findVisible(@Param("courseIds") Collection<UUID> courseIds);
 
     @Query("SELECT w FROM WorkshopSessionEntity w WHERE w.courseId = :courseId ORDER BY w.displayOrder ASC NULLS LAST, w.createdAt DESC")
-    List<WorkshopSessionEntity> findAllByCourseIdOrdered(@Param("courseId") String courseId);
+    List<WorkshopSessionEntity> findAllByCourseIdOrdered(@Param("courseId") UUID courseId);
 
     long countByCreatedBy(UUID createdBy);
 }

@@ -5,6 +5,8 @@ import {
   getCourseDetail,
   saveDraft,
   saveCourseDraft,
+  saveCourseGoals,
+  moveSessionToCourse,
   handleAuthError,
   errorMessage,
 } from "@/lib/api";
@@ -32,6 +34,7 @@ export interface LeaveGuard {
   /** Shows the step's save/discard/stay dialog and calls `proceed` once the user chose to leave. */
   confirmLeave(proceed: () => void): void;
 }
+import { applySavedGoals, goalInputs, remapMappings } from "@/lib/core-goals";
 import { defaultEvaluateMappings } from "@/lib/activity-taxonomy";
 import { generateDefaultSkeleton, SlideData, templateInfoFromDetail } from "@/lib/workshop-generator";
 
@@ -99,7 +102,15 @@ export function useWizardState() {
     sessionIdRef.current = id;
     setSessionId(id);
   };
+  /** The course the user picked for the session (null: none, the session is in the personal course). Drives the Review step. */
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
+  /** The course the session really is in (the personal course included), once the server told. */
+  const [sessionCourse, setSessionCourse] = useState<{ id: string; personal: boolean } | null>(null);
+  const sessionCourseRef = useRef<{ id: string; personal: boolean } | null>(null);
+  const setSessionCourseSynced = (c: { id: string; personal: boolean } | null) => {
+    sessionCourseRef.current = c;
+    setSessionCourse(c);
+  };
   const [entityType, setEntityType] = useState<"SESSION" | "COURSE">("SESSION");
 
   const STEPS = ALL_STEPS.filter(s => {
@@ -182,7 +193,9 @@ export function useWizardState() {
             if (entityType === "COURSE") {
               id = await saveCourseDraft(draft, currentSessionId, currentStep);
             } else {
-              id = await saveDraft(draft, currentSessionId, currentStep, courseId ?? undefined);
+              const saved = await saveDraft(draft, currentSessionId, currentStep, courseId ?? undefined);
+              id = saved.id;
+              if (saved.courseId) setSessionCourseSynced({ id: saved.courseId, personal: !courseId });
             }
 
             const resolvers = pendingResolvers.current;
@@ -294,6 +307,7 @@ export function useWizardState() {
 
   const startNewSession = () => {
     setSessionIdSynced(null);
+    setSessionCourseSynced(null);
     setTemplateInfo(null);
     setKeptGoals(null);
     setCurrentCourseId(null);
@@ -313,6 +327,7 @@ export function useWizardState() {
 
   const startNewCourse = () => {
     setSessionIdSynced(null);
+    setSessionCourseSynced(null);
     setTemplateInfo(null);
     setKeptGoals(null);
     setCurrentCourseId(null);
@@ -345,6 +360,7 @@ export function useWizardState() {
       }
       setSessionIdSynced(null);
       setCurrentCourseId(courseId);
+      setSessionCourseSynced({ id: courseId, personal: false });
       setTemplateInfo(templateInfoFromDetail(detail));
       setKeptGoals(null);
       setEntityType("SESSION");
@@ -374,7 +390,10 @@ export function useWizardState() {
       const resolvedEntityType = opts?.type ?? "SESSION";
       const detail = resolvedEntityType === "COURSE" ? await getCourseDetail(id) : await getSessionDetail(id);
       // R-2: resolve courseId locally so we can compute the correct step order immediately
-      const resolvedCourseId = detail.courseId ?? null;
+      // A session of the personal course has no course of its own as far as the steps go
+      const resolvedCourseId = resolvedEntityType === "COURSE" || detail.personalCourse ? null : detail.courseId ?? null;
+      setSessionCourseSynced(resolvedEntityType === "SESSION" && detail.courseId
+        ? { id: detail.courseId, personal: !!detail.personalCourse } : null);
 
       // Start from a clean slate: nothing from a previously opened session or course may leak
       // into this one (e.g. a course save picking up the last session's title and timetable)
@@ -572,13 +591,39 @@ export function useWizardState() {
     }
   };
 
-  const handleGoalsEntered = async (goalsWithPriority: LearningGoalPlan[]) => {
+  /** The course the session is in; asks the server if the session was just saved for the first time. */
+  const ensureSessionCourse = async (): Promise<string | null> => {
+    if (sessionCourseRef.current) return sessionCourseRef.current.id;
+    if (!sessionIdRef.current) return null;
+    const detail = await getSessionDetail(sessionIdRef.current);
+    if (!detail.courseId) return null;
+    setSessionCourseSynced({ id: detail.courseId, personal: !!detail.personalCourse });
+    return detail.courseId;
+  };
+
+  const handleGoalsEntered = async (enteredGoals: LearningGoalPlan[]) => {
     if (isGeneratingRef.current) return;
     isGeneratingRef.current = true;
     setIsFinished(false);
+
+    // The goals live in the session's course (core): write or change them there first, so the plan holds core ids
+    let goalsWithPriority = enteredGoals;
+    let idMap: Record<string, string> = {};
+    try {
+      const courseId = await ensureSessionCourse();
+      if (!courseId) throw new Error("The session has not been saved yet.");
+      const saved = await saveCourseGoals(courseId, goalInputs(enteredGoals));
+      ({ plans: goalsWithPriority, idMap } = applySavedGoals(enteredGoals, saved));
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        toast({ title: "Goals could not be saved", description: errorMessage(err, "Please try again."), variant: "destructive" });
+      }
+      isGeneratingRef.current = false;
+      return;
+    }
     setRefinedGoals(goalsWithPriority);
 
-    const updatedInput = { ...workshopInput };
+    const updatedInput = { ...workshopInput, evaluateMappings: remapMappings(workshopInput.evaluateMappings, idMap) };
     if (!updatedInput.evaluateMappings || updatedInput.evaluateMappings.length === 0) {
       if (goalsWithPriority.length > 0 && goalsWithPriority.length <= 2) {
         // Best-fit activity per goal from its Bloom's/SOLO level, limited to the user's activities
@@ -629,10 +674,25 @@ export function useWizardState() {
     }
   };
 
+  /**
+   * Moves the open session to another course (the user confirmed that its links to the old course's
+   * goals are removed), then reloads it: the plan no longer holds goals of the old course.
+   */
+  const moveCurrentSession = async (courseId: string, personal: boolean) => {
+    const id = sessionIdRef.current;
+    if (!id) return;
+    await flushDraft();
+    await moveSessionToCourse(id, courseId);
+    setSessionCourseSynced({ id: courseId, personal });
+    setCurrentCourseId(personal ? null : courseId);
+    await resumeSession(id, { silent: true, step: step === "course-summary" && personal ? "goals" : step });
+  };
+
   const handleReset = () => {
     flushDraft();
     setView("dashboard");
     setSessionIdSynced(null);
+    setSessionCourseSynced(null);
     setTemplateInfo(null);
     setKeptGoals(null);
     setCurrentCourseId(null);
@@ -775,6 +835,8 @@ export function useWizardState() {
     setShowTimelineBackConfirm,
     sessionId,
     currentCourseId,
+    sessionCourse,
+    moveCurrentSession,
     entityType,
     STEPS,
     STEP_ORDER,

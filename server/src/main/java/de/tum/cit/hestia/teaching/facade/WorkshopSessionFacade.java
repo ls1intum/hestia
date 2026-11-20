@@ -3,9 +3,9 @@ package de.tum.cit.hestia.teaching.facade;
 import de.tum.cit.hestia.teaching.dto.*;
 import de.tum.cit.hestia.teaching.usecase.*;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
+import de.tum.cit.hestia.teaching.repository.TeachingPlanRepository;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
-import de.tum.cit.hestia.teaching.model.CourseEntity;
+import de.tum.cit.hestia.teaching.model.TeachingPlanEntity;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import de.tum.cit.hestia.core.CourseAccess;
+import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.core.CurrentUser;
 import de.tum.cit.hestia.teaching.exception.SessionLockedException;
 import de.tum.cit.hestia.teaching.model.SlideTemplateEntity;
@@ -41,13 +42,14 @@ public class WorkshopSessionFacade {
     private final AssemblePptxUseCase assemblePptxUseCase;
     
     private final WorkshopSessionRepository repo;
-    private final CourseRepository courseRepo;
+    private final TeachingPlanRepository plans;
     private final SlideTemplateRepository slideTemplateRepo;
     private final ObjectMapper mapper;
     private final PdfExportService pdfService;
     private final UsageGuard usageGuard;
     private final CourseAccess courseAccess;
     private final CurrentUser currentUser;
+    private final CourseApi courseApi;
 
     // In-flight lock for idempotency: mapping sessionId to a lock
     private final ConcurrentHashMap<String, Object> inFlightLocks = new ConcurrentHashMap<>();
@@ -61,26 +63,28 @@ public class WorkshopSessionFacade {
             GenerateSlideBlockUseCase generateSlideBlockUseCase,
             AssemblePptxUseCase assemblePptxUseCase,
             WorkshopSessionRepository repo,
-            CourseRepository courseRepo,
+            TeachingPlanRepository plans,
             SlideTemplateRepository slideTemplateRepo, 
             ObjectMapper mapper,
             PdfExportService pdfService,
             UsageGuard usageGuard,
             CourseAccess courseAccess,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            CourseApi courseApi) {
         this.generateTimetableUseCase = generateTimetableUseCase;
         this.refineLearningGoalUseCase = refineLearningGoalUseCase;
         this.fixGoalsGrammarUseCase = fixGoalsGrammarUseCase;
         this.generateSlideBlockUseCase = generateSlideBlockUseCase;
         this.assemblePptxUseCase = assemblePptxUseCase;
         this.repo = repo;
-        this.courseRepo = courseRepo;
+        this.plans = plans;
         this.slideTemplateRepo = slideTemplateRepo;
         this.mapper = mapper;
         this.pdfService = pdfService;
         this.usageGuard = usageGuard;
         this.courseAccess = courseAccess;
         this.currentUser = currentUser;
+        this.courseApi = courseApi;
     }
 
     /**
@@ -144,7 +148,7 @@ public class WorkshopSessionFacade {
         verify(id, false);
     }
 
-    /** Like {@link #verifyRead}, for changing: needs EDITOR in the course (or being the creator of a session without course). */
+    /** Like {@link #verifyRead}, for changing: needs EDITOR in the session's course. */
     public void verifyWrite(String id) {
         verify(id, true);
     }
@@ -152,22 +156,19 @@ public class WorkshopSessionFacade {
     private void verify(String id, boolean write) {
         WorkshopSessionEntity entity = repo.findById(id).orElse(null);
         if (entity != null) {
-            checkSession(entity, write);
+            checkCourse(entity.getCourseId(), write);
             return;
         }
-        CourseEntity course = courseRepo.findById(id).orElse(null);
-        if (course != null) {
-            checkCourse(course, write);
+        // Not a session: it may be a course (a core course the user can see), otherwise it is gone
+        UUID courseId = parseUuid(id);
+        if (courseId != null && courseAccess.canRead(courseId)) {
+            checkCourse(courseId, write);
             return;
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, GONE);
     }
 
-    /**
-     * Strict check for IDs used as a course reference (courseId on drafts/moves, course template):
-     * unlike verifyRead/verifyWrite, a session ID is rejected too, because it would otherwise be written
-     * into workshop_sessions.course_id and violate the FK.
-     */
+    /** Strict check for ids used as a course reference (courseId on drafts and moves, course template). */
     public void verifyCourseRead(String courseId) {
         checkCourse(course(courseId), false);
     }
@@ -177,27 +178,28 @@ public class WorkshopSessionFacade {
     }
 
     public void verifyCourseOwner(String courseId) {
-        courseAccess.requireOwner(course(courseId).getCoreCourseId());
+        courseAccess.requireOwner(course(courseId));
     }
 
-    private CourseEntity course(String courseId) {
-        return courseRepo.findById(courseId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted."));
-    }
-
-    private void checkCourse(CourseEntity course, boolean write) {
-        if (write) courseAccess.requireWrite(course.getCoreCourseId());
-        else courseAccess.requireRead(course.getCoreCourseId());
-    }
-
-    private void checkSession(WorkshopSessionEntity session, boolean write) {
-        if (session.getCourseId() != null) {
-            checkCourse(course(session.getCourseId()), write);
-        } else if (!currentUser.userId().equals(session.getCreatedBy())) {
-            // A session without a course belongs to its creator alone; for everybody else it does not exist
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, GONE);
+    private UUID course(String courseId) {
+        UUID id = parseUuid(courseId);
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted.");
         }
+        return id;
+    }
+
+    private static UUID parseUuid(String id) {
+        try {
+            return UUID.fromString(id);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private void checkCourse(UUID courseId, boolean write) {
+        if (write) courseAccess.requireWrite(courseId);
+        else courseAccess.requireRead(courseId);
     }
 
     // Note: no @Transactional here — this is a self-invocation from generateAndSaveSession, so the
@@ -213,6 +215,7 @@ public class WorkshopSessionFacade {
             UsageGuard.checkSessionCount(repo.countByCreatedBy(currentUser.userId()));
             entity = new WorkshopSessionEntity();
             entity.setCreatedBy(currentUser.userId());
+            entity.setCourseId(courseApi.personalCourse().id());
         }
         
         entity.setTitle(session.title());
@@ -252,9 +255,10 @@ public class WorkshopSessionFacade {
     }
 
     public byte[] exportCourseZip(String courseId) throws Exception {
-        String courseTemplateId = courseRepo.findById(courseId)
-                .map(CourseEntity::getTemplateId).orElse(null);
-        List<WorkshopSessionEntity> children = repo.findAllByCourseIdOrdered(courseId);
+        UUID course = course(courseId);
+        String courseTemplateId = plans.findById(course)
+                .map(TeachingPlanEntity::getTemplateId).orElse(null);
+        List<WorkshopSessionEntity> children = repo.findAllByCourseIdOrdered(course);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ZipOutputStream zos = new ZipOutputStream(baos);

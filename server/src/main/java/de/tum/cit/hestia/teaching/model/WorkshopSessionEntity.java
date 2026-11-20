@@ -15,12 +15,13 @@ public class WorkshopSessionEntity extends OrgScoped {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    /** Who created the session; the only user with access while it has no course. */
+    /** Who created the session; counts towards the per-user session limit. Access comes from the course role. */
     @Column(name = "created_by", updatable = false)
     private UUID createdBy;
 
-    @Column(length = 36)
-    private String courseId;
+    /** The {@code core.course} the session belongs to; its roles decide who may read and change it. */
+    @Column(name = "course_id", nullable = false)
+    private UUID courseId;
 
     @Column(name = "display_order")
     private Integer displayOrder;
@@ -106,8 +107,8 @@ public class WorkshopSessionEntity extends OrgScoped {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getCourseId() { return courseId; }
-    public void setCourseId(String courseId) { this.courseId = courseId; }
+    public UUID getCourseId() { return courseId; }
+    public void setCourseId(UUID courseId) { this.courseId = courseId; }
 
     public Integer getDisplayOrder() { return displayOrder; }
     public void setDisplayOrder(Integer displayOrder) { this.displayOrder = displayOrder; }

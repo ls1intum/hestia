@@ -9,7 +9,7 @@ Use English for repository documentation and agent-facing instructions.
 Core Workshopper concepts:
 - pedagogical session structuring with block phases ARRIVE, ACTIVATE, LEARNING_CYCLE, BREAK, EVALUATE, SUMMARY, BUFFER
 - dynamic duration management; activity choice per learning goal from its Bloom's/SOLO level, limited to the activities the lecturer selected (`ActivityRecommender` on the server, `activity-taxonomy.ts` on the client)
-- learning goals entered by the lecturer or imported from the Learning Goal Hub, with per-goal AI checks (`RefineLearningGoalUseCase`) and a grammar fix (`FixGoalsGrammarUseCase`)
+- learning goals that live in core (picked from the session's course by id, or written in Workshopper and created there; a session's plan keeps goal ids only), with per-goal AI checks (`RefineLearningGoalUseCase`) and a grammar fix (`FixGoalsGrammarUseCase`)
 - document generation: Apache POI for PPTX (default design, optionally branded with an uploaded university template), Apache PDFBox for PDF
 - courses that group sessions and share settings and a slide template
 - session persistence, draft management and unsaved-changes protection in the wizard

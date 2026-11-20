@@ -91,10 +91,14 @@ class CourseSessionHttpFlowTest extends FlowTestSupport {
         assertThat(api.get(FlowPaths.session(sessionId)).json().path("title").asText()).isEqualTo("Renamed");
         assertThat(api.put(FlowPaths.sessionAction(sessionId, "rename"), Map.of("title", " ")).status()).isEqualTo(400);
 
-        // move back to top level
-        assertThat(api.put(FlowPaths.sessionAction(sessionId, "move"), Map.of("courseId", "")).status()).isEqualTo(200);
-        assertThat(api.get(FlowPaths.session(sessionId)).json().path("courseId").isNull()
-                || api.get(FlowPaths.session(sessionId)).json().path("courseId").asText().isEmpty()).isTrue();
+        // move to another course ("" is no course)
+        String otherCourse = createCourse(api, "Flow Course B2");
+        assertThat(api.put(FlowPaths.sessionAction(sessionId, "course"), Map.of("courseId", "")).status()).isEqualTo(400);
+        assertThat(api.put(FlowPaths.sessionAction(sessionId, "course"), Map.of("courseId", otherCourse)).status()).isEqualTo(200);
+        assertThat(api.get(FlowPaths.session(sessionId)).json().path("courseId").asText()).isEqualTo(otherCourse);
+        assertThat(api.delete(FlowPaths.course(otherCourse)).status()).isEqualTo(204);
+        assertThat(api.get(FlowPaths.session(sessionId)).status()).isEqualTo(404); // went with its course
+        sessionId = createSession(api, "Again", courseId);
 
         // delete -> gone
         assertThat(api.delete(FlowPaths.session(sessionId)).status()).isEqualTo(204);
