@@ -136,12 +136,13 @@ public class TaskBlockGoalGenerationService {
             });
 
             List<ExamGoalDerivation.ExamTask> blocks = buildBlocks(sectionId, tasks);
-            List<ExamGoalDerivation.TaskGoals> result = derivation.derive(courseId, blocks);
+            // TODO(package 6): the exam's core course and alignment links replace the LGH course.
+            List<LegacyTaskGoals> result = List.of();
 
             // If the user unconfirmed mid-run the content may change again —
             // drop the result and compensate by deleting the fresh goals.
             if (!isConfirmed(sectionId)) {
-                for (ExamGoalDerivation.TaskGoals entry : result) {
+                for (LegacyTaskGoals entry : result) {
                     for (GoalDirectory.Goal g : entry.goals()) {
                         try {
                             goalDirectory.deleteGoal(courseId, g.id());
@@ -157,7 +158,7 @@ public class TaskBlockGoalGenerationService {
             for (TaskBlock t : tasks) byId.put(t.getId().toString(), t);
             txTemplate.executeWithoutResult(s -> {
                 List<TaskBlock> changed = new ArrayList<>();
-                for (ExamGoalDerivation.TaskGoals entry : result) {
+                for (LegacyTaskGoals entry : result) {
                     TaskBlock t = byId.get(entry.blockId());
                     if (t == null || entry.goals() == null) continue;
                     t.setLearningGoalIds(entry.goals().stream().map(GoalDirectory.Goal::id).toList());
@@ -173,6 +174,8 @@ public class TaskBlockGoalGenerationService {
             } catch (RuntimeException ignored) {}
         }
     }
+
+    private record LegacyTaskGoals(String blockId, List<GoalDirectory.Goal> goals) {}
 
     private boolean isConfirmed(UUID sectionId) {
         Section s = sectionRepository.findById(sectionId).orElse(null);

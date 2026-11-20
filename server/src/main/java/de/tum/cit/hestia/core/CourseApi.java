@@ -12,6 +12,12 @@ public interface CourseApi {
     /** Creates a course in the user's organisation; the user becomes its {@code OWNER}. */
     CourseInfo create(String title);
 
+    /**
+     * The user's personal catch-all course, created on first use with the user as {@code OWNER}.
+     * Sessions and exams without a chosen course go there. It cannot be deleted.
+     */
+    CourseInfo personalCourse();
+
     CourseInfo get(UUID courseId);
 
     /** The courses the user is a member of, newest first. */

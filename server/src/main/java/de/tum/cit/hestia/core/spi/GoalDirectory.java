@@ -8,7 +8,11 @@ import java.util.NoSuchElementException;
  * modules. Implemented by {@code materials}; replaces the HTTP calls to LearningGoalHub's
  * {@code /api/courses/**} endpoints. Methods that take a course id throw
  * {@link NoSuchElementException} when the course does not exist.
+ *
+ * @deprecated replaced by {@link de.tum.cit.hestia.core.CourseApi} and
+ *     {@link de.tum.cit.hestia.core.LearningGoalApi}; deleted once no module uses it.
  */
+@Deprecated(forRemoval = true)
 public interface GoalDirectory {
 
     /** One page of the courses the current user is a member of, ordered as LearningGoalHub lists them. */

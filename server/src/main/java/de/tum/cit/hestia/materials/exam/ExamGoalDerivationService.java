@@ -30,29 +30,9 @@ public class ExamGoalDerivationService implements ExamGoalDerivation {
     }
 
     @Override
-    public List<TaskGoals> derive(long courseId, List<ExamTask> tasks) {
-        Course course;
-        try {
-            course = guard.requireWrite(courseId);
-        } catch (ResponseStatusException | CourseNotFoundException e) {
-            throw new NoSuchElementException("Course not found: " + courseId);
-        }
-        List<ExamBlock> blocks = tasks == null ? null : tasks.stream().map(ExamGoalDerivationService::toBlock).toList();
-        try {
-            ExamGoalController.validate(new ExamGoalController.GenerateExamGoalsRequest(blocks));
-        } catch (ResponseStatusException e) {
-            if (e.getStatusCode().isSameCodeAs(HttpStatus.BAD_REQUEST)) {
-                throw new IllegalArgumentException(e.getReason(), e);
-            }
-            throw e;
-        }
-        return examGoalService.generateForBlocks(course, blocks, null).stream()
-                .map(taskGoals -> new TaskGoals(
-                        taskGoals.blockId(),
-                        taskGoals.goals().stream()
-                                .map(g -> GoalDirectoryService.toGoal(LearningGoalResponse.from(g, List.of(), List.of())))
-                                .toList()))
-                .toList();
+    public List<TaskGoals> derive(java.util.UUID courseId, List<ExamTask> tasks) {
+        // TODO(package 6): store the derived goals in core through LearningGoalApi.
+        throw new UnsupportedOperationException("Exam goal derivation is being moved to core goals");
     }
 
     private static ExamBlock toBlock(ExamTask task) {

@@ -4,6 +4,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import org.springframework.core.task.TaskDecorator;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * The organisation (tenant) the current thread works for. Filled from the logged-in user for every
@@ -63,16 +65,38 @@ public final class OrgContext {
         }
     }
 
-    /** {@code task} bound to the organisation of the calling thread, for running elsewhere. */
+    /**
+     * {@code task} bound to the organisation of the calling thread, for running elsewhere. The
+     * caller's login (security context) goes along too, so {@code core} can check course roles of
+     * the user who started the work.
+     */
     public static Runnable wrap(Runnable task) {
         UUID orgId = CURRENT.get();
-        return () -> run(orgId, task);
+        SecurityContext security = SecurityContextHolder.getContext();
+        return () -> {
+            SecurityContext previous = SecurityContextHolder.getContext();
+            SecurityContextHolder.setContext(security);
+            try {
+                run(orgId, task);
+            } finally {
+                SecurityContextHolder.setContext(previous);
+            }
+        };
     }
 
-    /** {@code task} bound to the organisation of the calling thread, for running elsewhere. */
+    /** {@link #wrap(Runnable)} for a task with a result. */
     public static <T> Callable<T> wrap(Callable<T> task) {
         UUID orgId = CURRENT.get();
-        return () -> call(orgId, task);
+        SecurityContext security = SecurityContextHolder.getContext();
+        return () -> {
+            SecurityContext previous = SecurityContextHolder.getContext();
+            SecurityContextHolder.setContext(security);
+            try {
+                return call(orgId, task);
+            } finally {
+                SecurityContextHolder.setContext(previous);
+            }
+        };
     }
 
     /** For executors: every task runs for the organisation of the thread that submitted it. */

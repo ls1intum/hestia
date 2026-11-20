@@ -7,6 +7,7 @@ import de.tum.cit.hestia.core.CourseInfo;
 import de.tum.cit.hestia.core.CourseNotFoundException;
 import de.tum.cit.hestia.core.CourseRole;
 import de.tum.cit.hestia.core.CurrentUser;
+import de.tum.cit.hestia.core.OrgContext;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +30,9 @@ class CourseService implements CourseAccess, CourseApi {
     private final CourseMembershipRepository memberships;
     private final CurrentUser currentUser;
     private final Clock clock = Clock.systemUTC();
+
+    /** Stored title of the personal course; the clients show their own label for it. */
+    static final String PERSONAL_TITLE = "Einzelkram";
 
     CourseService(CoreCourseRepository courses, CourseMembershipRepository memberships, CurrentUser currentUser) {
         this.courses = courses;
@@ -93,6 +97,20 @@ class CourseService implements CourseAccess, CourseApi {
     }
 
     @Override
+    @Transactional
+    public CourseInfo personalCourse() {
+        UUID userId = currentUser.userId();
+        CoreCourse course = courses.findPersonal(userId).orElse(null);
+        if (course == null) {
+            // Two first requests at once: the partial unique index lets only one insert pass.
+            courses.insertPersonalIfMissing(OrgContext.require(), userId, PERSONAL_TITLE);
+            course = courses.findPersonal(userId).orElseThrow();
+            memberships.insertIfMissing(course.getId(), userId, OrgContext.require(), CourseRole.OWNER.name());
+        }
+        return info(course, CourseRole.OWNER);
+    }
+
+    @Override
     public CourseInfo get(UUID courseId) {
         CourseRole role = require(courseId, CourseRole.VIEWER);
         return info(load(courseId), role);
@@ -139,6 +157,6 @@ class CourseService implements CourseAccess, CourseApi {
     }
 
     private static CourseInfo info(CoreCourse course, CourseRole role) {
-        return new CourseInfo(course.getId(), course.getTitle(), role, course.getCreatedAt());
+        return new CourseInfo(course.getId(), course.getTitle(), role, course.getCreatedAt(), course.isPersonal());
     }
 }
