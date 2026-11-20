@@ -154,8 +154,8 @@ export function GridRow({
   /** The attribute columns shown after the learning goal, in their order. */
   columns: AttributeKey[];
   stickyTop: number;
-  onToggle: (id: number) => void;
-  onToggleMap: (id: number) => void;
+  onToggle: (id: string) => void;
+  onToggleMap: (id: string) => void;
   /** This row's source is the one shown in the PDF panel. */
   sourceOpen: boolean;
   onOpenSource: (row: Row, trigger: HTMLElement) => void;
@@ -171,7 +171,7 @@ export function GridRow({
   editing: boolean;
   onStartEdit: (row: Row) => void;
   onEndEdit: () => void;
-  onUpdate: (goalId: number, changes: GoalChanges) => void;
+  onUpdate: (goalId: string, changes: GoalChanges) => void;
   onDelete: (goal: LearningGoal) => void;
   /** Why this sub-skill's exercise level looks abnormal against its topic's lectures, if it does. */
   levelFlag?: string;
@@ -439,7 +439,7 @@ export function SessionName({
   sessionId,
   label,
 }: {
-  courseId: number;
+  courseId: string;
   /** Absent for goals that hang off an exercise only; those sessions can't be renamed here. */
   sessionId: number | undefined;
   label: string;

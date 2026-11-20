@@ -11,6 +11,7 @@ import TopicSearchDialog from "./TopicSearchDialog.tsx";
 import Button from "./Button.tsx";
 import FilterPopover from "./FilterPopover.tsx";
 import TopicMap from "./TopicMap.tsx";
+import { isLooseGroupId, looseGroupId, looseGroupTopicId } from "./topicMap/layout.ts";
 import {
   buildTopicForest,
   coverageCounts,
@@ -70,10 +71,10 @@ export default function TopicTree({
   onUpdate,
   onDelete,
 }: {
-  courseId: number;
+  courseId: string;
   goals: LearningGoal[];
   onUpdate: (
-    goalId: number,
+    goalId: string,
     changes: {
       text?: string;
       bloomLevel?: LearningGoal["bloomLevel"];
@@ -100,7 +101,7 @@ export default function TopicTree({
     [forest],
   );
   const childrenOf = useMemo(() => {
-    const map = new Map<number | null, Row[]>();
+    const map = new Map<string | null, Row[]>();
     for (const row of rows) {
       const list = map.get(row.parent) ?? [];
       list.push(row);
@@ -112,7 +113,7 @@ export default function TopicTree({
 
   // How many children a row shows in the table layout, which decides whether it gets a caret.
   const visibleChildCount = useMemo(() => {
-    const map = new Map<number, number>();
+    const map = new Map<string, number>();
     for (const row of rows) {
       if (row.parent == null) continue;
       map.set(row.parent, (map.get(row.parent) ?? 0) + 1);
@@ -124,9 +125,9 @@ export default function TopicTree({
   // Everything starts collapsed in both layouts: the topics alone are the overview, and opening
   // one is the reader's first deliberate step rather than a state they arrive in. Each layout
   // keeps its own state, so switching back returns to where the reader left it.
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // One map is open at a time.
-  const [openTopicId, setOpenTopicId] = useState<number | null>(null);
+  const [openTopicId, setOpenTopicId] = useState<string | null>(null);
   // Rows show short labels by default; the toolbar switch swaps in every goal's full wording.
   const [fullWording, setFullWording] = useState(false);
   const columns = useColumnLayout();
@@ -136,16 +137,16 @@ export default function TopicTree({
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
   // At most one level menu and one inline rename are open at a time across the grid.
-  const [openLevel, setOpenLevel] = useState<{ id: number; scale: LevelScale } | null>(null);
+  const [openLevel, setOpenLevel] = useState<{ id: string; scale: LevelScale } | null>(null);
   const toggleLevel = (row: Row, scale: LevelScale) =>
     setOpenLevel((prev) =>
       prev?.id === row.id && prev.scale === scale ? null : { id: row.id, scale },
     );
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // The goal whose source is open in the PDF panel beside the grid. Kept as an id so the panel
   // follows refetches and closes itself once the goal is gone.
-  const [sourceGoalId, setSourceGoalId] = useState<number | null>(null);
+  const [sourceGoalId, setSourceGoalId] = useState<string | null>(null);
   const sourceRow = sourceGoalId != null ? byId.get(sourceGoalId) : undefined;
   const openSource = sourceRow?.goal.sources?.[0];
   const sourcePaneRef = useRef<HTMLDivElement>(null);
@@ -204,15 +205,14 @@ export default function TopicTree({
     matchCount,
     activeChips,
   } = useGoalFilters(rows, byId);
-  const isOpen = (id: number) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
+  const isOpen = (id: string) => (filtering ? !filterCollapsed.has(id) : expanded.has(id));
   // The goals under a topic that sit in no skill, gathered under one "Additional sub-skills"
-  // row. That row is no goal; it folds under the negated topic id, which no goal id collides with.
-  const looseOf = (topicId: number) =>
+  // row. That row is no goal; it folds under the prefixed topic id (`looseGroupId`), which no goal id collides with.
+  const looseOf = (topicId: string) =>
     (childrenOf.get(topicId) ?? []).filter((child) => child.role !== "skill");
-  const looseGroupId = (topicId: number) => -topicId;
   const isVisible = (row: Row) =>
     !filtering || matchIds!.has(row.id) || contextIds.has(row.id);
-  const childCountOf = (id: number) =>
+  const childCountOf = (id: string) =>
     (filtering ? filteredChildCount : visibleChildCount).get(id) ?? 0;
 
 
@@ -227,12 +227,12 @@ export default function TopicTree({
   // Positions are layout-relative (`offsetTop`), not viewport-relative: the grid sits in its own
   // scroll container, so a rect measured before a scroll differs by the scrolled distance and
   // would make every surviving row glide in from nowhere.
-  const prevTops = useRef<Map<number, number>>(new Map());
+  const prevTops = useRef<Map<string, number>>(new Map());
   const firstLayout = useRef(true);
   // Which newly-revealed rows may cascade in on the next layout: the descendants of a branch just
   // opened, or "all" for expand-all. Empty for every other change (filter / search / map),
   // so those rows simply appear while the survivors glide. Consumed after each layout pass.
-  const enterIntent = useRef<Set<number> | "all">(new Set());
+  const enterIntent = useRef<Set<string> | "all">(new Set());
   // Set when a map was just opened, so the next layout scrolls its row up under the header.
   const revealOpened = useRef(false);
 
@@ -242,10 +242,10 @@ export default function TopicTree({
     const reduce = prefersReducedMotion();
     const prev = prevTops.current;
     const intent = enterIntent.current;
-    const next = new Map<number, number>();
+    const next = new Map<string, number>();
     let enterIndex = 0;
     container.querySelectorAll<HTMLElement>("[data-row-id]").forEach((el) => {
-      const id = Number(el.dataset.rowId);
+      const id = el.dataset.rowId!;
       const to = el.offsetTop;
       next.set(id, to);
       if (reduce || firstLayout.current) return;
@@ -288,7 +288,7 @@ export default function TopicTree({
   // The open topic row sticks right under the column header, so it needs the header's height.
   const headerHeight = useHeaderHeight(headerRef, hasTree);
 
-  const toggleMap = (id: number) => {
+  const toggleMap = (id: string) => {
     if (openTopicId !== id) revealOpened.current = true;
     setOpenTopicId((prev) => (prev === id ? null : id));
   };
@@ -301,12 +301,12 @@ export default function TopicTree({
     setLayout(next);
   };
 
-  const descendantIds = (id: number): Set<number> => {
-    const out = new Set<number>();
-    const walk = (pid: number) => {
+  const descendantIds = (id: string): Set<string> => {
+    const out = new Set<string>();
+    const walk = (pid: string) => {
       // A group's children are its topic's loose goals; a topic's descendants include its group.
-      const children = pid < 0 ? looseOf(-pid) : (childrenOf.get(pid) ?? []);
-      if (pid > 0 && byId.get(pid)?.role === "topic" && looseOf(pid).length > 0)
+      const children = isLooseGroupId(pid) ? looseOf(looseGroupTopicId(pid)) : (childrenOf.get(pid) ?? []);
+      if (!isLooseGroupId(pid) && byId.get(pid)?.role === "topic" && looseOf(pid).length > 0)
         out.add(looseGroupId(pid));
       for (const child of children) {
         out.add(child.id);
@@ -317,7 +317,7 @@ export default function TopicTree({
     return out;
   };
 
-  const expand = (id: number) => {
+  const expand = (id: string) => {
     enterIntent.current = descendantIds(id);
     if (filtering) {
       setFilterCollapsed((prev) => {
@@ -332,7 +332,7 @@ export default function TopicTree({
 
   // Collapse: fade the currently-visible descendants out, then drop them from the tree (the FLIP
   // pass then slides the survivors up). Falls back to an instant collapse when motion is reduced.
-  const collapse = (id: number) => {
+  const collapse = (id: string) => {
     const remove = () =>
       filtering
         ? setFilterCollapsed((prev) => new Set(prev).add(id))
@@ -349,7 +349,7 @@ export default function TopicTree({
     const kill = descendantIds(id);
     const leaving = [
       ...container.querySelectorAll<HTMLElement>("[data-row-id]"),
-    ].filter((el) => kill.has(Number(el.dataset.rowId)));
+    ].filter((el) => kill.has(el.dataset.rowId!));
     if (leaving.length === 0) {
       remove();
       return;
@@ -361,7 +361,7 @@ export default function TopicTree({
     window.setTimeout(remove, 150);
   };
 
-  const onToggle = (id: number) => (isOpen(id) ? collapse(id) : expand(id));
+  const onToggle = (id: string) => (isOpen(id) ? collapse(id) : expand(id));
 
   const parentIds = useMemo(
     () =>
@@ -412,7 +412,7 @@ export default function TopicTree({
   const walk = (
     siblings: Row[],
     depth: number,
-    parentGoalId: number | null,
+    parentGoalId: string | null,
     parentRole: TreeRole | null,
     /**
      * Whether this group's knob lands in the stack of knobs at the very bottom of the grid. Their

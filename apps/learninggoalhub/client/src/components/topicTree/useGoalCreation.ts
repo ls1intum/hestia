@@ -10,7 +10,7 @@ import type { CreationState, CreationTier } from "./model.ts";
  * and the request that stores it. A topic is created on its own or with AI-written skills beneath
  * it; every lower tier is added as a child of the row it was opened under.
  */
-export function useGoalCreation(courseId: number) {
+export function useGoalCreation(courseId: string) {
   const queryClient = useQueryClient();
   const [creation, setCreation] = useState<CreationState | null>(null);
   const createMutation = useMutation({
@@ -42,7 +42,7 @@ export function useGoalCreation(courseId: number) {
     },
   });
 
-  const begin = (tier: CreationTier, parentGoalId: number | null) => {
+  const begin = (tier: CreationTier, parentGoalId: string | null) => {
     createMutation.reset();
     setCreation({
       key: `${tier}:${parentGoalId ?? "root"}`,

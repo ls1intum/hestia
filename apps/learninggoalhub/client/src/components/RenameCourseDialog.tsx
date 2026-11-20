@@ -20,7 +20,7 @@ export default function RenameCourseDialog({
   const rename = useMutation({
     mutationFn: async (nextName: string) => {
       const { error, response } = await api.PATCH("/api/courses/{id}", {
-        params: { path: { id: course.id as number } },
+        params: { path: { id: course.id as string } },
         body: { name: nextName },
       });
       if (error) throw requestError("Could not rename the course.", { error, response });

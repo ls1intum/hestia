@@ -18,7 +18,7 @@ type Props = {
   error?: string | null;
   /** Set while the status cannot be loaded; the last known progress stays on screen meanwhile. */
   statusUnavailable?: boolean;
-  courseId?: number | null;
+  courseId?: string | null;
   /**
    * Opens straight into the skill review whatever the run status; `status` then only reports what
    * the run left out. The review reads the
@@ -47,7 +47,7 @@ export default function ExtractionProgressModal({
   // The topics folded open in the review, which start folded shut so the review opens on the
   // course's outline, and the wording of a topic being added. Both are kept here because the
   // search for a typed topic in the slides, which adds and opens it, sits outside the review.
-  const [expandedTopics, setExpandedTopics] = useState<Set<number>>(() => new Set());
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(() => new Set());
   const [newTopic, setNewTopic] = useState("");
   // The typed topic being looked up in the slides, over the review.
   const [findingTopic, setFindingTopic] = useState<string | null>(null);

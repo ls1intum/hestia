@@ -31,8 +31,8 @@ export default function CoursesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   // An error from a course creation that kept running after its dialog was closed.
   const [createError, setCreateError] = useState<string | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [reviewCourseId, setReviewCourseId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [reviewCourseId, setReviewCourseId] = useState<string | null>(null);
   const [renameCourse, setRenameCourse] = useState<CourseSummary | null>(null);
   const [courseToDelete, setCourseToDelete] = useState<CourseSummary | null>(null);
   const [page, setPage] = useState(0);
@@ -49,7 +49,7 @@ export default function CoursesPage() {
   }
 
 
-  const toggleExpanded = (id?: number) => {
+  const toggleExpanded = (id?: string) => {
     if (id == null) return;
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -60,7 +60,7 @@ export default function CoursesPage() {
   };
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id: string) => {
       const { error, response } = await api.DELETE("/api/courses/{id}", {
         params: { path: { id } },
       });
@@ -122,7 +122,7 @@ export default function CoursesPage() {
     queryKey: ["extract-status", reviewCourseId],
     queryFn: async () => {
       const result = await api.GET("/api/courses/{courseId}/extract/status", {
-        params: { path: { courseId: reviewCourseId as number } },
+        params: { path: { courseId: reviewCourseId as string } },
       });
       if (result.error) throw new Error("Could not load the extraction status.");
       return result.data ?? null;
@@ -293,7 +293,14 @@ export default function CoursesPage() {
                       aria-haspopup={isExtracting || extractionProblem ? "dialog" : undefined}
                       className="grid flex-1 grid-cols-[1fr_4.5rem_4.5rem_4.5rem_7rem_7rem_3rem] items-center gap-4 self-stretch text-sm"
                     >
-                      <span className="font-medium text-hestia-text">{course.name}</span>
+                      <span className="font-medium text-hestia-text">
+                        {course.name}
+                        {course.personal && (
+                          <span className="ml-2 rounded border border-hestia-border px-1.5 py-0.5 text-xs font-normal text-hestia-text-muted">
+                            personal
+                          </span>
+                        )}
+                      </span>
                       <span className="text-right tabular-nums text-hestia-text-muted">
                         {course.documentCount ?? 0}
                       </span>
@@ -353,16 +360,19 @@ export default function CoursesPage() {
                       >
                         <path d="M13.5 3.5l3 3L7 16l-3.7.7L4 13z" />
                       </RowAction>
-                      <RowAction
-                        label="Delete course"
-                        onClick={() => {
-                          deleteMutation.reset();
-                          setCourseToDelete(course);
-                        }}
-                        className="hover:bg-hestia-danger hover:text-hestia-on-danger"
-                      >
-                        <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
-                      </RowAction>
+                      {/* The personal catch-all course holds the instructor's own goals; it cannot be deleted. */}
+                      {!course.personal && (
+                        <RowAction
+                          label="Delete course"
+                          onClick={() => {
+                            deleteMutation.reset();
+                            setCourseToDelete(course);
+                          }}
+                          className="hover:bg-hestia-danger hover:text-hestia-on-danger"
+                        >
+                          <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" />
+                        </RowAction>
+                      )}
                     </span>
                   </div>
                   {expanded && course.id != null && (
@@ -433,7 +443,7 @@ export default function CoursesPage() {
           confirmLabel={deleteMutation.isPending ? "Deleting…" : "Delete course"}
           busy={deleteMutation.isPending}
           error={deleteMutation.isError ? (deleteMutation.error as Error).message : undefined}
-          onConfirm={() => deleteMutation.mutate(courseToDelete.id as number)}
+          onConfirm={() => deleteMutation.mutate(courseToDelete.id as string)}
           onCancel={() => setCourseToDelete(null)}
         />
       )}

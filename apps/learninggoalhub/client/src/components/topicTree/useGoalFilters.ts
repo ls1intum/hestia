@@ -37,7 +37,7 @@ export type FilterChip = {
  * their non-matching ancestors as dimmed context. Also the fold state of that list, which lasts
  * only while the same filter holds.
  */
-export function useGoalFilters(rows: Row[], byId: Map<number, Row>) {
+export function useGoalFilters(rows: Row[], byId: Map<string, Row>) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>(noFilters);
 
@@ -71,11 +71,11 @@ export function useGoalFilters(rows: Row[], byId: Map<number, Row>) {
   const { matchIds, contextIds } = useMemo(() => {
     if (!filtering)
       return {
-        matchIds: null as Set<number> | null,
-        contextIds: new Set<number>(),
+        matchIds: null as Set<string> | null,
+        contextIds: new Set<string>(),
       };
     const matches = new Set(rows.filter((row) => matchesRow(row)).map((r) => r.id));
-    const context = new Set<number>();
+    const context = new Set<string>();
     for (const id of matches) {
       let parent = byId.get(id)?.parent ?? null;
       while (parent != null && !matches.has(parent)) {
@@ -97,20 +97,20 @@ export function useGoalFilters(rows: Row[], byId: Map<number, Row>) {
     search.trim(),
     Object.entries(filters).map(([key, values]) => [key, [...values].sort()]),
   ]);
-  const [filterFold, setFilterFold] = useState<{ signature: string; collapsed: Set<number> }>({
+  const [filterFold, setFilterFold] = useState<{ signature: string; collapsed: Set<string> }>({
     signature: "",
     collapsed: new Set(),
   });
   const filterCollapsed =
     filterFold.signature === filterSignature ? filterFold.collapsed : NO_IDS;
-  const setFilterCollapsed = (update: (collapsed: Set<number>) => Set<number>) =>
+  const setFilterCollapsed = (update: (collapsed: Set<string>) => Set<string>) =>
     setFilterFold((prev) => ({
       signature: filterSignature,
       collapsed: update(prev.signature === filterSignature ? prev.collapsed : new Set()),
     }));
   // How many children a row shows in the filtered list, which decides whether it gets a caret.
   const filteredChildCount = useMemo(() => {
-    const map = new Map<number, number>();
+    const map = new Map<string, number>();
     if (!matchIds) return map;
     for (const row of rows) {
       if (row.parent == null || !(matchIds.has(row.id) || contextIds.has(row.id))) continue;

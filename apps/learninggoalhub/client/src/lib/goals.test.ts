@@ -17,7 +17,7 @@ function goal(
 ): LearningGoal {
   const { kinds = [], parent, ...rest } = fields;
   return {
-    id: nextId++,
+    id: `g${nextId++}`,
     text: "goal",
     origin: "EXTRACTED",
     role: "SKILL",
