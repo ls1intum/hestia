@@ -72,7 +72,7 @@ public final class OrgContext {
      */
     public static Runnable wrap(Runnable task) {
         UUID orgId = CURRENT.get();
-        SecurityContext security = SecurityContextHolder.getContext();
+        SecurityContext security = copyOfSecurityContext();
         return () -> {
             SecurityContext previous = SecurityContextHolder.getContext();
             SecurityContextHolder.setContext(security);
@@ -87,7 +87,7 @@ public final class OrgContext {
     /** {@link #wrap(Runnable)} for a task with a result. */
     public static <T> Callable<T> wrap(Callable<T> task) {
         UUID orgId = CURRENT.get();
-        SecurityContext security = SecurityContextHolder.getContext();
+        SecurityContext security = copyOfSecurityContext();
         return () -> {
             SecurityContext previous = SecurityContextHolder.getContext();
             SecurityContextHolder.setContext(security);
@@ -97,6 +97,13 @@ public final class OrgContext {
                 SecurityContextHolder.setContext(previous);
             }
         };
+    }
+
+    /** A copy, so later changes to the caller's context do not reach the task. */
+    private static SecurityContext copyOfSecurityContext() {
+        SecurityContext copy = SecurityContextHolder.createEmptyContext();
+        copy.setAuthentication(SecurityContextHolder.getContext().getAuthentication());
+        return copy;
     }
 
     /** For executors: every task runs for the organisation of the thread that submitted it. */
