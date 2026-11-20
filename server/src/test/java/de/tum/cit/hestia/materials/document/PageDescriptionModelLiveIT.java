@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.materials.document;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.tum.cit.hestia.materials.llm.LiveLogosGateway;
+import de.tum.cit.hestia.materials.llm.LlmClient;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -16,14 +18,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.content.Media;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.util.MimeTypeUtils;
 
 /**
  * Compares vision models and batch sizes for {@link PageDescriptionService}'s figure descriptions,
@@ -58,7 +53,7 @@ class PageDescriptionModelLiveIT {
             List<Integer> pages = pagesToDescribe(pdf.getNumberOfPages());
             // Rendering is deterministic and model-independent, so every combination sees the same
             // images and the measured time is the provider's alone.
-            Map<Integer, Media> rendered = new LinkedHashMap<>();
+            Map<Integer, LlmClient.Image> rendered = new LinkedHashMap<>();
             for (int page : pages) {
                 rendered.put(page, render(renderer, page));
             }
@@ -79,14 +74,10 @@ class PageDescriptionModelLiveIT {
         }
     }
 
-    private Result run(String model, int batchSize, List<Integer> pages, Map<Integer, Media> rendered) {
-        ChatClient chatClient = ChatClient.builder(OpenAiChatModel.builder()
-                .openAiApi(OpenAiApi.builder()
-                        .baseUrl(System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"))
-                        .apiKey(System.getenv("LOGOS_API_KEY"))
-                        .build())
-                .defaultOptions(OpenAiChatOptions.builder().model(model).build())
-                .build()).build();
+    private Result run(String model, int batchSize, List<Integer> pages, Map<Integer, LlmClient.Image> rendered) {
+        LlmClient llm = new LlmClient(new LiveLogosGateway(
+                System.getenv().getOrDefault("LOGOS_BASE_URL", "https://logos.aet.cit.tum.de"),
+                System.getenv("LOGOS_API_KEY"), model), (m, p, c, r) -> false);
 
         System.out.println("\n===== " + model + " (batch " + batchSize + ") =====");
         List<PageDescriptionService.PageReply> all = new ArrayList<>();
@@ -96,12 +87,11 @@ class PageDescriptionModelLiveIT {
             List<Integer> batch = pages.subList(start, Math.min(start + batchSize, pages.size()));
             long batchStarted = System.nanoTime();
             try {
-                List<PageDescriptionService.PageReply> replies = chatClient.prompt()
-                        .user(u -> u.text(PageDescriptionService.PROMPT.formatted(batch.stream()
-                                        .map(String::valueOf).reduce((a, b) -> a + ", " + b).orElse("")))
-                                .media(batch.stream().map(rendered::get).toArray(Media[]::new)))
-                        .call()
-                        .entity(new ParameterizedTypeReference<List<PageDescriptionService.PageReply>>() {});
+                List<PageDescriptionService.PageReply> replies = llm.entity(
+                        LlmClient.LlmRequest.of("page-description", PageDescriptionService.PROMPT.formatted(
+                                        batch.stream().map(String::valueOf).reduce((a, b) -> a + ", " + b).orElse("")))
+                                .withImages(batch.stream().map(rendered::get).toList()).withModel(model),
+                        new ParameterizedTypeReference<List<PageDescriptionService.PageReply>>() {});
                 all.addAll(replies == null ? List.of() : replies);
                 System.out.printf("  pages %d-%d: %d replies in %.1f s%n", batch.getFirst(), batch.getLast(),
                         replies == null ? 0 : replies.size(), seconds(batchStarted));
@@ -119,11 +109,11 @@ class PageDescriptionModelLiveIT {
         return Result.of(model, batchSize, pages.size(), elapsed, all, failures);
     }
 
-    private static Media render(PDFRenderer renderer, int page) throws Exception {
+    private static LlmClient.Image render(PDFRenderer renderer, int page) throws Exception {
         BufferedImage image = renderer.renderImageWithDPI(page - 1, PageDescriptionService.RENDER_DPI);
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(image, "png", png);
-        return new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png.toByteArray()));
+        return LlmClient.Image.png(png.toByteArray());
     }
 
     private static List<Integer> pagesToDescribe(int pageCount) {

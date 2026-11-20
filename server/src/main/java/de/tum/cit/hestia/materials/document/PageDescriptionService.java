@@ -19,14 +19,11 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.MimeTypeUtils;
 
 /** Describes eligible text-poor PDF pages without changing the document's extracted text. */
 @Service
@@ -161,13 +158,13 @@ public class PageDescriptionService {
     private List<PageReply> describeBatch(Document document, PDFRenderer renderer,
                                           List<Integer> batch, String languageName) {
         try {
-            List<Media> media;
+            List<LlmClient.Image> media;
             synchronized (renderer) {
                 media = renderPages(renderer, batch);
             }
-            return llm.entity(LlmRequest.of(PROMPT.formatted(languageName, batch.stream()
+            return llm.entity(LlmRequest.of("page-description", PROMPT.formatted(languageName, batch.stream()
                                     .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))))
-                            .withMedia(media)
+                            .withImages(media)
                             .withModel(visionModel),
                     new ParameterizedTypeReference<List<PageReply>>() {});
         } catch (IOException | RuntimeException e) {
@@ -200,13 +197,13 @@ public class PageDescriptionService {
         return nonWhitespace == 0 ? 0.0 : (double) alphanumeric / nonWhitespace;
     }
 
-    private List<Media> renderPages(PDFRenderer renderer, List<Integer> pages) throws IOException {
-        List<Media> media = new ArrayList<>(pages.size());
+    private List<LlmClient.Image> renderPages(PDFRenderer renderer, List<Integer> pages) throws IOException {
+        List<LlmClient.Image> media = new ArrayList<>(pages.size());
         for (int page : pages) {
             BufferedImage image = renderer.renderImageWithDPI(page - 1, RENDER_DPI);
             ByteArrayOutputStream png = new ByteArrayOutputStream();
             ImageIO.write(image, "png", png);
-            media.add(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png.toByteArray())));
+            media.add(LlmClient.Image.png(png.toByteArray()));
         }
         return media;
     }

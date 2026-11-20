@@ -1,12 +1,12 @@
 # AI Integration
 
-Workshopper uses Spring AI (via the `libs:shared-llm` module) for the steps that need language: checking goals, writing the timetable content and writing slides. Everything structural is plain code: the session skeleton, which activity a goal gets, PPTX/PDF assembly and template branding.
+The teaching module calls models through the server's `ai` module (`LlmGateway`) for the steps that need language: checking goals, writing the timetable content and writing slides. Everything structural is plain code: the session skeleton, which activity a goal gets, PPTX/PDF assembly and template branding.
 
 ## Where the LLM is called
 
 All calls go through `LlmService.callWithStructuredOutput(systemTemplate, userTemplate, model, converter, useSecondary)`:
 1. It loads `/server/src/main/resources/prompts/<name>.st` and renders it with Spring AI's `PromptTemplate`, filling `{placeholders}` from the model map.
-2. It sends the request, and parses the JSON answer into a DTO with `BeanOutputConverter`.
+2. It sends the request through `LlmGateway` (module `teaching`, purpose `refine-goal`, `fix-goals-grammar`, `session-title`, `timetable-block` or `slide-block`), and parses the JSON answer into a DTO with `BeanOutputConverter`.
 
 | Feature | Endpoint | Code | Prompt templates |
 |---|---|---|---|
@@ -51,5 +51,5 @@ Each slide is a map with a `layout` (which slide of the default template it uses
 * **Provider:** requests go to the TUM AET Logos gateway (the `shared-llm` default). The API key comes from `LOGOS_API_KEY`.
 * **Secondary model:** `LLM_SECONDARY_MODEL` (property `llm.secondary-model`) optionally sets a second model, used for slide generation; it must be a Logos model id.
 * **Temperature:** the JSON-returning calls use the shared default (temperature 0.0) so the output parses reliably.
-* **Timeouts:** one model call may take up to 90 seconds (`LLM_READ_TIMEOUT`, property `spring.http.client.read-timeout`) and is retried once after a short wait (`spring.ai.retry.*` in `application.yml`; Spring AI's own default is 10 attempts with waits of up to 3 minutes). A hanging call therefore fails within about 3 minutes and the user sees an error, instead of the request, and the session's generation lock, being blocked indefinitely. `LlmTimeoutTest` checks this against a model server that never answers.
+* **Timeouts:** one model call may take up to 90 seconds (`teaching.llm.read-timeout`, default 90s; connect timeout `teaching.llm.connect-timeout`, default 10s) and is attempted twice (`teaching.llm.retry.max-attempts`); `LlmService` passes these limits with every call as `LlmRequest.Limits`. A hanging call therefore fails within about 3 minutes and the user sees an error, instead of the request, and the session's generation lock, being blocked indefinitely. `LlmTimeoutTest` checks that the limits are sent with each call; the gateway enforces them.
 * **Limits per user:** see `UsageGuard` in [API.md](API.md).

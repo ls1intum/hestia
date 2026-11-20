@@ -8,9 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -19,15 +18,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.ArgumentMatchers;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 class PageDescriptionServiceTest {
 
@@ -42,21 +36,21 @@ class PageDescriptionServiceTest {
     @Test
     void skipsBlankRawTextWithoutRequestingDescriptions() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        PageDescriptionService service = service(chatClient, repository);
+        FakeLlm llm = FakeLlm.replying();
+        PageDescriptionService service = service(llm, repository);
         Document document = document(1L, "   ", new int[]{0, 3});
 
         service.describeEligiblePages(document, pdf(1), "en", "English", Runnable::run);
 
         verify(repository, never()).findByDocumentId(any());
-        verify(chatClient, never()).prompt();
+        assertThat(llm.requests()).isEmpty();
     }
 
     @Test
     void doesNotRequestAlreadyDescribedPages() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        PageDescriptionService service = service(chatClient, repository);
+        FakeLlm llm = FakeLlm.replying();
+        PageDescriptionService service = service(llm, repository);
         Document document = document(1L, "a", new int[]{0, 1});
         PageDescription existing = new PageDescription(document, 1, "already", "m", true,
                 "en", PageDescriptionService.FIGURE_PROMPT_VERSION);
@@ -64,20 +58,16 @@ class PageDescriptionServiceTest {
 
         service.describeEligiblePages(document, pdf(1), "en", "English", Runnable::run);
 
-        verify(chatClient, never()).prompt();
+        assertThat(llm.requests()).isEmpty();
     }
 
     @Test
     void failedFirstBatchDoesNotPreventSecondBatch() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(repository.findByDocumentId(1L)).thenReturn(List.of());
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenThrow(new IllegalStateException("first batch"))
-                .thenReturn(List.of(new PageDescriptionService.PageReply(9, "diagram explanation", true)));
-        PageDescriptionService service = service(chatClient, repository);
+                when(repository.findByDocumentId(1L)).thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(new IllegalStateException("first batch"),
+                List.of(new PageDescriptionService.PageReply(9, "diagram explanation", true)));
+        PageDescriptionService service = service(llm, repository);
         Document document = document(1L, "x".repeat(9), offsets(9));
 
         service.describeEligiblePages(document, pdf(9), "en", "English", Runnable::run);
@@ -94,8 +84,7 @@ class PageDescriptionServiceTest {
     @Test
     void describesBatchesConcurrently() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(repository.findByDocumentId(1L)).thenReturn(List.of());
+                when(repository.findByDocumentId(1L)).thenReturn(List.of());
 
         // Three batches of eight pages. Each call blocks until all three have arrived, so the test
         // can only finish if they are genuinely in flight together.
@@ -103,10 +92,7 @@ class PageDescriptionServiceTest {
         CountDownLatch allArrived = new CountDownLatch(batches);
         AtomicInteger peakInFlight = new AtomicInteger();
         AtomicInteger inFlight = new AtomicInteger();
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenAnswer(invocation -> {
+        FakeLlm llm = FakeLlm.answering(request -> {
                     peakInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
                     allArrived.countDown();
                     if (!allArrived.await(5, TimeUnit.SECONDS)) {
@@ -120,7 +106,7 @@ class PageDescriptionServiceTest {
         Document document = document(1L, "x".repeat(pages), offsets(pages));
         ExecutorService executor = Executors.newFixedThreadPool(batches);
         try {
-            service(chatClient, repository)
+            service(llm, repository)
                     .describeEligiblePages(document, pdf(pages), "en", "English", executor);
         } finally {
             executor.shutdownNow();
@@ -133,8 +119,7 @@ class PageDescriptionServiceTest {
     @Test
     void keepsPageOrderWhenBatchesFinishOutOfOrder() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(repository.findByDocumentId(1L)).thenReturn(List.of());
+                when(repository.findByDocumentId(1L)).thenReturn(List.of());
 
         int pages = PageDescriptionService.BATCH_SIZE * 2;
         // Every call answers for every page; each batch keeps only the pages it asked for, so the
@@ -143,10 +128,7 @@ class PageDescriptionServiceTest {
                 .mapToObj(page -> new PageDescriptionService.PageReply(page, "description " + page, true))
                 .toList();
         AtomicInteger invocations = new AtomicInteger();
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenAnswer(invocation -> {
+        FakeLlm llm = FakeLlm.answering(request -> {
                     if (invocations.getAndIncrement() == 0) {
                         Thread.sleep(60);  // the first batch dispatched is the last to answer
                     }
@@ -156,7 +138,7 @@ class PageDescriptionServiceTest {
         Document document = document(1L, "x".repeat(pages), offsets(pages));
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            service(chatClient, repository)
+            service(llm, repository)
                     .describeEligiblePages(document, pdf(pages), "en", "English", executor);
         } finally {
             executor.shutdownNow();
@@ -172,15 +154,11 @@ class PageDescriptionServiceTest {
     @Test
     void dropsUnrequestedAndBlankReplies() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(repository.findByDocumentId(1L)).thenReturn(List.of());
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(
+                when(repository.findByDocumentId(1L)).thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of(
                         new PageDescriptionService.PageReply(1, " ", true),
                         new PageDescriptionService.PageReply(3, "not requested", true)));
-        PageDescriptionService service = service(chatClient, repository);
+        PageDescriptionService service = service(llm, repository);
         Document document = document(1L, "xx", new int[]{0, 1, 2});
 
         service.describeEligiblePages(document, pdf(2), "en", "English", Runnable::run);
@@ -191,16 +169,12 @@ class PageDescriptionServiceTest {
     @Test
     void storesTheModelsTeachesContentVerdictAndDefaultsItToTrue() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        when(repository.findByDocumentId(1L)).thenReturn(List.of());
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(
+                when(repository.findByDocumentId(1L)).thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of(
                         new PageDescriptionService.PageReply(1, "A title slide.", false),
                         new PageDescriptionService.PageReply(2, "A state machine diagram.", true),
                         new PageDescriptionService.PageReply(3, "A terse reply.", null)));
-        PageDescriptionService service = service(chatClient, repository);
+        PageDescriptionService service = service(llm, repository);
         Document document = document(1L, "xxx", new int[]{0, 1, 2, 3});
 
         service.describeEligiblePages(document, pdf(3), "de", "German", Runnable::run);
@@ -220,17 +194,13 @@ class PageDescriptionServiceTest {
     @Test
     void refreshesStaleRowsInPlaceWhenLanguageOrPromptVersionDiffers() throws Exception {
         PageDescriptionRepository repository = mock(PageDescriptionRepository.class);
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        Document document = document(1L, "x", new int[]{0, 1});
+                Document document = document(1L, "x", new int[]{0, 1});
         PageDescription existing = new PageDescription(document, 1, "English description", "old", true,
                 "en", "figure-v1");
         when(repository.findByDocumentId(1L)).thenReturn(List.of(existing));
-        when(chatClient.prompt().options(any(ChatOptions.class))
-                .user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())
-                .call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(new PageDescriptionService.PageReply(1, "Deutsche Beschreibung", true)));
+        FakeLlm llm = FakeLlm.replying(List.of(new PageDescriptionService.PageReply(1, "Deutsche Beschreibung", true)));
 
-        service(chatClient, repository).describeEligiblePages(document, pdf(1), "de", "German", Runnable::run);
+        service(llm, repository).describeEligiblePages(document, pdf(1), "de", "German", Runnable::run);
 
         verify(repository).save(existing);
         assertThat(existing.getDescription()).isEqualTo("Deutsche Beschreibung");
@@ -238,10 +208,8 @@ class PageDescriptionServiceTest {
         assertThat(existing.getPromptVersion()).isEqualTo(PageDescriptionService.FIGURE_PROMPT_VERSION);
     }
 
-    private static PageDescriptionService service(ChatClient chatClient, PageDescriptionRepository repository) {
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        return new PageDescriptionService(new LlmClient(builder), repository, "vision-test-model");
+    private static PageDescriptionService service(FakeLlm llm, PageDescriptionRepository repository) {
+        return new PageDescriptionService(llm.client(), repository, "vision-test-model");
     }
 
     private static Document document(Long id, String rawText, int[] offsets) {

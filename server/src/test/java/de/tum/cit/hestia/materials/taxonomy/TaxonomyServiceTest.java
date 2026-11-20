@@ -1,47 +1,19 @@
 package de.tum.cit.hestia.materials.taxonomy;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 class TaxonomyServiceTest {
 
-    /**
-     * The request spec returns itself from options() so the whole call chain is one mock.
-     * Rebuilding the chain inside a verify() would otherwise be recorded as another invocation
-     * and make every count off by one.
-     */
-    private static ChatClient.ChatClientRequestSpec stubSpec(ChatClient chatClient) {
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.options(any(ChatOptions.class))).thenReturn(spec);
-        return spec;
-    }
-
     @Test
-    void returnsParsedClassificationFromChatClient() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-
+    void returnsParsedClassificationFromTheModel() {
         TaxonomyClassification expected = new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(expected);
+        FakeLlm llm = FakeLlm.replying(expected);
 
-        TaxonomyService service = new TaxonomyService(new LlmClient(builder), 0.0);
+        TaxonomyService service = new TaxonomyService(llm.client(), 0.0);
 
         TaxonomyClassification result = service.classify("Apply test-driven development to a new feature.");
 
@@ -60,53 +32,32 @@ class TaxonomyServiceTest {
 
     @Test
     void passesGoalTextIntoPrompt() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(new TaxonomyClassification(BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL));
+        FakeLlm llm = FakeLlm.replying(new TaxonomyClassification(BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL));
 
-        clearInvocations(spec);
-        new TaxonomyService(new LlmClient(builder), 0.0).classify("UNIQUE-GOAL-MARKER-77");
+        new TaxonomyService(llm.client(), 0.0).classify("UNIQUE-GOAL-MARKER-77");
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue()).contains("UNIQUE-GOAL-MARKER-77");
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt()).contains("UNIQUE-GOAL-MARKER-77");
     }
 
     @Test
     void appliesModelOverrideWhenProvided() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.MULTISTRUCTURAL));
+        FakeLlm llm = FakeLlm.replying(new TaxonomyClassification(BloomLevel.ANALYZE, SoloLevel.MULTISTRUCTURAL));
 
-        clearInvocations(spec);
-        new TaxonomyService(new LlmClient(builder), 0.0).classify("goal text", "qwen3.6-35b-a3b");
+        new TaxonomyService(llm.client(), 0.0).classify("goal text", "qwen3.6-35b-a3b");
 
-        ArgumentCaptor<ChatOptions> optionsCaptor = ArgumentCaptor.forClass(ChatOptions.class);
-        verify(spec).options(optionsCaptor.capture());
-        assertThat(optionsCaptor.getValue().getModel()).isEqualTo("qwen3.6-35b-a3b");
+        assertThat(llm.only().model().id()).isEqualTo("qwen3.6-35b-a3b");
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void classifyBatchAlignsResultsToGoalsByIndex() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-
         // Returned out of order and missing the goal at index 2 to prove index-based alignment.
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of(
+        FakeLlm llm = FakeLlm.replying(List.of(
                         new BatchTaxonomyItem(3, BloomLevel.ANALYZE, SoloLevel.RELATIONAL),
                         new BatchTaxonomyItem(1, BloomLevel.REMEMBER, SoloLevel.UNISTRUCTURAL)));
 
-        List<TaxonomyClassification> result = new TaxonomyService(new LlmClient(builder), 0.0)
+        List<TaxonomyClassification> result = new TaxonomyService(llm.client(), 0.0)
                 .classifyBatch(List.of("goal one", "goal two", "goal three"), null);
 
         assertThat(result).hasSize(3);
@@ -117,28 +68,21 @@ class TaxonomyServiceTest {
 
     @Test
     void classifyBatchReturnsEmptyForEmptyInput() {
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(mock(ChatClient.class, RETURNS_DEEP_STUBS));
+        FakeLlm llm = FakeLlm.replying();
 
-        assertThat(new TaxonomyService(new LlmClient(builder), 0.0).classifyBatch(List.of(), null)).isEmpty();
+        assertThat(new TaxonomyService(llm.client(), 0.0).classifyBatch(List.of(), null)).isEmpty();
+        assertThat(llm.requests()).isEmpty();
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void classifyBatchNumbersEveryGoalInPrompt() {
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.build()).thenReturn(chatClient);
-        ChatClient.ChatClientRequestSpec spec = stubSpec(chatClient);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
+        FakeLlm llm = FakeLlm.replying(List.of());
 
-        clearInvocations(spec);
-        new TaxonomyService(new LlmClient(builder), 0.0).classifyBatch(List.of("first goal", "second goal"), null);
+        new TaxonomyService(llm.client(), 0.0).classifyBatch(List.of("first goal", "second goal"), null);
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(spec).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue())
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt())
                 .contains("1. first goal")
                 .contains("2. second goal");
     }
