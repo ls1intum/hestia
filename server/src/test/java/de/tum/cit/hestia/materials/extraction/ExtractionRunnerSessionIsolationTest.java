@@ -13,8 +13,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContentRepository;
@@ -24,9 +24,6 @@ import de.tum.cit.hestia.materials.document.HighlightGeometryService;
 import de.tum.cit.hestia.materials.document.LanguageDetectionService;
 import de.tum.cit.hestia.materials.document.PageDescriptionRepository;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
-import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.materials.llm.FakeLlm;
@@ -39,6 +36,8 @@ import org.junit.jupiter.api.Test;
  */
 class ExtractionRunnerSessionIsolationTest {
 
+    private static final java.util.UUID COURSE = java.util.UUID.randomUUID();
+
     @Test
     void oneFailedSessionFailsTheRunAndNamesTheMissingSession() {
         // The first session's reply is unparsable; the second must still be requested.
@@ -48,13 +47,13 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(llm, auditService, progressTracker);
 
-        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
+        assertThatThrownBy(() -> runner.runForCourse(COURSE, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("41.pdf")
                 .hasMessageContaining("Retry the extraction");
 
         assertThat(llm.requests()).hasSize(2);
-        ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(1L).orElseThrow();
+        ExtractionProgressTracker.Snapshot snapshot = progressTracker.snapshot(COURSE).orElseThrow();
         assertThat(snapshot.failedSessions()).isEqualTo(1);
         assertThat(snapshot.failedSessionNames()).containsExactly("41.pdf");
         verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
@@ -70,7 +69,7 @@ class ExtractionRunnerSessionIsolationTest {
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
         ExtractionRunner runner = runner(llm, auditService, progressTracker);
 
-        assertThatThrownBy(() -> runner.runForCourse(1L, null, false))
+        assertThatThrownBy(() -> runner.runForCourse(COURSE, null, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no learning goals");
         verify(auditService).finish(eq(1L), eq(ExtractionStatus.FAILED),
@@ -79,46 +78,41 @@ class ExtractionRunnerSessionIsolationTest {
 
     private static ExtractionRunner runner(FakeLlm llm, ExtractionRunAuditService auditService,
                                            ExtractionProgressTracker progressTracker) {
-        CourseRepository courseRepository = mock(CourseRepository.class);
+        MaterialSettingsService settingsService = mock(MaterialSettingsService.class);
         DocumentRepository documentRepository = mock(DocumentRepository.class);
-        LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
+        de.tum.cit.hestia.materials.goal.PlacedGoals placedGoals = mock(de.tum.cit.hestia.materials.goal.PlacedGoals.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
 
-        Course course = mock(Course.class);
-        when(course.getId()).thenReturn(1L);
-        when(course.getName()).thenReturn("Maths-heavy course");
-        when(course.isFiguresEnabled()).thenReturn(false);
-        when(courseRepository.findOrThrow(1L)).thenReturn(course);
+        when(settingsService.context(COURSE))
+                .thenReturn(new CourseContext(COURSE, "Maths-heavy course", null, false));
 
         // No sections, so each document is exactly one session. Both documents are stubbed before
         // the call below: nesting mock setup inside a when() argument breaks the outer stubbing.
         Document first = document(41L, "erste Vorlesung");
         Document second = document(42L, "zweite Vorlesung");
-        when(documentRepository.findByCourseId(1L)).thenReturn(List.of(first, second));
+        when(documentRepository.findByCourseId(COURSE)).thenReturn(List.of(first, second));
         when(documentSectionRepository.findByDocumentIdOrderByOrdinal(anyLong())).thenReturn(List.of());
 
-        when(goalRepository.findByCourseIdAndOriginIn(eq(1L), any())).thenReturn(List.of());
-        when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(List.of());
-        when(hierarchyNodeRepository.existsByCourseIdAndLevel(eq(1L), any())).thenReturn(false);
-        when(hierarchyNodeRepository.findByCourseId(1L)).thenReturn(List.of());
+        when(placedGoals.list(COURSE)).thenReturn(List.of());
+        when(hierarchyNodeRepository.existsByCourseIdAndLevel(eq(COURSE), any())).thenReturn(false);
+        when(hierarchyNodeRepository.findByCourseId(COURSE)).thenReturn(List.of());
         when(hierarchyNodeRepository.save(any(HierarchyNode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
+        when(auditService.start(eq(COURSE), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
                 llm.client(), mock(LanguageDetectionService.class), progressTracker, 0.2);
 
         return new ExtractionRunner(
-                courseRepository,
+                settingsService,
                 documentRepository,
                 mock(DocumentContentRepository.class),
                 mock(PageDescriptionService.class),
                 mock(PageDescriptionRepository.class),
-                goalRepository,
-                mock(GoalSourceRepository.class),
-                mock(GoalRelationshipRepository.class),
-                new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 12_000, 3_000, 3_000),
+                placedGoals,
+                mock(de.tum.cit.hestia.core.LearningGoalApi.class),
+                new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class), mock(HighlightGeometryService.class), placedGoals, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
                 mock(TopicTreeService.class),

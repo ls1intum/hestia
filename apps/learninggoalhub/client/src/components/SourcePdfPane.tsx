@@ -143,7 +143,7 @@ export default function SourcePdfPane({
   onClose,
   headerExtra,
 }: {
-  courseId: number | string;
+  courseId: string;
   source: GoalSource;
   onClose: () => void;
   /** Extra lines under the document name and page, such as the source's session. */
@@ -502,7 +502,7 @@ function DocumentName({
   displayName,
   filename,
 }: {
-  courseId: number | string;
+  courseId: string;
   documentId: number | undefined;
   displayName: string | undefined;
   filename: string | undefined;
@@ -513,7 +513,7 @@ function DocumentName({
   const rename = useMutation({
     mutationFn: async (next: string | null) => {
       const { error, response } = await api.PATCH("/api/courses/{courseId}/documents/{documentId}", {
-        params: { path: { courseId: Number(courseId), documentId: documentId! } },
+        params: { path: { courseId, documentId: documentId! } },
         body: { displayName: next ?? undefined },
         // openapi-fetch drops undefined body keys, but clearing needs an explicit null.
         bodySerializer: (body) => JSON.stringify({ displayName: body?.displayName ?? null }),
@@ -522,8 +522,8 @@ function DocumentName({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["goals", Number(courseId)] }),
-        queryClient.invalidateQueries({ queryKey: ["documents", Number(courseId)] }),
+        queryClient.invalidateQueries({ queryKey: ["goals", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["documents", courseId] }),
       ]);
       setDraft(null);
     },

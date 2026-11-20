@@ -14,7 +14,7 @@ export function RunFailure({
 }: {
   status?: ExtractionStatus;
   error?: string | null;
-  courseId?: number | null;
+  courseId?: string | null;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();

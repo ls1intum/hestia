@@ -15,8 +15,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.topictree.TopicTreeService;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContent;
 import de.tum.cit.hestia.materials.document.DocumentContentRepository;
@@ -27,18 +27,20 @@ import de.tum.cit.hestia.materials.document.LanguageDetectionService;
 import de.tum.cit.hestia.materials.document.PageDescription;
 import de.tum.cit.hestia.materials.document.PageDescriptionRepository;
 import de.tum.cit.hestia.materials.document.PageDescriptionService;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
-import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
+import de.tum.cit.hestia.core.LearningGoalApi;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ExtractionRunnerFigureSettingTest {
+
+    private static final UUID COURSE = UUID.randomUUID();
 
     @Test
     void disabledFiguresSkipDescriptionAndKeepEvidenceOutOfExtractionPrompt() {
@@ -68,7 +70,7 @@ class ExtractionRunnerFigureSettingTest {
 
     /** The stubbed model names no outcome, so the run fails after the prompt this test inspects. */
     private static void runUntilTheEmptyReplyFails(Fixture fixture) {
-        assertThatThrownBy(() -> fixture.runner().runForCourse(1L, null, false))
+        assertThatThrownBy(() -> fixture.runner().runForCourse(COURSE, null, false))
                 .hasMessageContaining("no learning goals");
     }
 
@@ -79,7 +81,7 @@ class ExtractionRunnerFigureSettingTest {
 
     private static void verifyRunParams(ExtractionRunAuditService auditService, boolean figuresEnabled) {
         ArgumentCaptor<String> paramsCaptor = ArgumentCaptor.forClass(String.class);
-        verify(auditService).start(eq(1L), isNull(), eq(SessionExtractionService.PROMPT_VERSION),
+        verify(auditService).start(eq(COURSE), isNull(), eq(SessionExtractionService.PROMPT_VERSION),
                 paramsCaptor.capture());
         assertThat(paramsCaptor.getValue())
                 .contains("\"figures-enabled\":" + figuresEnabled)
@@ -87,25 +89,21 @@ class ExtractionRunnerFigureSettingTest {
     }
 
     private static Fixture fixture(boolean figuresEnabled) {
-        CourseRepository courseRepository = mock(CourseRepository.class);
+        MaterialSettingsService settingsService = mock(MaterialSettingsService.class);
         DocumentRepository documentRepository = mock(DocumentRepository.class);
         DocumentContentRepository documentContentRepository = mock(DocumentContentRepository.class);
         PageDescriptionService pageDescriptionService = mock(PageDescriptionService.class);
         PageDescriptionRepository pageDescriptionRepository = mock(PageDescriptionRepository.class);
-        LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
-        GoalSourceRepository goalSourceRepository = mock(GoalSourceRepository.class);
-        GoalRelationshipRepository goalRelationshipRepository = mock(GoalRelationshipRepository.class);
+        PlacedGoals placedGoals = mock(PlacedGoals.class);
+        LearningGoalApi goalApi = mock(LearningGoalApi.class);
         ExtractionRunAuditService auditService = mock(ExtractionRunAuditService.class);
         DocumentSectionRepository documentSectionRepository = mock(DocumentSectionRepository.class);
         HierarchyNodeRepository hierarchyNodeRepository = mock(HierarchyNodeRepository.class);
         HighlightGeometryService highlightGeometryService = mock(HighlightGeometryService.class);
         ExtractionProgressTracker progressTracker = new ExtractionProgressTracker();
 
-        Course course = mock(Course.class);
-        when(course.getId()).thenReturn(1L);
-        when(course.getName()).thenReturn("Figure course");
-        when(course.isFiguresEnabled()).thenReturn(figuresEnabled);
-        when(courseRepository.findOrThrow(1L)).thenReturn(course);
+        when(settingsService.context(COURSE))
+                .thenReturn(new CourseContext(COURSE, "Figure course", null, figuresEnabled));
 
         String text = "text from the lecture";
         Document document = mock(Document.class);
@@ -113,16 +111,15 @@ class ExtractionRunnerFigureSettingTest {
         when(document.getFilename()).thenReturn("lecture.pdf");
         when(document.getRawText()).thenReturn(text);
         when(document.getPageOffsets()).thenReturn(new int[]{0, text.length()});
-        when(documentRepository.findByCourseId(1L)).thenReturn(List.of(document));
+        when(documentRepository.findByCourseId(COURSE)).thenReturn(List.of(document));
 
-        when(goalRepository.findByCourseIdAndOriginIn(eq(1L), any())).thenReturn(List.of());
-        when(goalRepository.findByCourseIdAndHierarchyNodeIsNotNull(1L)).thenReturn(List.of());
-        when(hierarchyNodeRepository.existsByCourseIdAndLevel(eq(1L), any())).thenReturn(false);
-        when(hierarchyNodeRepository.findByCourseId(1L)).thenReturn(List.of());
+        when(placedGoals.list(COURSE)).thenReturn(List.of());
+        when(hierarchyNodeRepository.existsByCourseIdAndLevel(eq(COURSE), any())).thenReturn(false);
+        when(hierarchyNodeRepository.findByCourseId(COURSE)).thenReturn(List.of());
         when(hierarchyNodeRepository.save(any(HierarchyNode.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(documentSectionRepository.findByDocumentIdOrderByOrdinal(42L)).thenReturn(List.of());
-        when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
+        when(auditService.start(eq(COURSE), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
         FakeLlm llm = FakeLlm.replying(List.of());
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
@@ -141,15 +138,14 @@ class ExtractionRunnerFigureSettingTest {
         }
 
         ExtractionRunner runner = new ExtractionRunner(
-                courseRepository,
+                settingsService,
                 documentRepository,
                 documentContentRepository,
                 pageDescriptionService,
                 pageDescriptionRepository,
-                goalRepository,
-                goalSourceRepository,
-                goalRelationshipRepository,
-                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, goalSourceRepository, 12_000, 3_000, 3_000),
+                placedGoals,
+                goalApi,
+                new UnitExtractor(sessionExtractionService, documentContentRepository, highlightGeometryService, placedGoals, 12_000, 3_000, 3_000),
                 auditService,
                 documentSectionRepository,
                 mock(TopicTreeService.class),

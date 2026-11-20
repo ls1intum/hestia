@@ -18,7 +18,6 @@ import de.tum.cit.hestia.materials.extraction.UnitExtractor.SessionUnit;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.SourceLineSelection;
 import de.tum.cit.hestia.materials.extraction.UnitExtractor.Window;
 import de.tum.cit.hestia.materials.goal.EvidenceKind;
-import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +25,7 @@ class UnitExtractorTest {
 
     private static UnitExtractor extractor(int unitMaxChars) {
         return new UnitExtractor(mock(SessionExtractionService.class), mock(DocumentContentRepository.class),
-                mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), unitMaxChars, 3_000, 3_000);
+                mock(HighlightGeometryService.class), mock(de.tum.cit.hestia.materials.goal.PlacedGoals.class), unitMaxChars, 3_000, 3_000);
     }
 
     private static Document document(String text, int[] pageOffsets) {
@@ -103,7 +102,7 @@ class UnitExtractorTest {
     void extractPicksThePromptAndBudgetByTheDocumentKind() {
         SessionExtractionService service = mock(SessionExtractionService.class);
         UnitExtractor extractor = new UnitExtractor(service, mock(DocumentContentRepository.class),
-                mock(HighlightGeometryService.class), mock(GoalSourceRepository.class), 0, 3_000, 1_000);
+                mock(HighlightGeometryService.class), mock(de.tum.cit.hestia.materials.goal.PlacedGoals.class), 0, 3_000, 1_000);
         String text = "x".repeat(3_000);
 
         extractor.extract(null, unit(DocumentKind.EXERCISE, text), "en", null);

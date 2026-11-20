@@ -11,14 +11,16 @@ import { fetchAllGoals } from "../lib/fetchGoals.ts";
 import NotFoundPage from "./NotFoundPage.tsx";
 import { requestError } from "../lib/requestError.ts";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function CoursePage() {
   const { courseId: courseIdParam } = useParams();
-  // Only a plain positive id reaches the server; "/courses/abc" would otherwise request course NaN.
-  if (!/^[1-9]\d*$/.test(courseIdParam ?? "")) return <NotFoundPage message="There is no such course." />;
-  return <CourseView key={courseIdParam} courseId={Number(courseIdParam)} />;
+  // Only a UUID reaches the server; "/courses/abc" is a plain not-found.
+  if (!UUID.test(courseIdParam ?? "")) return <NotFoundPage message="There is no such course." />;
+  return <CourseView key={courseIdParam} courseId={courseIdParam!} />;
 }
 
-function CourseView({ courseId }: { courseId: number }) {
+function CourseView({ courseId }: { courseId: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -138,7 +140,7 @@ function CourseView({ courseId }: { courseId: number }) {
 
   const updateGoalMutation = useMutation({
     mutationFn: async (vars: {
-      goalId: number;
+      goalId: string;
       text?: string;
       status?: NonNullable<LearningGoal["status"]>;
       bloomLevel?: LearningGoal["bloomLevel"];
@@ -160,7 +162,7 @@ function CourseView({ courseId }: { courseId: number }) {
   });
 
   const deleteGoalMutation = useMutation({
-    mutationFn: async (goalId: number) => {
+    mutationFn: async (goalId: string) => {
       const { error, response } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         { params: { path: { courseId, goalId } } },
@@ -178,7 +180,7 @@ function CourseView({ courseId }: { courseId: number }) {
 
   // In-modal edits (goal text, Bloom/SOLO dot clicks) go straight through the update mutation.
   const updateGoal = (
-    goalId: number,
+    goalId: string,
     changes: {
       text?: string;
       bloomLevel?: LearningGoal["bloomLevel"];
@@ -196,7 +198,7 @@ function CourseView({ courseId }: { courseId: number }) {
     return <NotFoundPage message="This course does not exist or was deleted." />;
   }
 
-  const courseName = courseQuery.data?.name ?? `Course #${courseId}`;
+  const courseName = courseQuery.data?.name ?? "Course";
   return (
     <div className="flex flex-col gap-4">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">

@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.materials.extraction;
 
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import java.util.UUID;
+
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.course.ExtractionStatusLookup;
 import java.util.LinkedHashMap;
@@ -15,19 +15,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ExtractionRunAuditService implements ExtractionStatusLookup {
 
-    private final CourseRepository courseRepository;
     private final ExtractionRunRepository extractionRunRepository;
 
-    public ExtractionRunAuditService(CourseRepository courseRepository,
-                                     ExtractionRunRepository extractionRunRepository) {
-        this.courseRepository = courseRepository;
+    public ExtractionRunAuditService(ExtractionRunRepository extractionRunRepository) {
         this.extractionRunRepository = extractionRunRepository;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Long start(Long courseId, String model, String promptVersion, String params) {
-        Course course = courseRepository.findById(courseId).orElseThrow();
-        return extractionRunRepository.saveAndFlush(new ExtractionRun(course, model, promptVersion, params)).getId();
+    public Long start(UUID courseId, String model, String promptVersion, String params) {
+        return extractionRunRepository.saveAndFlush(new ExtractionRun(courseId, model, promptVersion, params)).getId();
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -40,7 +36,7 @@ public class ExtractionRunAuditService implements ExtractionStatusLookup {
 
     /** Marks a failed extraction complete after its already-committed goals gained a tree on retry. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void finishTreeRetry(Long courseId) {
+    public void finishTreeRetry(UUID courseId) {
         extractionRunRepository.findFirstByCourseIdOrderByStartedAtDesc(courseId)
                 .filter(run -> run.getStatus() == ExtractionStatus.FAILED)
                 .filter(run -> run.getGoalsCreated() != null)
@@ -53,13 +49,13 @@ public class ExtractionRunAuditService implements ExtractionStatusLookup {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<Long, ExtractionStatus> latestByCourse(List<Long> courseIds) {
-        Map<Long, ExtractionStatus> statuses = new LinkedHashMap<>();
+    public Map<UUID, ExtractionStatus> latestByCourse(List<UUID> courseIds) {
+        Map<UUID, ExtractionStatus> statuses = new LinkedHashMap<>();
         if (courseIds.isEmpty()) {
             return statuses;
         }
         for (ExtractionRun run : extractionRunRepository.findLatestCandidatesByCourseIds(courseIds)) {
-            statuses.putIfAbsent(run.getCourse().getId(), run.getStatus());
+            statuses.putIfAbsent(run.getCourseId(), run.getStatus());
         }
         return statuses;
     }

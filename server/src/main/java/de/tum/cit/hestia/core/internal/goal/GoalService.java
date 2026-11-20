@@ -83,12 +83,14 @@ class GoalService implements LearningGoalApi {
     @Transactional
     public List<GoalInfo> createAll(UUID courseId, List<NewGoal> newGoals) {
         access.requireWrite(courseId);
-        Instant now = clock.instant();
+        Instant now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         UUID userId = currentUser.userId();
         List<CoreGoal> created = new ArrayList<>();
-        for (NewGoal goal : newGoals) {
+        for (int i = 0; i < newGoals.size(); i++) {
+            NewGoal goal = newGoals.get(i);
+            // One microsecond apart (the column's precision), so "oldest first" keeps the given order.
             CoreGoal row = goals.save(new CoreGoal(courseId, goal.status(), goal.origin(), goal.creationProvenance(),
-                    goal.createdVia(), userId, now));
+                    goal.createdVia(), userId, now.plus(i, java.time.temporal.ChronoUnit.MICROS)));
             created.add(row);
         }
         goals.flush();

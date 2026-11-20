@@ -3,7 +3,7 @@
 LearningGoalHub reads a course's lecture slides and exercise sheets and extracts learning goals
 from them. Instructors review the result as a Topic tree (Topic → Skill → Sub-skill → Knowledge)
 in which goals carry Bloom and SOLO levels and point back to the slide they came from. The
-sibling Hestia modules (assessment, teaching) read the goals in-process through the `core.spi.GoalDirectory` and `ExamGoalDerivation` ports.
+sibling Hestia modules (assessment, teaching) read the goals in-process from `core` (`LearningGoalApi`); exam goals are derived through the `core.spi.ExamGoalDerivation` port.
 
 | Part | What it is | Docs |
 | --- | --- | --- |

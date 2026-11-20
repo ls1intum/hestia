@@ -14,7 +14,7 @@ function reason(error: unknown, fallback: string): string {
 }
 
 /** Proposes the page runs of the course's documents that mention `text`. */
-export async function findTopicPages(courseId: number, text: string): Promise<PagePlan> {
+export async function findTopicPages(courseId: string, text: string): Promise<PagePlan> {
   const result = await api.POST("/api/courses/{courseId}/learning-goals/topic-search/pages", {
     params: { path: { courseId } },
     body: { text },
@@ -25,7 +25,7 @@ export async function findTopicPages(courseId: number, text: string): Promise<Pa
 
 /** Reads the chosen pages into a proposal the server holds for thirty minutes. */
 export async function readTopicPages(
-  courseId: number,
+  courseId: string,
   text: string,
   ranges: PageRange[],
 ): Promise<TopicProposal> {
@@ -41,7 +41,7 @@ export async function readTopicPages(
 
 /** Creates the topic with the sub-skills kept from the proposal. */
 export async function createTopicFromSlides(
-  courseId: number,
+  courseId: string,
   proposalId: string,
   subSkillKeys: string[],
 ): Promise<LearningGoal> {

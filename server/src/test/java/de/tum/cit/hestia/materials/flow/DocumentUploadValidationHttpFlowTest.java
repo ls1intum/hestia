@@ -13,7 +13,7 @@ class DocumentUploadValidationHttpFlowTest extends HttpFlowTestBase {
 
     @Test
     void aFileThatIsNotAPdfIsRejectedAndNothingIsStored() {
-        long courseId = createCourse("Flow test: bad upload");
+        String courseId = createCourse("Flow test: bad upload");
         byte[] notAPdf = "just some text, not a PDF".getBytes(StandardCharsets.UTF_8);
 
         HubApi.Response rejected = api().upload("/courses/" + courseId + "/documents",
@@ -31,7 +31,7 @@ class DocumentUploadValidationHttpFlowTest extends HttpFlowTestBase {
 
     @Test
     void uploadingToAnUnknownCourseAnswers404() {
-        HubApi.Response missing = api().upload("/courses/999999999/documents",
+        HubApi.Response missing = api().upload("/courses/" + java.util.UUID.randomUUID() + "/documents",
                 Map.of("a.pdf", TestPdfs.textPdf(TestPdfs.SEARCHING_LECTURE)), "application/pdf");
         assertThat(missing.status()).isEqualTo(404);
     }

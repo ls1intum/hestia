@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.materials.hierarchy;
 
 import de.tum.cit.hestia.core.OrgScoped;
-import de.tum.cit.hestia.materials.course.Course;
+import java.util.UUID;
 import de.tum.cit.hestia.materials.document.Document;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -30,9 +30,8 @@ public class HierarchyNode extends OrgScoped {
     @JoinColumn(name = "parent_id")
     private HierarchyNode parent;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @Column(name = "course_id", nullable = false, updatable = false)
+    private UUID courseId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -49,12 +48,12 @@ public class HierarchyNode extends OrgScoped {
     protected HierarchyNode() {
     }
 
-    public HierarchyNode(Course course, HierarchyNode parent, HierarchyLevel level, String label) {
-        this(course, parent, level, label, null);
+    public HierarchyNode(UUID courseId, HierarchyNode parent, HierarchyLevel level, String label) {
+        this(courseId, parent, level, label, null);
     }
 
-    public HierarchyNode(Course course, HierarchyNode parent, HierarchyLevel level, String label, Document document) {
-        this.course = course;
+    public HierarchyNode(UUID courseId, HierarchyNode parent, HierarchyLevel level, String label, Document document) {
+        this.courseId = courseId;
         this.parent = parent;
         this.level = level;
         this.label = label;
@@ -69,8 +68,8 @@ public class HierarchyNode extends OrgScoped {
         return parent;
     }
 
-    public Course getCourse() {
-        return course;
+    public UUID getCourseId() {
+        return courseId;
     }
 
     public HierarchyLevel getLevel() {

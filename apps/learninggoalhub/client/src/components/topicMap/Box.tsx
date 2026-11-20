@@ -12,7 +12,7 @@ import {
 
 /** The rename and delete actions shared by every box, the same as a table row's. */
 export type GoalActions = {
-  editingId: number | null;
+  editingId: string | null;
   onStartEdit: (goal: LearningGoal) => void;
   onEndEdit: (goal: LearningGoal, text: string | null) => void;
   onDelete: (goal: LearningGoal) => void;

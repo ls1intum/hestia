@@ -30,7 +30,7 @@ class LlmClientTest {
     @Test
     void booksCallsToTheActiveRunsPhaseAndModel() {
         ExtractionProgressTracker tracker = new ExtractionProgressTracker();
-        ExtractionProgressTracker.Run run = tracker.tryStart(1L, null).orElseThrow();
+        ExtractionProgressTracker.Run run = tracker.tryStart(java.util.UUID.randomUUID(), null).orElseThrow();
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, 2);
 
         new LlmClient(gateway("ok", new LlmResponse.Usage(1000, 300, 200)), tracker)

@@ -14,7 +14,7 @@ class LearningGoalExtractionHttpFlowTest extends HttpFlowTestBase {
 
     @Test
     void uploadedDocumentsAreExtractedIntoLearningGoalsThatCanBeFetched() {
-        long courseId = createCourse("Flow test: algorithms");
+        String courseId = createCourse("Flow test: algorithms");
 
         HubApi.Response upload = uploadLectures(courseId);
         assertThat(upload.status()).as(upload.raw()).isEqualTo(201);
@@ -39,7 +39,7 @@ class LearningGoalExtractionHttpFlowTest extends HttpFlowTestBase {
         assertThat(texts(all)).anySatisfy(
                 text -> assertThat(text).contains("Applying binary search to a sorted array"));
         all.forEach(goal -> {
-            assertThat(goal.path("id").asLong()).isPositive();
+            assertThat(java.util.UUID.fromString(goal.path("id").asText())).isNotNull();
             assertThat(goal.path("text").asText()).isNotBlank();
             // Goals outside the skill/knowledge tiers (e.g. synthesized parents) carry no role.
             if (!goal.path("role").isNull() && !goal.path("role").isMissingNode()) {

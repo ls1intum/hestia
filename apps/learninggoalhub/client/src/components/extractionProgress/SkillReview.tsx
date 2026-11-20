@@ -25,10 +25,10 @@ export function SkillReview({
   onFindTopic,
   onDone,
 }: {
-  courseId?: number | null;
+  courseId?: string | null;
   status?: ExtractionStatus;
-  expandedTopics: Set<number>;
-  setExpandedTopics: Dispatch<SetStateAction<Set<number>>>;
+  expandedTopics: Set<string>;
+  setExpandedTopics: Dispatch<SetStateAction<Set<string>>>;
   newTopic: string;
   setNewTopic: (text: string) => void;
   onFindTopic: (text: string) => void;
@@ -36,12 +36,12 @@ export function SkillReview({
 }) {
   const queryClient = useQueryClient();
   // The topic or skill whose dismissal waits for a second click.
-  const [confirmingGoal, setConfirmingGoal] = useState<number | null>(null);
+  const [confirmingGoal, setConfirmingGoal] = useState<string | null>(null);
   // The skill whose name is being edited in place.
-  const [renamingGoal, setRenamingGoal] = useState<number | null>(null);
+  const [renamingGoal, setRenamingGoal] = useState<string | null>(null);
   const goalsQuery = useQuery({
     queryKey: ["goals", courseId],
-    queryFn: () => fetchAllGoals(courseId as number),
+    queryFn: () => fetchAllGoals(courseId as string),
     enabled: courseId != null,
   });
 
@@ -61,11 +61,11 @@ export function SkillReview({
   // The review triages: accept, rename or dismiss. Accepting flips the goal out of PENDING;
   // dismissing has no state of its own, the item is deleted.
   const approveMutation = useMutation({
-    mutationFn: async (vars: { goalId: number; approved: boolean }) => {
+    mutationFn: async (vars: { goalId: string; approved: boolean }) => {
       const { error: updateError, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
-          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
+          params: { path: { courseId: courseId as string, goalId: vars.goalId } },
           body: { status: vars.approved ? "APPROVED" : "PENDING" },
         },
     );
@@ -78,11 +78,11 @@ export function SkillReview({
   // The server keeps the generated wording on the first rename, so the evaluation still tells a
   // reworded item from one accepted as it stood.
   const renameMutation = useMutation({
-    mutationFn: async (vars: { goalId: number; text: string; accept: boolean }) => {
+    mutationFn: async (vars: { goalId: string; text: string; accept: boolean }) => {
       const { error: updateError, response } = await api.PATCH(
         "/api/courses/{courseId}/learning-goals/{goalId}",
         {
-          params: { path: { courseId: courseId as number, goalId: vars.goalId } },
+          params: { path: { courseId: courseId as string, goalId: vars.goalId } },
           body: vars.accept ? { text: vars.text, status: "APPROVED" } : { text: vars.text },
         },
     );
@@ -94,11 +94,11 @@ export function SkillReview({
   // Accepts every skill of one topic that is still pending, one PATCH per skill. The topic itself is
   // never accepted — it only groups the skills.
   const acceptAllMutation = useMutation({
-    mutationFn: async (vars: { topicId: number; goalIds: number[] }) => {
+    mutationFn: async (vars: { topicId: string; goalIds: string[] }) => {
       const results = await Promise.all(
         vars.goalIds.map((goalId) =>
           api.PATCH("/api/courses/{courseId}/learning-goals/{goalId}", {
-            params: { path: { courseId: courseId as number, goalId } },
+            params: { path: { courseId: courseId as string, goalId } },
             body: { status: "APPROVED" },
           }),
         ),
@@ -111,10 +111,10 @@ export function SkillReview({
   });
 
   const deleteGoalMutation = useMutation({
-    mutationFn: async (goalId: number) => {
+    mutationFn: async (goalId: string) => {
       const { error: deleteError, response } = await api.DELETE(
         "/api/courses/{courseId}/learning-goals/{goalId}",
-        { params: { path: { courseId: courseId as number, goalId } } },
+        { params: { path: { courseId: courseId as string, goalId } } },
     );
       if (deleteError) throw requestError("Could not remove it.", { error: deleteError, response });
     },
@@ -130,7 +130,7 @@ export function SkillReview({
   // skills generated beneath it come up for review like every other skill.
   const createTopicMutation = useMutation({
     mutationFn: (vars: { text: string; generate: boolean }) =>
-      createTopic(courseId as number, vars.text, vars.generate),
+      createTopic(courseId as string, vars.text, vars.generate),
     onSuccess: async (topic) => {
       setNewTopic("");
       const topicId = topic.id;
@@ -227,7 +227,7 @@ export function SkillReview({
                   const pendingSkillIds = reviewItems
                     .filter((item) => item.goal.status !== "APPROVED")
                     .map((item) => item.goal.id)
-                    .filter((id): id is number => id != null);
+                    .filter((id): id is string => id != null);
                   const expanded = topicId == null || expandedTopics.has(topicId);
                   return (
                     <li key={topicId ?? topic.goal.text}>

@@ -5,7 +5,6 @@ import de.tum.cit.hestia.core.OrgContext;
 import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
-import de.tum.cit.hestia.materials.course.Course;
 import java.util.UUID;
 import de.tum.cit.hestia.core.internal.identity.HestiaAuthentication;
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -20,7 +19,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 /**
  * The default tenant of the materials tests that use the database: the test thread works for
  * {@link #ORG} (so repositories see and write that organisation's rows), and {@link #course(String)}
- * creates a course the default user {@link #USER} owns. MockMvc requests are logged in as that user
+ * creates a core course the default user {@link #USER} owns. MockMvc requests are logged in as that user
  * by {@link MaterialsTestConfiguration}.
  */
 public class TestTenant implements BeforeAllCallback, BeforeEachCallback, AfterEachCallback, AfterAllCallback {
@@ -45,6 +44,14 @@ public class TestTenant implements BeforeAllCallback, BeforeEachCallback, AfterE
         SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(principal));
     }
 
+    /** Logs the test thread in as the default user again (MockMvc clears the context after a request). */
+    public static void restoreLogin() {
+        if (principal != null) {
+            OrgContext.set(principal.orgId());
+            SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(principal));
+        }
+    }
+
     @Override
     public void afterEach(ExtensionContext extension) {
         SecurityContextHolder.clearContext();
@@ -56,17 +63,20 @@ public class TestTenant implements BeforeAllCallback, BeforeEachCallback, AfterE
         context = null;
     }
 
-    /** A new, unsaved materials course on a new core course owned by the default user. */
-    public static Course course(String name) {
+    /** A new core course owned by the default user; returns its id. */
+    public static UUID course(String name) {
         return courseAs(ORG, USER, name);
     }
 
     /** As {@link #course(String)}, for another organisation and user. */
-    public static Course courseAs(String org, String user, String name) {
+    public static UUID courseAs(String org, String user, String name) {
         IdentityService identities = context.getBean(IdentityService.class);
         CourseApi courseApi = context.getBean(CourseApi.class);
-        UUID coreId = TestLogin.runAs(identities, org, user, () -> courseApi.create(name).id());
-        return new Course(name, coreId);
+        return TestLogin.runAs(identities, org, user, () -> courseApi.create(name).id());
+    }
+
+    public static <T> T bean(Class<T> type) {
+        return context.getBean(type);
     }
 
     public static IdentityService identities() {

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 class GoalSourceTest {
 
-    private final LearningGoal goal = new LearningGoal(null, "Apply test-driven development.", GoalKind.EXPLICIT);
+    private final java.util.UUID goal = java.util.UUID.randomUUID();
     private final Document document = new Document(null, "lecture.pdf", "application/pdf", "lecture text");
 
     @Test

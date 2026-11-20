@@ -17,7 +17,7 @@ export function SourcePanel({
   paneRef,
   onClose,
 }: {
-  courseId: number;
+  courseId: string;
   row: Row | undefined;
   source: GoalSource;
   paneRef: RefObject<HTMLDivElement>;

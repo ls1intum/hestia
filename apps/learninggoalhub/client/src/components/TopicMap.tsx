@@ -14,6 +14,7 @@ import {
   ghostReserve,
   LOOSE_GROUP_LABEL,
   isLooseGroup,
+  looseGroupId,
   canDrill,
   type MapCreation,
 } from "./topicMap/layout.ts";
@@ -49,7 +50,7 @@ export default function TopicMap({
   /** The topic's lecture-order number in the table, e.g. "3". */
   sequence: string;
   /** The goal whose wording is being renamed in place, anywhere in the grid. */
-  editingId: number | null;
+  editingId: string | null;
   onStartEdit: (goal: LearningGoal) => void;
   /** Ends a rename; `text` is the new wording, or null when nothing is to be saved. */
   onEndEdit: (goal: LearningGoal, text: string | null) => void;
@@ -65,10 +66,10 @@ export default function TopicMap({
 }) {
   const actions = { editingId, onStartEdit, onEndEdit, onDelete };
   // The focus path: a box in the first row, then one of its sub-skills.
-  const [focusedId, setFocusedId] = useState<number | null>(null);
-  const [subFocusedId, setSubFocusedId] = useState<number | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [subFocusedId, setSubFocusedId] = useState<string | null>(null);
   // The child a mini box was clicked for: centred and outlined for a moment once its row is in.
-  const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   useEffect(() => {
     if (highlightId == null) return;
     const timer = window.setTimeout(() => setHighlightId(null), 1600);
@@ -83,7 +84,7 @@ export default function TopicMap({
     loose.length > 0
       ? [
           ...skills,
-          { goal: { id: -topic.goal.id!, text: LOOSE_GROUP_LABEL }, role: "skill", children: loose },
+          { goal: { id: looseGroupId(topic.goal.id!), text: LOOSE_GROUP_LABEL }, role: "skill", children: loose },
         ]
       : skills;
   const focused =
@@ -112,9 +113,9 @@ export default function TopicMap({
   const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
 
   const navigate = (
-    next: number | null,
-    nextSub: number | null = null,
-    highlight: number | null = null,
+    next: string | null,
+    nextSub: string | null = null,
+    highlight: string | null = null,
   ) => {
     const map = new Map<string, DOMRect>();
     containerRef.current
@@ -227,8 +228,8 @@ export default function TopicMap({
   }, [focused?.goal.id, subFocused?.goal.id]);
 
   // Clicking a focused box again folds it back into its parent's overview.
-  const pickFirst = (id: number) => navigate(focusedId === id ? null : id);
-  const pickSecond = (id: number) => navigate(focusedId, subFocusedId === id ? null : id);
+  const pickFirst = (id: string) => navigate(focusedId === id ? null : id);
+  const pickSecond = (id: string) => navigate(focusedId, subFocusedId === id ? null : id);
 
   // Escape retraces the path: out of a sub-skill, then out of a skill, then closes the map.
   // Whatever owns Escape above the map (the detail modal, a filter popover, an open creation field
@@ -328,7 +329,7 @@ export default function TopicMap({
   const padRight =
     EDGE_W + Math.max(0, ...rows.map((row) => row.half + row.centre - canvasHalf));
 
-  const ghost = (label: string, color: string, tier: 2 | 3 | 4, key: string, parentId: number) => (
+  const ghost = (label: string, color: string, tier: 2 | 3 | 4, key: string, parentId: string) => (
     <CreationGhost
       label={label}
       color={color}

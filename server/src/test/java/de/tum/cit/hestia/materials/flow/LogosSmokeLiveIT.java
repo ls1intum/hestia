@@ -36,7 +36,7 @@ class LogosSmokeLiveIT extends FlowApplication {
     void realModelExtractsLearningGoalsFromAnUploadedLecture() {
         assertThat(System.getenv("LOGOS_API_KEY")).as("LOGOS_API_KEY must be set").isNotBlank();
 
-        long courseId = createCourse("Logos smoke test");
+        String courseId = createCourse("Logos smoke test");
         HubApi.Response upload = uploadLectures(courseId);
         assertThat(upload.status()).as(upload.raw()).isBetween(200, 299);
 

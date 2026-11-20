@@ -2,14 +2,13 @@ package de.tum.cit.hestia.materials.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.tum.cit.hestia.materials.course.Course;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DocumentOrderTest {
 
-    private final Course course = new Course("Course", java.util.UUID.randomUUID());
+    private final java.util.UUID course = java.util.UUID.randomUUID();
 
     @Test
     void ordersNumberedLectureFilesNaturally() {

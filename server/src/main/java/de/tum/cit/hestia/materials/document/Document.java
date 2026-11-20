@@ -1,7 +1,7 @@
 package de.tum.cit.hestia.materials.document;
 
 import de.tum.cit.hestia.core.OrgScoped;
-import de.tum.cit.hestia.materials.course.Course;
+import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,9 +24,8 @@ public class Document extends OrgScoped {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @Column(name = "course_id", nullable = false, updatable = false)
+    private UUID courseId;
 
     @Column(nullable = false)
     private String filename;
@@ -60,8 +59,8 @@ public class Document extends OrgScoped {
     protected Document() {
     }
 
-    public Document(Course course, String filename, String contentType, String rawText) {
-        this.course = course;
+    public Document(UUID courseId, String filename, String contentType, String rawText) {
+        this.courseId = courseId;
         this.filename = filename;
         this.contentType = contentType;
         this.rawText = rawText;
@@ -71,8 +70,8 @@ public class Document extends OrgScoped {
         return id;
     }
 
-    public Course getCourse() {
-        return course;
+    public UUID getCourseId() {
+        return courseId;
     }
 
     public String getFilename() {

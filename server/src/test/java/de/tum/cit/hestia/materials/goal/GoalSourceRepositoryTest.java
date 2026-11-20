@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.GoalFixtures;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,29 +21,23 @@ import org.springframework.context.annotation.Import;
 class GoalSourceRepositoryTest extends MaterialsTestBase {
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private DocumentRepository documentRepository;
-
-    @Autowired
-    private LearningGoalRepository goalRepository;
 
     @Autowired
     private GoalSourceRepository goalSourceRepository;
 
     @Test
     void goalCanBeAttributedToMultipleDocuments() {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise text"));
 
-        LearningGoal goal = goalRepository.save(new LearningGoal(course, "Students can apply TDD.", GoalKind.EXPLICIT));
+        PlacedGoal goal = GoalFixtures.goal(course, "Students can apply TDD.").create();
 
-        goalSourceRepository.save(new GoalSource(goal, lecture, "...write a failing test first..."));
-        goalSourceRepository.save(new GoalSource(goal, exercise, "...practise red-green-refactor..."));
+        goalSourceRepository.save(new GoalSource(goal.id(), lecture, "...write a failing test first..."));
+        goalSourceRepository.save(new GoalSource(goal.id(), exercise, "...practise red-green-refactor..."));
 
-        List<GoalSource> sources = goalSourceRepository.findByGoalId(goal.getId());
+        List<GoalSource> sources = goalSourceRepository.findByIdGoalId(goal.id());
 
         assertThat(sources).hasSize(2);
         assertThat(sources).extracting(s -> s.getDocument().getFilename())

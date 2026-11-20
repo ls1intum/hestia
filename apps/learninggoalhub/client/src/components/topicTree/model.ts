@@ -12,8 +12,8 @@ import {
 
 /** One goal flattened out of the forest, with the tree structure kept via parent ids. */
 export type Row = {
-  id: number;
-  parent: number | null;
+  id: string;
+  parent: string | null;
   number: string;
   goal: LearningGoal;
   role: TreeRole;
@@ -33,7 +33,7 @@ export type CreationTier = 1 | 2 | 3 | 4;
 export type CreationState = {
   key: string;
   tier: CreationTier;
-  parentGoalId: number | null;
+  parentGoalId: string | null;
   text: string;
   /** A topic created together with AI-written skills beneath it, instead of on its own. */
   generate?: boolean;
@@ -93,7 +93,7 @@ export const SOLO_ORDER = Object.keys(SOLO_DESC).map(toEnum);
 
 // "AI_INFERRED" is a synthetic kind value derived from a goal's WIZARD_AI_SUBTREE provenance, so the
 // Kind column and its filter surface AI-generated goals without a separate GoalKind enum on the server.
-export const NO_IDS: ReadonlySet<number> = new Set();
+export const NO_IDS: ReadonlySet<string> = new Set();
 export const AI_INFERRED_KIND = "AI_INFERRED";
 export const MANUAL_KIND = "MANUAL";
 export const KIND_ORDER = ["EXPLICIT", "IMPLICIT", AI_INFERRED_KIND, MANUAL_KIND];
@@ -198,7 +198,7 @@ export const FILTER_LABELS: Record<FilterKey, string> = {
 /** Flattens the forest depth-first into rows that keep the structure via parent ids. */
 export function flattenForest(forest: TreeNode[]): Row[] {
   const rows: Row[] = [];
-  const walk = (node: TreeNode, parent: number | null, number: string) => {
+  const walk = (node: TreeNode, parent: string | null, number: string) => {
     if (node.goal.id == null) return;
     rows.push({
       id: node.goal.id,

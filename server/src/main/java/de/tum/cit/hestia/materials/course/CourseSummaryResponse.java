@@ -1,9 +1,10 @@
 package de.tum.cit.hestia.materials.course;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public record CourseSummaryResponse(
-        Long id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt,
+        UUID id, String name, String outputLanguage, boolean figuresEnabled, OffsetDateTime createdAt, boolean personal,
         long documentCount, long goalCount, long topicCount, long skillCount,
         OffsetDateTime skillsReviewedAt,
         ExtractionStatus extractionStatus) {

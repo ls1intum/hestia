@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.materials.extraction;
 
+import java.util.UUID;
+
 import de.tum.cit.hestia.materials.llm.LlmUsageSink;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,7 +41,7 @@ public class ExtractionProgressTracker implements LlmUsageSink {
         FAILED
     }
 
-    private final Map<Long, Run> runs = new ConcurrentHashMap<>();
+    private final Map<UUID, Run> runs = new ConcurrentHashMap<>();
     /**
      * The run holding the one global slot. Held by handle, not by course id, so a finished run can
      * never release the slot of a newer run of the same course.
@@ -47,7 +49,7 @@ public class ExtractionProgressTracker implements LlmUsageSink {
     private final AtomicReference<Run> activeRun = new AtomicReference<>();
 
     /** Claims the one global extraction slot and begins tracking the run. */
-    public Optional<Run> tryStart(Long courseId, String model) {
+    public Optional<Run> tryStart(UUID courseId, String model) {
         Run run = new Run(courseId, model, this::release);
         if (!activeRun.compareAndSet(null, run)) {
             return Optional.empty();
@@ -86,7 +88,7 @@ public class ExtractionProgressTracker implements LlmUsageSink {
     }
 
     /** Begins (or replaces) tracking for a course and returns the handle the runner updates. */
-    public Run start(Long courseId, String model) {
+    public Run start(UUID courseId, String model) {
         // The controller claims the slot before submitting the job. Reuse that handle so the
         // background runner cannot replace the snapshot that the controller already exposed.
         Run active = activeRun.get();
@@ -98,14 +100,14 @@ public class ExtractionProgressTracker implements LlmUsageSink {
         return run;
     }
 
-    public Optional<Snapshot> snapshot(Long courseId) {
+    public Optional<Snapshot> snapshot(UUID courseId) {
         return Optional.ofNullable(runs.get(courseId)).map(Run::snapshot);
     }
 
     /** Mutable, thread-safe handle for one in-flight run. Counters are bumped from worker threads. */
     public static final class Run {
 
-        private final Long courseId;
+        private final UUID courseId;
         private final String model;
         private volatile Phase phase = Phase.DESCRIBING_FIGURES;
         private final AtomicInteger completed = new AtomicInteger();
@@ -124,7 +126,7 @@ public class ExtractionProgressTracker implements LlmUsageSink {
         /** Frees the global slot; run before the terminal status becomes visible. */
         private final Consumer<Run> releaseSlot;
 
-        private Run(Long courseId, String model, Consumer<Run> releaseSlot) {
+        private Run(UUID courseId, String model, Consumer<Run> releaseSlot) {
             this.courseId = courseId;
             this.model = model;
             this.releaseSlot = releaseSlot;
@@ -271,6 +273,6 @@ public class ExtractionProgressTracker implements LlmUsageSink {
     }
 
     /** The globally active run and its latest immutable snapshot. */
-    public record Current(Long courseId, Snapshot snapshot) {
+    public record Current(UUID courseId, Snapshot snapshot) {
     }
 }

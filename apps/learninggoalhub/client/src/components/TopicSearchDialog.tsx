@@ -56,7 +56,7 @@ export default function TopicSearchDialog({
   onClose,
   onCreated,
 }: {
-  courseId: number;
+  courseId: string;
   topic: string;
   onClose: () => void;
   onCreated: (topic: LearningGoal) => void;

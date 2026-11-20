@@ -8,11 +8,11 @@ import type { GoalChanges } from "./model.ts";
  */
 export function usePendingEdits(
   goals: LearningGoal[],
-  onUpdate: (goalId: number, changes: GoalChanges, onFailed: () => void) => void,
+  onUpdate: (goalId: string, changes: GoalChanges, onFailed: () => void) => void,
 ) {
   const [pending, setPending] = useState<{
     base: LearningGoal[];
-    changes: Map<number, GoalChanges>;
+    changes: Map<string, GoalChanges>;
   }>(() => ({ base: goals, changes: new Map() }));
   const effectiveGoals = useMemo(() => {
     if (pending.base !== goals || pending.changes.size === 0) return goals;
@@ -27,7 +27,7 @@ export function usePendingEdits(
       };
     });
   }, [goals, pending]);
-  const updateGoal = (goalId: number, changes: GoalChanges) => {
+  const updateGoal = (goalId: string, changes: GoalChanges) => {
     setPending((prev) => {
       const next = new Map(prev.base === goals ? prev.changes : undefined);
       next.set(goalId, { ...next.get(goalId), ...changes });

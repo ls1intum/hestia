@@ -1,13 +1,19 @@
 package de.tum.cit.hestia.materials.goal;
 
+import de.tum.cit.hestia.core.GoalKind;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalRole;
+import de.tum.cit.hestia.core.GoalStatus;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyPath;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 
-public record LearningGoalResponse(Long id,
+public record LearningGoalResponse(UUID id,
                                    String text,
                                    String originalText,
                                    String shortLabel,
@@ -24,29 +30,29 @@ public record LearningGoalResponse(Long id,
                                    List<GoalSourceResponse> sources,
                                    List<GoalRelationshipResponse> relationships,
                                    @Schema(nullable = true) ExamTaskResponse examTask) {
-    public static LearningGoalResponse from(LearningGoal g,
+    public static LearningGoalResponse from(PlacedGoal g,
                                             List<GoalSourceResponse> sources,
                                             List<GoalRelationshipResponse> relationships) {
-        HierarchyPath hierarchy = g.getHierarchyNode() == null
+        HierarchyPath hierarchy = g.hierarchyNode() == null
                 ? null
-                : HierarchyPath.from(g.getHierarchyNode());
+                : HierarchyPath.from(g.hierarchyNode());
         return new LearningGoalResponse(
-                g.getId(),
-                g.getText(),
-                g.getOriginalText(),
-                g.getShortLabel(),
-                g.getKind(),
-                g.getRole(),
-                g.getStatus(),
-                g.getOrigin(),
-                g.getCreationProvenance(),
+                g.id(),
+                g.text(),
+                g.originalText(),
+                g.shortLabel(),
+                g.kind(),
+                g.role(),
+                g.status(),
+                g.origin(),
+                g.creationProvenance(),
                 hierarchy,
-                g.getBloomLevel(),
-                g.getSoloLevel(),
-                g.getLectureOrder(),
-                g.getCreatedAt(),
+                g.bloomLevel(),
+                g.soloLevel(),
+                g.lectureOrder(),
+                g.info().createdAt().atOffset(ZoneOffset.UTC),
                 sources,
                 relationships,
-                g.getExamBlock() == null ? null : ExamTaskResponse.from(g.getExamBlock()));
+                g.examBlock() == null ? null : ExamTaskResponse.from(g.examBlock()));
     }
 }
