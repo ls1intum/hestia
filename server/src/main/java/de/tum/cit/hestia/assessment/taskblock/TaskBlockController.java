@@ -3,6 +3,7 @@ import de.tum.cit.hestia.assessment.shared.Patch;
 import de.tum.cit.hestia.assessment.shared.Access;
 
 import de.tum.cit.hestia.assessment.error.ApiException;
+import de.tum.cit.hestia.assessment.lgh.TaskGoalLinks;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -39,21 +40,32 @@ public class TaskBlockController {
     private final TaskBlockRepository taskRepository;
     private final Access access;
     private final TaskBlockService taskService;
+    private final TaskGoalLinks goalLinks;
 
-    public TaskBlockController(TaskBlockRepository taskRepository, Access access, TaskBlockService taskService) {
+    public TaskBlockController(TaskBlockRepository taskRepository, Access access, TaskBlockService taskService,
+                               TaskGoalLinks goalLinks) {
+        this.goalLinks = goalLinks;
         this.taskRepository = taskRepository;
         this.access = access;
         this.taskService = taskService;
     }
 
-    @Operation(summary = "List an exam's tasks", description = "Ordered by `position`, across all sections.")
+    @Operation(
+        summary = "List an exam's tasks",
+        description = """
+            Ordered by `position`, across all sections. Each task carries its learning goals \
+            (`learning_goal_ids` and `learning_goals`) as they currently read in the course, so a \
+            renamed goal shows its new text.""")
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `examId` is not a valid UUID.")
     @GetMapping("/exams/{examId}/tasks")
     public List<TaskBlockDtos.TaskBlockDto> list(@PathVariable String examId) {
         access.requireExamination(Access.id(examId));
-        return taskRepository.findByExamIdOrderByPositionAsc(Access.id(examId))
-            .stream().map(TaskBlockDtos.TaskBlockDto::from).toList();
+        List<TaskBlock> tasks = taskRepository.findByExamIdOrderByPositionAsc(Access.id(examId));
+        var goals = goalLinks.goalsOf(tasks.stream().map(TaskBlock::getId).toList());
+        return tasks.stream()
+            .map(t -> TaskBlockDtos.TaskBlockDto.from(t, goals.getOrDefault(t.getId(), List.of())))
+            .toList();
     }
 
     @Operation(
@@ -84,12 +96,11 @@ public class TaskBlockController {
         summary = "Update a task",
         description = """
             Sparse update accepting `position`, `type`, `prompt`, `options`, `reference_answer`, \
-            `points`, `section`, `section_id`, `parse_confidence`, and `learning_goal_ids`.
+            `points`, `section`, `section_id` and `parse_confidence`.
 
             Moving a task via `section_id` is checked: the target section must belong to the same \
-            exam. `learning_goal_ids` holds LGH goal ids only — the goal text is resolved through \
-            `GET /api/exams/{id}/learning-goals` — and is normally written by goal generation \
-            rather than by hand.""")
+            exam. The task's learning goals are alignment links written by goal generation; they are \
+            not patchable here.""")
     @ApiResponse(responseCode = "400", description = "The target `section_id` is unknown or belongs to a different exam.")
     @ApiResponse(responseCode = "403", description = "The task's exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such task, or `id` is not a valid UUID.")
@@ -110,8 +121,9 @@ public class TaskBlockController {
             t.setSectionId(sectionId);
         }
         if (Patch.has(body, "parse_confidence")) t.setParseConfidence(Patch.str(body.get("parse_confidence")));
-        if (Patch.has(body, "learning_goal_ids")) t.setLearningGoalIds(Patch.longList(body.get("learning_goal_ids")));
-        return TaskBlockDtos.TaskBlockDto.from(taskRepository.save(t));
+        TaskBlock saved = taskRepository.save(t);
+        return TaskBlockDtos.TaskBlockDto.from(saved,
+            goalLinks.goalsOf(List.of(saved.getId())).getOrDefault(saved.getId(), List.of()));
     }
 
     @Operation(summary = "Delete a task", description = "Its answer and grade cascade with it.")
@@ -121,6 +133,7 @@ public class TaskBlockController {
     @DeleteMapping("/tasks/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         TaskBlock t = load(id, true);
+        goalLinks.unlinkAll(List.of(t.getId()));
         taskRepository.delete(t);
         return ResponseEntity.noContent().build();
     }
@@ -137,6 +150,8 @@ public class TaskBlockController {
                                                  @Parameter(description = "Section whose tasks are removed.")
                                                  String sectionId) {
         access.requireExaminationForWrite(Access.id(examId));
+        goalLinks.unlinkAll(taskRepository.findByExamIdAndSectionIdOrderByPositionAsc(Access.id(examId), Access.id(sectionId))
+            .stream().map(TaskBlock::getId).toList());
         taskRepository.deleteByExamIdAndSectionId(Access.id(examId), Access.id(sectionId));
         return ResponseEntity.noContent().build();
     }

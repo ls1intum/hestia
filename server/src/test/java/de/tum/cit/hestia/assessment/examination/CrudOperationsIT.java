@@ -13,6 +13,13 @@ import de.tum.cit.hestia.assessment.section.FigureCleanupService;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
 import de.tum.cit.hestia.assessment.storage.StorageService;
+import de.tum.cit.hestia.core.AlignmentApi;
+import de.tum.cit.hestia.core.AlignmentLinkInfo;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.core.NewGoal;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -45,10 +52,26 @@ class CrudOperationsIT extends AbstractIntegrationTest {
     @Autowired StorageService storage;
     @Autowired FigureCleanupService figureCleanup;
     @Autowired PlatformTransactionManager txManager;
+    @Autowired LearningGoalApi goalApi;
+    @Autowired de.tum.cit.hestia.assessment.lgh.TaskBlockGoalGenerationService goalGeneration;
+    @Autowired AlignmentApi alignment;
+
+    private GoalInfo newGoal(String text, GoalOrigin origin, DomainModule createdVia) {
+        return runAs("alice", () -> goalApi.create(courseOf("alice"), NewGoal.of(text, origin, createdVia)));
+    }
+
+    private void linkToTask(GoalInfo goal, TaskBlock task) {
+        runAs("alice", () -> alignment.link(goal.id(), DomainModule.ASSESSMENT, "TASK", task.getId().toString()));
+    }
+
+    private List<AlignmentLinkInfo> linksOf(TaskBlock task) {
+        return runAs("alice", () -> alignment.goalsFor(DomainModule.ASSESSMENT, "TASK", task.getId().toString()));
+    }
 
     private Examination seedExaminationWithContent() {
         Examination exam = new Examination();
         exam.setCreatedBy(userId("alice"));
+        exam.setCourseId(courseOf("alice"));
         exam.setSource("manual");
         exam.setTitle("Original");
         exam.setStatus("ready");
@@ -74,7 +97,6 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         task.setType("text");
         task.setPrompt("Explain X");
         task.setPosition(1);
-        task.setLearningGoalIds(List.of(11L, 22L));
         tasks.save(task);
 
         return exam;
@@ -109,6 +131,9 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         byte[] imageBytes = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
         SectionFigure srcFig = addFigure(src, srcSection, imageBytes);
 
+        TaskBlock srcTask = tasks.findByExamIdOrderByPositionAsc(src.getId()).get(0);
+        linkToTask(newGoal("a goal of the source", GoalOrigin.EXAM, DomainModule.ASSESSMENT), srcTask);
+
         Examination copy = examService.duplicateExamination(src, userId("alice"), null, null);
 
         assertThat(copy.getId()).isNotEqualTo(src.getId());
@@ -123,8 +148,9 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         assertThat(copiedBlocks).hasSize(2); // context + figure block
         List<TaskBlock> copiedTaskBlocks = tasks.findByExamIdOrderByPositionAsc(copy.getId());
         assertThat(copiedTaskBlocks).hasSize(1);
-        // Goal ids belong to the source's LGH goals — must NOT be copied.
-        assertThat(copiedTaskBlocks.get(0).getLearningGoalIds()).isNull();
+        // The copy gets its goals when its sections are confirmed: no links are copied.
+        assertThat(linksOf(copiedTaskBlocks.get(0))).isEmpty();
+        assertThat(linksOf(srcTask)).hasSize(1);
 
         // The figure and its image are deep-copied onto the copy's figure block.
         SectionBlock copiedFigBlock = copiedBlocks.stream()
@@ -161,6 +187,9 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         // Figure row exists but its image object was never stored.
         addFigure(src, srcSection, null);
 
+        TaskBlock srcTask = tasks.findByExamIdOrderByPositionAsc(src.getId()).get(0);
+        linkToTask(newGoal("a goal of the source", GoalOrigin.EXAM, DomainModule.ASSESSMENT), srcTask);
+
         Examination copy = examService.duplicateExamination(src, userId("alice"), null, null);
 
         // The figure block is still copied...
@@ -185,12 +214,25 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         answer.setModel("gpt-5.5");
         answers.save(answer);
 
-        sectionService.unconfirmSection(section);
+        GoalInfo derived = newGoal("derived for the task", GoalOrigin.EXAM, DomainModule.ASSESSMENT);
+        GoalInfo written = newGoal("written by a person", GoalOrigin.MANUAL, DomainModule.TEACHING);
+        linkToTask(derived, task);
+        linkToTask(written, task);
+
+        // The goals to remove are reported by detachGoals (the removal itself runs in the background
+        // with the caller's login and is covered by TaskBlockGoalGenerationServiceTest).
+        List<UUID> toRemove = runAs("alice", () -> goalGeneration.detachGoals(List.of(task.getId())));
+        assertThat(toRemove).containsExactly(derived.id());
+        assertThat(linksOf(task)).isEmpty();
+
+        linkToTask(derived, task);
+        runAs("alice", () -> sectionService.unconfirmSection(section));
 
         Section reloaded = sections.findById(section.getId()).orElseThrow();
         assertThat(reloaded.getConfirmedAt()).isNull();
         assertThat(answers.findByTaskId(task.getId())).isEmpty();
-        assertThat(tasks.findById(task.getId()).orElseThrow().getLearningGoalIds()).isNull();
+        assertThat(linksOf(task)).isEmpty();
+        assertThat(runAs("alice", () -> goalApi.goal(written.id()).removed())).isFalse();
     }
 
     @Test
@@ -226,7 +268,7 @@ class CrudOperationsIT extends AbstractIntegrationTest {
         SectionFigure figure = addFigure(exam, section, "section-image".getBytes(StandardCharsets.UTF_8));
         String path = figure.getStoragePath();
 
-        sectionService.deleteSection(section);
+        runAs("alice", () -> sectionService.deleteSection(section));
 
         assertThat(sections.findById(section.getId())).isEmpty();
         assertThat(storage.download(FIGURE_BUCKET, path)).isNull();

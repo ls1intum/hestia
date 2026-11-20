@@ -29,7 +29,7 @@ interface Props {
 const levelRows = <L extends string>(
   orderedLevels: L[],
   labels: Record<L, string>,
-  levelOf: (goalId: number) => L | null | undefined,
+  levelOf: (goalId: string) => L | null | undefined,
   tasks: TaskBlock[],
   grades: Map<string, Grade>,
   answers: Map<string, AIAnswer>,
@@ -56,15 +56,15 @@ const levelRows = <L extends string>(
 export const LearningGoalsCard = ({ tasks, grades, answers, examId }: Props) => {
   const { data: resolvedGoals, isError: goalsError } = useExamLearningGoals(examId);
 
-  // The goal ids live on our tasks, so the per-goal metrics work even when
-  // LearningGoalHub is unreachable — only the goal texts degrade to "Goal #id".
+  // The goal ids come with the tasks, so the per-goal metrics work even when the
+  // goal texts cannot be loaded — they then degrade to "Goal #id".
   const rollups = useMemo(
     () => goalRollup(tasks, grades, answers),
     [tasks, grades, answers],
   );
 
   const goalById = useMemo(() => {
-    const m = new Map<number, LearningGoalResponse>();
+    const m = new Map<string, LearningGoalResponse>();
     (resolvedGoals ?? []).forEach((g) => m.set(g.id, g));
     return m;
   }, [resolvedGoals]);
@@ -163,7 +163,7 @@ export const LearningGoalsCard = ({ tasks, grades, answers, examId }: Props) => 
         </div>
         {goalsError && (
           <p className="mb-hestia-3 rounded-hestia-md border border-hestia-border bg-hestia-primary-muted/10 px-hestia-3 py-hestia-2 text-xs text-hestia-text-muted">
-            Learning goals could not be loaded from LearningGoalHub — showing goal
+            Learning goals could not be loaded — showing goal
             ids only.
           </p>
         )}

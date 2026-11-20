@@ -68,10 +68,12 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
         return dev;
     }
 
-    private UUID examCreatedBy(UUID userId) {
+    private UUID examCreatedBy(UUID userId, String externalId) {
         Examination exam = new Examination();
         exam.setSource("pdf");
         exam.setCreatedBy(userId);
+        exam.setCourseId(de.tum.cit.hestia.core.TestLogin.runAs(identities, "local.test", externalId,
+            () -> courseApi.personalCourse().id()));
         return exams.save(exam).getId();
     }
 
@@ -152,7 +154,7 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
 
     @Test
     void publishingToADeadSseStreamLogsNoErrorAndDoesNotThrow() throws Exception {
-        UUID exam = examCreatedBy(devUser().userId());
+        UUID exam = examCreatedBy(devUser().userId(), "dev-local-user");
         openThenKillSseStream();
 
         // Two publishes: the first hits the dead socket, the second proves the
@@ -175,8 +177,8 @@ class SseHubBrokenPipeIT extends AbstractIntegrationTest {
     @Test
     void listEventsReachOnlyTheExamsCreator() throws Exception {
         HestiaPrincipal dev = devUser();
-        UUID own = examCreatedBy(dev.userId());
-        UUID colleagues = examCreatedBy(identities.login("local.test", "colleague", "colleague").userId());
+        UUID own = examCreatedBy(dev.userId(), "dev-local-user");
+        UUID colleagues = examCreatedBy(identities.login("local.test", "colleague", "colleague").userId(), "colleague");
 
         try (Socket socket = openListStream()) {
             hub.examUpdated(colleagues);

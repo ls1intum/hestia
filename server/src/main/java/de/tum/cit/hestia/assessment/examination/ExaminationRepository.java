@@ -11,9 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface ExaminationRepository extends JpaRepository<Examination, UUID> {
 
-    /** The caller's own exams without a course. */
-    List<Examination> findByCourseIdIsNullAndCreatedByOrderByCreatedAtDesc(UUID createdBy);
-
     List<Examination> findByCourseIdInOrderByCreatedAtDesc(Collection<UUID> courseIds);
 
     // --- Targeted control-plane updates (touch only the named columns) ---

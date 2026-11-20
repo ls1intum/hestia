@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * Response DTOs for the exam slice. Component names are snake_case to match the
- * row shape the frontend consumes (e.g. {@code lgh_course_id}); we deliberately
+ * row shape the frontend consumes (e.g. {@code course_id}); we deliberately
  * avoid a global Jackson snake_case strategy so other camelCase payloads (e.g.
  * {@code /api/parse-metrics}) are unaffected.
  */
@@ -15,20 +15,20 @@ public final class ExaminationDtos {
     private ExaminationDtos() {}
 
     public record ExaminationDto(
-        UUID id, UUID created_by, UUID course_id, String title, String course,
+        UUID id, UUID created_by, UUID course_id, String title,
         String source,
         String source_file_url, String status, String parse_error, String parse_phase,
         String parser_model, String solver_model,
-        Long lgh_course_id, Integer page_count, OffsetDateTime parse_started_at,
+        Integer page_count, OffsetDateTime parse_started_at,
         OffsetDateTime parsed_at,
         OffsetDateTime created_at, OffsetDateTime updated_at
     ) {
         public static ExaminationDto from(Examination e) {
-            return new ExaminationDto(e.getId(), e.getCreatedBy(), e.getCourseId(), e.getTitle(), e.getCourse(),
+            return new ExaminationDto(e.getId(), e.getCreatedBy(), e.getCourseId(), e.getTitle(),
                 e.getSource(),
                 e.getSourceFileUrl(), e.getStatus(), e.getParseError(), e.getParsePhase(),
                 e.getParserModel(), e.getSolverModel(),
-                e.getLghCourseId(), e.getPageCount(), e.getParseStartedAt(),
+                e.getPageCount(), e.getParseStartedAt(),
                 e.getParsedAt(),
                 e.getCreatedAt(), e.getUpdatedAt());
         }

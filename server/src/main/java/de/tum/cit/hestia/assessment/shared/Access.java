@@ -6,8 +6,6 @@ import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.section.Section;
 import de.tum.cit.hestia.assessment.section.SectionRepository;
 import de.tum.cit.hestia.core.CourseAccess;
-import de.tum.cit.hestia.core.CurrentUser;
-import de.tum.cit.hestia.core.spi.GoalDirectory;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,11 +13,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 /**
- * Access checks shared by the controllers and services. An exam linked to a course is checked
- * against the caller's role in that course (read: any member, write: editor or owner); an exam
- * without a course belongs to its creator alone. Anything the caller may not see is a 404, so the
- * existence of foreign exams is not revealed; a member who is too small for a write gets a 403
- * from {@link CourseAccess}.
+ * Access checks shared by the controllers and services. An exam is checked against the caller's
+ * role in its course (read: any member, write: editor or owner); {@code created_by} is only a
+ * record of who created it. Anything the caller may not see is a 404, so the existence of foreign
+ * exams is not revealed; a member who is too small for a write gets a 403 from
+ * {@link CourseAccess}.
  */
 @Component
 public class Access {
@@ -27,16 +25,12 @@ public class Access {
     private final ExaminationRepository examRepository;
     private final SectionRepository sectionRepository;
     private final CourseAccess courseAccess;
-    private final CurrentUser currentUser;
-    private final GoalDirectory goalDirectory;
 
     public Access(ExaminationRepository examRepository, SectionRepository sectionRepository,
-                  CourseAccess courseAccess, CurrentUser currentUser, GoalDirectory goalDirectory) {
-        this.goalDirectory = goalDirectory;
+                  CourseAccess courseAccess) {
         this.examRepository = examRepository;
         this.sectionRepository = sectionRepository;
         this.courseAccess = courseAccess;
-        this.currentUser = currentUser;
     }
 
     /** Load an exam the caller may read; 404 if it does not exist or is not visible. */
@@ -51,13 +45,13 @@ public class Access {
 
     /** Check access to an already loaded exam. */
     public void check(Examination exam, boolean write) {
-        UUID courseId = exam.getCourseId();
-        if (courseId != null) {
-            if (write) courseAccess.requireWrite(courseId);
-            else courseAccess.requireRead(courseId);
-        } else if (!currentUser.userId().equals(exam.getCreatedBy())) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Exam not found");
-        }
+        if (write) courseAccess.requireWrite(exam.getCourseId());
+        else courseAccess.requireRead(exam.getCourseId());
+    }
+
+    /** Assert that the caller may put exams into the course (editor or owner); 404 for a non-member. */
+    public void requireCourseWrite(UUID courseId) {
+        courseAccess.requireWrite(courseId);
     }
 
     private Examination load(UUID examId, boolean write) {
@@ -94,24 +88,13 @@ public class Access {
         }
     }
 
-    /**
-     * The core course of a LearningGoalHub course, for linking an exam to it. The caller must be
-     * able to write in that course; a course the caller is not a member of is a 404.
-     */
-    public UUID linkCourse(long lghCourseId) {
-        int totalPages = 1;
-        for (int page = 0; page < totalPages; page++) {
-            GoalDirectory.Page<GoalDirectory.Course> res = goalDirectory.listCourses(page, 100);
-            if (res == null || res.content() == null) break;
-            for (GoalDirectory.Course c : res.content()) {
-                if (c.id() == lghCourseId && c.coreCourseId() != null) {
-                    courseAccess.requireWrite(c.coreCourseId());
-                    return c.coreCourseId();
-                }
-            }
-            totalPages = res.totalPages();
+    /** Parse a course id from a request, mapping a malformed value to 404 like an unknown course. */
+    public static UUID courseId(String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Course not found");
         }
-        throw new ApiException(HttpStatus.NOT_FOUND, "Course not found");
     }
 
     /** Parse a path id, mapping a malformed value to 404 rather than 500. */

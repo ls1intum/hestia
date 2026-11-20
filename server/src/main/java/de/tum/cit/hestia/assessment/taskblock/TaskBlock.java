@@ -49,10 +49,6 @@ public class TaskBlock extends OrgScoped {
     @Column(name = "parse_confidence")
     private String parseConfidence;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "learning_goal_ids")
-    private List<Long> learningGoalIds;
-
     @Generated(event = EventType.INSERT)
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
@@ -83,8 +79,6 @@ public class TaskBlock extends OrgScoped {
     public void setPoints(BigDecimal points) { this.points = points; }
     public String getParseConfidence() { return parseConfidence; }
     public void setParseConfidence(String parseConfidence) { this.parseConfidence = parseConfidence; }
-    public List<Long> getLearningGoalIds() { return learningGoalIds; }
-    public void setLearningGoalIds(List<Long> learningGoalIds) { this.learningGoalIds = learningGoalIds; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }
