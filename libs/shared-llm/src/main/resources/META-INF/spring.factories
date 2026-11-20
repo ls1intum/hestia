@@ -1,2 +1,0 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
-de.tum.cit.hestia.llm.HestiaLlmDefaults

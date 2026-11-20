@@ -1,6 +1,5 @@
 # Multi-stage build for the Hestia server.
-# Build context is the repository root, because this is a multi-project Gradle build
-# (:server depends on :libs:shared-llm).
+# Build context is the repository root, where the Gradle wrapper and root build scripts live.
 
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /workspace
@@ -11,7 +10,6 @@ ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx1024m"
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle gradle
 # Project sources (.dockerignore strips build/, node_modules/, dist/).
-COPY libs libs
 COPY server server
 
 RUN ./gradlew --no-daemon :server:bootJar -x test
