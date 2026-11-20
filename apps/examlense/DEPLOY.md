@@ -4,7 +4,7 @@
 > repository: `infra/compose.prod.yaml` (one Postgres with the roles from `infra/postgres/init`,
 > `hestia-server`, the three clients' nginx containers, backup) by `.github/workflows/hestia-cicd.yml`
 > into `/opt/hestia/app`. Production still runs the separate per-app deployment described below
-> until it is switched over; this document will be replaced by one guide for the whole application.
+> until it is switched over. The guides for the whole application are [`infra/docs/setup-guide.md`](../../infra/docs/setup-guide.md) and [`infra/docs/operations-manual.md`](../../infra/docs/operations-manual.md).
 
 ExamLense ships to the Hestia VMs through GitHub Actions: **CI builds the images, pushes
 them to GHCR, and deploys them onto the VM over SSH** via the shared ls1intum reusable
