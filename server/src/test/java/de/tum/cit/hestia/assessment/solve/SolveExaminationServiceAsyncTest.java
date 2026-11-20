@@ -1,6 +1,8 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
+import de.tum.cit.hestia.ai.ConsentApi;
+import de.tum.cit.hestia.ai.ConsentScope;
+import de.tum.cit.hestia.ai.LlmJobs;
 import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.examination.EvaluationRunRepository;
 import de.tum.cit.hestia.assessment.examination.Examination;
@@ -38,6 +40,19 @@ class SolveExaminationServiceAsyncTest {
 
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
+    private static LlmJobs jobs() {
+        LlmJobs jobs = mock(LlmJobs.class);
+        when(jobs.admit(any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+        return jobs;
+    }
+
+    private static ConsentApi consents() {
+        ConsentApi consents = mock(ConsentApi.class);
+        when(consents.status(ConsentScope.EXTERNAL_MODELS))
+            .thenReturn(new ConsentApi.Status(ConsentScope.EXTERNAL_MODELS, true, "v", "GRANTED", null));
+        return consents;
+    }
+
     @AfterEach
     void tearDown() {
         executor.shutdownNow();
@@ -66,7 +81,7 @@ class SolveExaminationServiceAsyncTest {
 
         CountDownLatch solveStarted = new CountDownLatch(1);
         CountDownLatch releaseSolve = new CountDownLatch(1);
-        when(sectionService.solveChecked(any(), any())).thenAnswer(inv -> {
+        when(sectionService.solveChecked(any(), any(), any())).thenAnswer(inv -> {
             solveStarted.countDown();
             releaseSolve.await(5, TimeUnit.SECONDS);
             return new SolveSectionService.Result("ok", 1, 1);
@@ -80,8 +95,7 @@ class SolveExaminationServiceAsyncTest {
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
-            sectionService, executor, access, sse, mock(LlmQuotaService.class),
-            mock(de.tum.cit.hestia.core.CurrentUser.class));
+            sectionService, executor, access, sse, jobs(), consents());
 
         SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString());
 
@@ -125,8 +139,7 @@ class SolveExaminationServiceAsyncTest {
         SolveExaminationService service = new SolveExaminationService(
             examRepository, taskRepository, answerRepository,
             mock(EvaluationRunRepository.class),
-            sectionService, executor, access, sse, mock(LlmQuotaService.class),
-            mock(de.tum.cit.hestia.core.CurrentUser.class));
+            sectionService, executor, access, sse, jobs(), consents());
 
         SolveExaminationService.DispatchPlan plan = service.startEvaluation(examId.toString());
 

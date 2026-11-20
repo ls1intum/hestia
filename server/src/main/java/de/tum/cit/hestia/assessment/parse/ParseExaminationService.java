@@ -1,19 +1,23 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
-import de.tum.cit.hestia.assessment.ai.AiProvider;
-import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.ConsentRequiredException;
+import de.tum.cit.hestia.ai.LlmContent;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmJobs;
+import de.tum.cit.hestia.ai.LlmRequest;
+import de.tum.cit.hestia.ai.LlmResponse;
+import de.tum.cit.hestia.ai.ModelRef;
+import de.tum.cit.hestia.assessment.ai.StrategyModels;
 import de.tum.cit.hestia.assessment.ai.ParserStrategies;
 import de.tum.cit.hestia.assessment.ai.ParserStrategy;
 import de.tum.cit.hestia.assessment.ai.ProviderKind;
 import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.error.ApiException;
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService;
 import de.tum.cit.hestia.assessment.storage.StorageService;
-import de.tum.cit.hestia.core.CurrentUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -38,6 +42,8 @@ import java.util.UUID;
 public class ParseExaminationService {
 
     private static final Logger log = LoggerFactory.getLogger(ParseExaminationService.class);
+    static final String MODULE = "assessment";
+    static final String PURPOSE = "exam-parse";
     private static final int MAX_BYTES = 10 * 1024 * 1024;
     /**
      * Hard page cap for every mode. The rasterize path holds one PNG per page
@@ -48,43 +54,40 @@ public class ParseExaminationService {
 
     private final ExaminationRepository examRepository;
     private final StorageService storage;
-    private final AiProviderFactory providerFactory;
+    private final LlmGateway gateway;
     private final PdfPageCounter pageCounter;
     private final ParseInputBuilder inputBuilder;
     private final ParsedExaminationPersister persister;
     private final ParseMetricsRecorder metricsRecorder;
     private final ParseProgress progress;
     private final FigureExtractionService figureExtraction;
-    private final LlmQuotaService quota;
+    private final LlmJobs jobs;
     private final Access access;
-    private final CurrentUser currentUser;
 
     public ParseExaminationService(
         ExaminationRepository examRepository,
         StorageService storage,
-        AiProviderFactory providerFactory,
+        LlmGateway gateway,
         PdfPageCounter pageCounter,
         ParseInputBuilder inputBuilder,
         ParsedExaminationPersister persister,
         ParseMetricsRecorder metricsRecorder,
         ParseProgress progress,
         FigureExtractionService figureExtraction,
-        LlmQuotaService quota,
-        Access access,
-        CurrentUser currentUser
+        LlmJobs jobs,
+        Access access
     ) {
         this.access = access;
-        this.currentUser = currentUser;
         this.examRepository = examRepository;
         this.storage = storage;
-        this.providerFactory = providerFactory;
+        this.gateway = gateway;
         this.pageCounter = pageCounter;
         this.inputBuilder = inputBuilder;
         this.persister = persister;
         this.metricsRecorder = metricsRecorder;
         this.progress = progress;
         this.figureExtraction = figureExtraction;
-        this.quota = quota;
+        this.jobs = jobs;
     }
 
     /**
@@ -98,7 +101,7 @@ public class ParseExaminationService {
      * against a re-parse producing duplicate rows lives where it belongs: the
      * persister is transactional and clears prior parse artifacts before insert.
      */
-    public ParserStrategy preflight(String examId, String parserModelId) {
+    public Preflight preflight(String examId, String parserModelId) {
         UUID examUuid = Access.id(examId);
         Examination exam = access.requireExaminationForWrite(examUuid);
         ParserStrategy strategy = ParserStrategies.resolve(parserModelId);
@@ -110,11 +113,12 @@ public class ParseExaminationService {
             throw new ApiException(HttpStatus.GONE, ParseErrorMessages.AI_MODEL_RETIRED);
         }
 
-        // Charge the caller's quota here: this is the last synchronous point before
-        // the PDF is rasterized and dispatched, and once queued the spend is
-        // committed. Deliberately after the ownership and retired-model checks so
-        // neither of those costs anyone a run.
-        quota.checkAndRecord(currentUser.userId(), LlmQuotaService.KIND_PARSE);
+        // Admit the job here: this is the last synchronous point before the PDF is
+        // rasterized and dispatched, and once queued the spend is committed. It checks
+        // the caller's limit and, for an external model, their consent (HTTP 428 so the
+        // client can ask and retry). Deliberately after the ownership and retired-model
+        // checks so neither of those costs anyone a run, and before anything changes.
+        UUID jobId = jobs.admit(MODULE, PURPOSE, exam.getCourseId(), StrategyModels.of(strategy));
 
         exam.setStatus("parsing");
         exam.setParseError(null);
@@ -124,8 +128,11 @@ public class ParseExaminationService {
         exam.setParseStartedAt(OffsetDateTime.now());
         examRepository.save(exam);
         progress.notifyExamination(examUuid);
-        return strategy;
+        return new Preflight(strategy, jobId);
     }
+
+    /** What the controller needs to start the run: the resolved parser and the admitted job. */
+    public record Preflight(ParserStrategy strategy, UUID jobId) {}
 
     @Async("solverExecutor")
     public void runAsync(
@@ -133,6 +140,7 @@ public class ParseExaminationService {
         String userId,
         String storagePath,
         ParserStrategy strategy,
+        UUID jobId,
         long requestNanos
     ) {
         // Valid by construction: preflight already resolved this exam.
@@ -143,6 +151,7 @@ public class ParseExaminationService {
             examId, strategy.id(), pdfMode, msSince(requestNanos));
 
         ParseAttempt attempt = new ParseAttempt(examUuid, userId, strategy.id(), pdfMode.name());
+        attempt.jobId = jobId;
         try {
             run(attempt, strategy, pdfMode, storagePath);
             log.info("parse-exam-pdf[{}] timing total took={}ms strategy={}",
@@ -196,7 +205,7 @@ public class ParseExaminationService {
             examId, msSince(tDownload), bytes.length);
 
         // 2. Build user content depending on PDF mode
-        AiProvider.UserContent userContent;
+        LlmContent.UserContent userContent;
         try {
             userContent = inputBuilder.build(pdfMode, examId, bytes);
         } catch (ParseInputBuilder.InputException e) {
@@ -211,6 +220,10 @@ public class ParseExaminationService {
         Map<String, Object> parsed;
         try {
             parsed = extractWithFallback(attempt, strategy, userContent, pdfMode, bytes);
+        } catch (ConsentRequiredException e) {
+            // Withdrawn while the run was queued or running: not transient, nothing was sent.
+            fail(attempt, ParseErrorMessages.CONSENT_WITHDRAWN);
+            return;
         } catch (AiExceptions.RateLimitException e) {
             fail(attempt, ParseErrorMessages.AI_RATE_LIMIT);
             return;
@@ -272,7 +285,7 @@ public class ParseExaminationService {
      * actually served so the single metrics row and the exam reflect it.
      */
     private Map<String, Object> extractWithFallback(
-        ParseAttempt attempt, ParserStrategy primary, AiProvider.UserContent primaryContent,
+        ParseAttempt attempt, ParserStrategy primary, LlmContent.UserContent primaryContent,
         ParserStrategy.PdfMode primaryMode, byte[] bytes
     ) {
         try {
@@ -287,7 +300,7 @@ public class ParseExaminationService {
             // Only rebuild input if the mode actually differs (the default→fallback
             // pair shares PDF_DIRECT, so this reuses the content already built).
             ParserStrategy.PdfMode fbMode = fallback.pdfMode();
-            AiProvider.UserContent fbContent = fbMode == primaryMode
+            LlmContent.UserContent fbContent = fbMode == primaryMode
                 ? primaryContent
                 : inputBuilder.build(fbMode, attempt.examId, bytes);
             attempt.parserModel = fallback.id();
@@ -296,20 +309,20 @@ public class ParseExaminationService {
         }
     }
 
-    /** One provider call for the given strategy; stamps llm timing + usage onto the attempt. */
-    private Map<String, Object> extract(ParseAttempt attempt, ParserStrategy strategy, AiProvider.UserContent userContent) {
-        AiProvider provider = providerFactory.forParser(strategy);
+    /** One model call for the given strategy; stamps llm timing + usage onto the attempt. */
+    private Map<String, Object> extract(ParseAttempt attempt, ParserStrategy strategy, LlmContent.UserContent userContent) {
+        // Refuses a retired model (410, non-transient) before anything is sent.
+        ModelRef model = StrategyModels.of(strategy);
         progress.setPhase(attempt.examId, "extracting");
         long tLlm = System.nanoTime();
-        AiProvider.ChatResponse res = provider.chat(new AiProvider.ChatRequest(
-            ParseExaminationPrompts.SYSTEM_PROMPT,
-            userContent,
-            new AiProvider.Tool(
+        LlmResponse res = gateway.chat(LlmRequest.of(MODULE, PURPOSE, userContent)
+            .withModel(model)
+            .withSystem(ParseExaminationPrompts.SYSTEM_PROMPT)
+            .withTool(new LlmContent.Tool(
                 ParseExaminationPrompts.TOOL_NAME,
                 ParseExaminationPrompts.TOOL_DESCRIPTION,
-                ParseExaminationPrompts.schema()
-            )
-        ));
+                ParseExaminationPrompts.schema()))
+            .inJob(attempt.jobId));
         attempt.llmMs = msSince(tLlm);
         attempt.usage = res.usage();
         log.info("parse-exam-pdf[{}] timing step=llm-call took={}ms model={}",

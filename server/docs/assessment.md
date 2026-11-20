@@ -187,8 +187,9 @@ server/
 │   ├── lgh/             # LearningGoalHub proxy + goal generation
 │   │
 │   │   # ── shared technical infrastructure ──
-│   ├── ai/              # AiProvider + factory, ProviderHttpCaller (shared transport/retry),
-│   │                    #   per-provider request/response adapters, parser/solver strategies
+│   ├── ai/              # parser/solver strategies, StrategyModels (strategy -> ai.ModelRef),
+│   │                    #   ConsentController (/api/ai-consent); the calls themselves go through
+│   │                    #   module `ai` (LlmGateway, LlmJobs)
 │   ├── storage/         # StorageService, LocalFileSystemStorageService, SignedUrls, FileController
 │   ├── sse/             # SseHub + SseController
 │   ├── security/        # RateLimitFilter
@@ -227,7 +228,7 @@ Three things that surprise people:
   client to call the delete-by-section endpoints first.
 - **`parse_metrics.exam_id` is `SET NULL`** on purpose, so parser-quality metrics outlive the
   exams they were measured on.
-- **`exams.created_by`, `exams.course_id`, `llm_usage.user_id`, `parse_metrics.owner_id` and
+- **`exams.created_by`, `exams.course_id`, `parse_metrics.owner_id` and
   `task_grades.graded_by` reference core (`app_user`, `course`)**; every table has `org_id`
   with an RLS policy `org_isolation`.
 
@@ -238,13 +239,27 @@ mirrored in Java in `ExamController`. `updated_at` is trigger-maintained on `exa
 
 ## AI provider configuration
 
+Every model call goes through the `ai` module (`ai.LlmGateway`); assessment never talks to a
+provider itself. The three providers are external, so a user needs to have consented
+(`ConsentScope.EXTERNAL_MODELS`) before a parse or a solve starts (HTTP 428, body
+`{"error": ..., "code": "CONSENT_REQUIRED"}`; the client asks, `POST /api/ai-consent`, retries).
+Consent is checked when the job is admitted on the request thread and again by the gateway on every
+call; if it is withdrawn mid-run, the run fails (not transient, nothing is sent). Jobs are limited per
+user over a rolling 24 hours: `HESTIA_AI_LIMIT_EXAM_PARSE` (10) and `HESTIA_AI_LIMIT_EXAM_SOLVE`
+(30), 0 = off; over the limit is HTTP 429 with `code: JOB_LIMIT_EXCEEDED`. There is no
+organisation-wide ceiling. A `RETIRED` strategy is refused by `StrategyModels` before any call (410,
+not transient).
+
+Endpoints: `GET /api/ai-consent` (status + notice), `POST` (grant), `DELETE` (revoke); every grant
+and withdrawal is appended to the consent log in `ai`.
+
 Parser/solver strategies in `server/src/main/java/de/tum/cit/hestia/assessment/ai/ParserStrategies.java` and
 `SolverStrategies.java` pin a provider transport. Configure only the providers
 you want to use; selecting a model without its key returns a clear provider
 configuration error.
 
 ```
-# OpenAI GPT models
+# OpenAI GPT models (read by ai.yml as hestia.ai.openai.*)
 OPENAI_API_KEY=<your OpenAI key>
 # OPENAI_BASE_URL=https://api.openai.com/v1
 

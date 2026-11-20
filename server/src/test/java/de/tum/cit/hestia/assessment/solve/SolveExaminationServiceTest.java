@@ -1,6 +1,9 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
+import de.tum.cit.hestia.ai.ConsentApi;
+import de.tum.cit.hestia.ai.ConsentRequiredException;
+import de.tum.cit.hestia.ai.ConsentScope;
+import de.tum.cit.hestia.ai.LlmJobs;
 import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.EvaluationRunRepository;
@@ -13,6 +16,7 @@ import de.tum.cit.hestia.assessment.sse.SseHub;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -40,11 +44,18 @@ class SolveExaminationServiceTest {
     private final Executor executor = mock(Executor.class);
     private final Access access = mock(Access.class);
     private final SseHub sse = mock(SseHub.class);
+    private final LlmJobs jobs = mock(LlmJobs.class);
+    private final ConsentApi consents = mock(ConsentApi.class);
 
     private final SolveExaminationService service =
         new SolveExaminationService(exams, tasks, answers,
-            mock(EvaluationRunRepository.class), sectionService, executor, access, sse,
-            mock(LlmQuotaService.class), mock(de.tum.cit.hestia.core.CurrentUser.class));
+            mock(EvaluationRunRepository.class), sectionService, executor, access, sse, jobs, consents);
+
+    @BeforeEach
+    void consentGiven() {
+        when(consents.status(ConsentScope.EXTERNAL_MODELS))
+            .thenReturn(new ConsentApi.Status(ConsentScope.EXTERNAL_MODELS, true, "v", "GRANTED", null));
+    }
 
     private static Examination examOwnedBy(UUID owner) {
         Examination e = new Examination();
@@ -81,6 +92,22 @@ class SolveExaminationServiceTest {
         assertThatThrownBy(() -> service.startEvaluation("not-a-uuid"))
             .isInstanceOf(ApiException.class)
             .satisfies(ex -> assertThat(((ApiException) ex).status()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    /** The refusal comes before the resets: a user without consent must not lose the exam's answers. */
+    @Test
+    void withoutConsentNothingIsResetAndNoJobIsAdmitted() {
+        UUID examId = UUID.randomUUID();
+        when(access.requireExaminationForWrite(eq(examId))).thenReturn(examOwnedBy(UUID.randomUUID()));
+        when(consents.status(ConsentScope.EXTERNAL_MODELS))
+            .thenReturn(new ConsentApi.Status(ConsentScope.EXTERNAL_MODELS, false, "v", null, null));
+
+        assertThatThrownBy(() -> service.startEvaluation(examId.toString()))
+            .isInstanceOf(ConsentRequiredException.class);
+
+        verify(exams, never()).startEvaluating(any(), any());
+        verify(answers, never()).deleteByExamId(any());
+        verify(jobs, never()).admit(any(), any(), any(), any());
     }
 
     @Test

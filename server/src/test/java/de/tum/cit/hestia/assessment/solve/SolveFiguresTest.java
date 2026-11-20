@@ -1,6 +1,11 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.ai.AiProvider;
+import de.tum.cit.hestia.ai.LlmContent;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmRequest;
+import de.tum.cit.hestia.ai.LlmResponse;
+import de.tum.cit.hestia.ai.ModelRef;
+import de.tum.cit.hestia.ai.Provider;
 import de.tum.cit.hestia.assessment.ai.SolverStrategies;
 import de.tum.cit.hestia.assessment.prompts.Prompts;
 import de.tum.cit.hestia.assessment.section.Section;
@@ -52,6 +57,7 @@ class SolveFiguresTest {
     private SectionFigureRepository figureRepository;
     private StorageService storage;
     private SolveCore core;
+    private LlmGateway gateway;
 
     @BeforeEach
     void setUp() {
@@ -59,10 +65,11 @@ class SolveFiguresTest {
         blockRepository = mock(SectionBlockRepository.class);
         figureRepository = mock(SectionFigureRepository.class);
         storage = mock(StorageService.class);
+        gateway = mock(LlmGateway.class);
         core = new SolveCore(
             sectionRepository, blockRepository, figureRepository, storage,
             mock(AIAnswerRepository.class), mock(TaskBlockRepository.class),
-            mock(PlatformTransactionManager.class), mock(SseHub.class));
+            mock(PlatformTransactionManager.class), mock(SseHub.class), gateway);
 
         Section section = new Section();
         section.setExamId(EXAM);
@@ -97,22 +104,21 @@ class SolveFiguresTest {
     }
 
     /** The prompt body, whether or not images were attached alongside it. */
-    private static String promptTextOf(AiProvider.ChatRequest request) {
-        if (request.userContent() instanceof AiProvider.TextContent t) return t.text();
-        AiProvider.ContentPart first =
-            ((AiProvider.MultipartContent) request.userContent()).parts().get(0);
-        return ((AiProvider.TextPart) first).text();
+    private static String promptTextOf(LlmRequest request) {
+        if (request.user() instanceof LlmContent.TextContent t) return t.text();
+        LlmContent.ContentPart first =
+            ((LlmContent.MultipartContent) request.user()).parts().get(0);
+        return ((LlmContent.TextPart) first).text();
     }
 
     /** Captures the request a solve would send for this context. */
-    private AiProvider.ChatRequest requestFor(SolveCore.PromptContext ctx) {
-        AiProvider provider = mock(AiProvider.class);
-        when(provider.chat(any())).thenReturn(new AiProvider.ChatResponse(
-            Map.of("answers", List.of()), "m", "p", null));
-        core.askForAnswers(provider, "sys", ctx, List.of(), null);
-        ArgumentCaptor<AiProvider.ChatRequest> req =
-            ArgumentCaptor.forClass(AiProvider.ChatRequest.class);
-        verify(provider).chat(req.capture());
+    private LlmRequest requestFor(SolveCore.PromptContext ctx) {
+        when(gateway.chat(any())).thenReturn(new LlmResponse(
+            null, Map.of("answers", List.of()), "m", Provider.OPENAI, null));
+        core.askForAnswers(new SolveCore.ModelCall(ModelRef.of(Provider.OPENAI, "m"), null, null),
+            "sys", ctx, List.of(), null);
+        ArgumentCaptor<LlmRequest> req = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(gateway).chat(req.capture());
         return req.getValue();
     }
 
@@ -122,19 +128,19 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3, 4});
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
 
-        assertThat(request.userContent()).isInstanceOf(AiProvider.MultipartContent.class);
-        List<AiProvider.ContentPart> parts =
-            ((AiProvider.MultipartContent) request.userContent()).parts();
+        assertThat(request.user()).isInstanceOf(LlmContent.MultipartContent.class);
+        List<LlmContent.ContentPart> parts =
+            ((LlmContent.MultipartContent) request.user()).parts();
         assertThat(parts).hasSize(3);
         // Section position is 2, first figure -> "Figure 2.1", the same string the
         // prompt body uses for the placeholder.
-        assertThat(parts.get(1)).isEqualTo(new AiProvider.TextPart("Figure 2.1:"));
-        assertThat(parts.get(2)).isInstanceOf(AiProvider.ImageUrlPart.class);
-        assertThat(((AiProvider.ImageUrlPart) parts.get(2)).url())
+        assertThat(parts.get(1)).isEqualTo(new LlmContent.TextPart("Figure 2.1:"));
+        assertThat(parts.get(2)).isInstanceOf(LlmContent.ImageUrlPart.class);
+        assertThat(((LlmContent.ImageUrlPart) parts.get(2)).url())
             .startsWith("data:image/png;base64,");
-        assertThat(((AiProvider.TextPart) parts.get(0)).text()).contains("[Figure 2.1]");
+        assertThat(((LlmContent.TextPart) parts.get(0)).text()).contains("[Figure 2.1]");
     }
 
     @Test
@@ -145,10 +151,10 @@ class SolveFiguresTest {
 
         // gemma-4-31b-it is a retired, text-only model an old exam may still be pinned to.
         boolean vision = SolverStrategies.resolve("gemma-4-31b-it").supportsVision();
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, vision));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, vision));
 
         assertThat(vision).isFalse();
-        assertThat(request.userContent()).isInstanceOf(AiProvider.TextContent.class);
+        assertThat(request.user()).isInstanceOf(LlmContent.TextContent.class);
         verify(storage, never()).download(anyString(), anyString());
     }
 
@@ -165,9 +171,9 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         when(figureRepository.findByBlockIdOrderByPositionAsc(fig.getId())).thenReturn(List.of());
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
 
-        assertThat(request.userContent()).isInstanceOf(AiProvider.TextContent.class);
+        assertThat(request.user()).isInstanceOf(LlmContent.TextContent.class);
     }
 
     @Test
@@ -190,7 +196,7 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, "Vom Autor korrigierte Bildunterschrift");
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
 
         assertThat(promptTextOf(request))
             .contains("[Figure 2.1] Vom Autor korrigierte Bildunterschrift")
@@ -204,9 +210,9 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, "Zustandsdiagramm des Automaten");
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, false));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, false));
 
-        assertThat(request.userContent()).isInstanceOf(AiProvider.TextContent.class);
+        assertThat(request.user()).isInstanceOf(LlmContent.TextContent.class);
         assertThat(promptTextOf(request)).contains("[Figure 2.1] Zustandsdiagramm des Automaten");
     }
 
@@ -216,7 +222,7 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         withFigureImage(fig, "u/e/auto/x.png", new byte[]{1, 2, 3}, null);
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
 
         assertThat(promptTextOf(request)).contains("[Figure 2.1] Abbildung 3 — Zustandsdiagramm");
     }
@@ -227,9 +233,9 @@ class SolveFiguresTest {
         when(blockRepository.findBySectionIdOrderByPositionAsc(SECTION)).thenReturn(List.of(fig));
         withFigureImage(fig, "u/e/auto/gone.png", null);
 
-        AiProvider.ChatRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
+        LlmRequest request = requestFor(core.loadContext(EXAM, SECTION, true));
 
-        assertThat(request.userContent()).isInstanceOf(AiProvider.TextContent.class);
+        assertThat(request.user()).isInstanceOf(LlmContent.TextContent.class);
     }
 
     @Test

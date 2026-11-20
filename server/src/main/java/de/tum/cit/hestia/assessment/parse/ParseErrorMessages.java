@@ -48,6 +48,9 @@ public final class ParseErrorMessages {
     public static final String AI_MODEL_RETIRED =
         "The model this exam was parsed with has been retired and is no longer available. "
         + "Please re-parse it with one of the current models.";
+    public static final String CONSENT_WITHDRAWN =
+        "Parsing was stopped because your consent to external AI models is no longer given. "
+        + "Grant it again and retry parsing.";
     public static final String AI_UNREACHABLE =
         "We couldn't reach the AI service (network timeout or connection problem). Please retry "
         + "in a few minutes; if it keeps happening, contact the administrator.";
@@ -62,7 +65,7 @@ public final class ParseErrorMessages {
     }
 
     /**
-     * Map an {@link de.tum.cit.hestia.assessment.ai.AiExceptions.ProviderException} HTTP status to a user-facing
+     * Map an {@link de.tum.cit.hestia.ai.AiExceptions.ProviderException} HTTP status to a user-facing
      * message. Rate-limit (429) and payment-required (402) arrive as their own exception
      * types and are handled separately, so they aren't covered here.
      *

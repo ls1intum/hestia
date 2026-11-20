@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.ai.AiProvider;
+import de.tum.cit.hestia.ai.LlmContent;
 import de.tum.cit.hestia.assessment.ai.ParserStrategy;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -36,14 +36,14 @@ class ParseInputBuilder {
         this.progress = progress;
     }
 
-    AiProvider.UserContent build(ParserStrategy.PdfMode mode, UUID examId, byte[] bytes) {
+    LlmContent.UserContent build(ParserStrategy.PdfMode mode, UUID examId, byte[] bytes) {
         return switch (mode) {
             case RASTERIZE -> rasterized(examId, bytes);
             case PDF_DIRECT -> pdfDirect(bytes);
         };
     }
 
-    private AiProvider.UserContent rasterized(UUID examId, byte[] bytes) {
+    private LlmContent.UserContent rasterized(UUID examId, byte[] bytes) {
         List<byte[]> pages;
         long tRaster = System.nanoTime();
         try {
@@ -55,21 +55,21 @@ class ParseInputBuilder {
             log.error("parse-exam-pdf[{}] rasterize failed", examId, e);
             throw new InputException(ParseErrorMessages.PDF_UNREADABLE, e);
         }
-        List<AiProvider.ContentPart> parts = new ArrayList<>();
-        parts.add(new AiProvider.TextPart(
+        List<LlmContent.ContentPart> parts = new ArrayList<>();
+        parts.add(new LlmContent.TextPart(
             "Extract the exam from the following page images, in reading order."));
         for (byte[] png : pages) {
             String b64 = Base64.getEncoder().encodeToString(png);
-            parts.add(new AiProvider.ImageUrlPart("data:image/png;base64," + b64));
+            parts.add(new LlmContent.ImageUrlPart("data:image/png;base64," + b64));
         }
-        return new AiProvider.MultipartContent(parts);
+        return new LlmContent.MultipartContent(parts);
     }
 
-    private AiProvider.UserContent pdfDirect(byte[] bytes) {
+    private LlmContent.UserContent pdfDirect(byte[] bytes) {
         String b64 = Base64.getEncoder().encodeToString(bytes);
-        return new AiProvider.MultipartContent(List.of(
-            new AiProvider.TextPart("Extract the exam."),
-            new AiProvider.FilePart("exam.pdf", b64, "application/pdf")
+        return new LlmContent.MultipartContent(List.of(
+            new LlmContent.TextPart("Extract the exam."),
+            new LlmContent.FilePart("exam.pdf", b64, "application/pdf")
         ));
     }
 
