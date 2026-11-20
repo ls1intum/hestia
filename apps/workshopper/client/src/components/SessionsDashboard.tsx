@@ -16,6 +16,7 @@ import {
   Presentation,
   ChevronDown,
   Sparkles,
+  FolderInput,
 } from "lucide-react";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
@@ -39,7 +40,7 @@ import {
   renameSession,
   downloadPdf,
   downloadPptx,
-  moveSession,
+  moveSessionToCourse,
   downloadCourseZip,
   reorderSessions,
   handleAuthError,
@@ -49,6 +50,7 @@ import {
 } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
+import { MoveSessionDialog, courseLabel } from "@/components/MoveSessionDialog";
 
 interface Props {
   onNewSession: () => void;
@@ -100,6 +102,8 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
   const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState<string>("");
+  /** A session to move to another course; `target` is set when it was dropped on a course. */
+  const [movingSession, setMovingSession] = useState<{ id: string; courseId?: string; target?: string } | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ id: string, type: "SESSION" | "COURSE" } | null>(null);
 
   const toggleCourse = (id: string) => {
@@ -310,7 +314,6 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
               // so the sections have to be split by type, not by courseId alone
               const isCourse = (s: SessionSummary) => (s as any).type === "COURSE";
               const courses = sessions.filter(isCourse);
-              const standaloneSessions = sessions.filter(s => !isCourse(s) && !s.courseId);
 
               const renderSessionCard = (session: SessionSummary, isChild = false) => (
                 <div
@@ -345,7 +348,11 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                     if (draggedId && draggedId !== session.id) {
                       const draggedSession = sessions.find(s => s.id === draggedId);
                       if (!draggedSession || (draggedSession as any).type === "COURSE") return;
-                      const changesCourse = (draggedSession.courseId || null) !== (session.courseId || null);
+                      if (draggedSession.courseId !== session.courseId) {
+                        // Another course: confirm first (the move removes links to the old course's goals)
+                        setMovingSession({ id: draggedId, courseId: draggedSession.courseId, target: session.courseId });
+                        return;
+                      }
 
                       // Place the card right away; the server catches up in the background
                       const reordered = sessions.filter(s => s.id !== draggedId);
@@ -353,11 +360,8 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                       setSessions(reordered);
 
                       try {
-                        if (changesCourse) {
-                          await moveSession(draggedId, session.courseId || "");
-                        }
                         const siblingIds = reordered
-                          .filter(s => (s as any).type !== "COURSE" && (s.courseId || null) === (session.courseId || null))
+                          .filter(s => (s as any).type !== "COURSE" && s.courseId === session.courseId)
                           .map(s => s.id);
                         await reorderSessions(siblingIds);
                       } catch (err: any) {
@@ -417,6 +421,9 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                             <DropdownMenuItem onClick={(e) => handleExportPdf(e as any, session.id)}><FileText className="mr-2 h-4 w-4" /><span>Export Timetable (PDF)</span></DropdownMenuItem>
                           </>
                         )}
+                        <DropdownMenuItem onClick={() => setMovingSession({ id: session.id, courseId: session.courseId })}>
+                          <FolderInput className="mr-2 h-4 w-4" /><span>Move to course…</span>
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, session.id, "SESSION")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                           <Trash2 className="mr-2 h-4 w-4" /><span>Delete</span>
                         </DropdownMenuItem>
@@ -455,15 +462,8 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                 const dragged = sessions.find(s => s.id === sessionId);
                                 // Already in this course: nothing to move
                                 if (!dragged || (dragged as any).type === "COURSE" || dragged.courseId === course.id) return;
-                                setSessions(prev => [...prev.filter(s => s.id !== sessionId), { ...dragged, courseId: course.id }]);
-                                try {
-                                  await moveSession(sessionId, course.id);
-                                } catch (err: any) {
-                                  // A-3: use toast instead of alert()
-                                  toast({ title: "Failed to move session", description: err.message, variant: "destructive" });
-                                } finally {
-                                  loadSessions(true);
-                                }
+                                // Confirm first (the move removes links to the old course's goals)
+                                setMovingSession({ id: sessionId, courseId: dragged.courseId, target: course.id });
                               }}
                             >
                               <div className="flex items-center justify-between pl-2">
@@ -472,12 +472,12 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                     {collapsedCourses.has(course.id) ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                                   </div>
                                   <div>
-                                    <h4 className="font-display font-semibold text-foreground text-lg hover:underline decoration-primary/30 decoration-2 underline-offset-4">{course.title || "Untitled Course"}</h4>
+                                    <h4 className="font-display font-semibold text-foreground text-lg hover:underline decoration-primary/30 decoration-2 underline-offset-4">{courseLabel(course)}</h4>
                                     <p className="text-sm text-muted-foreground font-body">Created {formatRelativeTime(course.createdAt)} • {childSessions.length} {childSessions.length === 1 ? 'session' : 'sessions'}</p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Button variant="outline" size="sm" onClick={() => onNewSessionFromCourse(course.id)} className="gap-2 bg-background">
+                                  <Button variant="outline" size="sm" onClick={() => course.personal ? onNewSession() : onNewSessionFromCourse(course.id)} className="gap-2 bg-background">
                                     <Plus className="h-3 w-3" /> Add Session
                                   </Button>
                                   <DropdownMenu>
@@ -487,18 +487,24 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-56 font-body">
-                                      <DropdownMenuItem onClick={(e) => handleRenameClick(e as any, course.id, course.title || "Untitled Course")}>
-                                        <Pencil className="mr-2 h-4 w-4" /><span>Rename</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
-                                        <FileEdit className="mr-2 h-4 w-4" /><span>Edit course settings</span>
-                                      </DropdownMenuItem>
+                                      {!course.personal && (
+                                        <>
+                                          <DropdownMenuItem onClick={(e) => handleRenameClick(e as any, course.id, course.title || "Untitled Course")}>
+                                            <Pencil className="mr-2 h-4 w-4" /><span>Rename</span>
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => onResumeSession(course.id, { type: "COURSE" })}>
+                                            <FileEdit className="mr-2 h-4 w-4" /><span>Edit course settings</span>
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
                                       <DropdownMenuItem onClick={(e) => handleExportCourseZip(e as any, course.id, course.title)}>
                                         <Presentation className="mr-2 h-4 w-4" /><span>Export all materials (.zip)</span>
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, course.id, "COURSE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                        <Trash2 className="mr-2 h-4 w-4" /><span>Delete Course</span>
-                                      </DropdownMenuItem>
+                                      {!course.personal && course.role === "OWNER" && (
+                                        <DropdownMenuItem onClick={(e) => handleDeleteClick(e as any, course.id, "COURSE")} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                          <Trash2 className="mr-2 h-4 w-4" /><span>Delete Course</span>
+                                        </DropdownMenuItem>
+                                      )}
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>
@@ -515,56 +521,27 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                     </div>
                   )}
 
-                  {(standaloneSessions.length > 0 || courses.length > 0) && (
-                    <div
-                      className="space-y-3 rounded-3xl transition-shadow"
-                      // Dropping here (outside any card) takes a session out of its course
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.add("ring-2", "ring-primary", "ring-offset-2");
-                      }}
-                      onDragLeave={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                        e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
-                      }}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove("ring-2", "ring-primary", "ring-offset-2");
-                        const sessionId = e.dataTransfer.getData("text/plain");
-                        const dragged = sessions.find(s => s.id === sessionId);
-                        if (!dragged || (dragged as any).type === "COURSE" || !dragged.courseId) return;
-                        setSessions(prev => [...prev.filter(s => s.id !== sessionId), { ...dragged, courseId: undefined }]);
-                        try {
-                          await moveSession(sessionId, "");
-                        } catch (err: any) {
-                          toast({ title: "Failed to move session", description: err.message, variant: "destructive" });
-                        } finally {
-                          loadSessions(true);
-                        }
-                      }}
-                    >
-                      {courses.length > 0 && (
-                        <h3 className="font-display font-semibold text-lg text-foreground flex items-center gap-2 pt-4">
-                          <FileText className="h-5 w-5 text-muted-foreground" /> Standalone Sessions
-                        </h3>
-                      )}
-                      <div className="grid gap-3">
-                        {standaloneSessions.length > 0
-                          ? standaloneSessions.map(session => renderSessionCard(session))
-                          : (
-                            <div className="rounded-2xl border-2 border-dashed border-border/60 p-5 text-center text-sm text-muted-foreground font-body">
-                              Drag a session here to take it out of its course.
-                            </div>
-                          )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })()}
           </div>
         )}
       </main>
+
+      <MoveSessionDialog
+        open={movingSession !== null}
+        onOpenChange={(open) => !open && setMovingSession(null)}
+        currentCourseId={movingSession?.courseId}
+        initialCourseId={movingSession?.target}
+        onMove={async (course) => {
+          if (!movingSession) return;
+          try {
+            await moveSessionToCourse(movingSession.id, course.id);
+          } finally {
+            loadSessions(true);
+          }
+        }}
+      />
 
       {/* Delete Dialog */}
       <AlertDialog open={deletingItem !== null} onOpenChange={(open) => !open && setDeletingItem(null)}>

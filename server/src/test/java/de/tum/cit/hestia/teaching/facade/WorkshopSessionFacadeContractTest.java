@@ -41,6 +41,9 @@ public class WorkshopSessionFacadeContractTest {
     @Mock
     private CourseAccess courseAccess;
 
+    @Mock
+    private de.tum.cit.hestia.core.CourseApi courseApi;
+
     @org.mockito.Spy
     private UsageGuard usageGuard = new UsageGuard(anyone(), 4, 120, 10);
 
@@ -72,6 +75,8 @@ public class WorkshopSessionFacadeContractTest {
         mockEntity.setCreatedBy(userId);
         org.mockito.Mockito.lenient().when(repository.findById(anyString())).thenReturn(Optional.of(mockEntity));
         org.mockito.Mockito.lenient().when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        org.mockito.Mockito.lenient().when(courseApi.personalCourse()).thenReturn(new de.tum.cit.hestia.core.CourseInfo(
+                UUID.randomUUID(), "Einzelkram", de.tum.cit.hestia.core.CourseRole.OWNER, java.time.Instant.now(), true));
 
         // Act
         facade.generateAndSaveSession(request);

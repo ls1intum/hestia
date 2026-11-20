@@ -11,6 +11,10 @@ public record CourseSummaryDto(
         String title,
         String status,
         String currentStep,
+        /** The user's personal catch-all course ("Einzelkram"); it cannot be deleted */
+        boolean personal,
+        /** The user's role in the course: VIEWER, EDITOR or OWNER */
+        String role,
         @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime createdAt,
         @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime updatedAt
 ) {}

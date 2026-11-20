@@ -12,11 +12,12 @@ final class FlowPaths {
     static final String SESSION_DRAFT = SESSIONS + "/draft";
     static final String REFINE_GOAL = API + "/workshop/refine-goal";
     static final String FIX_GOALS_GRAMMAR = API + "/workshop/fix-goals-grammar";
-    static final String LGH_COURSES = API + "/workshop/lgh/courses";
 
     private FlowPaths() {}
 
     static String course(String id) { return COURSES + "/" + id; }
+
+    static String courseGoals(String id) { return COURSES + "/" + id + "/goals"; }
 
     static String session(String id) { return SESSIONS + "/" + id; }
 

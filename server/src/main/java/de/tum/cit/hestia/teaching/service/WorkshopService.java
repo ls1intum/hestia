@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.teaching.service;
 
-import de.tum.cit.hestia.teaching.model.CourseEntity;
+import de.tum.cit.hestia.teaching.model.TeachingPlanEntity;
 import org.springframework.transaction.annotation.Transactional;
 
 
@@ -22,10 +22,14 @@ import java.util.Optional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
+import de.tum.cit.hestia.teaching.repository.TeachingPlanRepository;
+import de.tum.cit.hestia.core.CourseInfo;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.Objects;
 import de.tum.cit.hestia.core.CourseAccess;
 import de.tum.cit.hestia.core.CourseApi;
 import de.tum.cit.hestia.core.CourseRole;
@@ -35,7 +39,8 @@ import java.util.UUID;
 @Service
 public class WorkshopService {
 
-    private final CourseRepository courseRepository;
+    private final TeachingPlanRepository plans;
+    private final SessionGoals goals;
 
     private static final Logger log = LoggerFactory.getLogger(WorkshopService.class);
 
@@ -47,14 +52,15 @@ public class WorkshopService {
     private final CourseAccess courseAccess;
     private final CurrentUser currentUser;
 
-    public WorkshopService(WorkshopSessionRepository repo, CourseRepository courseRepository,
+    public WorkshopService(WorkshopSessionRepository repo, TeachingPlanRepository plans,
                            SlideTemplateRepository templateRepo, CourseApi courseApi,
-                           CourseAccess courseAccess, CurrentUser currentUser) {
+                           CourseAccess courseAccess, CurrentUser currentUser, SessionGoals goals) {
+        this.goals = goals;
         this.courseApi = courseApi;
         this.courseAccess = courseAccess;
         this.currentUser = currentUser;
         this.repo = repo;
-        this.courseRepository = courseRepository;
+        this.plans = plans;
         this.templateRepo = templateRepo;
     }
 
@@ -79,18 +85,23 @@ public class WorkshopService {
         if (entity == null) {
             UsageGuard.checkSessionCount(repo.countByCreatedBy(currentUser.userId()));
             entity = new WorkshopSessionEntity();
-            entity.setCreatedBy(currentUser.userId()); // Bind the new draft to the creator
+            entity.setCreatedBy(currentUser.userId());
+            // Without a chosen course a session goes into the user's personal course
+            entity.setCourseId(req.courseId() != null && !req.courseId().isBlank()
+                    ? uuid(req.courseId()) : courseApi.personalCourse().id());
         }
+        // An existing session keeps its course here; moving it is a separate action (moveSession)
+        String draftJson = req.draftStateJson() == null ? null
+                : goals.toStored(req.draftStateJson(), entity.getCourseId());
+        List<UUID> planGoalIds = draftJson == null ? null : goals.planGoalIds(draftJson);
         if (req.title() != null)
             entity.setTitle(req.title());
         if (req.currentStep() != null)
             entity.setCurrentStep(req.currentStep());
-        if (req.courseId() != null)
-            entity.setCourseId(req.courseId());
-        if (req.draftStateJson() != null) {
-            entity.setDraftStateJson(req.draftStateJson());
+        if (draftJson != null) {
+            entity.setDraftStateJson(draftJson);
             try {
-                JsonNode rootNode = mapper.readTree(req.draftStateJson());
+                JsonNode rootNode = mapper.readTree(draftJson);
                 if (rootNode.has("session") && !rootNode.get("session").isNull()) {
                     entity.setSessionJson(mapper.writeValueAsString(rootNode.get("session")));
                 }
@@ -114,7 +125,10 @@ public class WorkshopService {
             boolean fromTimetableOn = STEPS_WITH_TIMETABLE.contains(req.currentStep());
             entity.setStatus(fromTimetableOn && entity.getSessionJson() != null ? "complete" : "draft");
         }
-        return repo.save(entity).getId();
+        String id = repo.save(entity).getId();
+        // One alignment link per goal of the plan
+        if (planGoalIds != null) goals.syncLinks(id, planGoalIds);
+        return id;
     }
 
     public void saveSlides(String id, Map<Integer, List<Map<String, Object>>> slidesCache)
@@ -160,8 +174,8 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     /** The id of the template that applies to a session: its own, else its course's (unless it opted out). */
     private String effectiveTemplateId(WorkshopSessionEntity entity) {
         if (entity.getTemplateId() != null) return entity.getTemplateId();
-        if (entity.isUseDefaultTemplate() || entity.getCourseId() == null) return null;
-        return courseRepository.findById(entity.getCourseId()).map(CourseEntity::getTemplateId).orElse(null);
+        if (entity.isUseDefaultTemplate()) return null;
+        return plans.findById(entity.getCourseId()).map(TeachingPlanEntity::getTemplateId).orElse(null);
     }
 
     /** Returns the effective template (session's own, else its course's), or null to use the default. */
@@ -180,27 +194,25 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     }
 
     public void saveCourseTemplate(String courseId, byte[] templateData, String fileName) {
-        CourseEntity course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
+        TeachingPlanEntity plan = planForWrite(uuid(courseId));
         SlideTemplateEntity template = new SlideTemplateEntity();
         template.setId(courseId);
         template.setOwnerId(currentUser.userId());
         template.setFileName(fileName);
         template.setFileData(templateData);
         templateRepo.save(template);
-        course.setTemplateId(courseId);
-        courseRepository.save(course);
+        plan.setTemplateId(courseId);
+        plans.save(plan);
     }
 
     /** Removes a course's template; its sessions fall back to the default design (or their own template). */
     @Transactional
     public void deleteCourseTemplate(String courseId) {
-        CourseEntity course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseId));
-        if (course.getTemplateId() != null) {
-            String templateId = course.getTemplateId();
-            course.setTemplateId(null);
-            courseRepository.save(course);
+        TeachingPlanEntity plan = plans.findById(uuid(courseId)).orElse(null);
+        if (plan != null && plan.getTemplateId() != null) {
+            String templateId = plan.getTemplateId();
+            plan.setTemplateId(null);
+            plans.save(plan);
             templateRepo.deleteById(templateId);
         }
     }
@@ -234,8 +246,9 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                     e.getTitle(),
                     e.getStatus(),
                     e.getCurrentStep(),
-                    e.getCourseId(),
-                    e.getDraftStateJson(),
+                    e.getCourseId().toString(),
+                    courseApi.get(e.getCourseId()).personal(),
+                    e.getDraftStateJson() == null ? null : goals.toResolved(e.getDraftStateJson()),
                     templateId != null,
                     templateSource,
                     templateFileName(templateId),
@@ -246,16 +259,17 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     /** Lightweight list for the dashboard (no blocks payload). */
     public List<SessionSummaryDto> listSessions() {
         List<UUID> courses = courseApi.idsMine(CourseRole.VIEWER);
-        List<WorkshopSessionEntity> visible = courses.isEmpty()
-                ? repo.findWithoutCourseOf(currentUser.userId())
-                : repo.findVisible(currentUser.userId(), courses);
-        return visible.stream()
+        if (courses.isEmpty()) return List.of();
+        Set<UUID> personal = courseApi.listMine(0, 1000).stream()
+                .filter(CourseInfo::personal).map(CourseInfo::id).collect(Collectors.toSet());
+        return repo.findVisible(courses).stream()
                 .map(e -> new SessionSummaryDto(
                         e.getId(),
                         e.getTitle() != null ? e.getTitle() : "Workshop Session",
                         e.getStatus(),
                         e.getCurrentStep(),
-                        e.getCourseId(),
+                        e.getCourseId().toString(),
+                        personal.contains(e.getCourseId()),
                         e.getCreatedAt(),
                         e.getUpdatedAt()))
                 .toList();
@@ -270,6 +284,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     public void deleteSession(String id) {
         String templateId = repo.findById(id).map(WorkshopSessionEntity::getTemplateId).orElse(null);
         repo.deleteById(id);
+        goals.unlinkSession(id);
         // Templates are stored 1:1 per owner entity; the FK is ON DELETE SET NULL, so clean up explicitly.
         if (templateId != null && templateId.equals(id)) {
             templateRepo.deleteById(templateId);
@@ -289,12 +304,21 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         });
     }
 
-    /** Move a session to a course. */
-    public void moveSession(String id, String courseId) {
+    /**
+     * Moves a session to another course (the caller checked EDITOR on both). Its alignment links to
+     * goals of the old course are removed, and so are its plan entries for those goals; the session
+     * inherits the template of the new course.
+     */
+    @Transactional
+    public void moveSession(String id, UUID courseId) {
         repo.findById(id).ifPresent(entity -> {
-            if (!Objects.equals(entity.getCourseId(), courseId)) {
-                entity.setUseDefaultTemplate(false); // a session moved to another course inherits its template
+            UUID oldCourseId = entity.getCourseId();
+            if (oldCourseId.equals(courseId)) return;
+            goals.unlinkSessionInCourse(id, oldCourseId);
+            if (entity.getDraftStateJson() != null) {
+                entity.setDraftStateJson(goals.withoutGoalsOfCourse(entity.getDraftStateJson(), oldCourseId));
             }
+            entity.setUseDefaultTemplate(false); // a session moved to another course inherits its template
             entity.setCourseId(courseId);
             entity.setDisplayOrder(null);
             repo.save(entity);
@@ -349,98 +373,115 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         });
     }
 
+    /** A course id from a path or body; anything that is no UUID is an unknown course (404). */
+    public static UUID uuid(String courseId) {
+        try {
+            return UUID.fromString(courseId);
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted.");
+        }
+    }
+
+    /** The Workshopper data of a course; created on first write. */
+    private TeachingPlanEntity planForWrite(UUID courseId) {
+        return plans.findById(courseId).orElseGet(() -> plans.save(new TeachingPlanEntity(courseId)));
+    }
+
     @Transactional
     public String saveCourseDraft(SaveDraftRequestDto request) {
         UsageGuard.checkTitle(request.title());
         UsageGuard.checkStoredSize("The course", request.draftStateJson(), UsageGuard.MAX_DRAFT_CHARS);
-        CourseEntity course = null;
+        UUID courseId;
+        TeachingPlanEntity plan;
+        String title = request.title() != null && !request.title().isBlank() ? request.title() : null;
         if (request.sessionId() != null && !request.sessionId().isBlank()) {
-            // Deleted in the meantime (e.g. in another tab): say so instead of re-creating it
-            course = courseRepository.findById(request.sessionId()).orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "This course no longer exists. It may have been deleted."));
-            courseAccess.requireWrite(course.getCoreCourseId());
-        }
-        boolean isNew = course == null;
-        if (isNew) {
-            List<UUID> owned = courseApi.idsMine(CourseRole.OWNER);
-            UsageGuard.checkCourseCount(owned.isEmpty() ? 0 : courseRepository.countByCoreCourseIdIn(owned));
-            course = new CourseEntity();
-            course.setStatus("draft");
+            courseId = uuid(request.sessionId());
+            courseAccess.requireWrite(courseId);
+            plan = planForWrite(courseId);
+            if (title != null) courseApi.rename(courseId, title);
+        } else {
+            UsageGuard.checkCourseCount(courseApi.idsMine(CourseRole.OWNER).size());
+            // The creator becomes the OWNER of the core course
+            courseId = courseApi.create(title != null ? title : "Workshop Course").id();
+            plan = new TeachingPlanEntity(courseId);
+            plan.setStatus("draft");
         }
 
         // Only overwrite fields that were actually sent, so a partial save can't wipe the stored state.
         if (request.currentStep() != null) {
-            course.setCurrentStep(request.currentStep());
+            plan.setCurrentStep(request.currentStep());
         }
-        if (request.title() != null && !request.title().isBlank()) {
-            course.setTitle(request.title());
-        } else if (course.getTitle() == null) {
-            course.setTitle("Workshop Course");
-        }
-        if (isNew) {
-            // The creator becomes the OWNER of the core course the teaching course hangs on
-            course.setCoreCourseId(courseApi.create(course.getTitle()).id());
-        } else if (request.title() != null && !request.title().isBlank()) {
-            courseApi.rename(course.getCoreCourseId(), course.getTitle());
-        }
-
         if (request.draftStateJson() != null) {
-            course.setDraftStateJson(request.draftStateJson());
+            plan.setDraftStateJson(request.draftStateJson());
         }
-
-
-        course = courseRepository.save(course);
-        return course.getId();
+        return plans.save(plan).getCourseId().toString();
     }
 
-    /** The user's courses for the dashboard. */
+    /** The user's courses for the dashboard, with their Workshopper data where there is some. */
     public List<CourseSummaryDto> listCourses() {
-        List<UUID> visible = courseApi.idsMine(CourseRole.VIEWER);
-        if (visible.isEmpty()) return List.of();
-        return courseRepository.findByCoreCourseIdsOrdered(visible).stream()
-                .map(c -> new CourseSummaryDto(
-                        c.getId(),
-                        c.getTitle(),
-                        c.getStatus(),
-                        c.getCurrentStep(),
-                        c.getCreatedAt(),
-                        c.getUpdatedAt()
-                )).toList();
+        List<CourseInfo> infos = courseApi.listMine(0, 1000);
+        if (infos.isEmpty()) return List.of();
+        Map<UUID, TeachingPlanEntity> byCourse = new HashMap<>();
+        plans.findAllById(infos.stream().map(CourseInfo::id).toList()).forEach(p -> byCourse.put(p.getCourseId(), p));
+        return infos.stream()
+                .sorted(Comparator
+                        .comparing((CourseInfo c) -> byCourse.containsKey(c.id()) ? byCourse.get(c.id()).getDisplayOrder() : null,
+                                Comparator.nullsLast(Comparator.<Integer>naturalOrder()))
+                        .thenComparing(CourseInfo::createdAt, Comparator.reverseOrder()))
+                .map(c -> {
+                    TeachingPlanEntity plan = byCourse.get(c.id());
+                    return new CourseSummaryDto(
+                            c.id().toString(),
+                            c.title(),
+                            plan != null ? plan.getStatus() : "complete",
+                            plan != null ? plan.getCurrentStep() : null,
+                            c.personal(),
+                            c.role().name(),
+                            plan != null ? plan.getCreatedAt() : null,
+                            plan != null ? plan.getUpdatedAt() : null);
+                }).toList();
     }
 
     /** A course with its draft state (settings) and template, in the same shape as a session detail. */
     public Optional<SessionDetailDto> getCourse(String id) {
-        return courseRepository.findById(id).map(course -> new SessionDetailDto(
-                course.getId(),
-                course.getTitle(),
-                course.getStatus(),
-                course.getCurrentStep(),
+        UUID courseId = uuid(id);
+        CourseInfo info = courseApi.get(courseId);
+        TeachingPlanEntity plan = plans.findById(courseId).orElse(null);
+        String templateId = plan != null ? plan.getTemplateId() : null;
+        return Optional.of(new SessionDetailDto(
+                id,
+                info.title(),
+                plan != null ? plan.getStatus() : "complete",
+                plan != null ? plan.getCurrentStep() : null,
                 null, // courseId
-                course.getDraftStateJson(),
-                course.getTemplateId() != null, // hasTemplate
-                course.getTemplateId() != null ? "COURSE" : null,
-                templateFileName(course.getTemplateId()),
+                info.personal(),
+                plan != null ? plan.getDraftStateJson() : null,
+                templateId != null, // hasTemplate
+                templateId != null ? "COURSE" : null,
+                templateFileName(templateId),
                 null // session
         ));
     }
 
-    /** @return false if the course does not exist */
+    /** Deletes the course with its sessions (OWNER; the personal course cannot be deleted). */
     @Transactional
     public boolean deleteCourse(String id) {
-        CourseEntity course = courseRepository.findById(id).orElse(null);
-        if (course == null) return false;
-        courseAccess.requireOwner(course.getCoreCourseId());
+        UUID courseId = uuid(id);
+        courseAccess.requireOwner(courseId);
+        if (courseApi.get(courseId).personal()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The personal course cannot be deleted.");
+        }
         // Collect templates owned by the course and its child sessions (child sessions are removed by
         // ON DELETE CASCADE, but their slide_templates rows would otherwise be orphaned).
         List<String> templateIds = new ArrayList<>();
-        if (id.equals(course.getTemplateId())) templateIds.add(id);
-        for (WorkshopSessionEntity child : repo.findAllByCourseIdOrdered(id)) {
+        if (plans.findById(courseId).map(p -> id.equals(p.getTemplateId())).orElse(false)) templateIds.add(id);
+        for (WorkshopSessionEntity child : repo.findAllByCourseIdOrdered(courseId)) {
             if (child.getId().equals(child.getTemplateId())) templateIds.add(child.getId());
         }
-        courseRepository.delete(course);
-        courseRepository.flush();
+        // The core course takes its sessions, plan and alignment links with it
+        courseApi.delete(courseId);
+        repo.flush();
         templateRepo.deleteAllById(templateIds);
-        courseApi.delete(course.getCoreCourseId());
         return true;
     }
 
@@ -448,27 +489,26 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
     @Transactional
     public boolean renameCourse(String id, String newTitle) {
         UsageGuard.checkTitle(newTitle);
-        CourseEntity course = courseRepository.findById(id).orElse(null);
-        if (course == null) return false;
-        courseAccess.requireWrite(course.getCoreCourseId());
-        courseApi.rename(course.getCoreCourseId(), newTitle);
-        course.setTitle(newTitle);
-        if (course.getDraftStateJson() != null && !course.getDraftStateJson().isBlank()) {
+        UUID courseId = uuid(id);
+        courseAccess.requireWrite(courseId);
+        courseApi.rename(courseId, newTitle);
+        TeachingPlanEntity plan = plans.findById(courseId).orElse(null);
+        if (plan != null && plan.getDraftStateJson() != null && !plan.getDraftStateJson().isBlank()) {
             try {
-                JsonNode root = mapper.readTree(course.getDraftStateJson());
+                JsonNode root = mapper.readTree(plan.getDraftStateJson());
                 if (root.isObject()) {
                     for (String key : List.of("workshopInput", "session")) {
                         if (root.has(key) && root.get(key).isObject()) {
                             ((ObjectNode) root.get(key)).put("title", newTitle);
                         }
                     }
-                    course.setDraftStateJson(mapper.writeValueAsString(root));
+                    plan.setDraftStateJson(mapper.writeValueAsString(root));
+                    plans.save(plan);
                 }
             } catch (Exception e) {
                 log.warn("Failed to update title in draftStateJson for course {}", id);
             }
         }
-        courseRepository.save(course);
         return true;
     }
 

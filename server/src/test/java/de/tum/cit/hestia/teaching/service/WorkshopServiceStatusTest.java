@@ -2,7 +2,7 @@ package de.tum.cit.hestia.teaching.service;
 
 import de.tum.cit.hestia.teaching.dto.SaveDraftRequestDto;
 import de.tum.cit.hestia.teaching.model.WorkshopSessionEntity;
-import de.tum.cit.hestia.teaching.repository.CourseRepository;
+import de.tum.cit.hestia.teaching.repository.TeachingPlanRepository;
 import de.tum.cit.hestia.teaching.repository.SlideTemplateRepository;
 import de.tum.cit.hestia.teaching.repository.WorkshopSessionRepository;
 import de.tum.cit.hestia.core.CourseAccess;
@@ -27,10 +27,13 @@ class WorkshopServiceStatusTest {
     @BeforeEach
     void setUp() {
         sessions = mock(WorkshopSessionRepository.class);
-        service = new WorkshopService(sessions, mock(CourseRepository.class), mock(SlideTemplateRepository.class),
-                mock(CourseApi.class), mock(CourseAccess.class), mock(CurrentUser.class));
+        SessionGoals goals = mock(SessionGoals.class);
+        when(goals.toStored(any(), any())).thenAnswer(i -> i.getArgument(0));
+        service = new WorkshopService(sessions, mock(TeachingPlanRepository.class), mock(SlideTemplateRepository.class),
+                mock(CourseApi.class), mock(CourseAccess.class), mock(CurrentUser.class), goals);
         entity = new WorkshopSessionEntity();
         entity.setId("s1");
+        entity.setCourseId(java.util.UUID.randomUUID());
         when(sessions.findById("s1")).thenReturn(Optional.of(entity));
         when(sessions.save(any())).thenAnswer(i -> i.getArgument(0));
     }
