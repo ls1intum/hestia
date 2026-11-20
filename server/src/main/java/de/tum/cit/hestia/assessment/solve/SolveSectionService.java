@@ -1,7 +1,6 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.ai.AiProvider;
-import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
+import de.tum.cit.hestia.assessment.ai.StrategyModels;
 import de.tum.cit.hestia.assessment.ai.SolverStrategies;
 import de.tum.cit.hestia.assessment.ai.SolverStrategy;
 import de.tum.cit.hestia.assessment.shared.Access;
@@ -48,7 +47,6 @@ public class SolveSectionService {
 
     private final SectionRepository sectionRepository;
     private final TaskBlockRepository taskRepository;
-    private final AiProviderFactory providerFactory;
     private final Access access;
     private final ExaminationRepository examRepository;
     private final SolveCore core;
@@ -56,7 +54,6 @@ public class SolveSectionService {
     public SolveSectionService(
         SectionRepository sectionRepository,
         TaskBlockRepository taskRepository,
-        AiProviderFactory providerFactory,
         Access access,
         ExaminationRepository examRepository,
         SolveCore core
@@ -64,7 +61,6 @@ public class SolveSectionService {
         this.examRepository = examRepository;
         this.sectionRepository = sectionRepository;
         this.taskRepository = taskRepository;
-        this.providerFactory = providerFactory;
         this.access = access;
         this.core = core;
     }
@@ -74,14 +70,16 @@ public class SolveSectionService {
     /** Solve one section for the logged-in user (request thread). */
     public Result solve(String examId, String sectionId) {
         access.requireExaminationForWrite(Access.id(examId));
-        return solveChecked(examId, sectionId);
+        return solveChecked(examId, sectionId, null);
     }
 
     /**
      * Solve one section without an access check, for the orchestrator on a background thread:
      * {@link SolveExaminationService} checked the caller's access when the run was started.
+     *
+     * @param jobId the admitted job the model calls belong to; null when called from a request.
      */
-    Result solveChecked(String examId, String sectionId) {
+    Result solveChecked(String examId, String sectionId, UUID jobId) {
         UUID examUuid = Access.id(examId);
         UUID sectionUuid = sectionId == null ? null : Access.id(sectionId);
 
@@ -99,13 +97,13 @@ public class SolveSectionService {
         }
 
         try {
-            return doSolve(examUuid, sectionUuid, exam);
+            return doSolve(examUuid, sectionUuid, exam, jobId);
         } finally {
             releaseLock(sectionUuid);
         }
     }
 
-    private Result doSolve(UUID examId, UUID sectionId, Examination exam) {
+    private Result doSolve(UUID examId, UUID sectionId, Examination exam, UUID jobId) {
         SolverStrategy strategy = SolverStrategies.resolve(exam.getSolverModel());
         SolveCore.PromptContext ctx =
             core.loadContext(examId, sectionId, strategy.supportsVision());
@@ -120,11 +118,12 @@ public class SolveSectionService {
             return new Result("no_tasks", 0, 0);
         }
 
-        AiProvider provider = providerFactory.forSolver(strategy);
+        // Refuses a retired model (410, non-transient) before anything is sent.
+        SolveCore.ModelCall call = new SolveCore.ModelCall(StrategyModels.of(strategy), jobId, exam.getCourseId());
         String systemPrompt = core.systemPrompt(exam);
 
         // First pass: ask for everything.
-        SolveCore.AskResult first = core.askForAnswers(provider, systemPrompt, ctx, tasks, null);
+        SolveCore.AskResult first = core.askForAnswers(call, systemPrompt, ctx, tasks, null);
         List<Map<String, Object>> allAnswers = new ArrayList<>(first.answers());
         String model = first.model();
 
@@ -136,7 +135,7 @@ public class SolveSectionService {
         if (!missing.isEmpty()) {
             try {
                 SolveCore.AskResult retry = core.askForAnswers(
-                    provider, systemPrompt, ctx, missing,
+                    call, systemPrompt, ctx, missing,
                     "IMPORTANT: You omitted answers for " + missing.size()
                         + " task(s) previously. Provide an answer for every listed task id this time."
                 );
@@ -170,7 +169,7 @@ public class SolveSectionService {
         for (Map<String, Object> a : allAnswers) {
             Prompts.TaskBlockPromptInfo task = byId.get((String) a.get("task_id"));
             if (task == null) continue;
-            rows.add(core.toAnswerRow(task, examId, a, provider.name(), model));
+            rows.add(core.toAnswerRow(task, examId, a, call.providerName(), model));
         }
 
         core.replaceAnswers(examId, rows);

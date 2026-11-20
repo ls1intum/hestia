@@ -1,6 +1,9 @@
 package de.tum.cit.hestia.assessment.error;
 
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.ConsentRequiredException;
+import de.tum.cit.hestia.ai.ConsentScope;
+import de.tum.cit.hestia.ai.JobLimitExceededException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -49,6 +52,33 @@ class GlobalExceptionHandlerTest {
             handler.handleProvider(new AiExceptions.ProviderException("upstream boom", 500));
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+    }
+
+    @Test
+    void retiredModelMapsTo410() {
+        ResponseEntity<Map<String, Object>> res =
+            handler.handleProvider(new AiExceptions.ProviderException("retired", 410));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    }
+
+    @Test
+    void missingConsentMapsTo428WithAStableCode() {
+        ResponseEntity<Map<String, Object>> res =
+            handler.handleConsent(new ConsentRequiredException(ConsentScope.EXTERNAL_MODELS));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
+        assertThat(res.getBody()).containsEntry("code", "CONSENT_REQUIRED").containsKey("error");
+    }
+
+    @Test
+    void jobLimitMapsTo429WithAStableCode() {
+        ResponseEntity<Map<String, Object>> res =
+            handler.handleJobLimit(new JobLimitExceededException("exam-parse", 10));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(res.getBody()).containsEntry("code", "JOB_LIMIT_EXCEEDED");
+        assertThat((String) res.getBody().get("error")).contains("exam-parse");
     }
 
     @Test

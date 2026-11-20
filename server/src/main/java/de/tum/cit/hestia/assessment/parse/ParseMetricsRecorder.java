@@ -43,7 +43,9 @@ public class ParseMetricsRecorder {
             if (a.usage != null) {
                 m.setPromptTokens(a.usage.promptTokens());
                 m.setCompletionTokens(a.usage.completionTokens());
-                m.setTotalTokens(a.usage.totalTokens());
+                if (a.usage.promptTokens() != null && a.usage.completionTokens() != null) {
+                    m.setTotalTokens(a.usage.promptTokens() + a.usage.completionTokens());
+                }
             }
             m.setSuccess(a.success);
             m.setError(a.error);

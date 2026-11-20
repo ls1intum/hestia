@@ -7,14 +7,16 @@ runs stay comparable. To add a call, follow the steps in
 ## Gateway and models
 
 All calls go to the TUM AET Logos gateway through its OpenAI-compatible API
-(`spring.ai.openai`, key in `LOGOS_API_KEY`). The defaults come from
-[`libs/shared-llm`](../../../libs/shared-llm/README.md), which Workshopper uses too:
+(`spring.ai.openai`, key in `LOGOS_API_KEY`), through the server's `ai` module. The defaults come from
+`ai.internal.HestiaLlmDefaults` ([server/docs/ai.md](../../../server/docs/ai.md)), shared with Workshopper:
 `openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for images. A call that names no model
 gets the text default.
 
-Every call goes through `llm/LlmClient`. It applies the retry schedule, the HTTP timeouts and the
-token count to all of them alike, and binds structured replies with `LenientJson`. No other class
-builds a `ChatClient`.
+Every call goes through `llm/LlmClient`, the module's adapter to `ai.LlmGateway`. Each request names
+a purpose (for example `page-description`, `session-extraction`, `taxonomy`), which the gateway
+records in its call log. The gateway applies the retry schedule and the HTTP timeouts; `LlmClient`
+passes each answer's token counts on and binds structured replies with `LenientJson` (it appends the
+converter's format instructions to the prompt). No other class calls a model.
 
 ## The calls
 
@@ -43,8 +45,8 @@ stay unclassified.
 
 - **Retries.** `429` and `5xx` answers are retried up to 8 attempts, with backoff starting at 1 s,
   doubling, capped at 60 s, plus random jitter so parallel workers do not retry together
-  (`spring.ai.retry`, `AiRetryConfiguration`). Other `4xx` answers fail at once.
-- **Timeouts.** 20 s to connect and 10 min to read (`hestia.llm.*`, `LlmHttpTimeoutConfig`).
+  (`spring.ai.retry`, `ai.internal.AiRetryConfiguration`). Other `4xx` answers fail at once.
+- **Timeouts.** 20 s to connect and 10 min to read (`hestia.llm.*`, `ai.internal.LlmHttpTimeoutConfig`).
   Without a read timeout a dead connection once held a run for three and a half hours. The
   bookmark judge runs inside the upload request and gives up after 30 s; the document is then
   split along its bookmarks.
@@ -67,13 +69,13 @@ version in `page_description`. The extraction prompt (`SessionExtractionService.
 and the figure prompt (`PageDescriptionService.FIGURE_PROMPT_VERSION`) carry versions; bump them
 when the prompt changes. The other prompts have no version.
 
-`LlmUsageAdvisor` counts the tokens of every answered call. During an extraction the counts are
+`LlmClient` counts the tokens of every answered call. During an extraction the counts are
 booked to the run's current phase and logged when the run ends, so the cost of a run is measured.
 Failed or timed-out calls report no usage.
 
 ## Tests
 
-- No automated test calls a model. Server tests mock `LlmClient` or the `ChatClient.Builder`.
+- No automated test calls a model. Server tests use `FakeLlm`, a fake `LlmGateway`, or mock `LlmClient`.
 - The browser tests run the real server against `client/e2e/fake-llm.mjs`, a stand-in gateway
   that recognises each prompt by the JSON shape it asks for and answers deterministically. A new
   prompt shape needs a matching answer there.

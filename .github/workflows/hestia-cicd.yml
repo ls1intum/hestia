@@ -54,7 +54,7 @@ env:
   DEPLOY_PATH: /opt/hestia/app
 
 jobs:
-  # Server and shared-llm test suites: unit, Testcontainers-Postgres integration, HTTP flow tests
+  # Server test suites: unit, Testcontainers-Postgres integration, HTTP flow tests
   # and the module boundary test. GitHub-hosted runners provide the Docker daemon.
   # The test jobs use ubuntu-latest only in the weekly run (see the header).
   test-server:
@@ -75,7 +75,6 @@ jobs:
           name: server-test-reports
           path: |
             server/build/reports/tests/test/
-            libs/*/build/reports/tests/test/
           retention-days: 7
 
   test-clients:
@@ -179,7 +178,7 @@ jobs:
     with:
       image-name: ${{ github.repository }}/server
       docker-file: server/Dockerfile
-      # Repo root: the server is a multi-project Gradle build (depends on :libs:shared-llm).
+      # Repo root: the server builds with the root Gradle build.
       docker-context: .
       tags: type=sha,format=long
 

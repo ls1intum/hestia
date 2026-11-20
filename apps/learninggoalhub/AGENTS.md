@@ -28,8 +28,8 @@ APIs consumed by the related thesis projects ExamLens and Workshopper.
 | change security, keys or limits | [docs/SECURITY.md](docs/SECURITY.md) |
 | change the database | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#data-model) |
 
-The LLM defaults come from `libs/shared-llm`, which Workshopper uses too. Read
-`libs/shared-llm/AGENTS.md` before changing it.
+Every model call goes through the server's `ai` module, which Workshopper and ExamLense use too.
+Read [server/docs/ai.md](../../server/docs/ai.md) before changing model defaults.
 
 ## Rules That Are Easy to Miss
 
@@ -166,7 +166,7 @@ Core LearningGoalHub concepts:
 Use this stack unless the project owner explicitly changes it:
 
 - server: Spring Boot 3.5, Java 21
-- LLM integration: Spring AI through the app's single `LlmClient`, against the TUM AET Logos gateway
+- LLM integration: the module's `LlmClient`, an adapter to the `ai` module's `LlmGateway`, against the TUM AET Logos gateway
 - database: PostgreSQL with Flyway migrations
 - client: React, TypeScript and Tailwind CSS (Vite)
 - API style: REST with OpenAPI documentation

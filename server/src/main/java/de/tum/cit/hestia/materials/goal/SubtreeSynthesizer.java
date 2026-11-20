@@ -112,7 +112,7 @@ public class SubtreeSynthesizer {
     }
 
     private GeneratedSubtree call(String prompt, String languageName, String modelOverride, double callTemperature) {
-        return llm.entity(LlmRequest.of(prompt)
+        return llm.entity(LlmRequest.of("subtree-synthesis", prompt)
                         .withSystem(LanguagePrompt.systemInstruction(languageName))
                         .withModel(modelOverride)
                         .withTemperature(callTemperature),

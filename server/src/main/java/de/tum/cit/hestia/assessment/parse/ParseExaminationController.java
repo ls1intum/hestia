@@ -1,6 +1,5 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.ai.ParserStrategy;
 import de.tum.cit.hestia.core.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -60,6 +59,8 @@ public class ParseExaminationController {
     @ApiResponse(responseCode = "400", description = "`exam_id` or `storage_path` is blank.")
     @ApiResponse(responseCode = "403", description = "The exam belongs to another owner.")
     @ApiResponse(responseCode = "404", description = "No such exam, or `exam_id` is not a valid UUID.")
+    @ApiResponse(responseCode = "428", description = "The parser is an external model and the user has not consented (`code: CONSENT_REQUIRED`).")
+    @ApiResponse(responseCode = "429", description = "Daily parse limit reached (`code: JOB_LIMIT_EXCEEDED`).")
     @PostMapping("/parse-exam-pdf")
     public ResponseEntity<Map<String, Object>> parse(
         @Valid @RequestBody ParseExaminationRequest req
@@ -67,12 +68,13 @@ public class ParseExaminationController {
         // Start the clock here (not inside run()) so the recorded duration tracks
         // the closest-to-e2e server-side window: preflight + queue wait + pipeline.
         long requestNanos = System.nanoTime();
-        ParserStrategy strategy = service.preflight(req.exam_id(), req.parser_model());
+        ParseExaminationService.Preflight admitted = service.preflight(req.exam_id(), req.parser_model());
         service.runAsync(
             req.exam_id(),
             currentUser.userId().toString(),
             req.storage_path(),
-            strategy,
+            admitted.strategy(),
+            admitted.jobId(),
             requestNanos
         );
         return ResponseEntity.accepted().body(Map.of(

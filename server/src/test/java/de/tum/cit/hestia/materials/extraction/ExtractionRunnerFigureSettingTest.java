@@ -9,8 +9,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -34,13 +32,11 @@ import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
 import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.materials.llm.LlmClient;
+import de.tum.cit.hestia.materials.llm.FakeLlm;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.converter.StructuredOutputConverter;
 
 class ExtractionRunnerFigureSettingTest {
 
@@ -52,7 +48,7 @@ class ExtractionRunnerFigureSettingTest {
 
         verify(fixture.pageDescriptionService(), never()).describeEligiblePages(any(), any(), anyString(), anyString(), any());
         verify(fixture.pageDescriptionRepository(), never()).findByDocumentId(any());
-        verifyPromptDoesNotContainFigures(fixture.chatClient());
+        verifyPromptDoesNotContainFigures(fixture.llm());
         verifyRunParams(fixture.auditService(), false);
     }
 
@@ -63,9 +59,8 @@ class ExtractionRunnerFigureSettingTest {
         runUntilTheEmptyReplyFails(fixture);
 
         verify(fixture.pageDescriptionService()).describeEligiblePages(any(), any(), eq("en"), eq("English"), any());
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(fixture.chatClient().prompt()).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue())
+        assertThat(fixture.llm().requests()).hasSize(1);
+        assertThat(fixture.llm().prompt())
                 .contains("Figure descriptions")
                 .contains("A process diagram.");
         verifyRunParams(fixture.auditService(), true);
@@ -77,10 +72,9 @@ class ExtractionRunnerFigureSettingTest {
                 .hasMessageContaining("no learning goals");
     }
 
-    private static void verifyPromptDoesNotContainFigures(ChatClient chatClient) {
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(chatClient.prompt()).user(promptCaptor.capture());
-        assertThat(promptCaptor.getValue()).doesNotContain("Figure descriptions");
+    private static void verifyPromptDoesNotContainFigures(FakeLlm llm) {
+        assertThat(llm.requests()).hasSize(1);
+        assertThat(llm.prompt()).doesNotContain("Figure descriptions");
     }
 
     private static void verifyRunParams(ExtractionRunAuditService auditService, boolean figuresEnabled) {
@@ -130,19 +124,9 @@ class ExtractionRunnerFigureSettingTest {
         when(documentSectionRepository.findByDocumentIdOrderByOrdinal(42L)).thenReturn(List.of());
         when(auditService.start(eq(1L), nullable(String.class), anyString(), anyString())).thenReturn(1L);
 
-        ChatClient chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder chatClientBuilder = mock(ChatClient.Builder.class);
-        when(chatClientBuilder.build()).thenReturn(chatClient);
-        // system() and options() return the spec itself, so the chain is one mock and a verify()
-        // does not have to rebuild it — rebuilding would be recorded as another user() call.
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        when(spec.system(anyString())).thenReturn(spec);
-        when(spec.options(any())).thenReturn(spec);
-        when(spec.user(anyString()).call().entity(any(StructuredOutputConverter.class)))
-                .thenReturn(List.of());
-        clearInvocations(spec);
+        FakeLlm llm = FakeLlm.replying(List.of());
         SessionExtractionService sessionExtractionService = new SessionExtractionService(
-                new LlmClient(chatClientBuilder), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
+                llm.client(), mock(LanguageDetectionService.class), new ExtractionProgressTracker(), 0.2);
 
         PageDescription pageDescription = mock(PageDescription.class);
         when(pageDescription.getPage()).thenReturn(1);
@@ -176,11 +160,11 @@ class ExtractionRunnerFigureSettingTest {
                 1,
                 false,
                 null);
-        return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, chatClient, auditService);
+        return new Fixture(runner, pageDescriptionService, pageDescriptionRepository, llm, auditService);
     }
 
     private record Fixture(ExtractionRunner runner, PageDescriptionService pageDescriptionService,
-                            PageDescriptionRepository pageDescriptionRepository, ChatClient chatClient,
+                            PageDescriptionRepository pageDescriptionRepository, FakeLlm llm,
                             ExtractionRunAuditService auditService) {
     }
 }

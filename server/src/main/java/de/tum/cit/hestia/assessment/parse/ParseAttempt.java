@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.ai.AiProvider;
+import de.tum.cit.hestia.ai.LlmResponse;
 import java.util.UUID;
 
 /**
@@ -19,7 +19,9 @@ class ParseAttempt {
 
     Integer pageCount;
     Long llmMs;
-    AiProvider.Usage usage;
+    LlmResponse.Usage usage;
+    /** The admitted job this parse belongs to; carried to every model call of the run. */
+    UUID jobId;
     long durationMs;
     boolean success;
     String error;

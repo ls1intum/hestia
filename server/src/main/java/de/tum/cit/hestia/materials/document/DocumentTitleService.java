@@ -13,11 +13,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
-import org.springframework.util.MimeTypeUtils;
 
 /**
  * Names a single-session PDF (a slide deck or exercise that carries no bookmarks) by showing its
@@ -75,11 +72,11 @@ public class DocumentTitleService {
             return null;
         }
         try {
-            List<Media> pages = renderFirstPages(bytes);
+            List<LlmClient.Image> pages = renderFirstPages(bytes);
             if (pages.isEmpty()) {
                 return null;
             }
-            String reply = llm.text(LlmRequest.of(PROMPT).withMedia(pages).withModel(visionModel));
+            String reply = llm.text(LlmRequest.of("document-title", PROMPT).withImages(pages).withModel(visionModel));
             return clean(reply);
         } catch (IOException | RuntimeException e) {
             log.warn("VLM title derivation failed for {}, falling back to filename: {}",
@@ -88,16 +85,16 @@ public class DocumentTitleService {
         }
     }
 
-    private List<Media> renderFirstPages(byte[] bytes) throws IOException {
+    private List<LlmClient.Image> renderFirstPages(byte[] bytes) throws IOException {
         try (PDDocument doc = Loader.loadPDF(bytes)) {
             PDFRenderer renderer = new PDFRenderer(doc);
             int pages = Math.min(MAX_PAGES, doc.getNumberOfPages());
-            List<Media> media = new ArrayList<>(pages);
+            List<LlmClient.Image> media = new ArrayList<>(pages);
             for (int i = 0; i < pages; i++) {
                 BufferedImage image = renderer.renderImageWithDPI(i, RENDER_DPI);
                 ByteArrayOutputStream png = new ByteArrayOutputStream();
                 ImageIO.write(image, "png", png);
-                media.add(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png.toByteArray())));
+                media.add(LlmClient.Image.png(png.toByteArray()));
             }
             return media;
         }

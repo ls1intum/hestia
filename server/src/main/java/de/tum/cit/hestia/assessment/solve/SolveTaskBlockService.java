@@ -1,8 +1,8 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
-import de.tum.cit.hestia.assessment.ai.AiProvider;
-import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.ConsentRequiredException;
+import de.tum.cit.hestia.assessment.ai.StrategyModels;
 import de.tum.cit.hestia.assessment.ai.SolverStrategies;
 import de.tum.cit.hestia.assessment.ai.SolverStrategy;
 import de.tum.cit.hestia.assessment.shared.Access;
@@ -27,18 +27,15 @@ import java.util.UUID;
 public class SolveTaskBlockService {
 
     private final TaskBlockRepository taskRepository;
-    private final AiProviderFactory providerFactory;
     private final Access access;
     private final SolveCore core;
 
     public SolveTaskBlockService(
         TaskBlockRepository taskRepository,
-        AiProviderFactory providerFactory,
         Access access,
         SolveCore core
     ) {
         this.taskRepository = taskRepository;
-        this.providerFactory = providerFactory;
         this.access = access;
         this.core = core;
     }
@@ -53,12 +50,13 @@ public class SolveTaskBlockService {
             core.loadContext(exam.getId(), task.getSectionId(), strategy.supportsVision());
         Prompts.TaskBlockPromptInfo taskInfo = core.toTaskBlockInfo(task);
 
-        AiProvider provider = providerFactory.forSolver(strategy);
+        // Refuses a retired model (410, non-transient) before anything is sent.
+        SolveCore.ModelCall call = new SolveCore.ModelCall(StrategyModels.of(strategy), null, exam.getCourseId());
         String systemPrompt = core.systemPrompt(exam);
 
-        Answer answer = invokeWithRetry(provider, systemPrompt, ctx, taskInfo);
+        Answer answer = invokeWithRetry(call, systemPrompt, ctx, taskInfo);
         core.replaceAnswers(exam.getId(), List.of(
-            core.toAnswerRow(taskInfo, exam.getId(), answer.raw(), provider.name(), answer.model())
+            core.toAnswerRow(taskInfo, exam.getId(), answer.raw(), call.providerName(), answer.model())
         ));
     }
 
@@ -69,7 +67,7 @@ public class SolveTaskBlockService {
      * returning no answer for the requested task id — matches the TS impl.
      */
     private Answer invokeWithRetry(
-        AiProvider provider, String systemPrompt,
+        SolveCore.ModelCall call, String systemPrompt,
         SolveCore.PromptContext ctx, Prompts.TaskBlockPromptInfo taskInfo
     ) {
         RuntimeException lastErr = null;
@@ -79,14 +77,14 @@ public class SolveTaskBlockService {
                 : "IMPORTANT: You must include an answer for task id " + taskInfo.id() + " in your tool call.";
             try {
                 SolveCore.AskResult res = core.askForAnswers(
-                    provider, systemPrompt, ctx, List.of(taskInfo), extraInstruction);
+                    call, systemPrompt, ctx, List.of(taskInfo), extraInstruction);
                 for (Map<String, Object> a : res.answers()) {
                     if (taskInfo.id().equals(a.get("task_id"))) {
                         return new Answer(a, res.model());
                     }
                 }
                 lastErr = new RuntimeException("Model did not return an answer for this task");
-            } catch (AiExceptions.PaymentRequiredException e) {
+            } catch (AiExceptions.PaymentRequiredException | ConsentRequiredException e) {
                 throw e;
             } catch (RuntimeException e) {
                 lastErr = e;

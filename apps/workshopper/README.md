@@ -12,7 +12,7 @@ Login is TUM SAML 2.0 on every API endpoint (see [docs/AUTH.md](docs/AUTH.md)). 
 | UI       | shadcn/ui (Radix UI primitives), dnd-kit                     |
 | Server   | Spring Boot 3.5 (Java 21)                                    |
 | Database | PostgreSQL 16, Flyway migrations                             |
-| LLM      | Spring AI via `libs:shared-llm` (TUM AET Logos gateway)      |
+| LLM      | `ai` module (TUM AET Logos gateway)      |
 | Export   | Apache POI (PPTX), Apache PDFBox (PDF)                       |
 
 ---
