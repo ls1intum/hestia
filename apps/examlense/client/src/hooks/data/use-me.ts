@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getMe } from "@/lib/api/api-client";
-import type { Me } from "@/lib/api/api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getAiConsent, getMe, grantAiConsent, revokeAiConsent } from "@/lib/api/api-client";
+import type { AiConsent, Me } from "@/lib/api/api-client";
 
 export const meKey = ["me"] as const;
 
@@ -22,4 +22,25 @@ export function useMe() {
 export function useResetOnSignOut() {
   const qc = useQueryClient();
   return () => qc.clear();
+}
+
+export const aiConsentKey = ["ai-consent"] as const;
+
+/** The user consent to external AI models (status and notice text). */
+export function useAiConsent() {
+  return useQuery({
+    queryKey: aiConsentKey,
+    queryFn: async () => (await getAiConsent()) as AiConsent,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** Grant (true) or withdraw (false) the consent; the cached status follows the answer. */
+export function useSetAiConsent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (grant: boolean) => (grant ? grantAiConsent() : revokeAiConsent()),
+    onSuccess: (status) => qc.setQueryData(aiConsentKey, status),
+  });
 }

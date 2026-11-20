@@ -43,6 +43,10 @@ final class FlowHttp {
             .POST(BodyPublishers.ofString(toJson(body))));
     }
 
+    Reply delete(String apiPath) {
+        return send(authed(builder(apiPath)).DELETE());
+    }
+
     /** multipart/form-data with a single {@code file} part. */
     Reply postFile(String apiPath, String filename, String contentType, byte[] bytes) {
         String boundary = "flow-" + UUID.randomUUID();

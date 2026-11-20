@@ -1,13 +1,12 @@
 package de.tum.cit.hestia.assessment.parse;
 
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
-import de.tum.cit.hestia.assessment.ai.AiProviderFactory;
+import de.tum.cit.hestia.ai.LlmGateway;
+import de.tum.cit.hestia.ai.LlmJobs;
 import de.tum.cit.hestia.assessment.error.ApiException;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.storage.StorageService;
-import de.tum.cit.hestia.core.CurrentUser;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -36,15 +35,15 @@ class ParseRetiredModelTest {
     private final ParseProgress progress = mock(ParseProgress.class);
     private final ParseInputBuilder inputBuilder = mock(ParseInputBuilder.class);
     private final Access access = mock(Access.class);
-    private final CurrentUser currentUser = mock(CurrentUser.class);
+    private final LlmJobs jobs = mock(LlmJobs.class);
 
     private ParseExaminationService service() {
         return new ParseExaminationService(
-            examRepository, mock(StorageService.class), mock(AiProviderFactory.class),
+            examRepository, mock(StorageService.class), mock(LlmGateway.class),
             mock(PdfPageCounter.class), inputBuilder, mock(ParsedExaminationPersister.class),
             mock(ParseMetricsRecorder.class), progress,
-            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), mock(LlmQuotaService.class),
-            access, currentUser);
+            mock(de.tum.cit.hestia.assessment.parse.figures.FigureExtractionService.class), jobs,
+            access);
     }
 
     private void withExamination() {
@@ -52,7 +51,6 @@ class ParseRetiredModelTest {
         exam.setId(EXAM_ID);
         exam.setCreatedBy(OWNER);
         when(access.requireExaminationForWrite(EXAM_ID)).thenReturn(exam);
-        when(currentUser.userId()).thenReturn(OWNER);
     }
 
     @Test
@@ -67,6 +65,7 @@ class ParseRetiredModelTest {
             .isEqualTo(HttpStatus.GONE);
 
         // Nothing was started: no status flip, no rasterize, no work queued.
+        verify(jobs, never()).admit(any(), any(), any(), any());
         verify(examRepository, never()).save(any());
         verify(inputBuilder, never()).build(any(), any(), any());
         verify(progress, never()).notifyExamination(any());
@@ -76,7 +75,7 @@ class ParseRetiredModelTest {
     void preflightStillAcceptsACurrentModel() {
         withExamination();
 
-        assertThat(service().preflight(EXAM_ID.toString(), "gemini-3.5-flash").id())
+        assertThat(service().preflight(EXAM_ID.toString(), "gemini-3.5-flash").strategy().id())
             .isEqualTo("gemini-3.5-flash");
         verify(progress).notifyExamination(EXAM_ID);
     }
@@ -87,7 +86,7 @@ class ParseRetiredModelTest {
 
         // Unknown ≠ retired: a typo or a client from a newer build should not
         // block a parse, and the registry's default already covers it.
-        assertThat(service().preflight(EXAM_ID.toString(), "not-a-model").id())
+        assertThat(service().preflight(EXAM_ID.toString(), "not-a-model").strategy().id())
             .isEqualTo("gemini-3.5-flash");
         verify(progress, never()).fail(any(), anyString());
     }

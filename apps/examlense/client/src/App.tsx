@@ -11,6 +11,7 @@ import GradeRoute from "./pages/exam-grading/GradeRoute.tsx";
 import ExamResults from "./pages/exam-results/ExamResults.tsx";
 import { SignInGate } from "./pages/sign-in/SignInGate.tsx";
 import { AdminRoute } from "./pages/admin/AdminRoute.tsx";
+import { AiConsentDialog } from "./components/shared/chrome/AiConsentDialog.tsx";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
       <Sonner />
       {/* Inside the query provider: the gate resolves the session via useMe(). */}
       <SignInGate>
+        <AiConsentDialog />
         <AppRoutes />
       </SignInGate>
     </TooltipProvider>

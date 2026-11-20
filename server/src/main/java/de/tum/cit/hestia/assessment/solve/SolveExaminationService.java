@@ -1,7 +1,13 @@
 package de.tum.cit.hestia.assessment.solve;
 
-import de.tum.cit.hestia.assessment.ai.AiExceptions;
+import de.tum.cit.hestia.ai.AiExceptions;
+import de.tum.cit.hestia.ai.ConsentApi;
+import de.tum.cit.hestia.ai.ConsentRequiredException;
+import de.tum.cit.hestia.ai.ConsentScope;
+import de.tum.cit.hestia.ai.LlmJobs;
+import de.tum.cit.hestia.ai.ModelRef;
 import de.tum.cit.hestia.assessment.ai.SolverStrategies;
+import de.tum.cit.hestia.assessment.ai.StrategyModels;
 import de.tum.cit.hestia.assessment.shared.Access;
 import de.tum.cit.hestia.assessment.examination.Examination;
 import de.tum.cit.hestia.assessment.examination.EvaluationRun;
@@ -11,9 +17,7 @@ import de.tum.cit.hestia.assessment.taskblock.AIAnswer;
 import de.tum.cit.hestia.assessment.examination.ExaminationRepository;
 import de.tum.cit.hestia.assessment.taskblock.AIAnswerRepository;
 import de.tum.cit.hestia.assessment.taskblock.TaskBlockRepository;
-import de.tum.cit.hestia.assessment.user.LlmQuotaService;
 import de.tum.cit.hestia.assessment.sse.SseHub;
-import de.tum.cit.hestia.core.CurrentUser;
 import de.tum.cit.hestia.core.OrgContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +58,8 @@ public class SolveExaminationService {
     private final Executor solverExecutor;
     private final Access access;
     private final SseHub sse;
-    private final LlmQuotaService quota;
-    private final CurrentUser currentUser;
+    private final LlmJobs jobs;
+    private final ConsentApi consents;
 
     public SolveExaminationService(
         ExaminationRepository examRepository,
@@ -66,10 +70,9 @@ public class SolveExaminationService {
         @Qualifier("solverExecutor") Executor solverExecutor,
         Access access,
         SseHub sse,
-        LlmQuotaService quota,
-        CurrentUser currentUser
+        LlmJobs jobs,
+        ConsentApi consents
     ) {
-        this.currentUser = currentUser;
         this.examRepository = examRepository;
         this.taskRepository = taskRepository;
         this.taskAnswerRepository = taskAnswerRepository;
@@ -78,7 +81,8 @@ public class SolveExaminationService {
         this.solverExecutor = solverExecutor;
         this.access = access;
         this.sse = sse;
-        this.quota = quota;
+        this.jobs = jobs;
+        this.consents = consents;
     }
 
     public record DispatchPlan(int sections, int tasks) {}
@@ -93,16 +97,22 @@ public class SolveExaminationService {
         UUID examUuid = Access.id(examId);
         Examination exam = access.requireExaminationForWrite(examUuid);
 
-        // Refuse an over-quota caller before the resets below touch anything: this
-        // method deletes prior answers (and their cascading grades) on its way to dispatch, so
-        // a late 429 would leave the exam wiped and stuck in `evaluating`. The
-        // matching record() happens at the actual dispatch, so a no-op CAS or a
-        // task-less exam costs the caller nothing.
-        quota.check(currentUser.userId(), LlmQuotaService.KIND_SOLVE);
+        String solverModel = exam.getSolverModel() != null ? exam.getSolverModel() : SolverStrategies.DEFAULT_ID;
+        // A retired model is refused here (410), before anything is touched.
+        ModelRef model = StrategyModels.of(SolverStrategies.resolve(solverModel));
+
+        // Refuse an over-limit caller, and one who has not consented to an external model,
+        // before the resets below touch anything: this method deletes prior answers (and their
+        // cascading grades) on its way to dispatch, so a late 429/428 would leave the exam
+        // wiped and stuck in `evaluating`. The job itself is admitted at the actual dispatch,
+        // so a no-op CAS or a task-less exam costs the caller nothing.
+        jobs.check(SolveCore.PURPOSE);
+        if (model.external() && !consents.status(ConsentScope.EXTERNAL_MODELS).granted()) {
+            throw new ConsentRequiredException(ConsentScope.EXTERNAL_MODELS);
+        }
 
         // The compare-and-set has to happen BEFORE the destructive resets below, so
         // a stale dispatch bails without wiping answers — see startEvaluating.
-        String solverModel = exam.getSolverModel() != null ? exam.getSolverModel() : SolverStrategies.DEFAULT_ID;
         if (examRepository.startEvaluating(examUuid, solverModel) == 0) {
             return new DispatchPlan(0, 0);
         }
@@ -136,9 +146,18 @@ public class SolveExaminationService {
         // Hand off to the orchestrator and return immediately. Submitted to the
         // executor explicitly — a self-invoked @Async method bypasses Spring's
         // proxy and would run the whole solve on this request thread.
-        quota.record(currentUser.userId(), LlmQuotaService.KIND_SOLVE);
+        UUID jobId;
+        try {
+            jobId = jobs.admit(SolveCore.MODULE, SolveCore.PURPOSE, exam.getCourseId(), model);
+        } catch (RuntimeException e) {
+            // Only a race (two starts passing the check together) can get here, but the
+            // exam was already reset: do not leave it stuck in `evaluating`.
+            examRepository.markSolveFailed(examUuid, e.getMessage());
+            sse.examUpdated(examUuid);
+            throw e;
+        }
         CompletableFuture.runAsync(
-            OrgContext.wrap(() -> dispatch(examId, bucketSectionIds, totalTaskBlocks, taskRows)),
+            OrgContext.wrap(() -> dispatch(examId, jobId, bucketSectionIds, totalTaskBlocks, taskRows)),
             solverExecutor
         );
 
@@ -164,12 +183,12 @@ public class SolveExaminationService {
     }
 
     private void dispatch(
-        String examId,
+        String examId, UUID jobId,
         List<String> sectionIds, int totalTaskBlocks,
         List<TaskBlock> allTaskBlockRows
     ) {
         try {
-            runDispatch(examId, sectionIds, totalTaskBlocks, allTaskBlockRows);
+            runDispatch(examId, jobId, sectionIds, totalTaskBlocks, allTaskBlockRows);
         } catch (Exception e) {
             log.error("solve-exam dispatch crashed for {}", examId, e);
             try {
@@ -181,14 +200,14 @@ public class SolveExaminationService {
     }
 
     private void runDispatch(
-        String examId,
+        String examId, UUID jobId,
         List<String> sectionIds, int totalTaskBlocks,
         List<TaskBlock> allTaskBlockRows
     ) throws InterruptedException {
         UUID examUuid = Access.id(examId);
         Semaphore slots = new Semaphore(MAX_CONCURRENT);
 
-        joinAll(dispatchAll(slots, examId, sectionIds));
+        joinAll(dispatchAll(slots, examId, jobId, sectionIds));
 
         // Verify completion: some sections may have returned empty or partial
         // answer arrays.
@@ -219,7 +238,7 @@ public class SolveExaminationService {
         if (missingUnassigned) sweepIds.add(null);
         if (sweepIds.isEmpty()) return;
 
-        joinAll(dispatchAll(slots, examId, sweepIds));
+        joinAll(dispatchAll(slots, examId, jobId, sweepIds));
 
         long finalCount = taskAnswerRepository.countByExamId(examUuid);
         if (finalCount >= totalTaskBlocks) {
@@ -242,14 +261,14 @@ public class SolveExaminationService {
      * pool is shared with parse jobs).
      */
     private List<CompletableFuture<Void>> dispatchAll(
-        Semaphore slots, String examId, List<String> sectionIds
+        Semaphore slots, String examId, UUID jobId, List<String> sectionIds
     ) throws InterruptedException {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (String sid : sectionIds) {
             slots.acquire();
             futures.add(CompletableFuture.runAsync(OrgContext.wrap(() -> {
                 try {
-                    solveWithRetry(examId, sid);
+                    solveWithRetry(examId, jobId, sid);
                 } finally {
                     slots.release();
                 }
@@ -259,11 +278,11 @@ public class SolveExaminationService {
     }
 
     /** Solve one section, retrying transient failures with exponential backoff. */
-    private void solveWithRetry(String examId, String sectionId) {
+    private void solveWithRetry(String examId, UUID jobId, String sectionId) {
         String label = sectionId == null ? "_unassigned" : sectionId;
         for (int attempt = 0; ; attempt++) {
             try {
-                sectionService.solveChecked(examId, sectionId);
+                sectionService.solveChecked(examId, sectionId, jobId);
                 return;
             } catch (RuntimeException e) {
                 if (attempt >= MAX_REQUEUE_ATTEMPTS || !AiExceptions.isTransient(e)) {
