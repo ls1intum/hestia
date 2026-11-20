@@ -2,7 +2,7 @@
 # Runs locally the checks of the hestia CI/CD workflow that gate the image build, so a pull request
 # is not the first place they run. Run it before every push.
 #
-#   scripts/ci-local.sh          deploy preflight, server + shared library tests, client tests
+#   scripts/ci-local.sh          deploy preflight, server tests, client tests
 #   scripts/ci-local.sh --e2e    additionally the LearningGoalHub browser tests
 #
 # Needs: Java 21, Node 22, Docker (Testcontainers starts Postgres for the server tests).
@@ -28,7 +28,7 @@ step() { printf '\n==> %s\n' "$*"; }
 step "Deploy preflight"
 scripts/deploy-preflight.sh
 
-step "Server and shared library tests (./gradlew testAll)"
+step "Server tests (./gradlew testAll)"
 ./gradlew --no-daemon testAll
 
 for app in examlense learninggoalhub workshopper; do
