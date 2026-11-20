@@ -18,8 +18,9 @@ import com.jayway.jsonpath.JsonPath;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.GoalFixtures;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import java.util.UUID;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
 import de.tum.cit.hestia.materials.document.DocumentSection;
@@ -27,13 +28,9 @@ import de.tum.cit.hestia.materials.document.DocumentSectionRepository;
 import de.tum.cit.hestia.materials.goal.GoalCreationProvenance;
 import de.tum.cit.hestia.core.GoalKind;
 import de.tum.cit.hestia.core.GoalOrigin;
-import de.tum.cit.hestia.materials.goal.GoalRelationship;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.GoalSource;
 import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
 import de.tum.cit.hestia.materials.goal.RelationshipType;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
@@ -75,9 +72,6 @@ class TopicSearchControllerTest extends MaterialsTestBase {
     private MockMvc mockMvc;
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private DocumentRepository documentRepository;
 
     @MockitoSpyBean
@@ -87,16 +81,10 @@ class TopicSearchControllerTest extends MaterialsTestBase {
     private DocumentSectionRepository documentSectionRepository;
 
     @Autowired
-    private LearningGoalRepository goalRepository;
-
-    @Autowired
     private GoalSourceRepository goalSourceRepository;
 
     @Autowired
     private HierarchyNodeRepository hierarchyRepository;
-
-    @Autowired
-    private GoalRelationshipRepository goalRelationshipRepository;
 
     @MockitoBean
     private SessionExtractionService sessionExtractionService;
@@ -112,12 +100,12 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void acceptPersistsTheTopicSkillsSubSkillsSourcesKnowledgeAndEdges() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
 
         String proposal = search(course, lecture, 1, 4);
         String proposalId = JsonPath.read(proposal, "$.proposalId");
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course, proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\", \"s1\", \"s2\", \"s3\"]}"))
                 .andExpect(status().isCreated())
@@ -125,52 +113,52 @@ class TopicSearchControllerTest extends MaterialsTestBase {
                 .andExpect(jsonPath("$.origin").value("TERMINAL"))
                 .andExpect(jsonPath("$.creationProvenance").value("USER_CREATED"));
 
-        Map<String, LearningGoal> goals = goalRepository.findByCourseId(course.getId()).stream()
-                .collect(Collectors.toMap(LearningGoal::getText, Function.identity()));
+        Map<String, PlacedGoal> goals = GoalFixtures.goals(course).stream()
+                .collect(Collectors.toMap(PlacedGoal::text, Function.identity()));
         assertThat(goals).containsOnlyKeys(TOPIC, "Build a random forest.",
                 "Train trees on bootstrap samples.", "Sample features at each split.",
                 "Estimate the out-of-bag error.", "Tune the number of trees.",
                 "Recall what a bootstrap sample is.");
-        LearningGoal topic = goals.get(TOPIC);
-        LearningGoal skill = goals.get("Build a random forest.");
-        LearningGoal bootstrap = goals.get("Train trees on bootstrap samples.");
-        LearningGoal outOfBag = goals.get("Estimate the out-of-bag error.");
-        assertThat(topic.getCreationProvenance()).isEqualTo(GoalCreationProvenance.USER_CREATED);
-        assertThat(skill.getOrigin()).isEqualTo(GoalOrigin.SYNTHESIZED);
-        assertThat(skill.getRole()).isEqualTo(GoalRole.SKILL);
+        PlacedGoal topic = goals.get(TOPIC);
+        PlacedGoal skill = goals.get("Build a random forest.");
+        PlacedGoal bootstrap = goals.get("Train trees on bootstrap samples.");
+        PlacedGoal outOfBag = goals.get("Estimate the out-of-bag error.");
+        assertThat(topic.creationProvenance()).isEqualTo(GoalCreationProvenance.USER_CREATED);
+        assertThat(skill.origin()).isEqualTo(GoalOrigin.SYNTHESIZED);
+        assertThat(skill.role()).isEqualTo(GoalRole.SKILL);
         // Classification is mocked away, so the skill takes its members' highest levels.
-        assertThat(skill.getBloomLevel()).isEqualTo(BloomLevel.ANALYZE);
-        assertThat(bootstrap.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED);
-        assertThat(bootstrap.getRole()).isEqualTo(GoalRole.SKILL);
-        assertThat(bootstrap.getCreationProvenance()).isNull();
+        assertThat(skill.bloomLevel()).isEqualTo(BloomLevel.ANALYZE);
+        assertThat(bootstrap.origin()).isEqualTo(GoalOrigin.EXTRACTED);
+        assertThat(bootstrap.role()).isEqualTo(GoalRole.SKILL);
+        assertThat(bootstrap.creationProvenance()).isNull();
 
         // Sub-skills join the session node of the bookmark section holding their page.
-        HierarchyNode session = hierarchyRepository.findByCourseId(course.getId()).stream()
+        HierarchyNode session = hierarchyRepository.findByCourseId(course).stream()
                 .filter(node -> node.getLevel() == HierarchyLevel.SESSION)
                 .findFirst().orElseThrow();
         assertThat(session.getLabel()).isEqualTo("Ensembles");
-        assertThat(bootstrap.getHierarchyNode().getId()).isEqualTo(session.getId());
-        assertThat(goalSourceRepository.findByGoalId(outOfBag.getId())).singleElement().satisfies(source -> {
+        assertThat(bootstrap.hierarchyNode().getId()).isEqualTo(session.getId());
+        assertThat(goalSourceRepository.findByIdGoalId(outOfBag.id())).singleElement().satisfies(source -> {
             assertThat(source.getPage()).isEqualTo(3);
             assertThat(source.getSnippet()).isEqualTo("The out-of-bag error estimates generalisation");
             assertThat(source.isGrounded()).isTrue();
         });
 
-        assertThat(parents(skill)).containsExactly(Map.entry(topic.getId(), RelationshipOrigin.SYNTHESIS));
-        assertThat(parents(bootstrap)).containsExactly(Map.entry(skill.getId(), RelationshipOrigin.SYNTHESIS));
-        assertThat(parents(outOfBag)).containsExactly(Map.entry(topic.getId(), RelationshipOrigin.SYNTHESIS));
-        List<LearningGoal> knowledge = goalRepository.findByCourseIdAndRole(course.getId(), GoalRole.KNOWLEDGE);
+        assertThat(parents(skill)).containsExactly(Map.entry(topic.id(), RelationshipOrigin.SYNTHESIS));
+        assertThat(parents(bootstrap)).containsExactly(Map.entry(skill.id(), RelationshipOrigin.SYNTHESIS));
+        assertThat(parents(outOfBag)).containsExactly(Map.entry(topic.id(), RelationshipOrigin.SYNTHESIS));
+        List<PlacedGoal> knowledge = GoalFixtures.goals(course).stream().filter(g -> g.role() == GoalRole.KNOWLEDGE).toList();
         assertThat(knowledge).singleElement().satisfies(item -> {
-            assertThat(item.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED);
-            assertThat(parents(item)).containsExactly(Map.entry(bootstrap.getId(), RelationshipOrigin.HIERARCHY));
-            assertThat(goalSourceRepository.findByGoalId(item.getId())).hasSize(1);
+            assertThat(item.origin()).isEqualTo(GoalOrigin.EXTRACTED);
+            assertThat(parents(item)).containsExactly(Map.entry(bootstrap.id(), RelationshipOrigin.HIERARCHY));
+            assertThat(goalSourceRepository.findByIdGoalId(item.id())).hasSize(1);
         });
     }
 
     @Test
     void searchingCallsTheModelsWithoutHoldingATransaction() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
         List<Boolean> inTransaction = new CopyOnWriteArrayList<>();
         when(topicSearchSynthesizer.searchTerms(anyString(), anyString(), nullable(String.class))).thenAnswer(inv -> {
             inTransaction.add(TransactionSynchronizationManager.isActualTransactionActive());
@@ -181,7 +169,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
             return List.of("Build forests");
         });
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/pages", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/pages", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\"}"))
                 .andExpect(status().isOk());
@@ -193,36 +181,32 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void searchMarksASubSkillTheCourseAlreadyHasWithTheTopicItSitsUnder() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
-        LearningGoal topic = new LearningGoal(course, "Ensemble methods", GoalKind.IMPLICIT);
-        topic.setOrigin(GoalOrigin.TERMINAL);
-        goalRepository.save(topic);
-        LearningGoal existing = new LearningGoal(course, "Choose the number of trees.", GoalKind.EXPLICIT);
-        existing.setOrigin(GoalOrigin.EXTRACTED);
-        existing.setRole(GoalRole.SKILL);
-        goalRepository.save(existing);
-        goalSourceRepository.save(new GoalSource(existing, lecture, "More trees reduce variance", 4, true));
-        goalRelationshipRepository.save(new GoalRelationship(existing, topic, RelationshipType.CONTRIBUTES_TO, 1.0,
-                RelationshipOrigin.SYNTHESIS));
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
+        PlacedGoal topic = GoalFixtures.goal(course, "Ensemble methods").kind(GoalKind.IMPLICIT)
+                .origin(GoalOrigin.TERMINAL).create();
+        PlacedGoal existing = GoalFixtures.goal(course, "Choose the number of trees.").kind(GoalKind.EXPLICIT)
+                .origin(GoalOrigin.EXTRACTED).role(GoalRole.SKILL).create();
+        goalSourceRepository.save(new GoalSource(existing.id(), lecture, "More trees reduce variance", 4, true));
+        GoalFixtures.contributes(existing, topic);
         when(topicSearchSynthesizer.duplicates(anyList(), eq(List.of("Choose the number of trees.")),
                 nullable(String.class))).thenReturn(List.of(-1, -1, -1, 0));
 
         // The topic is read off the stored tree between the model calls, outside the request's reads.
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": 1, \"endPage\": 4}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.duplicates[0].key").value("s3"))
-                .andExpect(jsonPath("$.duplicates[0].duplicateOf.goalId").value(existing.getId().intValue()))
+                .andExpect(jsonPath("$.duplicates[0].duplicateOf.goalId").value(existing.id().toString()))
                 .andExpect(jsonPath("$.duplicates[0].duplicateOf.topicText").value("Ensemble methods"));
     }
 
     @Test
     void twoAcceptsOfOneSearchAtOnceCreateTheTopicOnce() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
         String proposalId = JsonPath.read(search(course, lecture, 1, 4), "$.proposalId");
         CountDownLatch bothAccepting = new CountDownLatch(2);
         doAnswer(inv -> {
@@ -232,7 +216,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
             return inv.callRealMethod();
         }).when(unitExtractor).persistSource(any(), any(), any(), any());
         Callable<Integer> accept = () -> mockMvc.perform(
-                        post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+                        post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course, proposalId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"subSkillKeys\": [\"s0\"]}"))
                 .andReturn().getResponse().getStatus();
@@ -246,39 +230,37 @@ class TopicSearchControllerTest extends MaterialsTestBase {
         } finally {
             pool.shutdownNow();
         }
-        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.TERMINAL)))
+        assertThat(GoalFixtures.goals(course).stream().filter(g -> g.origin() == GoalOrigin.TERMINAL).toList())
                 .hasSize(1);
     }
 
     @Test
     void untickedSubSkillsAreDroppedAndASkillLeftWithOneMemberDissolves() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
 
         String proposalId = JsonPath.read(search(course, lecture, 1, 4), "$.proposalId");
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course, proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\", \"s2\"]}"))
                 .andExpect(status().isCreated());
 
-        Map<String, LearningGoal> goals = goalRepository.findByCourseId(course.getId()).stream()
-                .collect(Collectors.toMap(LearningGoal::getText, Function.identity()));
+        Map<String, PlacedGoal> goals = GoalFixtures.goals(course).stream()
+                .collect(Collectors.toMap(PlacedGoal::text, Function.identity()));
         assertThat(goals).containsOnlyKeys(TOPIC, "Train trees on bootstrap samples.",
                 "Estimate the out-of-bag error.", "Recall what a bootstrap sample is.");
         assertThat(parents(goals.get("Train trees on bootstrap samples.")))
-                .containsExactly(Map.entry(goals.get(TOPIC).getId(), RelationshipOrigin.SYNTHESIS));
+                .containsExactly(Map.entry(goals.get(TOPIC).id(), RelationshipOrigin.SYNTHESIS));
     }
 
     @Test
     void anExistingTopicWithTheSameTextConflicts() throws Exception {
-        Course course = courseWithLecture();
-        Document lecture = documentRepository.findByCourseId(course.getId()).getFirst();
+        UUID course = courseWithLecture();
+        Document lecture = documentRepository.findByCourseId(course).getFirst();
         String proposalId = JsonPath.read(search(course, lecture, 1, 4), "$.proposalId");
-        LearningGoal existing = new LearningGoal(course, "random forests", GoalKind.IMPLICIT);
-        existing.setOrigin(GoalOrigin.TERMINAL);
-        goalRepository.save(existing);
+        GoalFixtures.goal(course, "random forests").kind(GoalKind.IMPLICIT).origin(GoalOrigin.TERMINAL).create();
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(), proposalId)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course, proposalId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\"]}"))
                 .andExpect(status().isConflict());
@@ -286,9 +268,9 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void anUnknownProposalIsNotFound() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
+        UUID course = TestTenant.course("Machine Learning");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course.getId(),
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search/{proposalId}", course,
                         "00000000-0000-0000-0000-000000000000")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subSkillKeys\": [\"s0\"]}"))
@@ -297,12 +279,12 @@ class TopicSearchControllerTest extends MaterialsTestBase {
 
     @Test
     void rangesAboveTheCapAreRejected() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
+        UUID course = TestTenant.course("Machine Learning");
         String[] pages = new String[81];
         java.util.Arrays.fill(pages, "Random forests");
         Document lecture = document(course, pages);
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": 1, \"endPage\": 81}]}"))
@@ -313,8 +295,8 @@ class TopicSearchControllerTest extends MaterialsTestBase {
      * A four-page lecture under one bookmark. The mocked extraction returns four sub-skills, one per
      * page, and the mocked structuring groups the first two into a skill.
      */
-    private Course courseWithLecture() {
-        Course course = courseRepository.save(TestTenant.course("Machine Learning"));
+    private UUID courseWithLecture() {
+        UUID course = TestTenant.course("Machine Learning");
         Document lecture = document(course, "Bootstrap samples train each tree", "Features are sampled per split",
                 "The out-of-bag error estimates generalisation", "More trees reduce variance");
         documentSectionRepository.save(new DocumentSection(lecture, 0, "Ensembles", 0,
@@ -338,8 +320,8 @@ class TopicSearchControllerTest extends MaterialsTestBase {
         return course;
     }
 
-    private String search(Course course, Document lecture, int startPage, int endPage) throws Exception {
-        return mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course.getId())
+    private String search(UUID course, Document lecture, int startPage, int endPage) throws Exception {
+        return mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/topic-search", course)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"" + TOPIC + "\", \"ranges\": [{\"documentId\": " + lecture.getId()
                                 + ", \"startPage\": " + startPage + ", \"endPage\": " + endPage + "}]}"))
@@ -349,7 +331,7 @@ class TopicSearchControllerTest extends MaterialsTestBase {
                 .andReturn().getResponse().getContentAsString();
     }
 
-    private Document document(Course course, String... pages) {
+    private Document document(UUID course, String... pages) {
         StringBuilder text = new StringBuilder();
         int[] offsets = new int[pages.length + 1];
         for (int page = 0; page < pages.length; page++) {
@@ -367,8 +349,9 @@ class TopicSearchControllerTest extends MaterialsTestBase {
     }
 
     /** Each tree parent of a goal with the origin of the edge to it. */
-    private Map<Long, RelationshipOrigin> parents(LearningGoal goal) {
-        return goalRelationshipRepository.findBySourceId(goal.getId()).stream()
-                .collect(Collectors.toMap(relationship -> relationship.getTarget().getId(), GoalRelationship::getOrigin));
+    private Map<UUID, RelationshipOrigin> parents(PlacedGoal goal) {
+        return GoalFixtures.edgesFrom(goal.id()).stream()
+                .collect(Collectors.toMap(relationship -> relationship.targetGoalId(),
+                        relationship -> RelationshipOrigin.valueOf(relationship.origin())));
     }
 }

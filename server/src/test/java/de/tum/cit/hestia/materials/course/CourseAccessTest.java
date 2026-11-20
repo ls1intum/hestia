@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import de.tum.cit.hestia.core.OrgContext;
 import de.tum.cit.hestia.core.TestLogin;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
 import de.tum.cit.hestia.materials.MaterialsTestBase;
@@ -39,9 +38,6 @@ class CourseAccessTest extends MaterialsTestBase {
     @Autowired
     private IdentityService identities;
 
-    @Autowired
-    private CourseRepository courseRepository;
-
     private final String run = UUID.randomUUID().toString().substring(0, 8);
     private final String uniA = "uni-a-" + run + ".test";
     private final String uniB = "uni-b-" + run + ".test";
@@ -51,18 +47,13 @@ class CourseAccessTest extends MaterialsTestBase {
     }
 
     /** A course of {@code alice} (owner) at university A. */
-    private Course courseOfAlice() {
-        UUID org = TestLogin.login(identities, uniA, "alice").orgId();
-        try {
-            return OrgContext.call(org, () -> courseRepository.save(TestTenant.courseAs(uniA, "alice", "Algorithms")));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+    private UUID courseOfAlice() {
+        return TestTenant.courseAs(uniA, "alice", "Algorithms");
     }
 
-    private void addMember(Course course, String user, String role) throws Exception {
+    private void addMember(UUID course, String user, String role) throws Exception {
         TestLogin.login(identities, uniA, user);
-        mvc.perform(put("/core/api/courses/" + course.getCoreCourseId() + "/members").with(as(uniA, "alice"))
+        mvc.perform(put("/core/api/courses/" + course + "/members").with(as(uniA, "alice"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"externalId\":\"" + user + "\",\"role\":\"" + role + "\"}"))
                 .andExpect(status().isOk());
@@ -73,19 +64,19 @@ class CourseAccessTest extends MaterialsTestBase {
         mvc.perform(get(API + "/courses").with(anonymous())).andExpect(status().isUnauthorized());
         mvc.perform(post(API + "/courses").with(anonymous()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"x\"}")).andExpect(status().isUnauthorized());
-        mvc.perform(get(API + "/courses/1").with(anonymous())).andExpect(status().isUnauthorized());
-        mvc.perform(get(API + "/courses/1/documents").with(anonymous())).andExpect(status().isUnauthorized());
-        mvc.perform(get(API + "/courses/1/learning-goals").with(anonymous())).andExpect(status().isUnauthorized());
-        mvc.perform(post(API + "/courses/1/extract").with(anonymous())).andExpect(status().isUnauthorized());
-        mvc.perform(delete(API + "/courses/1").with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/courses/" + UUID.randomUUID()).with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/courses/" + UUID.randomUUID() + "/documents").with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(get(API + "/courses/" + UUID.randomUUID() + "/learning-goals").with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(post(API + "/courses/" + UUID.randomUUID() + "/extract").with(anonymous())).andExpect(status().isUnauthorized());
+        mvc.perform(delete(API + "/courses/" + UUID.randomUUID()).with(anonymous())).andExpect(status().isUnauthorized());
         mvc.perform(get(API + "/extractions/current").with(anonymous())).andExpect(status().isUnauthorized());
         mvc.perform(get(API + "/intake/terms").with(anonymous())).andExpect(status().isUnauthorized());
     }
 
     @Test
     void anotherOrganisationSeesNothing() throws Exception {
-        Course course = courseOfAlice();
-        long id = course.getId();
+        UUID course = courseOfAlice();
+        UUID id = course;
         TestLogin.login(identities, uniB, "alice");
 
         mvc.perform(get(API + "/courses?size=200").with(as(uniB, "alice")))
@@ -107,20 +98,20 @@ class CourseAccessTest extends MaterialsTestBase {
 
     @Test
     void aUserWhoIsNoMemberDoesNotSeeTheCourse() throws Exception {
-        Course course = courseOfAlice();
+        UUID course = courseOfAlice();
         TestLogin.login(identities, uniA, "bob");
 
         mvc.perform(get(API + "/courses?size=200").with(as(uniA, "bob")))
                 .andExpect(jsonPath("$.content.length()").value(0));
-        mvc.perform(get(API + "/courses/" + course.getId()).with(as(uniA, "bob")))
+        mvc.perform(get(API + "/courses/" + course).with(as(uniA, "bob")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void aViewerReadsButChangesNothing() throws Exception {
-        Course course = courseOfAlice();
+        UUID course = courseOfAlice();
         addMember(course, "vera", "VIEWER");
-        String base = API + "/courses/" + course.getId();
+        String base = API + "/courses/" + course;
 
         mvc.perform(get(API + "/courses?size=200").with(as(uniA, "vera")))
                 .andExpect(jsonPath("$.content.length()").value(1));
@@ -134,15 +125,15 @@ class CourseAccessTest extends MaterialsTestBase {
         mvc.perform(post(base + "/competency-tree").with(as(uniA, "vera"))).andExpect(status().isForbidden());
         mvc.perform(post(base + "/learning-goals/terminal").with(as(uniA, "vera"))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"x\"}")).andExpect(status().isForbidden());
-        mvc.perform(delete(base + "/learning-goals/1").with(as(uniA, "vera"))).andExpect(status().isForbidden());
+        mvc.perform(delete(base + "/learning-goals/" + UUID.randomUUID()).with(as(uniA, "vera"))).andExpect(status().isForbidden());
         mvc.perform(delete(base).with(as(uniA, "vera"))).andExpect(status().isForbidden());
     }
 
     @Test
     void anEditorChangesContentButOnlyTheOwnerDeletesTheCourse() throws Exception {
-        Course course = courseOfAlice();
+        UUID course = courseOfAlice();
         addMember(course, "eddie", "EDITOR");
-        String base = API + "/courses/" + course.getId();
+        String base = API + "/courses/" + course;
 
         mvc.perform(patch(base).with(as(uniA, "eddie")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Renamed by editor\"}")).andExpect(status().isOk());

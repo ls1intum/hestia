@@ -25,7 +25,7 @@ class LlmUsageAdvisorTest {
     @Test
     void booksCallsToTheActiveRunsPhaseAndModel() {
         ExtractionProgressTracker tracker = new ExtractionProgressTracker();
-        ExtractionProgressTracker.Run run = tracker.tryStart(1L, null).orElseThrow();
+        ExtractionProgressTracker.Run run = tracker.tryStart(java.util.UUID.nameUUIDFromBytes(new byte[]{1}), null).orElseThrow();
         run.phase(ExtractionProgressTracker.Phase.EXTRACTING, 2);
         LlmUsageAdvisor advisor = new LlmUsageAdvisor(tracker);
 

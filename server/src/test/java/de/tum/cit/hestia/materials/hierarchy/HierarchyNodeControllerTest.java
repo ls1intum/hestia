@@ -7,8 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -26,18 +25,15 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
     private MockMvc mockMvc;
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private HierarchyNodeRepository hierarchyNodeRepository;
 
     @Test
     void renamesHierarchyNode() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Operating Systems"));
+        UUID course = TestTenant.course("Operating Systems");
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", course.getId(), node.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", course, node.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"label\":\"  Scheduling  \"}"))
                 .andExpect(status().isOk())
@@ -47,11 +43,11 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
 
     @Test
     void rejectsBlankLabel() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Compilers"));
+        UUID course = TestTenant.course("Compilers");
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", course.getId(), node.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", course, node.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"label\":\"   \"}"))
                 .andExpect(status().isBadRequest());
@@ -59,12 +55,12 @@ class HierarchyNodeControllerTest extends MaterialsTestBase {
 
     @Test
     void renameReturns404WhenNodeBelongsToOtherCourse() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Networks"));
-        Course otherCourse = courseRepository.save(TestTenant.course("Security"));
+        UUID course = TestTenant.course("Networks");
+        UUID otherCourse = TestTenant.course("Security");
         HierarchyNode node = hierarchyNodeRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
-        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", otherCourse.getId(), node.getId())
+        mockMvc.perform(patch("/learninggoalhub/api/courses/{courseId}/hierarchy-nodes/{nodeId}", otherCourse, node.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"label\":\"X\"}"))
                 .andExpect(status().isNotFound());

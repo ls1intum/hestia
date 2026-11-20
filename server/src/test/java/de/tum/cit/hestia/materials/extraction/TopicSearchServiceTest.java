@@ -15,8 +15,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.course.CourseContext;
+import de.tum.cit.hestia.materials.course.MaterialSettingsService;
+import de.tum.cit.hestia.core.DomainModule;
+import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.core.GoalOrigin;
+import de.tum.cit.hestia.core.GoalStatus;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import de.tum.cit.hestia.materials.goal.PlacedGoals;
+import java.util.UUID;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentContentRepository;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
@@ -30,12 +37,9 @@ import de.tum.cit.hestia.materials.extraction.TopicSearchService.PageRun;
 import de.tum.cit.hestia.materials.extraction.TopicSearchService.ProposalResponse;
 import de.tum.cit.hestia.materials.extraction.TopicSearchService.ProposedSubSkill;
 import de.tum.cit.hestia.core.GoalKind;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
 import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.GoalSource;
 import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
 import de.tum.cit.hestia.materials.taxonomy.BloomLevel;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
@@ -53,12 +57,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 class TopicSearchServiceTest {
 
-    private static final long COURSE_ID = 1L;
+    private static final UUID COURSE_ID = UUID.randomUUID();
 
-    private final CourseRepository courseRepository = mock(CourseRepository.class);
+    private final MaterialSettingsService settingsService = mock(MaterialSettingsService.class);
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DocumentSectionRepository sectionRepository = mock(DocumentSectionRepository.class);
-    private final LearningGoalRepository goalRepository = mock(LearningGoalRepository.class);
+    private final PlacedGoals placedGoals = mock(PlacedGoals.class);
+    private final LearningGoalApi goalApi = mock(LearningGoalApi.class);
     private final GoalSourceRepository goalSourceRepository = mock(GoalSourceRepository.class);
     private final SessionExtractionService sessionExtractionService = mock(SessionExtractionService.class);
     private final TopicSearchSynthesizer searchSynthesizer = mock(TopicSearchSynthesizer.class);
@@ -66,12 +71,13 @@ class TopicSearchServiceTest {
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-16T10:00:00Z"));
 
     private TopicSearchService service(int maxPages) {
-        when(courseRepository.findOrThrow(COURSE_ID)).thenReturn(new Course("Machine Learning", java.util.UUID.randomUUID()));
+        when(settingsService.context(COURSE_ID))
+                .thenReturn(new CourseContext(COURSE_ID, "Machine Learning", null, false));
         UnitExtractor unitExtractor = new UnitExtractor(sessionExtractionService, mock(DocumentContentRepository.class),
-                mock(HighlightGeometryService.class), goalSourceRepository, 12_000, 3_000, 3_000);
-        return new TopicSearchService(courseRepository, documentRepository, sectionRepository,
-                mock(PageDescriptionRepository.class), goalRepository, goalSourceRepository,
-                mock(GoalRelationshipRepository.class), mock(HierarchyNodeRepository.class), unitExtractor,
+                mock(HighlightGeometryService.class), placedGoals, 12_000, 3_000, 3_000);
+        return new TopicSearchService(settingsService, documentRepository, sectionRepository,
+                mock(PageDescriptionRepository.class), placedGoals, goalApi, goalSourceRepository,
+                mock(HierarchyNodeRepository.class), unitExtractor,
                 searchSynthesizer, treeSynthesizer, mock(TaxonomyService.class),
                 TransactionOperations.withoutTransaction(), 1, maxPages, clock);
     }
@@ -185,16 +191,16 @@ class TopicSearchServiceTest {
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
                 nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("Explain bagging.", 0), skill("Estimate the out-of-bag error.", 1)));
-        LearningGoal existing = mock(LearningGoal.class);
-        when(existing.getId()).thenReturn(90L);
-        when(existing.getText()).thenReturn("Explain how bagging works.");
-        when(existing.getRole()).thenReturn(GoalRole.SKILL);
-        when(goalRepository.findByCourseIdAndOriginIn(eq(COURSE_ID), any())).thenReturn(List.of(existing));
+        UUID existingId = UUID.randomUUID();
+        GoalInfo existing = new GoalInfo(existingId, COURSE_ID, 1, "Explain how bagging works.",
+                "Explain how bagging works.", null, GoalKind.EXPLICIT, GoalRole.SKILL, null, null,
+                GoalStatus.PENDING, GoalOrigin.EXTRACTED, null, DomainModule.MATERIALS, null, Instant.now(), null);
+        when(goalApi.goals(COURSE_ID)).thenReturn(List.of(existing));
         GoalSource source = mock(GoalSource.class);
         when(source.getPage()).thenReturn(1);
         when(source.getDocument()).thenReturn(lecture);
-        when(source.getGoal()).thenReturn(existing);
-        when(goalSourceRepository.findByGoalIdIn(any())).thenReturn(List.of(source));
+        when(source.getGoalId()).thenReturn(existingId);
+        when(goalSourceRepository.findByIdGoalIdIn(any())).thenReturn(List.of(source));
         when(searchSynthesizer.duplicates(anyList(), eq(List.of("Explain how bagging works.")), nullable(String.class)))
                 .thenReturn(List.of(0, -1));
 
@@ -210,7 +216,7 @@ class TopicSearchServiceTest {
                 .containsExactly("Recall what a bootstrap sample is.");
         assertThat(proposal.duplicates()).singleElement().satisfies(duplicate -> {
             assertThat(duplicate.text()).isEqualTo("Explain bagging.");
-            assertThat(duplicate.duplicateOf().goalId()).isEqualTo(90L);
+            assertThat(duplicate.duplicateOf().goalId()).isEqualTo(existingId);
         });
         verify(treeSynthesizer, never()).structure(anyString(), anyList(), anyString(), nullable(String.class));
     }
@@ -222,7 +228,6 @@ class TopicSearchServiceTest {
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
                 nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("A.", 0), skill("B.", 1), skill("C.", 2), skill("D.", 3)));
-        when(goalRepository.findByCourseIdAndOriginIn(eq(COURSE_ID), any())).thenReturn(List.of());
         when(treeSynthesizer.structure(eq("Random forest"), eq(List.of("A.", "B.", "C.", "D.")), anyString(),
                 nullable(String.class)))
                 .thenReturn(new TopicTreeSynthesizer.PlannedTopic("Random forest", List.of(
@@ -250,7 +255,6 @@ class TopicSearchServiceTest {
         when(sessionExtractionService.extract(anyString(), anyString(), anyString(), anyString(),
                 nullable(String.class), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill("A.", 0)));
-        when(goalRepository.findByCourseIdAndOriginIn(eq(COURSE_ID), any())).thenReturn(List.of());
         TopicSearchService service = service(80);
         ProposalResponse proposal = service.search(COURSE_ID, "Random forest", List.of(new PageRange(41L, 1, 2)), null);
 

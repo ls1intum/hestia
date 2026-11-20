@@ -5,11 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
-import de.tum.cit.hestia.core.GoalKind;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
+import de.tum.cit.hestia.materials.GoalFixtures;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import java.util.UUID;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,17 +20,11 @@ import org.springframework.context.annotation.Import;
 class HierarchyNodeRepositoryTest extends MaterialsTestBase {
 
     @Autowired
-    private CourseRepository courseRepository;
-
-    @Autowired
     private HierarchyNodeRepository hierarchyRepository;
-
-    @Autowired
-    private LearningGoalRepository goalRepository;
 
     @Test
     void persistsModuleSessionExerciseTree() {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
 
         HierarchyNode module = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Software Engineering"));
@@ -41,7 +33,7 @@ class HierarchyNodeRepositoryTest extends MaterialsTestBase {
         HierarchyNode exercise = hierarchyRepository.save(
                 new HierarchyNode(course, session, HierarchyLevel.EXERCISE, "Exercise 3.2: TDD Kata"));
 
-        List<HierarchyNode> nodes = hierarchyRepository.findByCourseId(course.getId());
+        List<HierarchyNode> nodes = hierarchyRepository.findByCourseId(course);
 
         assertThat(nodes).hasSize(3);
         assertThat(session.getParent().getId()).isEqualTo(module.getId());
@@ -51,17 +43,15 @@ class HierarchyNodeRepositoryTest extends MaterialsTestBase {
 
     @Test
     void learningGoalCanReferenceHierarchyNode() {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         HierarchyNode session = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.SESSION, "Session 1"));
 
-        LearningGoal goal = new LearningGoal(course, "Apply TDD.", GoalKind.EXPLICIT);
-        goal.setHierarchyNode(session);
-        LearningGoal saved = goalRepository.save(goal);
+        PlacedGoal saved = GoalFixtures.goal(course, "Apply TDD.").node(session).create();
 
-        LearningGoal reloaded = goalRepository.findById(saved.getId()).orElseThrow();
-        assertThat(reloaded.getHierarchyNode()).isNotNull();
-        assertThat(reloaded.getHierarchyNode().getId()).isEqualTo(session.getId());
-        assertThat(reloaded.getHierarchyNode().getLabel()).isEqualTo("Session 1");
+        PlacedGoal reloaded = GoalFixtures.goal(saved.id());
+        assertThat(reloaded.hierarchyNode()).isNotNull();
+        assertThat(reloaded.hierarchyNode().getId()).isEqualTo(session.getId());
+        assertThat(reloaded.hierarchyNode().getLabel()).isEqualTo("Session 1");
     }
 }

@@ -18,8 +18,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import de.tum.cit.hestia.materials.MaterialsTestBase;
 import de.tum.cit.hestia.materials.MaterialsTestConfiguration;
 import de.tum.cit.hestia.materials.topictree.TopicTreeSynthesizer;
-import de.tum.cit.hestia.materials.course.Course;
-import de.tum.cit.hestia.materials.course.CourseRepository;
+import de.tum.cit.hestia.materials.GoalFixtures;
+import de.tum.cit.hestia.materials.goal.PlacedGoal;
+import de.tum.cit.hestia.core.LearningGoalApi;
+import java.util.UUID;
 import de.tum.cit.hestia.materials.course.ExtractionStatus;
 import de.tum.cit.hestia.materials.document.Document;
 import de.tum.cit.hestia.materials.document.DocumentRepository;
@@ -35,14 +37,10 @@ import de.tum.cit.hestia.core.GoalOrigin;
 import de.tum.cit.hestia.core.GoalRole;
 import de.tum.cit.hestia.materials.goal.GoalSource;
 import de.tum.cit.hestia.materials.goal.GoalSourceRepository;
-import de.tum.cit.hestia.materials.goal.LearningGoal;
-import de.tum.cit.hestia.materials.goal.LearningGoalRepository;
 import de.tum.cit.hestia.materials.taxonomy.SoloLevel;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyLevel;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNode;
 import de.tum.cit.hestia.materials.hierarchy.HierarchyNodeRepository;
-import de.tum.cit.hestia.materials.goal.GoalRelationshipRepository;
-import de.tum.cit.hestia.materials.goal.GoalRelationship;
 import de.tum.cit.hestia.materials.goal.RelationshipOrigin;
 import de.tum.cit.hestia.materials.goal.RelationshipType;
 import de.tum.cit.hestia.materials.goal.SourceMatchQuality;
@@ -76,7 +74,13 @@ class ExtractionControllerTest extends MaterialsTestBase {
     private MockMvc mockMvc;
 
     @Autowired
-    private CourseRepository courseRepository;
+    private LearningGoalApi goalApi;
+
+    @Autowired
+    private de.tum.cit.hestia.materials.course.MaterialSettingsService settingsService;
+
+    @Autowired
+    private de.tum.cit.hestia.materials.course.MaterialSettingsRepository settingsRepository;
 
     @Autowired
     private DocumentRepository documentRepository;
@@ -88,13 +92,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
     private PageDescriptionRepository pageDescriptionRepository;
 
     @Autowired
-    private LearningGoalRepository goalRepository;
-
-    @Autowired
     private GoalSourceRepository goalSourceRepository;
-
-    @Autowired
-    private GoalRelationshipRepository goalRelationshipRepository;
 
     @Autowired
     private HierarchyNodeRepository hierarchyRepository;
@@ -171,13 +169,13 @@ class ExtractionControllerTest extends MaterialsTestBase {
         return new ExtractedSkill(text, text, GoalKind.IMPLICIT, BloomLevel.APPLY, SoloLevel.RELATIONAL, null, null, sourceFigure, List.of());
     }
 
-    private void startExtraction(Long courseId) throws Exception {
+    private void startExtraction(UUID courseId) throws Exception {
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", courseId))
                 .andExpect(status().isAccepted());
         awaitSucceeded(courseId);
     }
 
-    private void startForcedExtraction(Long courseId) throws Exception {
+    private void startForcedExtraction(UUID courseId) throws Exception {
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract?force=true", courseId))
                 .andExpect(status().isAccepted());
         awaitSucceeded(courseId);
@@ -188,21 +186,21 @@ class ExtractionControllerTest extends MaterialsTestBase {
      * lands on the tracker as FAILED. Assert the happy path here so a broken run fails loudly with
      * its own error rather than as a confusing empty-result assertion further down the test.
      */
-    private void awaitSucceeded(Long courseId) throws Exception {
+    private void awaitSucceeded(UUID courseId) throws Exception {
         String body = awaitExtraction(courseId);
         assertThat(body).as("extraction for course %s should have succeeded", courseId)
                 .contains("\"status\":\"SUCCEEDED\"");
     }
 
     /** For runs the test expects to fail — the guard rejections and audit-failure cases. */
-    private void startExtractionExpectingFailure(Long courseId) throws Exception {
+    private void startExtractionExpectingFailure(UUID courseId) throws Exception {
         mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", courseId))
                 .andExpect(status().isAccepted());
         awaitExtraction(courseId);
     }
 
     /** Waits for the run to reach a terminal state and returns the final status body. */
-    private String awaitExtraction(Long courseId) throws Exception {
+    private String awaitExtraction(UUID courseId) throws Exception {
         for (int attempt = 0; attempt < 200; attempt++) {
             MvcResult result = mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", courseId)).andReturn();
             String body = result.getResponse().getContentAsString();
@@ -217,54 +215,52 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionRefusesToReplaceExistingGoalsWithoutForce() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Extraction guard"));
-        LearningGoal existing = goalRepository.save(new LearningGoal(course, "Existing goal", GoalKind.EXPLICIT));
+        UUID course = TestTenant.course("Extraction guard");
+        PlacedGoal existing = GoalFixtures.goal(course, "Existing goal").create();
 
-        startExtractionExpectingFailure(course.getId());
+        startExtractionExpectingFailure(course);
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"));
 
         verify(sessionExtractionService, never()).extract(anyString(), anyString(), anyString(), anyString(), any(), anyList(), anyInt(), any());
-        assertThat(goalRepository.findById(existing.getId())).isPresent();
+        assertThat(GoalFixtures.find(course, existing.id())).isPresent();
     }
 
     @Test
     void forcedExtractionClearsThePreviousRunBeforeBuildingItAgain() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Forced extraction"));
+        UUID course = TestTenant.course("Forced extraction");
         Document document = documentRepository.save(
                 new Document(course, "forced.pdf", "application/pdf", "new outcome"));
         HierarchyNode oldModule = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
         HierarchyNode oldSession = hierarchyRepository.save(
                 new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document));
-        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
-        oldGoal.setHierarchyNode(oldSession);
-        oldGoal = goalRepository.saveAndFlush(oldGoal);
-        goalSourceRepository.save(new GoalSource(oldGoal, document, "old source"));
+        PlacedGoal oldGoal = GoalFixtures.goal(course, "Old goal").node(oldSession).create();
+        goalSourceRepository.save(new GoalSource(oldGoal.id(), document, "old source"));
 
         when(sessionExtractionService.extract(eq("forced.pdf"), eq("new outcome"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome"))));
 
-        startForcedExtraction(course.getId());
+        startForcedExtraction(course);
 
-        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
-        assertThat(goalSourceRepository.findByGoalId(oldGoal.getId())).isEmpty();
-        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+        assertThat(GoalFixtures.find(course, oldGoal.id())).isEmpty();
+        assertThat(goalSourceRepository.findByIdGoalId(oldGoal.id())).isEmpty();
+        assertThat(hierarchyRepository.findByCourseId(course))
                 .noneMatch(node -> node.getLabel().equals("Old module") || node.getLabel().equals("Old session"));
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
-                .extracting(LearningGoal::getText)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(goal -> goal.origin() == GoalOrigin.EXTRACTED)
+                .extracting(PlacedGoal::text)
                 .containsExactly("New goal");
     }
 
     @Test
     void extractionHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Forced extraction without a held transaction"));
+        UUID course = TestTenant.course("Forced extraction without a held transaction");
         Document document = documentRepository.save(
                 new Document(course, "unlocked.pdf", "application/pdf", "new outcome"));
-        LearningGoal oldGoal = goalRepository.saveAndFlush(new LearningGoal(course, "Old goal", GoalKind.EXPLICIT));
+        PlacedGoal oldGoal = GoalFixtures.goal(course, "Old goal").create();
         AtomicLong openTransactions = new AtomicLong(-1);
         when(sessionExtractionService.extract(eq("unlocked.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any())).thenAnswer(inv -> {
@@ -277,17 +273,17 @@ class ExtractionControllerTest extends MaterialsTestBase {
                     return List.of(skill(new ExtractedGoal("New goal", "New goal", GoalKind.EXPLICIT, "new outcome")));
                 });
 
-        startForcedExtraction(course.getId());
+        startForcedExtraction(course);
 
         assertThat(openTransactions).hasValue(0);
-        assertThat(goalRepository.findById(oldGoal.getId())).isEmpty();
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
-                .extracting(LearningGoal::getText)
+        assertThat(GoalFixtures.find(course, oldGoal.id())).isEmpty();
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(goal -> goal.origin() == GoalOrigin.EXTRACTED)
+                .extracting(PlacedGoal::text)
                 .containsExactly("New goal");
-        assertThat(goalSourceRepository.findByGoalId(goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
-                .findFirst().orElseThrow().getId()))
+        assertThat(goalSourceRepository.findByIdGoalId(GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
+                .findFirst().orElseThrow().id()))
                 .singleElement()
                 .satisfies(source -> assertThat(source.getDocument().getId()).isEqualTo(document.getId()));
     }
@@ -295,7 +291,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
     /** The tree stage plans with the models too, so it must not hold a transaction across those calls either. */
     @Test
     void topicTreeStageHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Tree stage without a held transaction"));
+        UUID course = TestTenant.course("Tree stage without a held transaction");
         documentRepository.save(new Document(course, "tree.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("tree.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any()))
@@ -303,34 +299,34 @@ class ExtractionControllerTest extends MaterialsTestBase {
                         "Apply the capability."))));
         AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Tree Label");
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
         assertThat(openTransactions).hasValue(0);
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
-                .extracting(LearningGoal::getShortLabel)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
+                .extracting(PlacedGoal::shortLabel)
                 .containsExactly("Tree Label");
     }
 
     @Test
     void rebuildHoldsNoTransactionWhileTheModelsRun() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Rebuild without a held transaction"));
+        UUID course = TestTenant.course("Rebuild without a held transaction");
         documentRepository.save(new Document(course, "rebuild.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("rebuild.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any()))
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the capability.", "Capability", GoalKind.EXPLICIT,
                         "Apply the capability."))));
         stubTopicPlan("First Label", List.of(List.of(0)));
-        startExtraction(course.getId());
+        startExtraction(course);
         AtomicLong openTransactions = stubTopicPlanCountingOpenTransactions("Rebuilt Label");
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isOk());
 
         assertThat(openTransactions).hasValue(0);
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
-                .extracting(LearningGoal::getShortLabel)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
+                .extracting(PlacedGoal::shortLabel)
                 .containsExactly("Rebuilt Label");
     }
 
@@ -350,30 +346,28 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void aFailedForcedExtractionKeepsThePreviousOne() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Failed forced extraction"));
+        UUID course = TestTenant.course("Failed forced extraction");
         Document document = documentRepository.save(
                 new Document(course, "failing.pdf", "application/pdf", "new outcome"));
         HierarchyNode oldModule = hierarchyRepository.save(
                 new HierarchyNode(course, null, HierarchyLevel.MODULE, "Old module"));
-        LearningGoal oldGoal = new LearningGoal(course, "Old goal", GoalKind.EXPLICIT);
-        oldGoal.setHierarchyNode(hierarchyRepository.save(
-                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document)));
-        oldGoal = goalRepository.saveAndFlush(oldGoal);
+        PlacedGoal oldGoal = GoalFixtures.goal(course, "Old goal").node(hierarchyRepository.save(
+                new HierarchyNode(course, oldModule, HierarchyLevel.SESSION, "Old session", document))).create();
         when(sessionExtractionService.extract(eq("failing.pdf"), anyString(), anyString(), anyString(), any(),
                 anyList(), anyInt(), any())).thenThrow(new IllegalStateException("HTTP 503"));
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract?force=true", course))
                 .andExpect(status().isAccepted());
-        assertThat(awaitExtraction(course.getId())).contains("\"status\":\"FAILED\"");
+        assertThat(awaitExtraction(course)).contains("\"status\":\"FAILED\"");
 
-        assertThat(goalRepository.findById(oldGoal.getId())).isPresent();
-        assertThat(hierarchyRepository.findByCourseId(course.getId())).extracting(HierarchyNode::getLabel)
+        assertThat(GoalFixtures.find(course, oldGoal.id())).isPresent();
+        assertThat(hierarchyRepository.findByCourseId(course)).extracting(HierarchyNode::getLabel)
                 .containsExactlyInAnyOrder("Old module", "Old session");
     }
 
     @Test
     void extractionPersistsGoalsAndSourcesPerDocument() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise on refactoring"));
 
@@ -388,15 +382,15 @@ class ExtractionControllerTest extends MaterialsTestBase {
                         GoalKind.EXPLICIT, "...extract method..."))
         ));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        List<PlacedGoal> goals = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .toList();
         assertThat(goals).hasSize(3);
-        assertThat(goals).extracting(LearningGoal::getKind)
+        assertThat(goals).extracting(PlacedGoal::kind)
                 .containsExactlyInAnyOrder(GoalKind.EXPLICIT, GoalKind.IMPLICIT, GoalKind.EXPLICIT);
-        assertThat(goals).extracting(LearningGoal::getShortLabel)
+        assertThat(goals).extracting(PlacedGoal::shortLabel)
                 .containsExactlyInAnyOrder("Test-Driven Development", "Feedback Loops",
                         "Behaviour-Preserving Refactoring");
 
@@ -409,11 +403,11 @@ class ExtractionControllerTest extends MaterialsTestBase {
         assertThat(sourcesForLecture).isEqualTo(2);
         assertThat(sourcesForExercise).isEqualTo(1);
 
-        LearningGoal fabricatedGoal = goals.stream()
-                .filter(g -> g.getText().equals("Apply test-driven development."))
+        PlacedGoal fabricatedGoal = goals.stream()
+                .filter(g -> g.text().equals("Apply test-driven development."))
                 .findFirst()
                 .orElseThrow();
-        assertThat(goalSourceRepository.findByGoalId(fabricatedGoal.getId()))
+        assertThat(goalSourceRepository.findByIdGoalId(fabricatedGoal.id()))
                 .singleElement()
                 .satisfies(source -> {
                     assertThat(source.getSnippet()).isEmpty();
@@ -423,11 +417,11 @@ class ExtractionControllerTest extends MaterialsTestBase {
                     assertThat(source.getUnverifiedSnippet()).isNull();
                 });
 
-        LearningGoal exactGoal = goals.stream()
-                .filter(g -> g.getText().equals("Value short feedback loops."))
+        PlacedGoal exactGoal = goals.stream()
+                .filter(g -> g.text().equals("Value short feedback loops."))
                 .findFirst()
                 .orElseThrow();
-        assertThat(goalSourceRepository.findByGoalId(exactGoal.getId()))
+        assertThat(goalSourceRepository.findByIdGoalId(exactGoal.id()))
                 .singleElement()
                 .satisfies(source -> {
                     assertThat(source.getSnippet()).isEqualTo("lecture text about TDD");
@@ -435,7 +429,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
                     assertThat(source.isGrounded()).isTrue();
                 });
 
-        ExtractionRun run = extractionRunRepository.findByCourseId(course.getId()).stream()
+        ExtractionRun run = extractionRunRepository.findByCourseId(course).stream()
                 .findFirst()
                 .orElseThrow();
         assertThat(run.getStatus()).isEqualTo(ExtractionStatus.SUCCEEDED);
@@ -448,7 +442,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void multiPdfExtractionUsesNaturalLectureOrderInsteadOfUploadOrder() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Naturally ordered lectures"));
+        UUID course = TestTenant.course("Naturally ordered lectures");
         documentRepository.save(new Document(course, "Lecture 10.pdf", "application/pdf", "later material"));
         documentRepository.save(new Document(course, "Lecture 2.pdf", "application/pdf", "earlier material"));
         when(sessionExtractionService.extract(eq("Lecture 10.pdf"), eq("later material"),
@@ -462,20 +456,20 @@ class ExtractionControllerTest extends MaterialsTestBase {
                         "Applying the earlier method in representative contexts.", "Apply Earlier Method",
                         GoalKind.IMPLICIT, "earlier material"))));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        Map<String, Integer> orderByLabel = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
-                .collect(Collectors.toMap(LearningGoal::getShortLabel, LearningGoal::getLectureOrder));
+        Map<String, Integer> orderByLabel = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
+                .collect(Collectors.toMap(PlacedGoal::shortLabel, PlacedGoal::lectureOrder));
         assertThat(orderByLabel.get("Apply Earlier Method"))
                 .isLessThan(orderByLabel.get("Apply Later Method"));
     }
 
     @Test
     void auditServicePersistsRunningThenSucceededInSeparateTransactions() {
-        Course course = courseRepository.save(TestTenant.course("Audit lifecycle"));
+        UUID course = TestTenant.course("Audit lifecycle");
 
-        Long runId = extractionRunAuditService.start(course.getId(), null, "direct-v1",
+        Long runId = extractionRunAuditService.start(course, null, "direct-v1",
                 "{\"unit-max-chars\":12000,\"skill-target-chars\":3000,\"parallelism\":16}");
         assertThat(extractionRunRepository.findById(runId).orElseThrow().getStatus())
                 .isEqualTo(ExtractionStatus.RUNNING);
@@ -492,10 +486,10 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void directSourcesPreferLinesThenUseFiguresAndRejectInvalidFigureIndices() throws Exception {
-        Course course = TestTenant.course("Figure source precedence");
+        UUID course = TestTenant.course("Figure source precedence");
         // Figure evidence is opt-in per course, and this test is about what it does once opted in.
-        course.setFiguresEnabled(true);
-        courseRepository.save(course);
+        settingsService.settings(course).setFiguresEnabled(true);
+        settingsRepository.flush();
         String rawText = "verbatim line";
         Document document = documentRepository.save(
                 new Document(course, "figures.pdf", "application/pdf", rawText));
@@ -513,13 +507,13 @@ class ExtractionControllerTest extends MaterialsTestBase {
                         figureSkill("Figure outcome", 0),
                         figureSkill("Unsupported outcome", 4)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        Map<Long, String> goalTextById = goalRepository.findByCourseId(course.getId()).stream()
-                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<UUID, String> goalTextById = GoalFixtures.goals(course).stream()
+                .collect(Collectors.toMap(PlacedGoal::id, PlacedGoal::text));
         Map<String, GoalSource> sources = goalSourceRepository.findAll().stream()
                 .filter(source -> source.getDocument().getId().equals(document.getId()))
-                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()), source -> source));
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoalId()), source -> source));
         assertThat(sources.get("Text outcome").getEvidenceKind()).isEqualTo(EvidenceKind.TEXT);
         assertThat(sources.get("Figure outcome").getEvidenceKind()).isEqualTo(EvidenceKind.FIGURE);
         assertThat(sources.get("Figure outcome").getPage()).isEqualTo(2);
@@ -537,7 +531,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void oversizedSectionIsSplitIntoWindowsOnOneSession() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         // unit-max-chars is 80 here, so a 180-character document cuts into three 60-character
         // line-aligned windows.
         String first = paddedLine("Apply the first capability.");
@@ -556,34 +550,34 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(skill(new ExtractedGoal("Apply the third capability.", "Third",
                         GoalKind.EXPLICIT, ""), 0, 0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> extracted = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        List<PlacedGoal> extracted = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .toList();
-        assertThat(extracted).extracting(LearningGoal::getShortLabel)
+        assertThat(extracted).extracting(PlacedGoal::shortLabel)
                 .containsExactlyInAnyOrder("First", "Second", "Third");
 
         // The split is invisible above the extraction unit: one session node owns all three windows.
-        assertThat(extracted).extracting(goal -> goal.getHierarchyNode().getId())
-                .containsOnly(extracted.getFirst().getHierarchyNode().getId());
-        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+        assertThat(extracted).extracting(goal -> goal.hierarchyNode().getId())
+                .containsOnly(extracted.getFirst().hierarchyNode().getId());
+        assertThat(hierarchyRepository.findByCourseId(course))
                 .filteredOn(node -> node.getLevel() == HierarchyLevel.SESSION)
                 .singleElement()
                 .satisfies(node -> assertThat(node.getLabel()).isEqualTo("combined.pdf"));
 
-        Map<Long, String> goalTextById = extracted.stream()
-                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<UUID, String> goalTextById = extracted.stream()
+                .collect(Collectors.toMap(PlacedGoal::id, PlacedGoal::text));
         Map<String, String> snippets = goalSourceRepository.findAll().stream()
                 .filter(source -> source.getDocument().getId().equals(document.getId()))
-                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()),
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoalId()),
                         source -> source.getSnippet().strip()));
         assertThat(snippets).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "Apply the first capability.", "Apply the first capability.",
                 "Apply the second capability.", "Apply the second capability.",
                 "Apply the third capability.", "Apply the third capability."));
 
-        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+        assertThat(extractionRunRepository.findByCourseId(course))
                 .singleElement()
                 .satisfies(run -> assertThat(run.getPromptVersion())
                         .isEqualTo(SessionExtractionService.PROMPT_VERSION));
@@ -601,7 +595,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void oversizedSectionSplitsOnPageBoundaries() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Paged sections"));
+        UUID course = TestTenant.course("Paged sections");
         // Four 50-character pages against an 80-character budget: whole pages pack one per window.
         List<String> pages = List.of(
                 pagedLine("Apply the page one capability."),
@@ -624,25 +618,25 @@ class ExtractionControllerTest extends MaterialsTestBase {
                             GoalKind.EXPLICIT, ""), 0, 0)));
         }
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> extracted = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        List<PlacedGoal> extracted = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .toList();
-        assertThat(extracted).extracting(LearningGoal::getShortLabel)
+        assertThat(extracted).extracting(PlacedGoal::shortLabel)
                 .containsExactlyInAnyOrderElementsOf(labels);
-        assertThat(extracted).extracting(goal -> goal.getHierarchyNode().getId())
-                .containsOnly(extracted.getFirst().getHierarchyNode().getId());
-        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+        assertThat(extracted).extracting(goal -> goal.hierarchyNode().getId())
+                .containsOnly(extracted.getFirst().hierarchyNode().getId());
+        assertThat(hierarchyRepository.findByCourseId(course))
                 .filteredOn(node -> node.getLevel() == HierarchyLevel.SESSION)
                 .singleElement()
                 .satisfies(node -> assertThat(node.getLabel()).isEqualTo("Combined chapter"));
 
-        Map<Long, String> goalTextById = extracted.stream()
-                .collect(Collectors.toMap(LearningGoal::getId, LearningGoal::getText));
+        Map<UUID, String> goalTextById = extracted.stream()
+                .collect(Collectors.toMap(PlacedGoal::id, PlacedGoal::text));
         Map<String, Integer> pageByGoal = goalSourceRepository.findAll().stream()
                 .filter(source -> source.getDocument().getId().equals(document.getId()))
-                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoal().getId()),
+                .collect(Collectors.toMap(source -> goalTextById.get(source.getGoalId()),
                         GoalSource::getPage));
         assertThat(pageByGoal).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "Page one outcome", 1,
@@ -658,7 +652,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionPersistsShortLabelOnTerminalCompetencies() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Terminal competency labels"));
+        UUID course = TestTenant.course("Terminal competency labels");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -668,18 +662,18 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Terminal Capability", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Terminal Capability");
     }
 
     @Test
     void topicGroupsItsSkillsUnderGeneratedCapabilities() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Consolidated competency"));
+        UUID course = TestTenant.course("Consolidated competency");
         String material = "Apply one. Apply two. Apply three. Apply four. Apply five. Apply six.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         List<ExtractedSkill> extracted = java.util.stream.IntStream.rangeClosed(1, 6)
@@ -697,35 +691,35 @@ class ExtractionControllerTest extends MaterialsTestBase {
         });
         stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
-        LearningGoal terminal = goals.stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.TERMINAL)
+        List<PlacedGoal> goals = GoalFixtures.goals(course);
+        PlacedGoal terminal = goals.stream()
+                .filter(goal -> goal.origin() == GoalOrigin.TERMINAL)
                 .findFirst().orElseThrow();
-        assertThat(terminal.getText()).isEqualTo("Course Methods");
+        assertThat(terminal.text()).isEqualTo("Course Methods");
         // Resolve through the repository: the edge's source is a lazy proxy and this runs outside
         // a session, so navigating it directly would throw.
-        List<LearningGoal> capabilities = goalRelationshipRepository.findByTargetId(terminal.getId()).stream()
-                .map(relationship -> goalRepository.findById(relationship.getSource().getId()).orElseThrow())
+        List<PlacedGoal> capabilities = GoalFixtures.edgesInto(terminal.id()).stream()
+                .map(relationship -> GoalFixtures.goal(relationship.sourceGoalId()))
                 .toList();
         // Each group becomes a generated capability without a source or a hierarchy node.
         assertThat(capabilities).hasSize(2).allSatisfy(node -> {
-            assertThat(node.getOrigin()).isEqualTo(GoalOrigin.SYNTHESIZED);
-            assertThat(node.getRole()).isEqualTo(GoalRole.SKILL);
-            assertThat(node.getHierarchyNode()).isNull();
-            assertThat(goalSourceRepository.findByGoalId(node.getId())).isEmpty();
+            assertThat(node.origin()).isEqualTo(GoalOrigin.SYNTHESIZED);
+            assertThat(node.role()).isEqualTo(GoalRole.SKILL);
+            assertThat(node.hierarchyNode()).isNull();
+            assertThat(goalSourceRepository.findByIdGoalId(node.id())).isEmpty();
         });
         // Every extracted skill stays a node of its own beneath its capability.
         assertThat(capabilities).allSatisfy(node ->
-                assertThat(goalRelationshipRepository.findByTargetId(node.getId()))
+                assertThat(GoalFixtures.edgesInto(node.id()))
                         .hasSize(3)
                         .allSatisfy(relationship -> {
-                            assertThat(relationship.getType()).isEqualTo(RelationshipType.CONTRIBUTES_TO);
-                            assertThat(goalRepository.findById(relationship.getSource().getId()).orElseThrow()
-                                    .getOrigin()).isEqualTo(GoalOrigin.EXTRACTED);
+                            assertThat(relationship.type()).isEqualTo(RelationshipType.CONTRIBUTES_TO.name());
+                            assertThat(GoalFixtures.goal(relationship.sourceGoalId())
+                                    .origin()).isEqualTo(GoalOrigin.EXTRACTED);
                         }));
-        assertThat(goals).filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED).hasSize(6);
+        assertThat(goals).filteredOn(goal -> goal.origin() == GoalOrigin.EXTRACTED).hasSize(6);
     }
 
     /**
@@ -735,7 +729,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void compactPlanCoversEverySourceWithoutCatchAllTerminal() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Unmatched goals"));
+        UUID course = TestTenant.course("Unmatched goals");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -746,31 +740,31 @@ class ExtractionControllerTest extends MaterialsTestBase {
         // The model placed the only goal nowhere.
         stubTopicPlan("Covered Capability", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> terminals = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        List<PlacedGoal> terminals = GoalFixtures.goals(course).stream()
+                .filter(g -> g.origin() == GoalOrigin.TERMINAL)
                 .toList();
         assertThat(terminals).singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Covered Capability");
-        LearningGoal extracted = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.EXTRACTED)
+        PlacedGoal extracted = GoalFixtures.goals(course).stream()
+                .filter(g -> g.origin() == GoalOrigin.EXTRACTED)
                 .findFirst()
                 .orElseThrow();
         // A lone outcome forms no capability, so it contributes to the topic directly.
-        assertThat(goalRelationshipRepository.findBySourceId(extracted.getId()))
+        assertThat(GoalFixtures.edgesFrom(extracted.id()))
                 .singleElement()
                 .satisfies(relationship -> {
-                    assertThat(relationship.getType()).isEqualTo(RelationshipType.CONTRIBUTES_TO);
-                    assertThat(goalRepository.findById(relationship.getTarget().getId()).orElseThrow()
-                            .getOrigin()).isEqualTo(GoalOrigin.TERMINAL);
+                    assertThat(relationship.type()).isEqualTo(RelationshipType.CONTRIBUTES_TO.name());
+                    assertThat(GoalFixtures.goal(relationship.targetGoalId())
+                            .origin()).isEqualTo(GoalOrigin.TERMINAL);
                 });
     }
 
     @Test
     void unmatchedGoalsReceiveSemanticCompetencyRepairBeforeCatchAll() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Semantic coverage repair"));
+        UUID course = TestTenant.course("Semantic coverage repair");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."),
                 eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -781,19 +775,19 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Repaired Capability", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(goal -> goal.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Repaired Capability");
     }
 
     /** A skill no topic covers stays out of the tree, and the rebuild reports how many there were. */
     @Test
     void skillsNoTopicCoversStayOutOfTheTree() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Unmatched skill"));
+        UUID course = TestTenant.course("Unmatched skill");
         String material = "Apply one. Apply two.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         when(sessionExtractionService.extract(eq("session.pdf"), eq(material), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -804,17 +798,17 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Covered", List.of(List.of(0)), List.of(1));
 
-        startExtraction(course.getId());
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        startExtraction(course);
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.competencies").value(1))
                 .andExpect(jsonPath("$.unmatchedGoals").value(1));
 
-        LearningGoal unmatched = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> "Apply capability 2.".equals(g.getText()))
+        PlacedGoal unmatched = GoalFixtures.goals(course).stream()
+                .filter(g -> "Apply capability 2.".equals(g.text()))
                 .findFirst()
                 .orElseThrow();
-        assertThat(goalRelationshipRepository.findBySourceId(unmatched.getId())).isEmpty();
+        assertThat(GoalFixtures.edgesFrom(unmatched.id())).isEmpty();
     }
 
     /**
@@ -823,7 +817,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void competenciesThatReceiveNoGoalsAreNotPersisted() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Empty competency"));
+        UUID course = TestTenant.course("Empty competency");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -834,12 +828,12 @@ class ExtractionControllerTest extends MaterialsTestBase {
         // Everything lands on the first competency; the second is left empty.
         stubTopicPlan("Claimed", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Claimed");
     }
 
@@ -849,7 +843,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void rebuildReplacesTheTreeAndKeepsExtractedGoals() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Rebuild"));
+        UUID course = TestTenant.course("Rebuild");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -859,46 +853,42 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("First Label", List.of(List.of(0)));
 
-        startExtraction(course.getId());
-        List<Long> extractedIdsBefore = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.EXTRACTED)
-                .map(LearningGoal::getId)
+        startExtraction(course);
+        List<UUID> extractedIdsBefore = GoalFixtures.goals(course).stream()
+                .filter(g -> g.origin() == GoalOrigin.EXTRACTED)
+                .map(PlacedGoal::id)
                 .toList();
-        LearningGoal legacySkill = goalRepository.findById(extractedIdsBefore.getFirst()).orElseThrow();
-        legacySkill.setRole(null);
-        goalRepository.saveAndFlush(legacySkill);
-        LearningGoal legacyKnowledge = new LearningGoal(course, "Explain the legacy basics.", GoalKind.EXPLICIT);
-        legacyKnowledge.setRole(null);
-        legacyKnowledge.setBloomLevel(BloomLevel.UNDERSTAND);
-        legacyKnowledge.setHierarchyNode(legacySkill.getHierarchyNode());
-        legacyKnowledge = goalRepository.saveAndFlush(legacyKnowledge);
-        goalRelationshipRepository.save(new GoalRelationship(legacyKnowledge, legacySkill,
-                RelationshipType.CONTRIBUTES_TO, 1.0, RelationshipOrigin.HIERARCHY));
+        goalApi.update(extractedIdsBefore.getFirst(),
+                goalApi.goal(extractedIdsBefore.getFirst()).asChange().withRole(null));
+        PlacedGoal legacySkill = GoalFixtures.goal(extractedIdsBefore.getFirst());
+        PlacedGoal legacyKnowledge = GoalFixtures.goal(course, "Explain the legacy basics.")
+                .bloom(BloomLevel.UNDERSTAND.name()).node(legacySkill.hierarchyNode()).create();
+        GoalFixtures.contributes(legacyKnowledge, legacySkill);
         extractedIdsBefore = java.util.stream.Stream.concat(extractedIdsBefore.stream(),
-                java.util.stream.Stream.of(legacyKnowledge.getId())).toList();
+                java.util.stream.Stream.of(legacyKnowledge.id())).toList();
 
         stubTopicPlan("Second Label", List.of(List.of(0)));
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.competencies").value(1))
                 .andExpect(jsonPath("$.unmatchedGoals").value(0));
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Second Label");
-        assertThat(goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.EXTRACTED
-                        || "Explain the legacy basics.".equals(g.getText()))
-                .map(LearningGoal::getId))
+        assertThat(GoalFixtures.goals(course).stream()
+                .filter(g -> g.origin() == GoalOrigin.EXTRACTED
+                        || "Explain the legacy basics.".equals(g.text()))
+                .map(PlacedGoal::id))
                 .containsExactlyInAnyOrderElementsOf(extractedIdsBefore);
-        assertThat(hierarchyRepository.findByCourseId(course.getId()))
+        assertThat(hierarchyRepository.findByCourseId(course))
                 .filteredOn(n -> n.getLevel() == HierarchyLevel.COMPETENCY)
                 .hasSize(1);
-        assertThat(goalRepository.findById(legacySkill.getId()).orElseThrow().getRole()).isNull();
-        assertThat(goalRelationshipRepository.findBySourceId(legacyKnowledge.getId())).isEmpty();
+        assertThat(GoalFixtures.goal(legacySkill.id()).role()).isNull();
+        assertThat(GoalFixtures.edgesFrom(legacyKnowledge.id())).isEmpty();
     }
 
     /**
@@ -908,7 +898,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void repeatedRebuildsDoNotAccumulateTreeEdges() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Repeated rebuild"));
+        UUID course = TestTenant.course("Repeated rebuild");
         String material = "Apply one. Apply two. Apply three. Apply four. Apply five. Apply six.";
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", material));
         List<ExtractedSkill> extracted = java.util.stream.IntStream.rangeClosed(1, 6)
@@ -925,31 +915,31 @@ class ExtractionControllerTest extends MaterialsTestBase {
                     .toList();
         });
         stubTopicPlan("Course Methods", List.of(List.of(0, 1, 2), List.of(3, 4, 5)));
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<Long> courseGoalIds = goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getId).toList();
-        int afterExtraction = goalRelationshipRepository.findBySourceIdIn(courseGoalIds).size();
+        List<UUID> courseGoalIds = GoalFixtures.goals(course).stream()
+                .map(PlacedGoal::id).toList();
+        int afterExtraction = GoalFixtures.edgesFromAny(courseGoalIds).size();
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course))
                 .andExpect(status().isOk());
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course))
                 .andExpect(status().isOk());
 
-        List<Long> rebuiltGoalIds = goalRepository.findByCourseId(course.getId()).stream()
-                .map(LearningGoal::getId).toList();
-        assertThat(goalRelationshipRepository.findBySourceIdIn(rebuiltGoalIds))
+        List<UUID> rebuiltGoalIds = GoalFixtures.goals(course).stream()
+                .map(PlacedGoal::id).toList();
+        assertThat(GoalFixtures.edgesFromAny(rebuiltGoalIds))
                 .as("two further rebuilds must not add edges")
                 .hasSize(afterExtraction);
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .hasSize(6);
     }
 
     /** Extraction creates knowledge → skill edges, and rebuilding preserves them while replacing tree edges. */
     @Test
     void rebuildLeavesNoEdgesFromThePreviousTree() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Rebuild edges"));
+        UUID course = TestTenant.course("Rebuild edges");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf",
                 "Apply the capability.\n\nUnderstand the basics."));
 
@@ -968,53 +958,53 @@ class ExtractionControllerTest extends MaterialsTestBase {
         });
         stubTopicPlan("Capability", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        LearningGoal knowledgeBefore = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> "Understand the basics.".equals(g.getText()))
+        PlacedGoal knowledgeBefore = GoalFixtures.goals(course).stream()
+                .filter(g -> "Understand the basics.".equals(g.text()))
                 .findFirst()
                 .orElseThrow();
-        LearningGoal skillBefore = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> "Apply the capability.".equals(g.getText()))
+        PlacedGoal skillBefore = GoalFixtures.goals(course).stream()
+                .filter(g -> "Apply the capability.".equals(g.text()))
                 .findFirst()
                 .orElseThrow();
-        assertThat(knowledgeBefore.getRole()).isEqualTo(GoalRole.KNOWLEDGE);
-        assertThat(skillBefore.getRole()).isEqualTo(GoalRole.SKILL);
-        assertThat(goalSourceRepository.findByGoalId(skillBefore.getId()))
+        assertThat(knowledgeBefore.role()).isEqualTo(GoalRole.KNOWLEDGE);
+        assertThat(skillBefore.role()).isEqualTo(GoalRole.SKILL);
+        assertThat(goalSourceRepository.findByIdGoalId(skillBefore.id()))
                 .singleElement()
                 .extracting(GoalSource::getSnippet)
                 .isEqualTo("Apply the capability.");
-        assertThat(goalSourceRepository.findByGoalId(knowledgeBefore.getId()))
+        assertThat(goalSourceRepository.findByIdGoalId(knowledgeBefore.id()))
                 .singleElement()
                 .extracting(GoalSource::getSnippet)
                 .isEqualTo("Understand the basics.");
-        assertThat(goalRelationshipRepository.findBySourceId(knowledgeBefore.getId()))
-                .extracting(r -> r.getTarget().getId())
-                .contains(skillBefore.getId());
+        assertThat(GoalFixtures.edgesFrom(knowledgeBefore.id()))
+                .extracting(r -> r.targetGoalId())
+                .contains(skillBefore.id());
 
         stubTopicPlan("Rebuilt Capability", List.of(List.of(0)));
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isOk());
 
-        LearningGoal knowledge = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> "Understand the basics.".equals(g.getText()))
+        PlacedGoal knowledge = GoalFixtures.goals(course).stream()
+                .filter(g -> "Understand the basics.".equals(g.text()))
                 .findFirst()
                 .orElseThrow();
-        LearningGoal skill = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> "Apply the capability.".equals(g.getText()))
+        PlacedGoal skill = GoalFixtures.goals(course).stream()
+                .filter(g -> "Apply the capability.".equals(g.text()))
                 .findFirst()
                 .orElseThrow();
         // Compare ids, not text: the edge's target is a lazy proxy and this runs outside a session.
-        assertThat(goalRelationshipRepository.findBySourceId(knowledge.getId()))
+        assertThat(GoalFixtures.edgesFrom(knowledge.id()))
                 .as("the extraction edge must survive the rebuild")
-                .extracting(r -> r.getTarget().getId())
-                .contains(skill.getId());
+                .extracting(r -> r.targetGoalId())
+                .contains(skill.id());
         // The lone extracted skill is elected as its own group's sub-skill, so after the rebuild it
         // hangs off the fresh terminal directly rather than supporting a generated node.
-        assertThat(goalRelationshipRepository.findBySourceId(skill.getId()))
+        assertThat(GoalFixtures.edgesFrom(skill.id()))
                 .singleElement()
-                .satisfies(relationship -> assertThat(relationship.getType())
-                        .isEqualTo(RelationshipType.CONTRIBUTES_TO));
+                .satisfies(relationship -> assertThat(relationship.type())
+                        .isEqualTo(RelationshipType.CONTRIBUTES_TO.name()));
     }
 
     /**
@@ -1023,7 +1013,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void failedRebuildLeavesTheExistingTreeIntact() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Rebuild failure"));
+        UUID course = TestTenant.course("Rebuild failure");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1033,19 +1023,19 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
         stubTopicPlan("Survivor", List.of(List.of(0)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
         // The model goes down before the rebuild can synthesise a replacement.
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("model unavailable"));
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isBadGateway());
 
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .extracting(LearningGoal::getShortLabel)
+                .extracting(PlacedGoal::shortLabel)
                 .isEqualTo("Survivor");
     }
 
@@ -1055,7 +1045,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void rebuildRefusesWhenTheTreeHoldsApprovedWork() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Rebuild guard"));
+        UUID course = TestTenant.course("Rebuild guard");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1064,27 +1054,26 @@ class ExtractionControllerTest extends MaterialsTestBase {
         when(taxonomyService.classifyBatch(anyList(), eq(null)))
                 .thenReturn(List.of(new TaxonomyClassification(BloomLevel.APPLY, SoloLevel.RELATIONAL)));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        LearningGoal terminal = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        PlacedGoal terminal = GoalFixtures.goals(course).stream()
+                .filter(g -> g.origin() == GoalOrigin.TERMINAL)
                 .findFirst()
                 .orElseThrow();
-        terminal.setStatus(de.tum.cit.hestia.core.GoalStatus.APPROVED);
-        goalRepository.save(terminal);
+        goalApi.setStatus(terminal.id(), de.tum.cit.hestia.core.GoalStatus.APPROVED);
 
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isConflict());
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .anyMatch(g -> g.getOrigin() == GoalOrigin.TERMINAL);
+        assertThat(GoalFixtures.goals(course))
+                .anyMatch(g -> g.origin() == GoalOrigin.TERMINAL);
 
         // The override is what makes the destruction deliberate.
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree?force=true", course))
                 .andExpect(status().isOk());
-        assertThat(goalRepository.findByCourseId(course.getId()))
-                .filteredOn(g -> g.getOrigin() == GoalOrigin.TERMINAL)
+        assertThat(GoalFixtures.goals(course))
+                .filteredOn(g -> g.origin() == GoalOrigin.TERMINAL)
                 .singleElement()
-                .satisfies(g -> assertThat(g.getStatus())
+                .satisfies(g -> assertThat(g.status())
                         .isEqualTo(de.tum.cit.hestia.core.GoalStatus.PENDING));
     }
 
@@ -1094,7 +1083,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
      */
     @Test
     void failedTerminalSynthesisKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Terminal synthesis failure"));
+        UUID course = TestTenant.course("Terminal synthesis failure");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."),
@@ -1107,33 +1096,33 @@ class ExtractionControllerTest extends MaterialsTestBase {
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("HTTP 500 - No response body available"));
 
-        startExtractionExpectingFailure(course.getId());
+        startExtractionExpectingFailure(course);
 
-        String status = awaitExtraction(course.getId());
+        String status = awaitExtraction(course);
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
                 .contains("The learning goals were saved")
                 .contains("Topic tree synthesis failed")
                 .contains("HTTP 500");
-        assertThat(goalRepository.findByCourseId(course.getId()))
+        assertThat(GoalFixtures.goals(course))
                 .singleElement()
-                .satisfies(goal -> assertThat(goal.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED));
-        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.MODULE)).isTrue();
-        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
+                .satisfies(goal -> assertThat(goal.origin()).isEqualTo(GoalOrigin.EXTRACTED));
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course, HierarchyLevel.MODULE)).isTrue();
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course, HierarchyLevel.COMPETENCY)).isFalse();
 
         stubTopicPlan("Apply Course Capability", List.of(List.of(0)));
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course.getId()))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/competency-tree", course))
                 .andExpect(status().isOk());
 
-        assertThat(awaitExtraction(course.getId())).contains("\"status\":\"SUCCEEDED\"");
-        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isTrue();
-        assertThat(goalRepository.findByCourseIdAndOriginIn(course.getId(), List.of(GoalOrigin.EXTRACTED)))
+        assertThat(awaitExtraction(course)).contains("\"status\":\"SUCCEEDED\"");
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course, HierarchyLevel.COMPETENCY)).isTrue();
+        assertThat(GoalFixtures.goals(course)).filteredOn(g -> g.origin() == GoalOrigin.EXTRACTED)
                 .hasSize(1);
     }
 
     @Test
     void failedAssignmentKeepsExtractedGoalsForTreeOnlyRetry() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Assignment failure"));
+        UUID course = TestTenant.course("Assignment failure");
         documentRepository.save(new Document(course, "session.pdf", "application/pdf", "Apply the capability."));
 
         when(sessionExtractionService.extract(eq("session.pdf"), eq("Apply the capability."), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any()))
@@ -1144,19 +1133,19 @@ class ExtractionControllerTest extends MaterialsTestBase {
         when(topicTreeSynthesizer.synthesize(anyList(), eq("English"), eq(null)))
                 .thenThrow(new IllegalStateException("assignment call failed"));
 
-        startExtractionExpectingFailure(course.getId());
+        startExtractionExpectingFailure(course);
 
-        String status = awaitExtraction(course.getId());
+        String status = awaitExtraction(course);
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
                 .contains("Topic tree synthesis failed")
                 .contains("assignment call failed");
-        assertThat(goalRepository.findByCourseId(course.getId()))
+        assertThat(GoalFixtures.goals(course))
                 .singleElement()
-                .satisfies(goal -> assertThat(goal.getOrigin()).isEqualTo(GoalOrigin.EXTRACTED));
-        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.MODULE)).isTrue();
-        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course.getId(), HierarchyLevel.COMPETENCY)).isFalse();
-        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+                .satisfies(goal -> assertThat(goal.origin()).isEqualTo(GoalOrigin.EXTRACTED));
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course, HierarchyLevel.MODULE)).isTrue();
+        assertThat(hierarchyRepository.existsByCourseIdAndLevel(course, HierarchyLevel.COMPETENCY)).isFalse();
+        assertThat(extractionRunRepository.findByCourseId(course))
                 .singleElement()
                 .satisfies(run -> {
                     assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
@@ -1167,7 +1156,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void failedSessionFailsTheRunWithoutPublishingPartialGoals() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         String failing = "short session text";
         String healthy = "healthy session text";
         documentRepository.save(new Document(course, "failed.pdf", "application/pdf", failing));
@@ -1178,18 +1167,18 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 .thenReturn(List.of(skill(new ExtractedGoal(
                         "Apply test-driven development.", GoalKind.EXPLICIT, "...healthy snippet..."))));
 
-        startExtractionExpectingFailure(course.getId());
+        startExtractionExpectingFailure(course);
 
-        String status = awaitExtraction(course.getId());
+        String status = awaitExtraction(course);
         assertThat(status)
                 .contains("\"status\":\"FAILED\"")
                 .contains("\"failedSessions\":1")
                 .contains("\"failedSessionNames\":[\"failed.pdf\"]");
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.extractionStatus").value("FAILED"));
-        assertThat(goalRepository.findByCourseId(course.getId())).isEmpty();
-        assertThat(extractionRunRepository.findByCourseId(course.getId()))
+        assertThat(GoalFixtures.goals(course)).isEmpty();
+        assertThat(extractionRunRepository.findByCourseId(course))
                 .singleElement()
                 .satisfies(run -> {
                     assertThat(run.getStatus()).isEqualTo(ExtractionStatus.FAILED);
@@ -1202,7 +1191,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void identicalGoalsAcrossDocumentsRemainSeparateGoals() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
         Document exercise = documentRepository.save(new Document(course, "exercise.pdf", "application/pdf", "exercise body"));
 
@@ -1213,21 +1202,21 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 skill(new ExtractedGoal("Apply TDD when writing code.", GoalKind.EXPLICIT, "...exercise snippet..."))
         ));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        List<PlacedGoal> goals = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .toList();
         assertThat(goals).hasSize(2);
         assertThat(goals)
-                .flatExtracting(goal -> goalSourceRepository.findByGoalId(goal.getId()))
+                .flatExtracting(goal -> goalSourceRepository.findByIdGoalId(goal.id()))
                 .extracting(s -> s.getDocument().getId())
                 .containsExactlyInAnyOrder(lecture.getId(), exercise.getId());
     }
 
     @Test
     void duplicateExtractionsFromSameDocumentCreateSeparateGoals() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         Document lecture = documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture body"));
 
         // A direct response can contain closely related goals; each enriched goal is persisted.
@@ -1236,14 +1225,14 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 skill(new ExtractedGoal("Apply TDD (rephrased).", GoalKind.EXPLICIT, "...second snippet..."))
         ));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId()).stream()
-                .filter(goal -> goal.getOrigin() == GoalOrigin.EXTRACTED)
+        List<PlacedGoal> goals = GoalFixtures.goals(course).stream()
+                .filter(goal -> goal.origin() == GoalOrigin.EXTRACTED)
                 .toList();
         assertThat(goals).hasSize(2);
         assertThat(goals)
-                .flatExtracting(goal -> goalSourceRepository.findByGoalId(goal.getId()))
+                .flatExtracting(goal -> goalSourceRepository.findByIdGoalId(goal.id()))
                 .hasSize(2)
                 .allSatisfy(s -> assertThat(s.getDocument().getId()).isEqualTo(lecture.getId()));
     }
@@ -1256,24 +1245,24 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void statusReturnsNoContentBeforeAnyRun() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Untouched"));
+        UUID course = TestTenant.course("Untouched");
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course))
                 .andExpect(status().isNoContent());
     }
 
     @Test
     void statusReportsSucceededWithSummaryAfterExtraction() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         documentRepository.save(new Document(course, "lecture.pdf", "application/pdf", "lecture text about TDD"));
 
         when(sessionExtractionService.extract(eq("lecture.pdf"), eq("lecture text about TDD"), eq("en"), eq("English"), eq(null), anyList(), anyInt(), any())).thenReturn(List.of(
                 skill(new ExtractedGoal("Apply test-driven development.", GoalKind.EXPLICIT, "...failing test first..."))
         ));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course.getId()))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/extract/status", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.phase").value("SYNTHESIZING"))
@@ -1284,7 +1273,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void extractionSplitsOneDocumentIntoItsStructuralSectionsAndRoutesChunksByOffset() throws Exception {
-        Course course = courseRepository.save(TestTenant.course("Software Engineering"));
+        UUID course = TestTenant.course("Software Engineering");
         // One uploaded PDF whose bookmarks split it into a lecture chapter and an exercise chapter.
         // The runner chunks each section's character range and attaches its goals to that section.
         String sessionText = "Lecture 3 Testing. Students apply TDD by writing a failing test first.\n";
@@ -1304,10 +1293,10 @@ class ExtractionControllerTest extends MaterialsTestBase {
                 skill(new ExtractedGoal("Practise TDD kata.", GoalKind.EXPLICIT, "...kata..."))
         ));
 
-        startExtraction(course.getId());
+        startExtraction(course);
 
         // Module root + one session node + one exercise node (the title keyword picks EXERCISE).
-        List<HierarchyNode> nodes = hierarchyRepository.findByCourseId(course.getId());
+        List<HierarchyNode> nodes = hierarchyRepository.findByCourseId(course);
         assertThat(nodes).extracting(HierarchyNode::getLevel)
                 .contains(HierarchyLevel.MODULE, HierarchyLevel.SESSION, HierarchyLevel.EXERCISE,
                         HierarchyLevel.COMPETENCY);
@@ -1317,25 +1306,25 @@ class ExtractionControllerTest extends MaterialsTestBase {
         // lazy proxy and the session is closed, but reading its id never triggers initialization.
         Map<Long, String> labelsByNodeId = nodes.stream()
                 .collect(Collectors.toMap(HierarchyNode::getId, HierarchyNode::getLabel));
-        List<LearningGoal> goals = goalRepository.findByCourseId(course.getId());
-        assertThat(goals).filteredOn(g -> g.getOrigin() != GoalOrigin.SYNTHESIZED)
-                .allSatisfy(g -> assertThat(g.getHierarchyNode()).isNotNull());
+        List<PlacedGoal> goals = GoalFixtures.goals(course);
+        assertThat(goals).filteredOn(g -> g.origin() != GoalOrigin.SYNTHESIZED)
+                .allSatisfy(g -> assertThat(g.hierarchyNode()).isNotNull());
         assertThat(goals)
-                .filteredOn(g -> g.getText().equals("Practise TDD kata."))
+                .filteredOn(g -> g.text().equals("Practise TDD kata."))
                 .singleElement()
-                .satisfies(g -> assertThat(labelsByNodeId.get(g.getHierarchyNode().getId()))
+                .satisfies(g -> assertThat(labelsByNodeId.get(g.hierarchyNode().getId()))
                         .isEqualTo("Exercise 3.2: Kata"));
         assertThat(goals)
-                .filteredOn(g -> g.getText().equals("Apply TDD."))
+                .filteredOn(g -> g.text().equals("Apply TDD."))
                 .singleElement()
-                .satisfies(g -> assertThat(labelsByNodeId.get(g.getHierarchyNode().getId()))
+                .satisfies(g -> assertThat(labelsByNodeId.get(g.hierarchyNode().getId()))
                         .isEqualTo("Lecture 3: Testing"));
-        LearningGoal lectureGoal = goals.stream()
-                .filter(g -> g.getText().equals("Apply TDD."))
+        PlacedGoal lectureGoal = goals.stream()
+                .filter(g -> g.text().equals("Apply TDD."))
                 .findFirst().orElseThrow();
-        LearningGoal exerciseGoal = goals.stream()
-                .filter(g -> g.getText().equals("Practise TDD kata."))
+        PlacedGoal exerciseGoal = goals.stream()
+                .filter(g -> g.text().equals("Practise TDD kata."))
                 .findFirst().orElseThrow();
-        assertThat(lectureGoal.getLectureOrder()).isLessThan(exerciseGoal.getLectureOrder());
+        assertThat(lectureGoal.lectureOrder()).isLessThan(exerciseGoal.lectureOrder());
     }
 }
