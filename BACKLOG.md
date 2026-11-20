@@ -35,11 +35,24 @@ behaviour below. Until these are built, the tools do not match the published pol
       without checking the membership, so a creator removed from their own catch-all course
       still gets it back as owner. Check the membership (or refuse removing the last owner of a
       personal course).
-- [ ] **Role checks in every `AlignmentApi` method** — `link` needs only read access to the
-      goal's course; `unlink*` and `goalsFor*` check nothing and rely on the calling module.
-      Check course roles in core as the other core APIs do.
+- [ ] **Role checks in every `AlignmentApi` method** — done for `link`/`unlink` (`EDITOR` in the
+      goal's course), `goalsFor*` (only links of readable courses), `openReviews` and `confirm`
+      (package 7). Left: `unlinkTarget` and `unlinkTargetInCourse` still check nothing and rely on
+      the calling module (they also run inside course deletion and moves).
 - [ ] **Optimistic locking for sessions and exams** — no `@Version`: `WorkshopService.saveDraft`
       and `ExaminationController.patch` with a stale `courseId` can undo a move.
+- [ ] **Event publication registry** — `core.events` (`GoalChanged`, `GoalRemoved`,
+      `CourseDeleted`) are plain Spring events; review marks are written by a synchronous core
+      listener in the same transaction. Add `spring-modulith-starter-jpa` with the
+      `core.event_publication` table once a domain module listens with
+      `@ApplicationModuleListener`.
+- [ ] **Review marks after one's own edit** — editing a goal's text in Workshopper's goal step marks
+      that session's own link for review too. Confirm the editing session's link right away, or
+      leave as is (the other links of the goal must stay marked).
+- [ ] **Removed goals in a session plan** — a plan entry whose goal was removed disappears from the
+      plan; it shows only in the course's review list. Show it in the plan with a "removed" mark.
+- [ ] **Review marks in more views** — ExamLense shows them only in the grading view; LearningGoalHub
+      shows no review list (documents' links are marked as well).
 - [ ] **Smaller points:**
       - `alignment_link.course_id` is not tied to the goal's course by a foreign key.
       - Deleting the personal course answers 500 (`IllegalArgumentException`) instead of 400/409.

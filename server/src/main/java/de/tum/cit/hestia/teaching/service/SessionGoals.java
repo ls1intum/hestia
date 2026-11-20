@@ -145,13 +145,19 @@ public class SessionGoals {
      * current {@code goal} text, {@code originalGoal}, {@code bloomLevel} and {@code soloLevel} from
      * core. Entries whose goal was removed in core or cannot be read any more are left out.
      */
-    public String toResolved(String draftStateJson) {
+    public String toResolved(String draftStateJson, String sessionId) {
         JsonNode root = parse(draftStateJson);
         JsonNode plan = planOf(root);
         if (plan == null) return draftStateJson;
         List<UUID> ids = new ArrayList<>();
         plan.forEach(entry -> ids.add(parseId(entry.path("goalId").asText(null))));
         Map<UUID, GoalInfo> byId = goalsById(ids);
+        Map<UUID, AlignmentLinkInfo> reviews = new java.util.HashMap<>();
+        if (sessionId != null) {
+            for (AlignmentLinkInfo link : alignment.goalsFor(DomainModule.TEACHING, LINK_TYPE, sessionId)) {
+                if ("REVIEW".equals(link.reviewState())) reviews.put(link.goalId(), link);
+            }
+        }
         ArrayNode resolved = mapper.createArrayNode();
         for (int i = 0; i < ids.size(); i++) {
             GoalInfo goal = ids.get(i) == null ? null : byId.get(ids.get(i));
@@ -163,6 +169,11 @@ public class SessionGoals {
             out.put("originalGoal", goal.originalText());
             if (goal.bloomLevel() != null) out.put("bloomLevel", goal.bloomLevel());
             if (goal.soloLevel() != null) out.put("soloLevel", goal.soloLevel());
+            AlignmentLinkInfo review = reviews.get(goal.id());
+            if (review != null) {
+                out.put("review", review.reviewReason());
+                out.put("reviewLinkId", review.id().toString());
+            }
             JsonNode entry = plan.get(i);
             for (String field : OWN_FIELDS) {
                 if (entry.has(field)) out.set(field, entry.get(field));
@@ -214,6 +225,17 @@ public class SessionGoals {
         for (UUID goalId : linked) {
             if (!wanted.contains(goalId)) alignment.unlink(goalId, DomainModule.TEACHING, LINK_TYPE, sessionId);
         }
+    }
+
+    /** Number of links marked for review, by session id, for the given sessions. */
+    public Map<String, Integer> openReviews(Collection<String> sessionIds) {
+        if (sessionIds.isEmpty()) return Map.of();
+        Map<String, Integer> counts = new java.util.HashMap<>();
+        alignment.goalsForTargets(DomainModule.TEACHING, LINK_TYPE, sessionIds).forEach((id, links) -> {
+            int n = (int) links.stream().filter(l -> "REVIEW".equals(l.reviewState())).count();
+            if (n > 0) counts.put(id, n);
+        });
+        return counts;
     }
 
     /** Removes all links of a session (it was deleted). */

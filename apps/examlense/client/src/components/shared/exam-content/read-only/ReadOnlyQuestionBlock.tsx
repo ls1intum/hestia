@@ -8,7 +8,13 @@ import {
 } from "@/components/ui/collapsible";
 import { BLOOM_LABELS, SOLO_LABELS } from "@/lib/exam/labels";
 import type { TaskBlock } from "@/lib/exam/exam-helpers";
-import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals";
+import {
+  goalReviewReasonLabel,
+  type BloomLevel,
+  type GoalReviewReason,
+  type SoloLevel,
+} from "@/lib/learning-goals/learning-goals";
+import { Button } from "@/components/ui/button";
 import { MarkdownView } from "@/components/shared/exam-content/MarkdownView";
 import { BlockHeader } from "@/components/shared/exam-content/BlockHeader";
 
@@ -18,12 +24,20 @@ export interface TaskGoalDisplay {
   text?: string | null;
   bloomLevel?: BloomLevel | null;
   soloLevel?: SoloLevel | null;
+  /** Set while the goal changed or was removed and the teacher has not checked the task yet. */
+  review?: GoalReviewReason | null;
+  reviewLinkId?: string | null;
+  courseId?: string | null;
+  removed?: boolean;
 }
 
 interface Props {
   task: TaskBlock;
   label: string;
   goals?: TaskGoalDisplay[];
+  /** Confirms the review of one goal; the "Geprüft" action is only shown when given. */
+  onConfirmGoal?: (goal: TaskGoalDisplay) => void;
+  confirmingGoalId?: string | null;
 }
 
 /**
@@ -33,7 +47,7 @@ interface Props {
  * ReadOnlyContextBlock — leaving the AI answer + score (AnswerCard) as the only
  * real "card" and therefore the single work object on the page.
  */
-export const ReadOnlyQuestionBlock = ({ task, label, goals }: Props) => {
+export const ReadOnlyQuestionBlock = ({ task, label, goals, onConfirmGoal, confirmingGoalId }: Props) => {
   const [collapsed, setCollapsed] = useState(false);
   const promptPreview = (task.prompt || "").trim();
 
@@ -82,8 +96,31 @@ export const ReadOnlyQuestionBlock = ({ task, label, goals }: Props) => {
                       variant="secondary"
                       className="max-w-[360px] bg-hestia-primary-muted/40 text-xs font-normal text-hestia-text"
                     >
-                      <span className="truncate">{g.text || `Goal #${g.id}`}</span>
+                      <span className={g.removed ? "truncate line-through" : "truncate"}>
+                        {g.text || `Goal #${g.id}`}
+                      </span>
                     </Badge>
+                    {g.review && (
+                      <>
+                        <Badge variant="destructive" className="text-[10px]">
+                          prüfen
+                        </Badge>
+                        <span className="text-[10px] text-hestia-text-muted">
+                          {goalReviewReasonLabel(g.review)}
+                        </span>
+                        {onConfirmGoal && g.reviewLinkId && g.courseId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={confirmingGoalId === g.reviewLinkId}
+                            onClick={() => onConfirmGoal(g)}
+                          >
+                            Geprüft
+                          </Button>
+                        )}
+                      </>
+                    )}
                     {g.bloomLevel && (
                       <Badge variant="outline" className="text-[10px] text-hestia-text-muted">
                         {BLOOM_LABELS[g.bloomLevel]}

@@ -23,6 +23,8 @@ interface AlignmentLinkRepository extends JpaRepository<CoreAlignmentLink, UUID>
 
     List<CoreAlignmentLink> findByGoalIdOrderByCreatedAtAscIdAsc(UUID goalId);
 
+    List<CoreAlignmentLink> findByCourseIdAndReviewStateOrderByCreatedAtAscIdAsc(UUID courseId, String reviewState);
+
     @Modifying
     @Query("delete from CoreAlignmentLink l where l.targetModule = :module and l.targetType = :targetType "
             + "and l.targetId = :targetId")

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { LearningGoalPlan, KeptGoal, GoalSuggestion, CourseGoal } from "@/lib/workshop-generator";
-import { refineGoal, fixGoalsGrammar, handleAuthError } from "@/lib/api";
+import { refineGoal, fixGoalsGrammar, handleAuthError, confirmReview, errorMessage } from "@/lib/api";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -29,6 +29,9 @@ interface GoalDraft {
   soloLevel?: string;
   session?: string;
   subSkills?: { id: string; text: string; bloomLevel?: string; soloLevel?: string }[];
+  /** The goal changed or was removed since the session was linked to it or last confirmed */
+  review?: string;
+  reviewLinkId?: string;
 }
 
 /** The server's limits (UsageGuard): goals per session and characters per goal */
@@ -78,7 +81,9 @@ export default function WorkshopGoalEntry({ initialInput, courseId = null, onBac
         bloomLevel: g.bloomLevel,
         soloLevel: g.soloLevel,
         session: g.session,
-        subSkills: g.subSkills
+        subSkills: g.subSkills,
+        review: g.review,
+        reviewLinkId: g.reviewLinkId,
       }));
     }
     return [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
@@ -277,8 +282,29 @@ export default function WorkshopGoalEntry({ initialInput, courseId = null, onBac
   const coreDrafts = goals.filter((g) => isCoreGoalId(g.id));
   const newDrafts = goals.filter((g) => !isCoreGoalId(g.id));
 
+  const confirmGoalReview = async (g: GoalDraft) => {
+    if (!courseId || !g.reviewLinkId) return;
+    try {
+      await confirmReview(courseId, g.reviewLinkId);
+      updateGoal(g.id, { review: undefined, reviewLinkId: undefined });
+    } catch (err) {
+      toast({ title: "Could not confirm", description: errorMessage(err, "Please try again."), variant: "destructive" });
+    }
+  };
+
   const renderGoal = (g: GoalDraft) => (
     <div key={g.id} className="space-y-2 border-b border-border/40 pb-4 mb-4 last:border-0 last:pb-0 last:mb-0">
+      {g.review && g.reviewLinkId && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-body">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span className="flex-1 text-amber-800 dark:text-amber-300">
+            <span className="font-semibold">review</span> - {g.review === "GOAL_REMOVED" ? "this learning goal was removed" : "this learning goal changed after the session was planned"}
+          </span>
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => confirmGoalReview(g)}>
+            Reviewed
+          </Button>
+        </div>
+      )}
       {/* Header row */}
       <div className="flex gap-2 items-start">
         <div className="flex-1 relative">

@@ -10,6 +10,8 @@ import de.tum.cit.hestia.core.GoalStatus;
 import de.tum.cit.hestia.core.GoalVersionInfo;
 import de.tum.cit.hestia.core.LearningGoalApi;
 import de.tum.cit.hestia.core.NewGoal;
+import de.tum.cit.hestia.core.events.GoalChanged;
+import de.tum.cit.hestia.core.events.GoalRemoved;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,13 +24,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * {@link LearningGoalApi}: goals, their versions and relationships. Course roles are checked on the
  * goal's course through {@link CourseAccess}; a goal in a course the user is no member of looks
- * like a missing goal.
+ * like a missing goal. A new version or a removal publishes {@link GoalChanged} or
+ * {@link GoalRemoved} inside the same transaction; {@link ReviewMarks} marks the goal's alignment
+ * links for review on it.
  */
 @Service
 @Transactional(readOnly = true)
@@ -39,10 +44,12 @@ class GoalService implements LearningGoalApi {
     private final GoalRelationshipRepository relationships;
     private final CourseAccess access;
     private final CurrentUser currentUser;
+    private final ApplicationEventPublisher events;
     private final Clock clock = Clock.systemUTC();
 
     GoalService(GoalRepository goals, GoalVersionRepository versions, GoalRelationshipRepository relationships,
-            CourseAccess access, CurrentUser currentUser) {
+            CourseAccess access, CurrentUser currentUser, ApplicationEventPublisher events) {
+        this.events = events;
         this.goals = goals;
         this.versions = versions;
         this.relationships = relationships;
@@ -114,6 +121,7 @@ class GoalService implements LearningGoalApi {
             versions.saveAndFlush(new CoreGoalVersion(goalId, next, change, currentUser.userId(), clock.instant()));
             goal.setCurrentVersion(next);
             goals.flush();
+            events.publishEvent(new GoalChanged(goal.getOrgId(), goal.getCourseId(), goalId, next - 1, next));
         }
         return infos(List.of(goal)).getFirst();
     }
@@ -153,9 +161,12 @@ class GoalService implements LearningGoalApi {
             }
         }
         Instant now = clock.instant();
-        found.values().stream().filter(g -> g.getRemovedAt() == null).forEach(g -> g.setRemovedAt(now));
+        List<CoreGoal> removed = found.values().stream().filter(g -> g.getRemovedAt() == null).toList();
+        removed.forEach(g -> g.setRemovedAt(now));
         goals.flush();
         relationships.deleteTouching(ids);
+        removed.forEach(g -> events.publishEvent(
+                new GoalRemoved(g.getOrgId(), g.getCourseId(), g.getId(), g.getCurrentVersion())));
     }
 
     @Override

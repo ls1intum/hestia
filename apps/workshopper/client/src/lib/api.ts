@@ -12,9 +12,12 @@ import type {
   SessionDetail,
   DraftState,
   CourseGoal,
+  AlignmentReview,
 } from "./workshop-generator";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL + "api";
+/** Core's API (alignment review list); mapped like `api`: Vite proxy in dev, nginx of the client in production. */
+const CORE_API_BASE = import.meta.env.BASE_URL + "core/api";
 
 export class ApiError extends Error {
   status: number;
@@ -65,12 +68,12 @@ function csrfToken(): string | undefined {
  * Sends a request to the Workshopper API with the session cookie; every write also sends the CSRF
  * token as X-XSRF-TOKEN. Throws an ApiError for any non-2xx answer.
  */
-async function send(path: string, init: RequestInit = {}): Promise<Response> {
+async function send(path: string, init: RequestInit = {}, base: string = API_BASE): Promise<Response> {
   const headers = new Headers(init.headers);
   const method = (init.method ?? "GET").toUpperCase();
   const token = method === "GET" || method === "HEAD" ? undefined : csrfToken();
   if (token) headers.set("X-XSRF-TOKEN", token);
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "same-origin" });
+  const res = await fetch(`${base}${path}`, { ...init, headers, credentials: "same-origin" });
   if (!res.ok) {
     throw new ApiError(res.status, readableError(await res.text()) || `HTTP ${res.status}`);
   }
@@ -341,4 +344,20 @@ export async function uploadSessionTemplate(sessionId: string, file: File): Prom
 /** Removes the template from this session only; the course template stays for other sessions. */
 export function deleteSessionTemplate(sessionId: string): Promise<void> {
   return del<void>(`/workshop/sessions/${sessionId}/template`);
+}
+
+// ── Alignment review (core) ─────────────────────────────────────────────────
+
+/** The course's alignment links marked for review because their goal changed or was removed. */
+export function listReviews(courseId: string): Promise<AlignmentReview[]> {
+  return send(`/courses/${encodeURIComponent(courseId)}/reviews`, {}, CORE_API_BASE).then(res => parseJson<AlignmentReview[]>(res));
+}
+
+/** Confirms a link after review (needs EDITOR in the course). */
+export function confirmReview(courseId: string, linkId: string): Promise<void> {
+  return send(
+    `/courses/${encodeURIComponent(courseId)}/reviews/${encodeURIComponent(linkId)}/confirm`,
+    { method: "POST" },
+    CORE_API_BASE,
+  ).then(() => undefined);
 }

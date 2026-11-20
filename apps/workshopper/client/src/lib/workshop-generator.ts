@@ -43,6 +43,28 @@ export interface LearningGoalPlan {
   soloLevel?: string;
   session?: string;
   subSkills?: SubSkill[];
+  /** Set by the server when the goal changed or was removed since the session was linked to it or last confirmed */
+  review?: ReviewReason;
+  reviewLinkId?: string;
+}
+
+export type ReviewReason = "GOAL_CHANGED" | "GOAL_REMOVED";
+
+/** One entry of a course's review list (GET /core/api/courses/{id}/reviews) */
+export interface AlignmentReview {
+  linkId: string;
+  courseId: string;
+  goalId: string;
+  module: "MATERIALS" | "TEACHING" | "ASSESSMENT" | string;
+  targetType: string;
+  targetId: string;
+  targetLabel?: string | null;
+  reason: ReviewReason | string;
+  goalVersionSeen: number;
+  goalVersion: number;
+  seenText?: string | null;
+  currentText?: string | null;
+  goalRemoved: boolean;
 }
 
 export interface ActivitySection {
@@ -155,6 +177,8 @@ export interface SessionSummary {
   courseId?: string;
   /** The session's course is the user's personal catch-all course ("Einzelkram") */
   personalCourse?: boolean;
+  /** Links of the session's goals marked for review (goal changed or removed) */
+  openReviews?: number;
   /** Set on course entries of the dashboard: the user's personal course, and the user's role in it */
   personal?: boolean;
   role?: "VIEWER" | "EDITOR" | "OWNER";

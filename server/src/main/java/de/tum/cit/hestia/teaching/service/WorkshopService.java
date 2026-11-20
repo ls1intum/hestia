@@ -248,7 +248,7 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                     e.getCurrentStep(),
                     e.getCourseId().toString(),
                     courseApi.get(e.getCourseId()).personal(),
-                    e.getDraftStateJson() == null ? null : goals.toResolved(e.getDraftStateJson()),
+                    e.getDraftStateJson() == null ? null : goals.toResolved(e.getDraftStateJson(), e.getId()),
                     templateId != null,
                     templateSource,
                     templateFileName(templateId),
@@ -262,7 +262,9 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
         if (courses.isEmpty()) return List.of();
         Set<UUID> personal = courseApi.listMine(0, 1000).stream()
                 .filter(CourseInfo::personal).map(CourseInfo::id).collect(Collectors.toSet());
-        return repo.findVisible(courses).stream()
+        List<WorkshopSessionEntity> visible = repo.findVisible(courses);
+        Map<String, Integer> reviews = goals.openReviews(visible.stream().map(WorkshopSessionEntity::getId).toList());
+        return visible.stream()
                 .map(e -> new SessionSummaryDto(
                         e.getId(),
                         e.getTitle() != null ? e.getTitle() : "Workshop Session",
@@ -271,7 +273,8 @@ public void saveTemplate(String sessionId, byte[] templateData, String fileName)
                         e.getCourseId().toString(),
                         personal.contains(e.getCourseId()),
                         e.getCreatedAt(),
-                        e.getUpdatedAt()))
+                        e.getUpdatedAt(),
+                        reviews.getOrDefault(e.getId(), 0)))
                 .toList();
     }
 

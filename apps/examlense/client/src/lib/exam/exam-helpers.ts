@@ -1,3 +1,5 @@
+import type { BloomLevel, SoloLevel } from "@/lib/learning-goals/learning-goals";
+
 export type TaskBlockType = "single_choice" | "multiple_choice" | "text";
 
 export interface AnswerOption {
@@ -19,8 +21,21 @@ export interface TaskBlock {
   points: number | null;
   parse_confidence: "high" | "medium" | "low" | null;
   learning_goal_ids?: string[] | null;
+  learning_goals?: TaskGoalDto[] | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A goal of a task as the server sends it, with the review state of its link. */
+export interface TaskGoalDto {
+  id: string;
+  text: string;
+  bloom_level: BloomLevel | null;
+  solo_level: SoloLevel | null;
+  course_id: string;
+  review: "GOAL_CHANGED" | "GOAL_REMOVED" | null;
+  review_link_id: string | null;
+  removed: boolean;
 }
 
 export interface Section {

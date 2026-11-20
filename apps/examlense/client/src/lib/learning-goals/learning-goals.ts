@@ -39,3 +39,12 @@ export interface LghCourse {
 /** Display name of a course; the personal catch-all course always reads "Einzelkram". */
 export const courseLabel = (course: Pick<LghCourse, "name" | "personal">): string =>
   course.personal ? "Einzelkram" : course.name;
+
+export type GoalReviewReason = "GOAL_CHANGED" | "GOAL_REMOVED";
+
+/** Reason shown next to the "prüfen" badge of a task goal whose link waits for the teacher. */
+export const goalReviewReasonLabel = (reason: GoalReviewReason | null | undefined): string | null => {
+  if (reason === "GOAL_CHANGED") return "Lernziel geändert";
+  if (reason === "GOAL_REMOVED") return "Lernziel entfernt";
+  return null;
+};

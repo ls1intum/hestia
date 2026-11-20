@@ -1,6 +1,6 @@
 package de.tum.cit.hestia.assessment.taskblock;
 
-import de.tum.cit.hestia.core.GoalInfo;
+import de.tum.cit.hestia.assessment.lgh.TaskGoalLinks.TaskGoal;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -22,7 +22,7 @@ public final class TaskBlockDtos {
         }
 
         /** The task with its goals as they currently read in {@code core}. */
-        public static TaskBlockDto from(TaskBlock t, List<GoalInfo> goals) {
+        public static TaskBlockDto from(TaskBlock t, List<TaskGoal> goals) {
             List<LearningGoalDto> dtos = goals.stream().map(LearningGoalDto::from).toList();
             return new TaskBlockDto(t.getId(), t.getExamId(), t.getSectionId(), t.getPosition(),
                 t.getSection(), t.getType(), t.getPrompt(), t.getOptions(), t.getReferenceAnswer(),
@@ -32,11 +32,20 @@ public final class TaskBlockDtos {
         }
     }
 
-    /** A learning goal of a task; the id is the {@code core} goal id as a string. */
-    public record LearningGoalDto(String id, String text, String bloom_level, String solo_level, String status) {
-        public static LearningGoalDto from(GoalInfo g) {
+    /**
+     * A learning goal of a task; the id is the {@code core} goal id as a string. {@code review}
+     * ({@code GOAL_CHANGED} / {@code GOAL_REMOVED}) is set while the link waits for the teacher's
+     * check, which {@code review_link_id} confirms in core; {@code removed} goals only appear then.
+     */
+    public record LearningGoalDto(
+        String id, String text, String bloom_level, String solo_level, String status,
+        String course_id, String review, String review_link_id, boolean removed
+    ) {
+        public static LearningGoalDto from(TaskGoal tg) {
+            var g = tg.goal();
             return new LearningGoalDto(g.id().toString(), g.text(), g.bloomLevel(), g.soloLevel(),
-                g.status() == null ? null : g.status().name());
+                g.status() == null ? null : g.status().name(), g.courseId().toString(),
+                tg.review(), tg.linkId() == null ? null : tg.linkId().toString(), tg.removed());
         }
     }
 

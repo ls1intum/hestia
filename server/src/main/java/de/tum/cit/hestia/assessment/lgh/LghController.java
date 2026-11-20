@@ -109,8 +109,9 @@ public class LghController {
         List<UUID> taskIds = taskRepository.findByExamIdOrderByPositionAsc(exam.getId()).stream()
             .map(TaskBlock::getId).toList();
         Map<UUID, LearningGoalDto> goals = new LinkedHashMap<>();
-        goalLinks.goalsOf(taskIds).values().forEach(list ->
-            list.forEach(g -> goals.putIfAbsent(g.id(), LearningGoalDto.from(g))));
+        goalLinks.goalsOf(taskIds).values().forEach(list -> list.stream()
+            .filter(tg -> !tg.removed())
+            .forEach(tg -> goals.putIfAbsent(tg.goal().id(), LearningGoalDto.from(tg.goal()))));
         return List.copyOf(goals.values());
     }
 }

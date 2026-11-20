@@ -22,6 +22,12 @@ export default defineConfig({
         timeout: 300000,
         proxyTimeout: 300000,
       },
+      // Core's API (review list), reached like the Workshopper API under the base path
+      [`${BASE_PATH}/core/api`]: {
+        target: API_TARGET,
+        changeOrigin: true,
+        rewrite: (p: string) => p.slice(BASE_PATH.length),
+      },
     },
   },
 });
