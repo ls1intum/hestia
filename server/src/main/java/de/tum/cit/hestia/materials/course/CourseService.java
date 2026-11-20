@@ -121,6 +121,9 @@ public class CourseService {
      */
     @Transactional
     public void delete(UUID id) {
+        if (courseApi.get(id).personal()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The personal course cannot be deleted");
+        }
         courseApi.delete(id);
     }
 

@@ -44,6 +44,14 @@ public class TestTenant implements BeforeAllCallback, BeforeEachCallback, AfterE
         SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(principal));
     }
 
+    /** Logs the test thread in as the default user again (MockMvc clears the context after a request). */
+    public static void restoreLogin() {
+        if (principal != null) {
+            OrgContext.set(principal.orgId());
+            SecurityContextHolder.getContext().setAuthentication(new HestiaAuthentication(principal));
+        }
+    }
+
     @Override
     public void afterEach(ExtensionContext extension) {
         SecurityContextHolder.clearContext();

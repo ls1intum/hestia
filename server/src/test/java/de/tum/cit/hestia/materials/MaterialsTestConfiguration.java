@@ -29,7 +29,10 @@ public class MaterialsTestConfiguration {
      */
     @Bean
     MockMvcBuilderCustomizer loggedInUser(IdentityService identities) {
-        return builder -> builder.defaultRequest(
-                get("/").with(TestLogin.as(identities, TestTenant.ORG, TestTenant.USER)));
+        // MockMvc clears the security context of the test thread after every request; the login of the
+        // default user is put back so a test can call services after it has made requests.
+        return builder -> builder
+                .defaultRequest(get("/").with(TestLogin.as(identities, TestTenant.ORG, TestTenant.USER)))
+                .alwaysDo(result -> TestTenant.restoreLogin());
     }
 }

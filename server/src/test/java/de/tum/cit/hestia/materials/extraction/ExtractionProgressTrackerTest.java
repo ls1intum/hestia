@@ -41,6 +41,6 @@ class ExtractionProgressTrackerTest {
         ExtractionProgressTracker.Run claimed = tracker.tryStart(ONE, null).orElseThrow();
 
         assertThat(tracker.start(ONE, null)).isSameAs(claimed);
-        assertThat(tracker.current()).hasValueSatisfying(current -> assertThat(current.courseId()).isEqualTo(1L));
+        assertThat(tracker.current()).hasValueSatisfying(current -> assertThat(current.courseId()).isEqualTo(ONE));
     }
 }

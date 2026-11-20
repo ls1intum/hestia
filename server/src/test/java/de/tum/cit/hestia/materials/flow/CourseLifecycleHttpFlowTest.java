@@ -15,15 +15,15 @@ class CourseLifecycleHttpFlowTest extends HttpFlowTestBase {
     void aCourseCanBeCreatedListedRenamedAndDeleted() {
         HubApi.Response created = api().postJson("/courses", Map.of("name", "Flow test: lifecycle"));
         assertThat(created.status()).as(created.raw()).isEqualTo(201);
-        long id = created.json().path("id").asLong();
-        assertThat(id).isPositive();
+        String id = created.json().path("id").asText();
+        assertThat(java.util.UUID.fromString(id)).isNotNull();
         assertThat(created.json().path("name").asText()).isEqualTo("Flow test: lifecycle");
 
         HubApi.Response list = api().get("/courses?size=200");
         assertThat(list.status()).isEqualTo(200);
         boolean listed = false;
         for (JsonNode course : list.json().path("content")) {
-            listed |= course.path("id").asLong() == id;
+            listed |= course.path("id").asText().equals(id);
         }
         assertThat(listed).as("the new course is in the list").isTrue();
 

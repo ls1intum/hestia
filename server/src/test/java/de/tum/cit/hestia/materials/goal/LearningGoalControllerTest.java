@@ -344,21 +344,22 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void listBySessionUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void unknownCourseErrorBodyHasCodeAndMessage() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", 999999L))
+        UUID missing = UUID.randomUUID();
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/by-session", missing))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
-                .andExpect(jsonPath("$.message").value(Matchers.containsString("999999")));
+                .andExpect(jsonPath("$.message").value(Matchers.containsString(missing.toString())));
     }
 
     @Test
     void unknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
@@ -417,7 +418,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void exportCsvUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", 999999L))
+        mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals/export.csv", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 
@@ -674,7 +675,7 @@ class LearningGoalControllerTest extends MaterialsTestBase {
 
     @Test
     void createTerminalSkillUnknownCourseReturns404() throws Exception {
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", 999999L)
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/learning-goals/terminal", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"Design a REST API.\"}"))
                 .andExpect(status().isNotFound());

@@ -488,8 +488,9 @@ class ExtractionControllerTest extends MaterialsTestBase {
     void directSourcesPreferLinesThenUseFiguresAndRejectInvalidFigureIndices() throws Exception {
         UUID course = TestTenant.course("Figure source precedence");
         // Figure evidence is opt-in per course, and this test is about what it does once opted in.
-        settingsService.settings(course).setFiguresEnabled(true);
-        settingsRepository.flush();
+        de.tum.cit.hestia.materials.course.MaterialSettings settings = settingsService.settings(course);
+        settings.setFiguresEnabled(true);
+        settingsRepository.saveAndFlush(settings);
         String rawText = "verbatim line";
         Document document = documentRepository.save(
                 new Document(course, "figures.pdf", "application/pdf", rawText));
@@ -1239,7 +1240,7 @@ class ExtractionControllerTest extends MaterialsTestBase {
 
     @Test
     void unknownCourseReturns404() throws Exception {
-        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", 999999L))
+        mockMvc.perform(post("/learninggoalhub/api/courses/{id}/extract", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
     }
 

@@ -217,8 +217,11 @@ class ExamGoalControllerTest extends MaterialsTestBase {
         mockMvc.perform(get("/learninggoalhub/api/courses/{id}/learning-goals", course))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", Matchers.hasSize(2)))
-                .andExpect(jsonPath("$.content[1].examTask.text").value("Task two"))
-                .andExpect(jsonPath("$.content[1].examTask.taskType").value("freeText"));
+                // Goals created in one transaction share their creation time, so the order is not asserted.
+                .andExpect(jsonPath("$.content[?(@.examTask.text == 'Task two')].examTask.taskType")
+                        .value(Matchers.contains("freeText")))
+                .andExpect(jsonPath("$.content[?(@.examTask.text == 'Task one')].examTask.taskType")
+                        .value(Matchers.contains("singleChoice")));
         // Without a Topic tree there is nothing to place the goals under.
         Mockito.verify(topicTreeSynthesizer, Mockito.never()).place(anyList(), anyList(), any());
     }

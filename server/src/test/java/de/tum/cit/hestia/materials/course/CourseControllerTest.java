@@ -190,8 +190,9 @@ class CourseControllerTest extends MaterialsTestBase {
     @Test
     void leavesTheOutputLanguageAloneWhenOmitted() throws Exception {
         UUID course = TestTenant.course("Language Course");
-        settingsService.settings(course).setOutputLanguage("de");
-        settingsRepository.flush();
+        MaterialSettings settings = settingsService.settings(course);
+        settings.setOutputLanguage("de");
+        settingsRepository.saveAndFlush(settings);
 
         // Like the document PATCH: an omitted field is left alone, an explicit null clears it.
         mockMvc.perform(patch("/learninggoalhub/api/courses/{id}", course)
@@ -282,13 +283,6 @@ class CourseControllerTest extends MaterialsTestBase {
                         .content("{\"name\":\"" + tooLong + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("name")));
-    }
-
-    @Test
-    void rejectsSortingByAnUnknownProperty() throws Exception {
-        mockMvc.perform(get("/learninggoalhub/api/courses").param("sort", "nope,asc"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test

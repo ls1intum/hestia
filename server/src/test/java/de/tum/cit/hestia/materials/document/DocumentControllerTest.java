@@ -77,7 +77,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode course = objectMapper.readTree(courseResult.getResponse().getContentAsString());
-        long courseId = course.get("id").asLong();
+        UUID courseId = UUID.fromString(course.get("id").asText());
 
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         MockMultipartFile lecture = new MockMultipartFile("files", "lecture-01.pdf", MediaType.APPLICATION_PDF_VALUE, pdf);
@@ -103,7 +103,7 @@ class DocumentControllerTest extends MaterialsTestBase {
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode course = objectMapper.readTree(courseResult.getResponse().getContentAsString());
-        long courseId = course.get("id").asLong();
+        UUID courseId = UUID.fromString(course.get("id").asText());
 
         byte[] pdf = getClass().getResourceAsStream("/parser/sample.pdf").readAllBytes();
         mockMvc.perform(multipart("/learninggoalhub/api/courses/{id}/documents", courseId)
