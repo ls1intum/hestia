@@ -8,7 +8,7 @@ runs stay comparable. To add a call, follow the steps in
 
 All calls go to the TUM AET Logos gateway through its OpenAI-compatible API
 (`spring.ai.openai`, key in `LOGOS_API_KEY`), through the server's `ai` module. The defaults come from
-[`libs/shared-llm`](../../../libs/shared-llm/README.md), which Workshopper uses too:
+`ai.internal.HestiaLlmDefaults` ([server/docs/ai.md](../../../server/docs/ai.md)), shared with Workshopper:
 `openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for images. A call that names no model
 gets the text default.
 

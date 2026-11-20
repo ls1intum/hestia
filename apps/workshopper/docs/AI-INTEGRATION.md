@@ -48,7 +48,7 @@ Each slide is a map with a `layout` (which slide of the default template it uses
 
 ## Configuration
 
-* **Provider:** requests go to the TUM AET Logos gateway (the `shared-llm` default). The API key comes from `LOGOS_API_KEY`.
+* **Provider:** requests go to the TUM AET Logos gateway (the default of the server's `ai` module). The API key comes from `LOGOS_API_KEY`.
 * **Secondary model:** `LLM_SECONDARY_MODEL` (property `llm.secondary-model`) optionally sets a second model, used for slide generation; it must be a Logos model id.
 * **Temperature:** the JSON-returning calls use the shared default (temperature 0.0) so the output parses reliably.
 * **Timeouts:** one model call may take up to 90 seconds (`teaching.llm.read-timeout`, default 90s; connect timeout `teaching.llm.connect-timeout`, default 10s) and is attempted twice (`teaching.llm.retry.max-attempts`); `LlmService` passes these limits with every call as `LlmRequest.Limits`. A hanging call therefore fails within about 3 minutes and the user sees an error, instead of the request, and the session's generation lock, being blocked indefinitely. `LlmTimeoutTest` checks that the limits are sent with each call; the gateway enforces them.

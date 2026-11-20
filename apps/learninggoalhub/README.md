@@ -39,7 +39,7 @@ sibling Hestia modules (assessment, teaching) read the goals in-process through 
 
 All model calls go to the TUM AET Logos gateway (OpenAI-compatible). Defaults are
 `openai/gpt-oss-120b` for text and `Qwen/Qwen3.8-27B` for vision, set in
-[`libs/shared-llm`](../../libs/shared-llm/README.md). Workshopper uses that library too.
+the server's `ai` module ([server/docs/ai.md](../../server/docs/ai.md)), which every model call goes through.
 
 ## Where things are
 
