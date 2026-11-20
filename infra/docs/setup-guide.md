@@ -231,8 +231,7 @@ Names only (never commit or paste values; generate each random value with `opens
 | `VM_HOST`, `VM_USERNAME` | where CI connects and as whom | yes |
 | `SAML_IDP_ENTITY_ID`, `SAML_IDP_METADATA_URI` | the identity provider (default: TUM's) | no |
 | `HESTIA_PLATFORM_ADMINS` | comma-separated eduPersonPrincipalNames with ExamLense's admin role | no |
-| `EXAMLENSE_QUOTA_PARSE_PER_DAY`, `EXAMLENSE_QUOTA_SOLVE_PER_DAY` | per-user daily limits (default 0 = off) | no |
-| `EXAMLENSE_QUOTA_GLOBAL_PARSE_PER_DAY`, `EXAMLENSE_QUOTA_GLOBAL_SOLVE_PER_DAY` | per-organisation ceilings (default 200) | no |
+| `HESTIA_AI_LIMIT_EXAM_PARSE`, `HESTIA_AI_LIMIT_EXAM_SOLVE` | per-user limits per 24 hours: exams read in (default 10) and solve runs (default 30); 0 = off | no |
 | `JAVA_OPTS`, `BACKUP_DIR`, `BACKUP_KEEP_DAYS`, `API_RATELIMIT_BEHIND_PROXY`, `API_RATELIMIT_TRUSTED_PROXY_HOPS`, `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL` | tuning, defaults in the compose file | no |
 
 Set automatically by the deploy: `ENVIRONMENT` (`Staging` or `Production`, becomes the Spring profile

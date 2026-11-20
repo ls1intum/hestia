@@ -15,7 +15,7 @@ class DirectProvidersTest {
     @Test
     void openAiProviderRequiresOpenAiApiKey() {
         DirectProviders factory = new DirectProviders();
-        ReflectionTestUtils.setField(factory, "openaiBaseUrl", "https://api.openai.com/v1");
+        ReflectionTestUtils.setField(factory, "openaiBaseUrl", "https://openai.example.test/v1");
 
         assertThatThrownBy(() -> factory.build(OPENAI, "gpt-5.5"))
             .isInstanceOf(AiExceptions.ProviderException.class)
@@ -25,7 +25,7 @@ class DirectProvidersTest {
     @Test
     void anthropicProviderRequiresAnthropicApiKey() {
         DirectProviders factory = new DirectProviders();
-        ReflectionTestUtils.setField(factory, "anthropicBaseUrl", "https://api.anthropic.com");
+        ReflectionTestUtils.setField(factory, "anthropicBaseUrl", "https://anthropic.example.test");
 
         assertThatThrownBy(() -> factory.build(ANTHROPIC, "claude-opus-4-8"))
             .isInstanceOf(AiExceptions.ProviderException.class)

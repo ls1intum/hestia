@@ -261,11 +261,9 @@ configuration error.
 ```
 # OpenAI GPT models (read by ai.yml as hestia.ai.openai.*)
 OPENAI_API_KEY=<your OpenAI key>
-# OPENAI_BASE_URL=https://api.openai.com/v1
 
 # Anthropic Claude models
 ANTHROPIC_API_KEY=<your Anthropic key>
-# ANTHROPIC_BASE_URL=https://api.anthropic.com
 
 # Google Gemini models
 GEMINI_API_KEY=<your Gemini key>
