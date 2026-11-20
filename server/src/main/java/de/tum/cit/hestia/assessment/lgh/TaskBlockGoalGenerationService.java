@@ -153,12 +153,20 @@ public class TaskBlockGoalGenerationService {
             List<ExamGoalDerivation.ExamTask> blocks = buildBlocks(sectionId, tasks);
             List<ExamGoalDerivation.TaskGoals> result = derivation.derive(courseId, blocks);
 
-            // If the user unconfirmed mid-run the content may change again —
-            // drop the result and compensate by removing the fresh goals.
+            List<UUID> fresh = result.stream()
+                .flatMap(entry -> entry.goals() == null ? java.util.stream.Stream.<GoalInfo>empty() : entry.goals().stream())
+                .map(GoalInfo::id).toList();
+
+            // If the user unconfirmed mid-run the content may change again, and if the exam was
+            // moved to another course the goals sit in the wrong one: drop the result and
+            // compensate by removing the fresh goals.
             if (!isConfirmed(sectionId)) {
-                removeGoals(result.stream()
-                    .flatMap(entry -> entry.goals() == null ? java.util.stream.Stream.<GoalInfo>empty() : entry.goals().stream())
-                    .map(GoalInfo::id).toList());
+                removeGoals(fresh);
+                return;
+            }
+            if (!inCourse(examId, courseId)) {
+                log.info("Exam {} moved to another course during goal generation; dropping the result", examId);
+                removeGoals(fresh);
                 return;
             }
 
@@ -171,6 +179,14 @@ public class TaskBlockGoalGenerationService {
                 for (GoalInfo g : entry.goals()) goalLinks.link(g.id(), t.getId());
                 linked++;
             }
+            // A move between the check above and the links: the move removed the old course's
+            // links before ours were written, so remove ours and the goals now.
+            if (!inCourse(examId, courseId)) {
+                log.info("Exam {} moved to another course while linking goals; dropping the result", examId);
+                goalLinks.unlinkInCourse(tasks.stream().map(TaskBlock::getId).toList(), courseId);
+                removeGoals(fresh);
+                return;
+            }
             log.info("Linked learning goals to {} task(s) in section {}", linked, sectionId);
             sse.tasksUpdated(examId); // SseHub never throws
         } finally {
@@ -178,6 +194,10 @@ public class TaskBlockGoalGenerationService {
                 sectionRepository.releaseGoalsLock(sectionId);
             } catch (RuntimeException ignored) {}
         }
+    }
+
+    private boolean inCourse(UUID examId, UUID courseId) {
+        return examRepository.findById(examId).map(e -> courseId.equals(e.getCourseId())).orElse(false);
     }
 
     private boolean isConfirmed(UUID sectionId) {

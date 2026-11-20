@@ -8,11 +8,13 @@ import de.tum.cit.hestia.core.CourseNotFoundException;
 import de.tum.cit.hestia.core.CourseRole;
 import de.tum.cit.hestia.core.CurrentUser;
 import de.tum.cit.hestia.core.OrgContext;
+import de.tum.cit.hestia.core.spi.CourseDeletion;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,15 +31,19 @@ class CourseService implements CourseAccess, CourseApi {
     private final CoreCourseRepository courses;
     private final CourseMembershipRepository memberships;
     private final CurrentUser currentUser;
+    /** Resolved when a course is deleted: the hooks use core themselves (no cycle at startup). */
+    private final ObjectProvider<CourseDeletion> deletionHooks;
     private final Clock clock = Clock.systemUTC();
 
     /** Stored title of the personal course; the clients show their own label for it. */
     static final String PERSONAL_TITLE = "Einzelkram";
 
-    CourseService(CoreCourseRepository courses, CourseMembershipRepository memberships, CurrentUser currentUser) {
+    CourseService(CoreCourseRepository courses, CourseMembershipRepository memberships, CurrentUser currentUser,
+            ObjectProvider<CourseDeletion> deletionHooks) {
         this.courses = courses;
         this.memberships = memberships;
         this.currentUser = currentUser;
+        this.deletionHooks = deletionHooks;
     }
 
     // --- CourseAccess
@@ -149,6 +155,7 @@ class CourseService implements CourseAccess, CourseApi {
         if (course.isPersonal()) {
             throw new IllegalArgumentException("The personal course cannot be deleted");
         }
+        deletionHooks.orderedStream().forEach(hook -> hook.beforeCourseDeleted(courseId));
         courses.delete(course);
     }
 

@@ -279,7 +279,7 @@ function CourseView({ courseId }: { courseId: string }) {
         {confirmDelete && (
           <ConfirmDialog
             title="Delete course?"
-            message={`This permanently removes "${courseName}" and all of its learning goals. This cannot be undone.`}
+            message={`This permanently removes "${courseName}" and all of its learning goals, together with every session and exam filed under it in Workshopper and ExamLense. This cannot be undone.`}
             confirmLabel={
               deleteMutation.isPending ? "Deleting…" : "Delete course"
             }

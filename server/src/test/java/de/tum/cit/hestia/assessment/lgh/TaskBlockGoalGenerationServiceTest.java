@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -154,6 +155,45 @@ class TaskBlockGoalGenerationServiceTest {
 
         verify(goalApi).remove(goalId);
         verify(goalLinks, never()).link(any(), any());
+    }
+
+    @Test
+    void aResultOfAnExamMovedToAnotherCourseMidRunIsDroppedAndItsGoalsRemoved() {
+        confirmedSection();
+        Examination exam = exams.findById(examId).orElseThrow();
+        UUID goalId = UUID.randomUUID();
+        when(derivation.derive(eq(courseId), anyList())).thenAnswer(inv -> {
+            exam.setCourseId(UUID.randomUUID()); // the user moved the exam while the model ran
+            return List.of(new ExamGoalDerivation.TaskGoals(task.getId().toString(),
+                List.of(goal(goalId, courseId, GoalOrigin.EXAM, DomainModule.ASSESSMENT))));
+        });
+
+        service.dispatchGenerate(examId, section.getId());
+
+        verify(goalApi).remove(goalId);
+        verify(goalLinks, never()).link(any(), any());
+        verify(sse, never()).tasksUpdated(examId);
+        verify(sections).releaseGoalsLock(section.getId());
+    }
+
+    @Test
+    void anExamMovedWhileItsGoalsAreLinkedLosesTheLinksAndTheGoals() {
+        confirmedSection();
+        Examination exam = exams.findById(examId).orElseThrow();
+        UUID goalId = UUID.randomUUID();
+        when(derivation.derive(eq(courseId), anyList())).thenReturn(List.of(
+            new ExamGoalDerivation.TaskGoals(task.getId().toString(),
+                List.of(goal(goalId, courseId, GoalOrigin.EXAM, DomainModule.ASSESSMENT)))));
+        doAnswer(inv -> {
+            exam.setCourseId(UUID.randomUUID()); // moved right after the check
+            return null;
+        }).when(goalLinks).link(goalId, task.getId());
+
+        service.dispatchGenerate(examId, section.getId());
+
+        verify(goalLinks).unlinkInCourse(List.of(task.getId()), courseId);
+        verify(goalApi).remove(goalId);
+        verify(sse, never()).tasksUpdated(examId);
     }
 
     @Test

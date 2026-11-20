@@ -560,6 +560,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                     ) : (
                       " and all sessions within it."
                     )}
+                    {" "}Exams in ExamLense and materials and learning goals in LearningGoalHub that belong to this course are deleted too.
                   </>
                 );
               })() : "This action cannot be undone. This will permanently delete this session."}

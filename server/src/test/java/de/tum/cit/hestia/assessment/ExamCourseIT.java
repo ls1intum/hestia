@@ -31,6 +31,8 @@ class ExamCourseIT extends AbstractIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired LearningGoalApi goalApi;
     @Autowired AlignmentApi alignment;
+    @Autowired de.tum.cit.hestia.assessment.examination.ExaminationRepository exams;
+    @Autowired de.tum.cit.hestia.assessment.storage.StorageService storage;
 
     private String createExam(String user, String courseId) throws Exception {
         String body = "{\"title\":\"t\",\"source\":\"manual\""
@@ -186,5 +188,32 @@ class ExamCourseIT extends AbstractIntegrationTest {
                 .delete("/examlense/api/exams/" + examId).with(as("alice")))
             .andExpect(status().isNoContent());
         assertThat(linkedGoals("alice", task2)).isEmpty();
+    }
+
+    @Test
+    void deletingACourseDeletesItsExamsTheirLinksAndTheirStoredFiles() throws Exception {
+        UUID doomed = course("alice", "Doomed");
+        UUID other = course("alice", "Other");
+        String examId = createExam("alice", doomed.toString());
+        String taskId = createTask("alice", examId);
+        GoalInfo otherGoal = goal("alice", other, "goal of another course");
+        link("alice", otherGoal, taskId);
+        String pdf = orgId() + "/" + examId + "/source.pdf";
+        String figure = orgId() + "/" + examId + "/fig-1.png";
+        storage.store("exam-pdfs", pdf, new byte[] {1});
+        storage.store("exam-figures", figure, new byte[] {2});
+        runAs("alice", () -> {
+            var exam = exams.findById(UUID.fromString(examId)).orElseThrow();
+            exam.setSourceFileUrl(pdf);
+            exams.save(exam);
+        });
+
+        runAs("alice", () -> courseApi.delete(doomed));
+
+        assertThat(runAs("alice", () -> exams.findById(UUID.fromString(examId)))).isEmpty();
+        assertThat(linkedGoals("alice", taskId)).isEmpty();
+        assertThat(runAs("alice", () -> alignment.linksOfGoal(otherGoal.id()))).isEmpty();
+        assertThat(storage.download("exam-pdfs", pdf)).isNull();
+        assertThat(storage.download("exam-figures", figure)).isNull();
     }
 }
