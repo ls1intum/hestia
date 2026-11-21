@@ -47,9 +47,11 @@ import {
   listCourses,
   deleteCourse,
   renameCourse,
+  listReviews,
 } from "@/lib/api";
 import type { SessionSummary } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
+import { ReviewListDialog } from "@/components/ReviewListDialog";
 import { MoveSessionDialog, courseLabel } from "@/components/MoveSessionDialog";
 
 interface Props {
@@ -104,6 +106,9 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
   const [renamingTitle, setRenamingTitle] = useState<string>("");
   /** A session to move to another course; `target` is set when it was dropped on a course. */
   const [movingSession, setMovingSession] = useState<{ id: string; courseId?: string; target?: string } | null>(null);
+  /** Open review entries per course (core's review list) and the course whose list is open */
+  const [reviewCounts, setReviewCounts] = useState<Record<string, number>>({});
+  const [reviewCourse, setReviewCourse] = useState<{ id: string; title?: string } | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ id: string, type: "SESSION" | "COURSE" } | null>(null);
 
   const toggleCourse = (id: string) => {
@@ -130,6 +135,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
             type: "COURSE"
         }));
         setSessions([...sessionsData, ...courseSessions]);
+        loadReviewCounts(coursesData.map(c => c.id));
       })
       .catch((e: any) => {
         if (handleAuthError(e, false)) {
@@ -141,6 +147,12 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
         }
       })
       .finally(() => setLoading(false));
+  };
+
+  /** The review counts are a hint: a course whose list cannot be read simply shows none. */
+  const loadReviewCounts = (courseIds: string[]) => {
+    Promise.all(courseIds.map(id => listReviews(id).then(r => [id, r.length] as const).catch(() => [id, 0] as const)))
+      .then(entries => setReviewCounts(Object.fromEntries(entries)));
   };
 
   const handleDeleteClick = (e: React.MouseEvent, id: string, type: "SESSION" | "COURSE") => {
@@ -391,6 +403,14 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                           <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full font-body ${status.statusClass}`}>
                             {status.statusLabel}
                           </span>
+                          {(session.openReviews ?? 0) > 0 && (
+                            <span
+                              className="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full font-body bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                              title="A learning goal of this session changed or was removed"
+                            >
+                              review ({session.openReviews})
+                            </span>
+                          )}
                         </div>
                       );
                     })()}
@@ -477,6 +497,16 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                  {(reviewCounts[course.id] ?? 0) > 0 && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setReviewCourse({ id: course.id, title: courseLabel(course) })}
+                                      className="gap-2 bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+                                    >
+                                      {reviewCounts[course.id]} to review
+                                    </Button>
+                                  )}
                                   <Button variant="outline" size="sm" onClick={() => course.personal ? onNewSession() : onNewSessionFromCourse(course.id)} className="gap-2 bg-background">
                                     <Plus className="h-3 w-3" /> Add Session
                                   </Button>
@@ -527,6 +557,13 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
           </div>
         )}
       </main>
+
+      <ReviewListDialog
+        courseId={reviewCourse?.id ?? null}
+        courseTitle={reviewCourse?.title}
+        onOpenChange={(open) => !open && setReviewCourse(null)}
+        onChanged={() => loadSessions(true)}
+      />
 
       <MoveSessionDialog
         open={movingSession !== null}

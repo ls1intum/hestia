@@ -41,7 +41,7 @@ class CoreAlignmentLink extends OrgScoped {
     private int goalVersionSeen;
 
     @Column(name = "review_state", nullable = false)
-    private String reviewState = "OK";
+    private String reviewState = OK;
 
     @Column(name = "review_reason")
     private String reviewReason;
@@ -65,6 +65,11 @@ class CoreAlignmentLink extends OrgScoped {
         this.createdBy = createdBy;
         this.createdAt = now;
     }
+
+    static final String OK = "OK";
+    static final String REVIEW = "REVIEW";
+    static final String GOAL_CHANGED = "GOAL_CHANGED";
+    static final String GOAL_REMOVED = "GOAL_REMOVED";
 
     UUID getId() {
         return id;

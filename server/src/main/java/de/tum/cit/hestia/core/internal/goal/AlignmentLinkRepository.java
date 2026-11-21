@@ -23,6 +23,24 @@ interface AlignmentLinkRepository extends JpaRepository<CoreAlignmentLink, UUID>
 
     List<CoreAlignmentLink> findByGoalIdOrderByCreatedAtAscIdAsc(UUID goalId);
 
+    List<CoreAlignmentLink> findByCourseIdAndReviewStateOrderByCreatedAtAscIdAsc(UUID courseId, String reviewState);
+
+    /**
+     * Marks all links of the goal for review, touching only the review columns; a removed goal stays
+     * the reason once it was given.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("update CoreAlignmentLink l set l.reviewState = 'REVIEW', l.reviewReason = case "
+            + "when l.reviewState = 'REVIEW' and l.reviewReason = 'GOAL_REMOVED' then l.reviewReason "
+            + "else :reason end where l.goalId = :goalId")
+    int markForReview(UUID goalId, String reason);
+
+    /** Confirms the link if it is still marked; returns 0 if it was not. */
+    @Modifying(flushAutomatically = true)
+    @Query("update CoreAlignmentLink l set l.reviewState = 'OK', l.reviewReason = null, "
+            + "l.goalVersionSeen = :goalVersion where l.id = :id and l.reviewState = 'REVIEW'")
+    int confirmReview(UUID id, int goalVersion);
+
     @Modifying
     @Query("delete from CoreAlignmentLink l where l.targetModule = :module and l.targetType = :targetType "
             + "and l.targetId = :targetId")

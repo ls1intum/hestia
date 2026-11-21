@@ -1,5 +1,7 @@
 package de.tum.cit.hestia.core.internal.security;
 
+import de.tum.cit.hestia.core.AlignmentLinkNotFoundException;
+import de.tum.cit.hestia.core.AlignmentReviewOutdatedException;
 import de.tum.cit.hestia.core.CourseAccessDeniedException;
 import de.tum.cit.hestia.core.CourseNotFoundException;
 import de.tum.cit.hestia.core.GoalNotFoundException;
@@ -23,9 +25,15 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class AccessErrors {
 
-    @ExceptionHandler({CourseNotFoundException.class, GoalNotFoundException.class})
+    @ExceptionHandler({CourseNotFoundException.class, GoalNotFoundException.class,
+            AlignmentLinkNotFoundException.class})
     ResponseEntity<Map<String, String>> notFound(RuntimeException e) {
         return body(HttpStatus.NOT_FOUND, "Not found");
+    }
+
+    @ExceptionHandler(AlignmentReviewOutdatedException.class)
+    ResponseEntity<Map<String, String>> conflict(RuntimeException e) {
+        return body(HttpStatus.CONFLICT, "The learning goal changed again; reload and check it");
     }
 
     @ExceptionHandler({CourseAccessDeniedException.class, AccessDeniedException.class})

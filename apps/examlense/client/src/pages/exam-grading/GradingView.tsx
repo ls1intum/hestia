@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClipboardCheck } from "lucide-react";
-import { patchExam } from "@/lib/api/api-client";
+import { ApiError, confirmGoalReview, patchExam } from "@/lib/api/api-client";
+import { useToast } from "@/hooks/ui/use-toast";
+import { toGoalDisplay } from "@/lib/learning-goals/task-goals";
 import { useQueryClient } from "@tanstack/react-query";
 import { tasksKey } from "@/hooks/data/use-exam";
 import { useExamBundle } from "@/hooks/data/use-exam-bundle";
@@ -81,6 +83,7 @@ const jumpToGradingTask = (taskId: string) => {
 export const GradingView = ({ examId }: Props) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { exam, tasks, sections, blocks, isLoading } = useExamBundle(examId);
   const { data: answers } = useTaskAnswers(examId);
   const { data: grades } = useTaskGrades(examId);
@@ -103,9 +106,30 @@ export const GradingView = ({ examId }: Props) => {
 
   /** Falls back to id-only placeholders when the goals could not be loaded. */
   const goalsForTask = (task: TaskBlock): TaskGoalDisplay[] =>
-    (task.learning_goal_ids ?? []).map(
-      (gid) => goalsById.get(gid) ?? { id: gid },
-    );
+    (task.learning_goals ?? []).length > 0
+      ? task.learning_goals!.map(toGoalDisplay)
+      : (task.learning_goal_ids ?? []).map((gid) => goalsById.get(gid) ?? { id: gid });
+
+  const [confirmingLinkId, setConfirmingLinkId] = useState<string | null>(null);
+  const confirmGoal = async (goal: TaskGoalDisplay) => {
+    if (!goal.courseId || !goal.reviewLinkId || goal.goalVersion === undefined) return;
+    setConfirmingLinkId(goal.reviewLinkId);
+    try {
+      await confirmGoalReview(goal.courseId, goal.reviewLinkId, goal.goalVersion);
+      await qc.invalidateQueries({ queryKey: tasksKey(examId) });
+      await qc.invalidateQueries({ queryKey: examLearningGoalsKey(examId) });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // The goal changed again meanwhile: show the current wording before it is confirmed
+        toast({ title: "Das Lernziel wurde inzwischen erneut geändert. Bitte die neue Fassung prüfen." });
+        await qc.invalidateQueries({ queryKey: tasksKey(examId) });
+        return;
+      }
+      toast({ title: "Prüfung konnte nicht bestätigt werden.", variant: "destructive" });
+    } finally {
+      setConfirmingLinkId(null);
+    }
+  };
 
   const anyTaskHasGoals = useMemo(
     () => (tasks ?? []).some((t) => (t.learning_goal_ids ?? []).length > 0),
@@ -259,6 +283,8 @@ export const GradingView = ({ examId }: Props) => {
               task={task}
               label={label}
               goals={goalsForTask(task)}
+              onConfirmGoal={confirmGoal}
+              confirmingGoalId={confirmingLinkId}
             />
           </div>
           <QuestionAnswerConnector />

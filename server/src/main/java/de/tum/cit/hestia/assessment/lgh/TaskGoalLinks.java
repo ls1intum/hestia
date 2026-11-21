@@ -33,23 +33,37 @@ public class TaskGoalLinks {
         this.goals = goals;
     }
 
-    /** The current (not removed) goals the caller can read, per task; tasks without goals are missing. */
-    public Map<UUID, List<GoalInfo>> goalsOf(Collection<UUID> taskIds) {
+    /**
+     * A goal of a task with the state of its link. {@code review} is {@code GOAL_CHANGED} or
+     * {@code GOAL_REMOVED} while the link waits for the teacher's check, else null.
+     */
+    public record TaskGoal(GoalInfo goal, UUID linkId, String review) {
+        public boolean removed() {
+            return goal.removed();
+        }
+    }
+
+    /**
+     * The goals the caller can read, per task; tasks without goals are missing. Removed goals are
+     * only included while their link is still waiting for review.
+     */
+    public Map<UUID, List<TaskGoal>> goalsOf(Collection<UUID> taskIds) {
         if (taskIds.isEmpty()) return Map.of();
         Map<String, List<AlignmentLinkInfo>> links = alignment.goalsForTargets(
             DomainModule.ASSESSMENT, TARGET_TYPE, taskIds.stream().map(UUID::toString).toList());
         Set<UUID> goalIds = new LinkedHashSet<>();
         links.values().forEach(l -> l.forEach(link -> goalIds.add(link.goalId())));
         Map<UUID, GoalInfo> byId = new HashMap<>();
-        for (GoalInfo g : goals.goalsById(goalIds)) {
-            if (!g.removed()) byId.put(g.id(), g);
-        }
-        Map<UUID, List<GoalInfo>> out = new HashMap<>();
+        for (GoalInfo g : goals.goalsById(goalIds)) byId.put(g.id(), g);
+        Map<UUID, List<TaskGoal>> out = new HashMap<>();
         for (UUID taskId : taskIds) {
-            List<GoalInfo> list = new ArrayList<>();
+            List<TaskGoal> list = new ArrayList<>();
             for (AlignmentLinkInfo link : links.getOrDefault(taskId.toString(), List.of())) {
                 GoalInfo g = byId.get(link.goalId());
-                if (g != null) list.add(g);
+                if (g == null) continue;
+                boolean inReview = "REVIEW".equals(link.reviewState());
+                if (g.removed() && !inReview) continue;
+                list.add(new TaskGoal(g, link.id(), inReview ? link.reviewReason() : null));
             }
             if (!list.isEmpty()) out.put(taskId, list);
         }

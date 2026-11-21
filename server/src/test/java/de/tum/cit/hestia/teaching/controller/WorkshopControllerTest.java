@@ -96,7 +96,7 @@ class WorkshopControllerTest {
         @Test
         @DisplayName("returns session summaries")
         void returnsSessionSummaries() throws Exception {
-            var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", false, null, null);
+            var summary = new SessionSummaryDto("abc123", "My Session", "draft", "goals", "courseId", false, null, null, 0);
 
             when(workshopService.listSessions()).thenReturn(List.of(summary));
 

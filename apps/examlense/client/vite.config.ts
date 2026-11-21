@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Core's API (confirming a goal review) is same-origin for the client, like in production.
+    proxy: {
+      "/core/api": { target: "http://localhost:8080", changeOrigin: true },
+    },
   },
   plugins: [react()],
   resolve: {

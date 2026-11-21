@@ -22,6 +22,11 @@ function coreUrl(path: string): string {
   return /^https?:\/\//.test(BASE_URL) ? new URL(path, BASE_URL).href : `${BASE_URL}${path}`;
 }
 
+/** Core's API next to the page (under the app's base path in production, proxied by vite in dev). */
+export function corePageUrl(path: string): string {
+  return `${import.meta.env.BASE_URL.replace(/\/$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 /** The SAML login the browser is sent to when there is no session. */
 export const loginUrl = () => coreUrl("/saml2/authenticate/tum");
 
@@ -59,6 +64,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body">
   /** Raw body for non-JSON requests (FormData, blobs, ...). Content-Type is left to the browser. */
   body?: BodyInit;
   headers?: Record<string, string>;
+  /** Call core's API (`/core/api/...`) on the page's own origin instead of the ExamLense API. */
+  core?: boolean;
   /** Do not redirect to the login on 401 (only for probes that expect it). */
   skipAuth?: boolean;
   /** Set on the retry after the user consented; a second 428 is then an error. */
@@ -89,7 +96,7 @@ export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
-  const { json, body, headers, skipAuth, consentRetried, ...rest } = options;
+  const { json, body, headers, skipAuth, consentRetried, core, ...rest } = options;
   const method = (rest.method ?? "GET").toUpperCase();
   const csrf = method === "GET" || method === "HEAD" ? undefined : xsrfToken();
   const finalHeaders: Record<string, string> = {
@@ -104,7 +111,8 @@ export async function apiRequest<T = unknown>(
     finalBody = JSON.stringify(json);
   }
 
-  const resp = await fetch(`${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`, {
+  const url = core ? corePageUrl(path) : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  const resp = await fetch(url, {
     ...rest,
     credentials: "include",
     headers: finalHeaders,
@@ -300,6 +308,17 @@ interface LearningGoalDto {
   solo_level: SoloLevel | null;
   status: "PENDING" | "APPROVED" | null;
 }
+
+/**
+ * Marks a goal link of a task as checked (needs EDITOR in the goal's course) for the goal version
+ * the user saw; answers 409 (ApiError) if the goal changed again since.
+ */
+export const confirmGoalReview = (courseId: string, linkId: string, goalVersion: number) =>
+  apiRequest<unknown>(`/core/api/courses/${courseId}/reviews/${linkId}/confirm`, {
+    method: "POST",
+    json: { goalVersion },
+    core: true,
+  });
 
 export const listLghCourses = () => apiRequest<LghCourse[]>("/api/lgh/courses");
 
