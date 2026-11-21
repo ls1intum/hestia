@@ -292,6 +292,32 @@ certificate. Plan a short window.
 Changing the identity provider itself (`SAML_IDP_ENTITY_ID`, `SAML_IDP_METADATA_URI`) is a variable
 change plus redeploy; the server reads the provider's metadata at startup.
 
+With the federation on (`HESTIA_FEDERATION_ENABLED`), the same certificate is registered in the
+federation's metadata administration too: enter the new certificate there as well (alongside the
+old one until the switch) and wait until the federation has published new metadata before
+swapping the key.
+
+How logins behave, for operating the server:
+
+- **One instance only.** The SAML requests in flight (between the redirect to the identity
+  provider and its answer) are kept in the server's memory, not in the database. Run exactly one
+  `hestia-server`; with several instances behind a load balancer, logins fail unless the balancer
+  keeps each browser on one instance. A restart cancels the logins in flight; users simply log in
+  again.
+- **Only logins this server started.** Every answer must belong to a request this server sent to
+  the same browser (cookie `HESTIA_SAML_NONCE`, path only the login endpoint, `SameSite=None`,
+  `Secure`); a login started later in the same browser replaces it, so only the newest of two
+  parallel logins finishes. Logins started at the identity provider (IdP-initiated, unsolicited) are rejected,
+  also for TUM; links into Hestia go to `/saml2/discovery` or `/saml2/authenticate/tum`.
+- **Platform admins** (`HESTIA_PLATFORM_ADMINS`) count only through the TUM login, and an entry
+  `user@scope` only when the login's organisation is that scope. A login through another
+  university is never an admin.
+- **Federation logins** need a scoped `eduPersonPrincipalName` (or `subject-id`) within the
+  identity provider's scopes; the NameID alone is refused.
+- **Expired federation metadata** is dropped: when no refresh succeeded before the aggregate's
+  `validUntil`, the server logs an error ("expired ... without a valid refresh") and offers only the
+  TUM login until a reload succeeds.
+
 ### Logos key
 
 1. Create a new key in the Logos gateway (or ask its operator), keep the old one valid.
@@ -362,7 +388,9 @@ with `denied` or `unauthorized` when it expired.
 | Deploy fails writing `.env`, or compose says `set X in .env` | A value the compose file requires has no GitHub secret or variable (names in setup guide, step 7). |
 | Server refuses to start with "development login must not run" | `ENVIRONMENT=Production` together with the `local` profile, or `SPRING_PROFILES_ACTIVE` overridden. Remove the override. |
 | Every login ends in an error at the identity provider | The certificate or metadata registered there no longer matches (key rotation unfinished) or the entity ID changed with `APP_HOST`. Compare the metadata at `https://<APP_HOST>/<prefix>/saml2/service-provider-metadata/tum` with what the provider holds. |
-| SPA loads but API calls answer 401 | No session: the browser should have been sent to `/saml2/authenticate/tum`. Check the identity provider settings and the server log. |
+| SPA loads but API calls answer 401 | No session: the browser should have been sent to `/saml2/discovery` (and from there to the identity provider). Check the identity provider settings and the server log. |
+| A university is missing on `/saml2/discovery`, or the page shows only the first button | With `HESTIA_FEDERATION_ENABLED=true`: `sudo docker logs hestia-server \| grep -i federation`. "loaded ... N identity providers" is fine; "rejected or unreachable" means the VM cannot reach `HESTIA_FEDERATION_METADATA_URL` or the signature did not verify (new DFN signing certificate: replace `server/src/main/resources/federation/dfn-aai.pem` after checking its fingerprint on the DFN pages, release a new image). |
+| A user of another university gets "Login rejected" | `sudo docker logs hestia-server \| grep "SAML login rejected"`. "may not assert the organisation" means the identity provider sent a `schacHomeOrganization` or `eduPersonPrincipalName` outside its scopes in the federation metadata; that is for its operator to fix. A missing organisation means it released neither attribute; "no scoped user id" that it released no `eduPersonPrincipalName`/`subject-id`. "answers no authentication request" means the login was started at the identity provider, took longer than 15 minutes, or the browser dropped the cookie `HESTIA_SAML_NONCE` (plain HTTP instead of HTTPS, or a restart in between); start again from `/saml2/discovery`. |
 | After a restart all file links of ExamLense are broken | The signing key changed or was not persistent. `EXAMLENSE_FILES_SIGNING_SECRET` is required; the compose file refuses to start without it, so a hand-made `.env` is incomplete. |
 | `pull` says `denied` or `unauthorized` | GHCR login expired; see "GHCR access". |
 | Smoke test fails on `UseBASE64Intrinsics` | The server started without `-XX:-UseBASE64Intrinsics` (entrypoint changed). See the security note in section 2. |

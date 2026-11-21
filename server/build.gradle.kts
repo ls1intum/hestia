@@ -56,6 +56,8 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation(libs.archunit.junit5)
+    // Self-signed certificates for the simulated identity providers and federation signer
+    testImplementation(libs.bouncycastle.pkix)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

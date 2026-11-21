@@ -106,6 +106,20 @@ hestia:
     # External ids (eduPersonPrincipalName) of the platform admins, comma-separated. They get
     # ROLE_ADMIN (ExamLense's admin and parse-metrics endpoints) and no additional data access.
     platform-admins: ${HESTIA_PLATFORM_ADMINS:}
+  # Members of other universities log in through a SAML federation (DFN-AAI). Off by default: then
+  # /saml2/discovery forwards straight to the TUM login. On, the server loads the federation's
+  # signed metadata aggregate, accepts it only with a valid signature by signing-certificate, and
+  # offers its identity providers on /saml2/discovery. The DFN-AAI test federation is another
+  # metadata-location (same signing certificate).
+  federation:
+    enabled: ${HESTIA_FEDERATION_ENABLED:false}
+    metadata-location: ${HESTIA_FEDERATION_METADATA_URL:https://www.aai.dfn.de/metadata/dfn-aai-idp-metadata.xml}
+    # The DFN-AAI metadata signing certificate (SHA-256 fingerprint
+    # 6E:FE:08:72:C3:C2:49:77:AF:67:31:F3:AC:30:F7:17:17:03:EF:FA:BB:6C:88:14:97:B3:E1:A5:DD:A5:3A:A1).
+    signing-certificate: ${HESTIA_FEDERATION_SIGNING_CERTIFICATE:classpath:federation/dfn-aai.pem}
+    refresh: ${HESTIA_FEDERATION_REFRESH:6h}
+    # Label of the first, prominent button on /saml2/discovery (the configured registration "tum").
+    home-label: ${HESTIA_FEDERATION_HOME_LABEL:TUM}
   privacy:
     upload-confirmation:
       # Uploads are refused (428 UPLOAD_CONFIRMATION_REQUIRED) until the user confirmed once that

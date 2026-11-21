@@ -16,7 +16,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Turns a verified login (SAML assertion or development login) into a {@link HestiaPrincipal}: finds
  * or creates the organisation and the user. Platform admins are the external ids in
- * {@code hestia.security.platform-admins}.
+ * {@code hestia.security.platform-admins}: only through the home (TUM) login, and for a scoped id
+ * ({@code user@scope}) only when the login's organisation is that scope. A login through another
+ * university of the federation is never a platform admin.
  */
 @Service
 public class IdentityService {
@@ -44,11 +46,33 @@ public class IdentityService {
         return login(schacHomeOrganization, externalId, displayName, null);
     }
 
-    /** As {@link #login(String, String, String)}, with the login's e-mail attribute (kept in the session only). */
+    /**
+     * As {@link #login(String, String, String)}, with the login's e-mail attribute (kept in the
+     * session only). The home (TUM) login: may make a platform admin.
+     */
     public HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName, String email) {
+        return login(schacHomeOrganization, externalId, displayName, email, null, true);
+    }
+
+    /**
+     * A login through an identity provider of the federation: never a platform admin.
+     * {@code organisationName} (the identity provider's name in the federation metadata) names a new
+     * organisation, or one without a name.
+     */
+    public HestiaPrincipal federatedLogin(String schacHomeOrganization, String externalId, String displayName,
+            String email, String organisationName) {
+        return login(schacHomeOrganization, externalId, displayName, email, organisationName, false);
+    }
+
+    private HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName, String email,
+            String organisationName, boolean mayBeAdmin) {
         String org = schacHomeOrganization.trim().toLowerCase(Locale.ROOT);
-        UUID orgId = retryOnce(() -> tx.execute(status -> organisations.findBySchacHomeOrganization(org)
-                .orElseGet(() -> organisations.save(new Organisation(org))))).getId();
+        UUID orgId = retryOnce(() -> tx.execute(status -> {
+            Organisation o = organisations.findBySchacHomeOrganization(org)
+                    .orElseGet(() -> organisations.save(new Organisation(org)));
+            o.nameIfUnnamed(organisationName);
+            return o;
+        })).getId();
         UUID previous = OrgContext.set(orgId);
         try {
             AppUser user = retryOnce(() -> tx.execute(status -> {
@@ -57,10 +81,19 @@ public class IdentityService {
                 return u;
             }));
             return new HestiaPrincipal(user.getId(), orgId, externalId, displayName,
-                    platformAdmins.contains(externalId), email);
+                    mayBeAdmin && isPlatformAdmin(org, externalId), email);
         } finally {
             OrgContext.set(previous);
         }
+    }
+
+    /** Listed, and for a scoped id ({@code user@scope}) the login's organisation is that scope. */
+    private boolean isPlatformAdmin(String org, String externalId) {
+        if (!platformAdmins.contains(externalId)) {
+            return false;
+        }
+        int at = externalId.lastIndexOf('@');
+        return at < 0 || externalId.substring(at + 1).equalsIgnoreCase(org);
     }
 
     /** Two first logins at the same moment: the loser's insert fails on the unique key, the retry finds the row. */

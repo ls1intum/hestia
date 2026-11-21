@@ -196,6 +196,39 @@ Register with the identity provider:
 
 Without the two files the server does not start; the healthcheck and the CI smoke test then fail.
 
+### Other universities (DFN-AAI federation)
+
+Besides the identity provider above, the server can accept every identity provider of a SAML
+federation such as DFN-AAI. It is off by default; then the login page `/<prefix>/saml2/discovery`
+forwards straight to the identity provider above.
+
+- **Registration.** The service provider must be registered in the federation's metadata
+  administration with the same metadata as above (entity IDs
+  `https://<APP_HOST>/<client-prefix>/saml2/service-provider-metadata/tum` for the three prefixes,
+  the same certificate, the same assertion consumer URL `.../login/saml2/sso/tum`). Request the
+  attributes `schacHomeOrganization` and `eduPersonPrincipalName` (plus `displayName`, `mail`).
+  The registration id `tum` in these URLs stays, whatever identity provider a user picks.
+- **Switch it on** with the variable `HESTIA_FEDERATION_ENABLED=true`. The server then downloads
+  the metadata aggregate from `HESTIA_FEDERATION_METADATA_URL` (default: DFN-AAI production,
+  `https://www.aai.dfn.de/metadata/dfn-aai-idp-metadata.xml`) at startup and every 6 hours, and
+  accepts it only with a valid signature by the DFN-AAI metadata signing certificate that ships in
+  the image (`server/src/main/resources/federation/dfn-aai.pem`; SHA-256 fingerprint
+  `6E:FE:08:72:C3:C2:49:77:AF:67:31:F3:AC:30:F7:17:17:03:EF:FA:BB:6C:88:14:97:B3:E1:A5:DD:A5:3A:A1`,
+  published by DFN). For the DFN-AAI test federation set
+  `HESTIA_FEDERATION_METADATA_URL=https://www.aai.dfn.de/metadata/dfn-aai-test-metadata.xml`; the
+  service provider must then be registered there. Another federation needs its own certificate:
+  `HESTIA_FEDERATION_SIGNING_CERTIFICATE=file:/path/in/container.pem` (mount the file).
+- The VM must reach the metadata URL. If the download fails or the signature does not verify, the
+  server still starts, offers only the identity provider above, logs an error and retries after
+  5 minutes; a failed refresh keeps the last good copy.
+- **Clients** link to `/<prefix>/saml2/discovery`. That page shows the identity provider above as
+  the first button and every other identity provider of the federation in a list searchable by
+  name.
+- **Organisations** (tenants) are created on the first login of a university, from
+  `schacHomeOrganization` or, without it, the part of `eduPersonPrincipalName` after the `@`. A
+  federation identity provider may only assert organisations listed as its `shibmd:Scope` in the
+  federation metadata; any other login is rejected (`SAML login rejected: ...` in the server log).
+
 Do not use the development login on a service VM. `ENVIRONMENT=Production` selects the `prod`
 profile (SAML) and the server refuses to start the development login there
 (`HESTIA_DEPLOY_TARGET`, check `DeployGuard`). The `Staging` target maps to the `local` profile,
@@ -230,6 +263,7 @@ Names only (never commit or paste values; generate each random value with `opens
 | `APP_HOST` | `<APP_HOST>`; drives the Traefik routing rules and CORS | yes |
 | `VM_HOST`, `VM_USERNAME` | where CI connects and as whom | yes |
 | `SAML_IDP_ENTITY_ID`, `SAML_IDP_METADATA_URI` | the identity provider (default: TUM's) | no |
+| `HESTIA_FEDERATION_ENABLED`, `HESTIA_FEDERATION_METADATA_URL` | logins through the DFN-AAI federation (default: off; production aggregate), see step 6 | no |
 | `HESTIA_PLATFORM_ADMINS` | comma-separated eduPersonPrincipalNames with ExamLense's admin role | no |
 | `HESTIA_AI_LIMIT_EXAM_PARSE`, `HESTIA_AI_LIMIT_EXAM_SOLVE` | per-user limits per 24 hours: exams read in (default 10) and solve runs (default 30); 0 = off | no |
 | `JAVA_OPTS`, `BACKUP_DIR`, `BACKUP_KEEP_DAYS`, `API_RATELIMIT_BEHIND_PROXY`, `API_RATELIMIT_TRUSTED_PROXY_HOPS`, `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL` | tuning, defaults in the compose file | no |

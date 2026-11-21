@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
@@ -16,9 +19,11 @@ import org.springframework.security.saml2.provider.service.authentication.Saml2A
 class SamlLoginTest {
 
     private final IdentityService identities = mock(IdentityService.class);
-    private final SamlLogin login = new SamlLogin(identities);
+    private final SamlLogin login = new SamlLogin(identities, mock(FederationMetadata.class));
 
     SamlLoginTest() {
+        when(identities.federatedLogin(any(), any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
+                UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false, i.getArgument(3)));
         when(identities.login(any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
                 UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false, i.getArgument(3)));
     }
@@ -53,6 +58,49 @@ class SamlLoginTest {
         assertThatThrownBy(() -> login.principal("name-id", null, null, null))
                 .isInstanceOf(Saml2AuthenticationException.class);
         assertThatThrownBy(() -> login.principal("name-id", " ", "no-scope", null))
+                .isInstanceOf(Saml2AuthenticationException.class);
+    }
+
+    private static final FederationMetadata.IdentityProvider ALPHA = new FederationMetadata.IdentityProvider(
+            "https://idp.alpha.test/idp", "Universität Alpha", List.of("Universität Alpha"),
+            List.of(new FederationMetadata.Scope("alpha.test", false), new FederationMetadata.Scope("^[a-z]+\\.alpha\\.test$", true)));
+
+    @Test
+    void aFederationProviderMayAssertItsOwnScopes() {
+        login.principal("n", "alpha.test", "ada@alpha.test", "Ada", null, Optional.of(ALPHA));
+        verify(identities).federatedLogin("alpha.test", "ada@alpha.test", "Ada", null, "Universität Alpha");
+
+        login.principal("n", null, "bob@cs.alpha.test", null, null, Optional.of(ALPHA));
+        verify(identities).federatedLogin("cs.alpha.test", "bob@cs.alpha.test", null, null, "Universität Alpha");
+    }
+
+    @Test
+    void aFederationProviderMustSendAScopedUserIdNotJustTheNameId() {
+        // The NameID could name a TUM admin; it is never used as the user id of a federation login.
+        assertThatThrownBy(() -> login.principal("admin@tum.de", "alpha.test", null, null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class)
+                .hasMessageContaining("no scoped user id");
+        verify(identities, never()).federatedLogin(any(), any(), any(), any(), any());
+        verify(identities, never()).login(any(), any(), any(), any());
+    }
+
+    @Test
+    void aRejectionNamesTheScopeButNotTheUser() {
+        assertThatThrownBy(() -> login.principal("n", "alpha.test", "secret-person@tum.de", null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class)
+                .hasMessageContaining("tum.de")
+                .hasMessageNotContaining("secret-person");
+    }
+
+    @Test
+    void aFederationProviderMayNotAssertAnotherUniversity() {
+        assertThatThrownBy(() -> login.principal("n", "tum.de", "ada@alpha.test", null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class);
+        assertThatThrownBy(() -> login.principal("n", null, "ada@tum.de", null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class);
+        assertThatThrownBy(() -> login.principal("n", "alpha.test", "ada@tum.de", null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class);
+        assertThatThrownBy(() -> login.principal("n", "alpha.test", "unscoped", null, null, Optional.of(ALPHA)))
                 .isInstanceOf(Saml2AuthenticationException.class);
     }
 }
