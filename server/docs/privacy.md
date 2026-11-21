@@ -19,7 +19,7 @@ personal data of others (for example student names or ID numbers).
   notice version the answer is `428` with `code: UPLOAD_CONFIRMATION_REQUIRED`.
   The intake page (`/learninggoalhub/start`) is not checked: its terms, which the submitter accepts
   with every submission, already contain this confirmation.
-- **Log.** `core.upload_confirmation` (migration V20) is append-only for the application
+- **Log.** `core.upload_confirmation` (migration V16) is append-only for the application
   (`update`/`delete` revoked), like `ai.consent_event`: user, notice version, time. Deleting a user
   removes their rows by cascade.
 - **Text.** `resources/core/upload-confirmation-<version>.md` plus the checkbox label in
@@ -52,7 +52,7 @@ How a run works (`InactivitySweep`):
   row-level security apply as in a request; each user is handled in a transaction of its own that
   locks the user row first (a login waits for it) and checks again.
 - **Warnings.** A user whose last login is at least a threshold ago gets one
-  `core.inactivity_warning` row (migration V21) per threshold and inactive period. A row belongs
+  `core.inactivity_warning` row (migration V17) per threshold and inactive period. A row belongs
   to the period that began at its `last_seen_at`; a login moves `app_user.last_seen_at` and so
   starts a new period, which is how a login resets the timer.
 - **Deletion** happens only once the last warning has stood for the gap to the deletion (default
