@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import de.tum.cit.hestia.core.UploadConfirmation;
 import de.tum.cit.hestia.assessment.storage.UploadLimit;
 
 @RestController
@@ -45,10 +46,12 @@ public class FigureController {
     private final StorageService storage;
     private final SignedUrls signedUrls;
     private final FigureCleanupService figureCleanup;
+    private final UploadConfirmation uploadConfirmation;
 
     public FigureController(SectionFigureRepository figureRepository, SectionBlockRepository blockRepository,
                             Access access, StorageService storage, SignedUrls signedUrls,
-                            FigureCleanupService figureCleanup) {
+                            FigureCleanupService figureCleanup, UploadConfirmation uploadConfirmation) {
+        this.uploadConfirmation = uploadConfirmation;
         this.figureRepository = figureRepository;
         this.blockRepository = blockRepository;
         this.access = access;
@@ -88,6 +91,7 @@ public class FigureController {
                                  MultipartFile file) throws IOException {
         UUID bid = Access.id(blockId);
         SectionBlock block = requireBlock(bid, true);
+        uploadConfirmation.requireConfirmed();
         UploadLimit.check(file);
 
         String ext = extensionFor(file);

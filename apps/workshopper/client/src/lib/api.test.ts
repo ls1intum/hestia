@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, deleteSession, downloadName, errorMessage, listSessions, safeFileName } from "./api";
+import { ApiError, deleteSession, downloadName, errorMessage, listSessions, safeFileName, setUploadConfirmationHandler, uploadCourseTemplate } from "./api";
 
 describe("download names", () => {
   it("use the title as shown", () => {
@@ -67,5 +67,33 @@ describe("requests", () => {
     const init = lastInit(fetchMock);
     expect(init.headers.has("X-XSRF-TOKEN")).toBe(false);
     expect(init.credentials).toBe("same-origin");
+  });
+});
+
+describe("upload confirmation", () => {
+  afterEach(() => {
+    setUploadConfirmationHandler(null);
+    vi.unstubAllGlobals();
+  });
+
+  const required = () => new Response(JSON.stringify({ code: "UPLOAD_CONFIRMATION_REQUIRED", error: "confirm" }), { status: 428 });
+
+  it("asks once on 428 and repeats the upload after the confirmation", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(required()).mockResolvedValueOnce(new Response("", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = vi.fn().mockResolvedValue(true);
+    setUploadConfirmationHandler(handler);
+
+    await uploadCourseTemplate("c1", new File(["x"], "t.pptx"));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails with the 428 when the user cancels", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => required()));
+    setUploadConfirmationHandler(async () => false);
+
+    await expect(uploadCourseTemplate("c1", new File(["x"], "t.pptx"))).rejects.toMatchObject({ status: 428 });
   });
 });

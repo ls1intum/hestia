@@ -57,7 +57,7 @@ Removed columns: `learning_goal` (V7), `interaction_level` (V6).
 `id`, `org_id`, `core_course_id` (FK to `core.course`, unique: the course's members and roles live there),  `title`, `display_order`, `draft_state_json` (the course settings that new sessions inherit), `status`, `current_step`, `template_id` (FK to `slide_templates`, V5), `created_at`, `updated_at`.
 
 ### `slide_templates`
-`id` (the session or course id it belongs to), `org_id`, `owner_id` (FK to `core.app_user`: the user who uploaded it), `file_name`, `file_data` (the .pptx), `created_at`.
+`id` (the session or course id it belongs to), `org_id`, `owner_id` (FK to `core.app_user`: the user who uploaded it; null once that user is deleted, the template stays), `file_name`, `file_data` (the .pptx), `created_at`.
 
 ## Slide templates
 

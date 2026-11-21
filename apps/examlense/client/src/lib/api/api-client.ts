@@ -70,6 +70,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, "headers" | "body">
   skipAuth?: boolean;
   /** Set on the retry after the user consented; a second 428 is then an error. */
   consentRetried?: boolean;
+  /** Set on the retry after the user confirmed the upload notice; a second 428 is then an error. */
+  uploadRetried?: boolean;
 }
 
 /**
@@ -92,11 +94,30 @@ export function isConsentRequired(status: number, body: string): boolean {
   }
 }
 
+/**
+ * Asked when the server answers 428 UPLOAD_CONFIRMATION_REQUIRED (the user has not yet confirmed
+ * that uploads contain no personal data of others): resolves true once they confirmed, so the
+ * upload is repeated. Registered by the upload confirmation dialog.
+ */
+let uploadConfirmationHandler: ConsentHandler | null = null;
+export function setUploadConfirmationHandler(handler: ConsentHandler | null): void {
+  uploadConfirmationHandler = handler;
+}
+
+export function isUploadConfirmationRequired(status: number, body: string): boolean {
+  if (status !== 428) return false;
+  try {
+    return JSON.parse(body)?.code === "UPLOAD_CONFIRMATION_REQUIRED";
+  } catch {
+    return false;
+  }
+}
+
 export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
-  const { json, body, headers, skipAuth, consentRetried, core, ...rest } = options;
+  const { json, body, headers, skipAuth, consentRetried, uploadRetried, core, ...rest } = options;
   const method = (rest.method ?? "GET").toUpperCase();
   const csrf = method === "GET" || method === "HEAD" ? undefined : xsrfToken();
   const finalHeaders: Record<string, string> = {
@@ -136,6 +157,11 @@ export async function apiRequest<T = unknown>(
     if (!consentRetried && consentHandler && isConsentRequired(resp.status, text)) {
       if (await consentHandler()) {
         return apiRequest<T>(path, { ...options, consentRetried: true });
+      }
+    }
+    if (!uploadRetried && uploadConfirmationHandler && isUploadConfirmationRequired(resp.status, text)) {
+      if (await uploadConfirmationHandler()) {
+        return apiRequest<T>(path, { ...options, uploadRetried: true });
       }
     }
     throw new ApiError(resp.status, text, message);
@@ -180,6 +206,36 @@ export interface AiConsent {
   last_action_at: string | null;
   notice: { version: string; text: string };
 }
+
+/** The notice users confirm once before their first upload (in any of the three tools). */
+export interface UploadConfirmation {
+  confirmed: boolean;
+  noticeVersion: string;
+  /** Markdown */
+  text: string;
+  checkboxLabel: string;
+  confirmedAt: string | null;
+}
+export const getUploadConfirmation = () =>
+  apiRequest<UploadConfirmation>("/api/privacy/upload-confirmation", { core: true });
+export const confirmUploads = (noticeVersion: string) =>
+  apiRequest<UploadConfirmation>("/api/privacy/upload-confirmation", {
+    core: true,
+    method: "POST",
+    json: { noticeVersion },
+  });
+
+/** A warning recorded while the user was away; shown once after the next login. */
+export interface InactivityNotice {
+  lastSeenAt: string;
+  warnedAt: string;
+  afterDays: number;
+  deleteAfterDays: number;
+}
+export const getInactivityNotices = () =>
+  apiRequest<InactivityNotice[]>("/api/privacy/inactivity-notices", { core: true });
+export const acknowledgeInactivityNotices = () =>
+  apiRequest<void>("/api/privacy/inactivity-notices/acknowledge", { core: true, method: "POST" });
 
 export const getAiConsent = () => apiRequest<AiConsent>("/api/ai-consent");
 export const grantAiConsent = () => apiRequest<AiConsent>("/api/ai-consent", { method: "POST" });

@@ -7,9 +7,10 @@ Cross-app to-dos that don't belong to a single app. App-specific tasks stay in t
 The privacy policy (`apps/landing-page/src/i18n/de.ts` / `en.ts`) already describes the
 behaviour below. Until these are built, the tools do not match the published policy.
 
-- [ ] **Upload confirmation** — the first time a user uploads content, they must tick a
+- [x] **Upload confirmation** — the first time a user uploads content, they must tick a
       checkbox confirming that the upload contains no personal data (e.g. student names,
-      student ID numbers).
+      student ID numbers). Done in `core` (`server/docs/privacy.md`): uploads answer 428
+      `UPLOAD_CONFIRMATION_REQUIRED` until confirmed, logged append-only in `core.upload_confirmation`.
 - [x] **Separate consent for external LLMs** — every use of a language model outside Logos
       (Gemini, OpenAI, Anthropic, …) needs its own opt-in consent, since it is an external
       service with transfer to the USA. Without it, only Logos may be used. Done in module `ai`:
@@ -17,9 +18,28 @@ behaviour below. Until these are built, the tools do not match the published pol
 - [x] **Consent log** — log every consent (who, what, which policy version, timestamp) and
       every withdrawal, so consent can be proven (Art. 7(1) GDPR). Done: `ai.consent_event`
       (append-only).
-- [ ] **Inactivity deletion** — built into the tools: delete accounts and their content
+- [x] **Inactivity deletion** — built into the tools: delete accounts and their content
       after 365 days without sign-in; warn users at 300 days and again at 350 days. A sign-in
-      resets the timer.
+      resets the timer. Done in `core` (`server/docs/privacy.md`): daily job, warnings shown after
+      the next login. Open: e-mail delivery of the warnings (Hestia stores no address), and the
+      privacy policy should mention that intake submissions follow the intake terms instead.
+      Runs as a dry run on every deploy target until the e-mail question is decided
+      (`HESTIA_INACTIVITY_DRY_RUN`, operations manual).
+- [ ] **Inactivity: dry run never reports a deletion** — a dry run stores no warning, so the
+      deletion check (last warning older than 15 days) never passes and the log never says what
+      would be deleted. Treat the would-be warning as present, or log "would delete on <date>".
+- [ ] **Inactivity: advisory lock can stay on a pooled connection** — if `pg_advisory_unlock`
+      throws, the session lock stays on a connection that goes back to the pool and blocks later
+      runs. Abort that connection instead of returning it, or switch to ShedLock.
+- [ ] **Inactivity: a login racing a deletion gives one 500** — the login waits for the user row
+      lock, then hits `StaleStateException` in `IdentityService` (line ~55) because the row is
+      gone. Retry the login once (it then creates a fresh account) or answer 401.
+- [ ] **Upload confirmation: client dialogs** — two uploads answering 428 at once hang, because
+      ExamLense and Workshopper share one `answer.current` ref; share one pending promise between
+      callers instead. A 409 for an outdated notice is a dead end: reload the notice and ask again.
+- [ ] **Decision for Ben: confirmations of deleted users** — consents and upload confirmations go
+      with the account (cascade), while the account's uploads in shared courses stay. Either say
+      so in `privacy.md` and the privacy policy, or keep a pseudonymised row as proof.
 - [x] **Migrate from SAIA (GWDG) to Logos** — all chat and vision calls run on Logos through
       module `ai`; `libs/shared-llm` is gone.
 

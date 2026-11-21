@@ -22,7 +22,11 @@ export default defineConfig({
     baseURL: `http://localhost:${clientPort}/learninggoalhub/`,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // The dev user confirms the upload notice once, so the other tests are not interrupted by it.
+    { name: "setup", testMatch: "upload-confirmation.setup.ts" },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, dependencies: ["setup"] },
+  ],
   webServer: [
     {
       command: "node e2e/fake-llm.mjs",

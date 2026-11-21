@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import de.tum.cit.hestia.core.UploadConfirmation;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -34,15 +35,18 @@ public class DocumentController {
     private static final int PDF_SIGNATURE_WINDOW = 1024;
 
     private final DocumentService documentService;
+    private final UploadConfirmation uploadConfirmation;
     private final DocumentStructureService structureService;
     private final int maxPages;
     private final int maxTextChars;
 
     public DocumentController(DocumentService documentService,
                               DocumentStructureService structureService,
+                              UploadConfirmation uploadConfirmation,
                               @Value("${hestia.upload.max-pages:2000}") int maxPages,
                               @Value("${hestia.upload.max-text-chars:3000000}") int maxTextChars) {
         this.documentService = documentService;
+        this.uploadConfirmation = uploadConfirmation;
         this.structureService = structureService;
         this.maxPages = maxPages;
         this.maxTextChars = maxTextChars;
@@ -63,6 +67,7 @@ public class DocumentController {
                                                  + "Omit to upload without a kind, which keeps the title-based hierarchy level.")
                                          @RequestParam(required = false) DocumentKind kind) {
         documentService.requireUploadAccess(courseId);
+        uploadConfirmation.requireConfirmed();
 
         // Every file is checked before any is parsed or stored, so a wrong file type rejects the whole
         // upload instead of leaving the files before it saved.

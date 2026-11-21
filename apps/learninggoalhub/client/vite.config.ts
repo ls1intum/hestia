@@ -42,6 +42,12 @@ export default defineConfig({
         target: API_TARGET,
         changeOrigin: true,
       },
+      // core's API (privacy notices), reached like the LearningGoalHub API under the base path
+      [`${BASE_PATH}/core/api`]: {
+        target: API_TARGET,
+        changeOrigin: true,
+        rewrite: (p: string) => p.slice(BASE_PATH.length),
+      },
     },
   },
 });
