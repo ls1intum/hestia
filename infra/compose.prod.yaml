@@ -77,6 +77,10 @@ services:
       # 0 turns a limit off; usage is counted either way. There is no organisation-wide ceiling.
       HESTIA_AI_LIMIT_EXAM_PARSE: ${HESTIA_AI_LIMIT_EXAM_PARSE:-10}
       HESTIA_AI_LIMIT_EXAM_SOLVE: ${HESTIA_AI_LIMIT_EXAM_SOLVE:-30}
+      # Deletion after a year without login (server/docs/privacy.md). ENABLED=false stops the daily
+      # run; DRY_RUN=true (the default on every target for now) only logs what it would warn and delete.
+      HESTIA_INACTIVITY_ENABLED: ${HESTIA_INACTIVITY_ENABLED:-true}
+      HESTIA_INACTIVITY_DRY_RUN: ${HESTIA_INACTIVITY_DRY_RUN:-true}
       # HMAC key for signed file URLs. Required: without it the server signs with a random key
       # per start, so every file URL stops working after a restart.
       FILES_SIGNING_SECRET: ${EXAMLENSE_FILES_SIGNING_SECRET:?set EXAMLENSE_FILES_SIGNING_SECRET in .env}

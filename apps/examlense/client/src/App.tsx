@@ -12,6 +12,8 @@ import ExamResults from "./pages/exam-results/ExamResults.tsx";
 import { SignInGate } from "./pages/sign-in/SignInGate.tsx";
 import { AdminRoute } from "./pages/admin/AdminRoute.tsx";
 import { AiConsentDialog } from "./components/shared/chrome/AiConsentDialog.tsx";
+import { UploadConfirmationDialog } from "./components/shared/chrome/UploadConfirmationDialog.tsx";
+import { InactivityNoticeDialog } from "./components/shared/chrome/InactivityNoticeDialog.tsx";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +48,8 @@ const App = () => (
       {/* Inside the query provider: the gate resolves the session via useMe(). */}
       <SignInGate>
         <AiConsentDialog />
+        <UploadConfirmationDialog />
+        <InactivityNoticeDialog />
         <AppRoutes />
       </SignInGate>
     </TooltipProvider>

@@ -57,6 +57,9 @@ class WorkshopControllerTest {
     private de.tum.cit.hestia.teaching.facade.WorkshopSessionFacade facade;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private de.tum.cit.hestia.core.UploadConfirmation uploadConfirmation;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
     private de.tum.cit.hestia.teaching.usecase.GenerateSlideBlockUseCase generateSlideBlockUseCase;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean

@@ -20,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import de.tum.cit.hestia.core.UploadConfirmation;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
@@ -45,10 +46,13 @@ public class WorkshopController {
     private final WorkshopService service;
     private final PdfExportService pdfService;
     private final WorkshopSessionFacade facade;
+    private final UploadConfirmation uploadConfirmation;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade) {
+    public WorkshopController(WorkshopService service, PdfExportService pdfService, WorkshopSessionFacade facade,
+            UploadConfirmation uploadConfirmation) {
         this.service = service;
+        this.uploadConfirmation = uploadConfirmation;
         this.pdfService = pdfService;
         this.facade = facade;
     }
@@ -115,6 +119,9 @@ public class WorkshopController {
             @RequestParam("meta") String metaJson,
             @RequestParam(value = "slides", required = false) String slidesJson,
             @RequestPart(value = "template", required = false) MultipartFile template) throws Exception {
+        if (template != null && !template.isEmpty()) {
+            uploadConfirmation.requireConfirmed();
+        }
         WorkshopSessionDto session = mapper.readValue(sessionJson, WorkshopSessionDto.class);
         WorkshopInputDto meta = mapper.readValue(metaJson, WorkshopInputDto.class);
         List<Map<String, Object>> slides = slidesJson == null || slidesJson.isBlank() ? null
@@ -222,6 +229,7 @@ public class WorkshopController {
     @PostMapping(value = "/sessions/{id}/template", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Boolean> uploadTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
         facade.verifyWrite(id);
+        uploadConfirmation.requireConfirmed();
         service.saveTemplate(id, readTemplate(template), template.getOriginalFilename());
         return Map.of("success", true);
     }
@@ -237,6 +245,7 @@ public class WorkshopController {
     @PostMapping("/courses/{id}/template")
     public ResponseEntity<Void> uploadCourseTemplate(@PathVariable String id, @RequestPart("template") MultipartFile template) throws IOException {
         facade.verifyCourseWrite(id);
+        uploadConfirmation.requireConfirmed();
         service.saveCourseTemplate(id, readTemplate(template), template.getOriginalFilename());
         return ResponseEntity.ok().build();
     }

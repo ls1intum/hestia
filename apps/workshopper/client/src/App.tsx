@@ -13,6 +13,7 @@ import WorkshopFinalReview from "@/components/WorkshopFinalReview";
 import { MoveSessionDialog } from "@/components/MoveSessionDialog";
 import { PERSONAL_COURSE_LABEL } from "@/lib/workshop-generator";
 import { Toaster } from "@/components/ui/toaster";
+import { PrivacyDialogs } from "@/components/PrivacyDialogs";
 import { Button } from "@/components/ui/button";
 import hestiaLogoLight from "@/assets/logos/wordmark-light.svg";
 import hestiaLogoDark from "@/assets/logos/wordmark-dark.svg";
@@ -87,6 +88,7 @@ export default function App() {
           </div>
         )}
         <Toaster />
+        <PrivacyDialogs />
       </>
     );
   }
@@ -453,6 +455,7 @@ export default function App() {
       )}
 
       <Toaster />
+        <PrivacyDialogs />
     </div>
   );
 }

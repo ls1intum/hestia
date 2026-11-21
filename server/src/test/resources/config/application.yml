@@ -9,6 +9,15 @@ hestia:
   rate-limit:
     # Test classes share one context and one client address; the limiter has its own tests.
     llm-requests: 100000
+  privacy:
+    # Upload tests of the modules would all need a confirmation first; PrivacyIT turns it on.
+    upload-confirmation:
+      enforced: false
+    # Tests start the sweep themselves.
+    inactivity:
+      enabled: false
+      # The tests call the sweep themselves and check what it deletes.
+      dry-run: false
   dev-login:
     # Tests under profile `local` choose user and organisation with X-Dev-User / X-Dev-Org.
     impersonation: true

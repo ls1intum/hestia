@@ -38,6 +38,8 @@ cat > "$keys/idp-metadata.xml" <<XML
 XML
 export SAML_IDP_ENTITY_ID="https://idp.e2e.invalid"
 export SAML_IDP_METADATA_URI="file:$keys/idp-metadata.xml"
-# /api/** needs a login; the local profile signs every request in as a dev user.
+# /api/** needs a login; the local profile signs every request in as a dev user. The privacy test
+# picks a fresh user with the X-Dev-User header (impersonation), so it sees the first-upload dialog.
 export SPRING_PROFILES_ACTIVE=local
+export HESTIA_DEV_LOGIN_IMPERSONATION=true
 exec java -jar "$jar"

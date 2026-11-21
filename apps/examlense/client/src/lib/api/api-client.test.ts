@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiRequest, ApiError, loginUrl, setConsentHandler } from "@/lib/api/api-client";
+import {
+  apiRequest,
+  ApiError,
+  loginUrl,
+  setConsentHandler,
+  setUploadConfirmationHandler,
+} from "@/lib/api/api-client";
 
 function mockFetch(status: number, body: unknown = {}) {
   const fn = vi.fn().mockResolvedValue(
@@ -100,5 +106,45 @@ describe("apiRequest consent handling", () => {
 
     await expect(apiRequest("/api/x")).rejects.toBeInstanceOf(ApiError);
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("apiRequest upload confirmation handling", () => {
+  afterEach(() => {
+    setUploadConfirmationHandler(null);
+    vi.unstubAllGlobals();
+  });
+
+  const confirmationRequired = () =>
+    new Response(JSON.stringify({ error: "confirm first", code: "UPLOAD_CONFIRMATION_REQUIRED" }), {
+      status: 428,
+      headers: { "content-type": "application/json" },
+    });
+  const ok = () =>
+    new Response(JSON.stringify({ storage_path: "x" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("asks for the confirmation on 428 and repeats the upload once it is given", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(confirmationRequired()).mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = vi.fn().mockResolvedValue(true);
+    setUploadConfirmationHandler(handler);
+
+    await expect(apiRequest("/api/exams/1/pdf", { method: "POST", body: new FormData() })).resolves.toEqual({
+      storage_path: "x",
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails with the 428 when the user cancels", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => confirmationRequired()));
+    setUploadConfirmationHandler(async () => false);
+
+    await expect(apiRequest("/api/exams/1/pdf", { method: "POST", body: new FormData() })).rejects.toMatchObject({
+      status: 428,
+    });
   });
 });

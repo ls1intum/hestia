@@ -159,8 +159,16 @@ class CourseService implements CourseAccess, CourseApi {
         if (course.isPersonal()) {
             throw new IllegalArgumentException("The personal course cannot be deleted");
         }
-        deletionHooks.orderedStream().forEach(hook -> hook.beforeCourseDeleted(courseId));
-        events.publishEvent(new CourseDeleted(course.getOrgId(), courseId));
+        deleteWithoutCheck(course);
+    }
+
+    /**
+     * Deletes the course with everything the modules hang off it, without a role check: for
+     * {@link #delete(UUID)} after its checks and for deleting an inactive user's own courses.
+     */
+    void deleteWithoutCheck(CoreCourse course) {
+        deletionHooks.orderedStream().forEach(hook -> hook.beforeCourseDeleted(course.getId()));
+        events.publishEvent(new CourseDeleted(course.getOrgId(), course.getId()));
         courses.delete(course);
     }
 

@@ -59,6 +59,16 @@ class CoreCourse extends OrgScoped {
         return createdAt;
     }
 
+    UUID getCreatedBy() {
+        return createdBy;
+    }
+
+    /** Turns a personal course into an ordinary one (its creator's account is deleted, others remain). */
+    void unmarkPersonal(Instant now) {
+        this.personal = false;
+        this.updatedAt = now;
+    }
+
     void rename(String title, Instant now) {
         this.title = title;
         this.updatedAt = now;

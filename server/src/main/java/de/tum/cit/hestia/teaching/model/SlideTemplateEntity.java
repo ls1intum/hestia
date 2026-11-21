@@ -16,8 +16,11 @@ public class SlideTemplateEntity extends OrgScoped {
     @Id
     private String id;
 
-    /** The user who uploaded the template; it is deleted with the user. */
-    @Column(name = "owner_id", nullable = false, updatable = false)
+    /**
+     * The user who uploaded the template, or null once that user was deleted: the template belongs to
+     * its session or course and stays with it (V18).
+     */
+    @Column(name = "owner_id", updatable = false)
     private UUID ownerId;
 
     @Column(name = "file_name", length = 255)
