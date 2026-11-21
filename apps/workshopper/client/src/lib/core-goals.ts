@@ -40,3 +40,22 @@ export function applySavedGoals(
 export function remapMappings<T extends { lgIds: string[] }>(mappings: T[] | undefined, idMap: Record<string, string>): T[] | undefined {
   return mappings?.map(m => ({ ...m, lgIds: m.lgIds.map(id => idMap[id] ?? id) }));
 }
+
+/**
+ * Runs the grammar fix over the goals written in this session only. A goal picked from the course
+ * keeps its course wording: rewriting it would change the goal in core and mark every link to it
+ * for review. Returns the texts in the order of `goals`; if the fix answers with a different
+ * number of texts, the texts stay as they are.
+ */
+export async function fixGrammarOfOwnGoals(
+  goals: { id: string; text: string }[],
+  fix: (texts: string[]) => Promise<string[]>,
+): Promise<string[]> {
+  const texts = goals.map(g => g.text);
+  const own = goals.flatMap((g, i) => (isCoreGoalId(g.id) ? [] : [i]));
+  if (own.length === 0) return texts;
+  const fixed = await fix(own.map(i => texts[i]));
+  if (!Array.isArray(fixed) || fixed.length !== own.length) return texts;
+  own.forEach((goalIndex, k) => { texts[goalIndex] = fixed[k]; });
+  return texts;
+}
