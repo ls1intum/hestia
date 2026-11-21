@@ -33,6 +33,17 @@ public class Organisation {
         this.schacHomeOrganization = schacHomeOrganization;
     }
 
+    /** Sets the display name if there is none yet; a name set once is kept. */
+    void nameIfUnnamed(String name) {
+        if (displayName == null && name != null && !name.isBlank()) {
+            displayName = name.trim();
+        }
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
     public UUID getId() {
         return id;
     }

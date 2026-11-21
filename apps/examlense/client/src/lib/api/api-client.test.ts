@@ -43,7 +43,7 @@ describe("apiRequest", () => {
     vi.stubGlobal("location", { ...window.location, assign });
     await expect(apiRequest("/api/me")).rejects.toBeInstanceOf(ApiError);
     expect(assign).toHaveBeenCalledWith(loginUrl());
-    expect(loginUrl()).toMatch(/\/saml2\/authenticate\/tum$/);
+    expect(loginUrl()).toMatch(/\/saml2\/discovery$/);
   });
 });
 

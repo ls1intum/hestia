@@ -262,7 +262,7 @@ export default function SessionsDashboard({ onNewSession, onNewCourse, onNewSess
               Log in with your TUM account to create, manage, and export your workshop sessions and courses.
             </p>
             <Button 
-              onClick={() => window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum"} 
+              onClick={() => window.location.href = import.meta.env.BASE_URL + "saml2/discovery"} 
               size="lg" 
               className="rounded-xl shadow-sm text-base px-8 h-12"
             >

@@ -45,7 +45,7 @@ export default function App() {
             </>
           )}
           <a
-            href="/learninggoalhub/saml2/authenticate/tum"
+            href="/learninggoalhub/saml2/discovery"
             onClick={() => rememberReturn(location.pathname)}
             className="inline-flex items-center rounded-md bg-hestia-primary px-4 py-2 text-sm font-medium text-hestia-on-primary hover:bg-hestia-primary-muted transition-colors"
           >

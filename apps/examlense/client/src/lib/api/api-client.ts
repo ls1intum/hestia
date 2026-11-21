@@ -28,7 +28,7 @@ export function corePageUrl(path: string): string {
 }
 
 /** The SAML login the browser is sent to when there is no session. */
-export const loginUrl = () => coreUrl("/saml2/authenticate/tum");
+export const loginUrl = () => coreUrl("/saml2/discovery");
 
 /** Value of the `XSRF-TOKEN` cookie, which the server expects back in `X-XSRF-TOKEN` on writes. */
 export function xsrfToken(): string | undefined {

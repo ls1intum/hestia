@@ -39,7 +39,7 @@ export function handleAuthError(err: unknown, autoRedirect = true): boolean {
         console.warn("401 Unauthorized: Redirecting to SAML login");
         // Use BASE_URL (e.g. /workshopper/) and append saml2 path
         // Note: Central IT SAML ACS endpoint configuration must match this domain
-        window.location.href = import.meta.env.BASE_URL + "saml2/authenticate/tum";
+        window.location.href = import.meta.env.BASE_URL + "saml2/discovery";
       }
       return true;
     }

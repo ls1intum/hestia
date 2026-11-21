@@ -57,6 +57,11 @@ services:
       # Identity provider of the SAML login (the server has no default). TUM's unless .env says otherwise.
       SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-https://tumidp.lrz.de/idp/shibboleth}
       SAML_IDP_METADATA_URI: ${SAML_IDP_METADATA_URI:-https://login.tum.de/idp/shibboleth}
+      # Members of other universities via the DFN-AAI federation (off unless "true"). The server
+      # loads the signed metadata aggregate and checks it against the DFN signing certificate in the
+      # image; the test federation is another URL (dfn-aai-test-metadata.xml).
+      HESTIA_FEDERATION_ENABLED: ${HESTIA_FEDERATION_ENABLED:-false}
+      HESTIA_FEDERATION_METADATA_URL: ${HESTIA_FEDERATION_METADATA_URL:-https://www.aai.dfn.de/metadata/dfn-aai-idp-metadata.xml}
       # Platform admins (eduPersonPrincipalName, comma-separated): ROLE_ADMIN for ExamLense's
       # parse metrics, no additional data access.
       HESTIA_PLATFORM_ADMINS: ${HESTIA_PLATFORM_ADMINS:-}

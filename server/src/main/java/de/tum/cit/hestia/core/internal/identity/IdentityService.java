@@ -46,9 +46,22 @@ public class IdentityService {
 
     /** As {@link #login(String, String, String)}, with the login's e-mail attribute (kept in the session only). */
     public HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName, String email) {
+        return login(schacHomeOrganization, externalId, displayName, email, null);
+    }
+
+    /**
+     * As {@link #login(String, String, String, String)}; {@code organisationName} (the identity
+     * provider's name in the federation metadata) names a new organisation, or one without a name.
+     */
+    public HestiaPrincipal login(String schacHomeOrganization, String externalId, String displayName, String email,
+            String organisationName) {
         String org = schacHomeOrganization.trim().toLowerCase(Locale.ROOT);
-        UUID orgId = retryOnce(() -> tx.execute(status -> organisations.findBySchacHomeOrganization(org)
-                .orElseGet(() -> organisations.save(new Organisation(org))))).getId();
+        UUID orgId = retryOnce(() -> tx.execute(status -> {
+            Organisation o = organisations.findBySchacHomeOrganization(org)
+                    .orElseGet(() -> organisations.save(new Organisation(org)));
+            o.nameIfUnnamed(organisationName);
+            return o;
+        })).getId();
         UUID previous = OrgContext.set(orgId);
         try {
             AppUser user = retryOnce(() -> tx.execute(status -> {
