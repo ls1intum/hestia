@@ -68,16 +68,75 @@ function csrfToken(): string | undefined {
  * Sends a request to the Workshopper API with the session cookie; every write also sends the CSRF
  * token as X-XSRF-TOKEN. Throws an ApiError for any non-2xx answer.
  */
-async function send(path: string, init: RequestInit = {}, base: string = API_BASE): Promise<Response> {
+async function send(path: string, init: RequestInit = {}, base: string = API_BASE, uploadRetried = false): Promise<Response> {
   const headers = new Headers(init.headers);
   const method = (init.method ?? "GET").toUpperCase();
   const token = method === "GET" || method === "HEAD" ? undefined : csrfToken();
   if (token) headers.set("X-XSRF-TOKEN", token);
   const res = await fetch(`${base}${path}`, { ...init, headers, credentials: "same-origin" });
   if (!res.ok) {
-    throw new ApiError(res.status, readableError(await res.text()) || `HTTP ${res.status}`);
+    const body = await res.text();
+    if (!uploadRetried && uploadConfirmationHandler && isUploadConfirmationRequired(res.status, body)
+        && await uploadConfirmationHandler()) {
+      return send(path, init, base, true);
+    }
+    throw new ApiError(res.status, readableError(body) || `HTTP ${res.status}`);
   }
   return res;
+}
+
+/**
+ * Asked when the server refuses an upload with 428 UPLOAD_CONFIRMATION_REQUIRED (the user has not yet
+ * confirmed that uploads contain no personal data of others); resolves true once they confirmed, so
+ * the upload is repeated. Registered by the upload confirmation dialog.
+ */
+let uploadConfirmationHandler: (() => Promise<boolean>) | null = null;
+export function setUploadConfirmationHandler(handler: (() => Promise<boolean>) | null): void {
+  uploadConfirmationHandler = handler;
+}
+
+export function isUploadConfirmationRequired(status: number, body: string): boolean {
+  if (status !== 428) return false;
+  try {
+    return JSON.parse(body)?.code === "UPLOAD_CONFIRMATION_REQUIRED";
+  } catch {
+    return false;
+  }
+}
+
+/** The notice users confirm once before their first upload (in any of the three tools). */
+export interface UploadConfirmation {
+  confirmed: boolean;
+  noticeVersion: string;
+  /** Markdown */
+  text: string;
+  checkboxLabel: string;
+  confirmedAt: string | null;
+}
+
+export function getUploadConfirmation(): Promise<UploadConfirmation> {
+  return send("/privacy/upload-confirmation", {}, CORE_API_BASE).then(res => parseJson<UploadConfirmation>(res));
+}
+
+export function confirmUploads(noticeVersion: string): Promise<UploadConfirmation> {
+  return send("/privacy/upload-confirmation", jsonBody("POST", { noticeVersion }), CORE_API_BASE)
+    .then(res => parseJson<UploadConfirmation>(res));
+}
+
+/** A warning recorded while the user was away; shown once after the next login. */
+export interface InactivityNotice {
+  lastSeenAt: string;
+  warnedAt: string;
+  afterDays: number;
+  deleteAfterDays: number;
+}
+
+export function getInactivityNotices(): Promise<InactivityNotice[]> {
+  return send("/privacy/inactivity-notices", {}, CORE_API_BASE).then(res => parseJson<InactivityNotice[]>(res));
+}
+
+export async function acknowledgeInactivityNotices(): Promise<void> {
+  await send("/privacy/inactivity-notices/acknowledge", { method: "POST" }, CORE_API_BASE);
 }
 
 /** The message in an error answer: {"error": …} from ApiExceptionHandler, {"detail": …} from Spring, or the text. */

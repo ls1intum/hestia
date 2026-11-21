@@ -6,6 +6,7 @@ import Button from "./Button.tsx";
 import { RowAction } from "./GoalInlineEditing.tsx";
 import { useFocusTrap } from "../lib/useFocusTrap.ts";
 import { requestError } from "../lib/requestError.ts";
+import { ensureUploadConfirmed } from "../lib/privacy.ts";
 
 // The server accepts PDFs only: the source viewer, quote highlights and bookmark sessions all
 // read the PDF itself. Kept in sync with the hint shown in the drop zone.
@@ -95,6 +96,8 @@ export default function CreateCourseDialog({
   const create = async () => {
     setError(null);
     try {
+      // Asked before the course exists, so cancelling leaves nothing half-created.
+      if (!(await ensureUploadConfirmed())) return;
       setStep("creating");
       let courseId = createdCourseId;
       if (courseId == null) {

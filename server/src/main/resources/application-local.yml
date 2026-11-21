@@ -12,3 +12,9 @@ springdoc:
 app:
   docs:
     enabled: true
+
+# Staging runs this profile: the inactivity deletion only logs what it would do.
+hestia:
+  privacy:
+    inactivity:
+      dry-run: ${HESTIA_INACTIVITY_DRY_RUN:true}

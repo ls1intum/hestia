@@ -7,9 +7,10 @@ Cross-app to-dos that don't belong to a single app. App-specific tasks stay in t
 The privacy policy (`apps/landing-page/src/i18n/de.ts` / `en.ts`) already describes the
 behaviour below. Until these are built, the tools do not match the published policy.
 
-- [ ] **Upload confirmation** — the first time a user uploads content, they must tick a
+- [x] **Upload confirmation** — the first time a user uploads content, they must tick a
       checkbox confirming that the upload contains no personal data (e.g. student names,
-      student ID numbers).
+      student ID numbers). Done in `core` (`server/docs/privacy.md`): uploads answer 428
+      `UPLOAD_CONFIRMATION_REQUIRED` until confirmed, logged append-only in `core.upload_confirmation`.
 - [x] **Separate consent for external LLMs** — every use of a language model outside Logos
       (Gemini, OpenAI, Anthropic, …) needs its own opt-in consent, since it is an external
       service with transfer to the USA. Without it, only Logos may be used. Done in module `ai`:
@@ -17,9 +18,11 @@ behaviour below. Until these are built, the tools do not match the published pol
 - [x] **Consent log** — log every consent (who, what, which policy version, timestamp) and
       every withdrawal, so consent can be proven (Art. 7(1) GDPR). Done: `ai.consent_event`
       (append-only).
-- [ ] **Inactivity deletion** — built into the tools: delete accounts and their content
+- [x] **Inactivity deletion** — built into the tools: delete accounts and their content
       after 365 days without sign-in; warn users at 300 days and again at 350 days. A sign-in
-      resets the timer.
+      resets the timer. Done in `core` (`server/docs/privacy.md`): daily job, warnings shown after
+      the next login. Open: e-mail delivery of the warnings (Hestia stores no address), and the
+      privacy policy should mention that intake submissions follow the intake terms instead.
 - [x] **Migrate from SAIA (GWDG) to Logos** — all chat and vision calls run on Logos through
       module `ai`; `libs/shared-llm` is gone.
 

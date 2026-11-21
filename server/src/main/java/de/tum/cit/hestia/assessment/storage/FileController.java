@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import de.tum.cit.hestia.core.UploadConfirmation;
 
 @RestController
 @RequestMapping("/api")
@@ -44,12 +45,14 @@ public class FileController {
     private final DocxToPdfConverter docxConverter;
     private final PdfPageCounter pageCounter;
     private final CurrentUser currentUser;
+    private final UploadConfirmation uploadConfirmation;
 
     public FileController(StorageService storage, ExaminationRepository examRepository,
                           Access access, SignedUrls signedUrls,
                           DocxToPdfConverter docxConverter, PdfPageCounter pageCounter,
-                          CurrentUser currentUser) {
+                          CurrentUser currentUser, UploadConfirmation uploadConfirmation) {
         this.currentUser = currentUser;
+        this.uploadConfirmation = uploadConfirmation;
         this.storage = storage;
         this.examRepository = examRepository;
         this.access = access;
@@ -89,6 +92,7 @@ public class FileController {
                                          @Parameter(description = "The exam PDF or Word .docx.")
                                          MultipartFile file) throws IOException {
         Examination exam = access.requireExaminationForWrite(Access.id(examId));
+        uploadConfirmation.requireConfirmed();
         UploadLimit.check(file);
         byte[] bytes = file.getBytes();
         byte[] pdfBytes;

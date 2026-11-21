@@ -6,6 +6,7 @@ import CoursePage from "./pages/CoursePage.tsx";
 import IntakePage from "./pages/IntakePage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
 import { INTAKE_PATH, rememberReturn, takeReturn } from "./lib/intake.ts";
+import { InactivityNoticeDialog, UploadConfirmationDialog } from "./components/PrivacyDialogs.tsx";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(true);
@@ -64,6 +65,8 @@ export default function App() {
         <Route path={INTAKE_PATH} element={<IntakePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      <UploadConfirmationDialog />
+      <InactivityNoticeDialog />
     </Layout>
   );
 }

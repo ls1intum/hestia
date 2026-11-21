@@ -50,6 +50,16 @@ public class AppUser extends OrgScoped {
         return displayName;
     }
 
+    /** Last login; null only for rows created before logins were recorded. */
+    public Instant getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    /** When the inactive period began: the last login, else the account's creation. */
+    public Instant lastActivity() {
+        return lastSeenAt != null ? lastSeenAt : createdAt;
+    }
+
     void seen(String displayName, Instant now) {
         this.displayName = displayName;
         this.lastSeenAt = now;
