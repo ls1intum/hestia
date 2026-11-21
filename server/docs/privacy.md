@@ -39,14 +39,20 @@ Accounts without a login for a year are deleted with their content; users are wa
 | Setting (`hestia.privacy.inactivity.*`) | Default | Meaning |
 | --- | --- | --- |
 | `enabled` (`HESTIA_INACTIVITY_ENABLED`) | `true` | the daily run happens at all |
-| `dry-run` (`HESTIA_INACTIVITY_DRY_RUN`) | `false`, `true` in profile `local` (Staging) | only log what would be warned and deleted |
+| `dry-run` (`HESTIA_INACTIVITY_DRY_RUN`) | `true` | only log what would be warned and deleted |
 | `warn-after-days` | `300,350` | days without login after which a warning is recorded |
 | `delete-after-days` | `365` | days without login after which the account is deleted |
 | `cron` | `0 30 3 * * *` | when the run starts (server time) |
 | `notifier` | `log` | how a warning is delivered besides the notice after login (see below) |
 
+The deployment passes `HESTIA_INACTIVITY_ENABLED` and `HESTIA_INACTIVITY_DRY_RUN` through
+(`infra/compose.prod.yaml`, set as GitHub environment variables). Dry run is the default on every
+deploy target for now: a user who does not log in never sees the in-app warning, so real deletions
+wait for the decision on how warnings reach users outside the app.
+
 How a run works (`InactivitySweep`):
 
+- **Dry run.** Logs the warnings and deletions a real run would make and writes nothing.
 - **One instance.** The run takes a Postgres advisory lock; a second instance skips.
 - **Per organisation.** It sets `OrgContext` for each organisation, so the tenant filter and
   row-level security apply as in a request; each user is handled in a transaction of its own that

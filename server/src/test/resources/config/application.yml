@@ -16,6 +16,8 @@ hestia:
     # Tests start the sweep themselves.
     inactivity:
       enabled: false
+      # The tests call the sweep themselves and check what it deletes.
+      dry-run: false
   dev-login:
     # Tests under profile `local` choose user and organisation with X-Dev-User / X-Dev-Org.
     impersonation: true

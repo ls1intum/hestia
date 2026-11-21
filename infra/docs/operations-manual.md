@@ -87,6 +87,22 @@ containers created afterwards (redeploy once).
   checks the flag after every deploy. Remove the flag only after `java -version` in the running
   image shows a fixed release.
 
+### Inactivity deletion
+
+Every night at 03:30 (server time) the server warns accounts without a login for 300 and 350 days
+and deletes those without one for 365 days (`server/docs/privacy.md`). Two GitHub environment
+variables control it; the deploy writes them into `.env`:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `HESTIA_INACTIVITY_ENABLED` | `true` | `false` stops the nightly run (kill switch) |
+| `HESTIA_INACTIVITY_DRY_RUN` | `true` | the run only logs what it would warn and delete; `false` deletes |
+
+Dry run stays on until it is decided how warnings reach users outside the app. Each run logs one
+line `Inactivity sweep …` with its counts: `sudo docker logs hestia-server | grep -i 'inactivity\|dry run'`.
+A change takes effect after the next deploy, or at once with `hc up -d hestia-server` after editing
+`.env` on the VM (the next deploy overwrites `.env` again).
+
 ## 3. Updates and rollback
 
 ### How a deploy works

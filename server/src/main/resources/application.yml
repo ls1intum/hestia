@@ -115,8 +115,9 @@ hestia:
     # recorded at warn-after-days and shown after the next login. A login resets the period.
     inactivity:
       enabled: ${HESTIA_INACTIVITY_ENABLED:true}
-      # Only log what would be warned and deleted.
-      dry-run: ${HESTIA_INACTIVITY_DRY_RUN:false}
+      # Only log what would be warned and deleted. On by default until warnings can reach users
+      # outside the app (see server/docs/privacy.md); HESTIA_INACTIVITY_DRY_RUN=false deletes.
+      dry-run: ${HESTIA_INACTIVITY_DRY_RUN:true}
       warn-after-days: 300,350
       delete-after-days: 365
       cron: "0 30 3 * * *"
