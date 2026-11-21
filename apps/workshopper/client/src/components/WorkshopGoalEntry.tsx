@@ -15,7 +15,7 @@ import {
   Sparkles, ArrowRight, AlertCircle,
 } from "lucide-react";
 import { CoreGoalPicker } from "./CoreGoalPicker";
-import { isCoreGoalId } from "@/lib/core-goals";
+import { fixGrammarOfOwnGoals, isCoreGoalId } from "@/lib/core-goals";
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface GoalDraft {
@@ -250,10 +250,10 @@ export default function WorkshopGoalEntry({ initialInput, courseId = null, onBac
     setIsFixingGrammar(true);
     let finalGoalsText = validGoals.map((g) => g.text.trim());
     try {
-      const fixed = await fixGoalsGrammar(finalGoalsText);
-      if (Array.isArray(fixed) && fixed.length === finalGoalsText.length) {
-        finalGoalsText = fixed;
-      }
+      finalGoalsText = await fixGrammarOfOwnGoals(
+        validGoals.map((g, i) => ({ id: g.id, text: finalGoalsText[i] })),
+        fixGoalsGrammar,
+      );
     } catch (e) {
       console.error("Grammar check failed", e);
     } finally {
