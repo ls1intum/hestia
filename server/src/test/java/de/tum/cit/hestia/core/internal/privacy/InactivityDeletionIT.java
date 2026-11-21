@@ -3,6 +3,7 @@ package de.tum.cit.hestia.core.internal.privacy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,6 +21,7 @@ import de.tum.cit.hestia.core.internal.course.CourseRelease;
 import de.tum.cit.hestia.core.internal.identity.AppUserRepository;
 import de.tum.cit.hestia.core.internal.identity.IdentityService;
 import de.tum.cit.hestia.core.internal.identity.OrganisationRepository;
+import java.io.ByteArrayOutputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -31,10 +33,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
+import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -122,6 +126,19 @@ class InactivityDeletionIT {
         }
     }
 
+    /** The uploader of a course's slide template, {@code "<null>"} if unknown, {@code null} if there is none. */
+    private static String templateOwner(UUID course) throws SQLException {
+        try (Connection c = DriverManager.getConnection(TestDatabase.container().getJdbcUrl(), "hestia_owner",
+                "test-owner"); var q = c.prepareStatement("select owner_id from teaching.slide_templates where id = ?")) {
+            q.setString(1, course.toString());
+            try (ResultSet rs = q.executeQuery()) {
+                if (!rs.next()) return null;
+                String owner = rs.getString(1);
+                return owner == null ? "<null>" : owner;
+            }
+        }
+    }
+
     private boolean exists(String org, UUID userId) {
         return inOrg(org, () -> users.findById(userId).isPresent());
     }
@@ -141,6 +158,14 @@ class InactivityDeletionIT {
         member(shared, "alice", "bob", "EDITOR");
         member(personal, "alice", "dave", "VIEWER");
         runAs("alice", () -> uploadConfirmation.confirm(UploadConfirmationService.NOTICE_VERSION));
+        var pptx = new ByteArrayOutputStream();
+        try (var show = new XMLSlideShow()) {
+            show.write(pptx);
+        }
+        var template = new MockMultipartFile("template", "template.pptx", "application/octet-stream", pptx.toByteArray());
+        mvc.perform(multipart("/workshopper/api/workshop/courses/" + shared + "/template").file(template).with(as("alice")))
+                .andExpect(status().isOk());
+        assertThat(templateOwner(shared)).isEqualTo(alice.toString());
 
         String json = mvc.perform(post("/examlense/api/exams").with(as("alice")).contentType(APPLICATION_JSON)
                         .content("{\"title\":\"t\",\"source\":\"manual\",\"course_id\":\"" + solo + "\"}"))
@@ -180,6 +205,8 @@ class InactivityDeletionIT {
         // Shared course kept; the longest-standing editor became owner, the viewer stayed viewer.
         assertThat(runAs("bob", () -> courseApi.get(shared).role().name())).isEqualTo("OWNER");
         assertThat(runAs("carol", () -> courseApi.get(shared).role().name())).isEqualTo("VIEWER");
+        // The template alice uploaded stays with the course; its uploader is no longer known.
+        assertThat(templateOwner(shared)).isEqualTo("<null>");
 
         // The personal course another member shared became an ordinary course of that member.
         var former = runAs("dave", () -> courseApi.get(personal));
