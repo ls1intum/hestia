@@ -23,6 +23,23 @@ behaviour below. Until these are built, the tools do not match the published pol
       resets the timer. Done in `core` (`server/docs/privacy.md`): daily job, warnings shown after
       the next login. Open: e-mail delivery of the warnings (Hestia stores no address), and the
       privacy policy should mention that intake submissions follow the intake terms instead.
+      Runs as a dry run on every deploy target until the e-mail question is decided
+      (`HESTIA_INACTIVITY_DRY_RUN`, operations manual).
+- [ ] **Inactivity: dry run never reports a deletion** — a dry run stores no warning, so the
+      deletion check (last warning older than 15 days) never passes and the log never says what
+      would be deleted. Treat the would-be warning as present, or log "would delete on <date>".
+- [ ] **Inactivity: advisory lock can stay on a pooled connection** — if `pg_advisory_unlock`
+      throws, the session lock stays on a connection that goes back to the pool and blocks later
+      runs. Abort that connection instead of returning it, or switch to ShedLock.
+- [ ] **Inactivity: a login racing a deletion gives one 500** — the login waits for the user row
+      lock, then hits `StaleStateException` in `IdentityService` (line ~55) because the row is
+      gone. Retry the login once (it then creates a fresh account) or answer 401.
+- [ ] **Upload confirmation: client dialogs** — two uploads answering 428 at once hang, because
+      ExamLense and Workshopper share one `answer.current` ref; share one pending promise between
+      callers instead. A 409 for an outdated notice is a dead end: reload the notice and ask again.
+- [ ] **Decision for Ben: confirmations of deleted users** — consents and upload confirmations go
+      with the account (cascade), while the account's uploads in shared courses stay. Either say
+      so in `privacy.md` and the privacy policy, or keep a pseudonymised row as proof.
 - [x] **Migrate from SAIA (GWDG) to Logos** — all chat and vision calls run on Logos through
       module `ai`; `libs/shared-llm` is gone.
 
