@@ -29,9 +29,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Covers the transient-failure fallback: when the default parser (Gemini) fails
- * transiently the pipeline retries once with {@link ParserStrategies#FALLBACK_ID}
- * (GPT-5.5); a non-transient failure does not fall back.
+ * Covers the parser fallback: when the default parser (Gemini) fails transiently or
+ * its account is out of credits, the pipeline retries once with
+ * {@link ParserStrategies#FALLBACK_ID} (GPT-5.5); other failures do not fall back.
  */
 class ParseFallbackTest {
 
@@ -112,6 +112,24 @@ class ParseFallbackTest {
         ParseAttempt attempt = captor.getValue();
         assertThat(attempt.parserModel).isEqualTo("gpt-5.5");
         assertThat(attempt.success).isTrue();
+    }
+
+    /** An exhausted Gemini account is not transient, but GPT-5.5 runs on another account. */
+    @Test
+    void primaryOutOfCreditsFallsBackToGpt() {
+        when(gateway.chat(requestFor(GEMINI_MODEL)))
+            .thenThrow(new AiExceptions.PaymentRequiredException("credits exhausted"));
+        when(gateway.chat(requestFor(GPT_MODEL))).thenReturn(new LlmResponse(
+            null, Map.of("tasks", List.of(Map.of("type", "text", "prompt", "Q1"))),
+            "gpt-5.5", Provider.OPENAI, null
+        ));
+
+        runParse();
+
+        verify(gateway).chat(requestFor(GPT_MODEL));
+        verify(progress, never()).fail(any(), anyString());
+        verify(persister).persist(any(), any(), any());
+        verify(progress).setParserModel(EXAM_ID, "gpt-5.5");
     }
 
     @Test

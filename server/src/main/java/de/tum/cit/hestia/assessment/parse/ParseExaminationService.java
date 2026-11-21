@@ -278,9 +278,10 @@ public class ParseExaminationService {
 
     /**
      * Runs the parser LLM call for {@code primary}; on a <em>transient</em> failure
-     * (busy/unreachable/5xx — see {@link AiExceptions#isTransient}) retries once with
-     * the {@link ParserStrategies#FALLBACK_ID} model. Non-transient
-     * failures (malformed output, out-of-credits) and a failed fallback propagate to the
+     * (busy/unreachable/5xx — see {@link AiExceptions#isTransient}) or when the primary
+     * provider's account is out of credits (402), retries once with the
+     * {@link ParserStrategies#FALLBACK_ID} model of another provider. Other failures
+     * (malformed output, retired model) and a failed fallback propagate to the
      * caller's exception→message mapping. Updates {@code attempt} to record the model that
      * actually served so the single metrics row and the exam reflect it.
      */
@@ -292,10 +293,13 @@ public class ParseExaminationService {
             return extract(attempt, primary, primaryContent);
         } catch (RuntimeException e) {
             ParserStrategy fallback = ParserStrategies.resolve(ParserStrategies.FALLBACK_ID);
-            if (!AiExceptions.isTransient(e) || fallback.id().equals(primary.id())) {
+            // An exhausted account is not transient, but it is the primary provider's problem
+            // only: the fallback runs on another provider's account.
+            boolean worthFallback = AiExceptions.isTransient(e) || e instanceof AiExceptions.PaymentRequiredException;
+            if (!worthFallback || fallback.id().equals(primary.id())) {
                 throw e;
             }
-            log.warn("parse-exam-pdf[{}] primary parser {} failed transiently ({}); falling back to {}",
+            log.warn("parse-exam-pdf[{}] primary parser {} failed ({}); falling back to {}",
                 attempt.examId, primary.id(), e.toString(), fallback.id());
             // Only rebuild input if the mode actually differs (the default→fallback
             // pair shares PDF_DIRECT, so this reuses the content already built).
