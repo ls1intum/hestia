@@ -121,7 +121,7 @@ class FederationMetadata {
     }
 
     private record Snapshot(OpenSaml4AssertingPartyMetadataRepository parties, Map<String, IdentityProvider> providers,
-            List<IdentityProvider> listed) {}
+            List<IdentityProvider> listed, Instant validUntil) {}
 
     private final boolean enabled;
     private final String location;
@@ -175,21 +175,40 @@ class FederationMetadata {
 
     /** The providers to offer at login: sorted by name, without those that ask to be hidden. */
     List<IdentityProvider> identityProviders() {
-        Snapshot s = snapshot;
+        Snapshot s = current();
         return s == null ? List.of() : s.listed();
     }
 
     Optional<IdentityProvider> find(String entityId) {
-        Snapshot s = snapshot;
+        Snapshot s = current();
         return s == null ? Optional.empty() : Optional.ofNullable(s.providers().get(entityId));
     }
 
     Optional<AssertingPartyMetadata> assertingParty(String entityId) {
-        Snapshot s = snapshot;
+        Snapshot s = current();
         if (s == null || !s.providers().containsKey(entityId)) {
             return Optional.empty();
         }
         return Optional.ofNullable(s.parties().findByEntityId(entityId));
+    }
+
+    /**
+     * The loaded metadata while its {@code validUntil} lies ahead. Past it, a snapshot that could
+     * not be refreshed is dropped: only the TUM login remains (fail closed), not stale keys.
+     */
+    private Snapshot current() {
+        Snapshot s = snapshot;
+        if (s != null && !Instant.now().isBefore(s.validUntil())) {
+            synchronized (this) {
+                if (snapshot == s) {
+                    snapshot = null;
+                    log.error("Federation metadata from {} expired at {} without a valid refresh; "
+                            + "only the home login is offered until a reload succeeds", location, s.validUntil());
+                }
+            }
+            return null;
+        }
+        return s;
     }
 
     private void reload() {
@@ -197,11 +216,14 @@ class FederationMetadata {
         try {
             Snapshot loaded = load();
             snapshot = loaded;
-            log.info("Federation metadata loaded from {}: {} identity providers", location, loaded.providers().size());
+            log.info("Federation metadata loaded from {}: {} identity providers, valid until {}", location,
+                    loaded.providers().size(), loaded.validUntil());
         } catch (Exception e) {
-            log.error("Federation metadata from {} rejected or unreachable; keeping {} identity providers",
-                    location, snapshot == null ? 0 : snapshot.providers().size(), e);
-            if (snapshot == null) {
+            Snapshot kept = current();
+            log.error("Federation metadata from {} rejected or unreachable; keeping {} identity providers{}",
+                    location, kept == null ? 0 : kept.providers().size(),
+                    kept == null ? "" : " until " + kept.validUntil(), e);
+            if (kept == null) {
                 next = RETRY;
             }
         }
@@ -215,10 +237,11 @@ class FederationMetadata {
         try (InputStream in = new ByteArrayInputStream(fetch())) {
             document = XMLObjectProviderRegistrySupport.getParserPool().parse(in);
         }
-        String validUntil = document.getDocumentElement().getAttribute("validUntil");
-        if (validUntil.isBlank() || !Instant.parse(validUntil).isAfter(Instant.now())) {
-            throw new IllegalStateException("The federation metadata has expired or has no validUntil: " + validUntil);
+        String validUntilText = document.getDocumentElement().getAttribute("validUntil");
+        if (validUntilText.isBlank() || !Instant.parse(validUntilText).isAfter(Instant.now())) {
+            throw new IllegalStateException("The federation metadata has expired or has no validUntil: " + validUntilText);
         }
+        Instant validUntil = Instant.parse(validUntilText);
         DOMMetadataResolver resolver = new DOMMetadataResolver(document.getDocumentElement());
         resolver.setId("hestia-federation");
         resolver.setRequireValidMetadata(true);
@@ -247,7 +270,7 @@ class FederationMetadata {
         Collator collator = Collator.getInstance(Locale.GERMAN);
         listed.sort(Comparator.comparing(IdentityProvider::displayName, collator));
         return new Snapshot(new OpenSaml4AssertingPartyMetadataRepository(resolver), Map.copyOf(providers),
-                List.copyOf(listed));
+                List.copyOf(listed), validUntil);
     }
 
     private MetadataFilter filters() throws Exception {

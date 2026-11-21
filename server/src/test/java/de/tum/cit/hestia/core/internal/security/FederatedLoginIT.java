@@ -13,6 +13,7 @@ import de.tum.cit.hestia.TestDatabase;
 import de.tum.cit.hestia.core.internal.identity.HestiaPrincipal;
 import de.tum.cit.hestia.core.internal.security.FederationTestKit.Idp;
 import de.tum.cit.hestia.core.internal.security.FederationTestKit.Party;
+import jakarta.servlet.http.Cookie;
 import java.io.ByteArrayOutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -52,6 +53,7 @@ class FederatedLoginIT {
 
     static final String SP_ENTITY_ID = "http://localhost/saml2/service-provider-metadata/tum";
     static final String ACS = "http://localhost/login/saml2/sso/tum";
+    static final String HOME = FederatedRegistrations.HOME;
 
     static final String RUN = UUID.randomUUID().toString().substring(0, 8);
     static final Party FEDERATION = Party.create("Test Federation Signer");
@@ -76,6 +78,8 @@ class FederatedLoginIT {
                 FederationTestKit.aggregate(FEDERATION, Instant.now().plus(Duration.ofDays(7)), ALPHA, BETA, TUM)))));
         registry.add("hestia.federation.signing-certificate", () -> uri(write(() -> FEDERATION.writeCertificate(dir.resolve("fed.pem")))));
         registry.add("hestia.federation.home-label", () -> "Home Login");
+        registry.add("hestia.security.platform-admins",
+                () -> "root@" + TUM.scopes().get(0) + ",root@" + BETA.scopes().get(0));
     }
 
     interface IoSupplier {
@@ -169,15 +173,55 @@ class FederatedLoginIT {
 
     @Test
     void theHomeLoginWorksAsBefore() throws Exception {
-        MvcResult start = mvc.perform(get("/saml2/authenticate/tum")).andExpect(status().is3xxRedirection()).andReturn();
-        assertThat(start.getResponse().getRedirectedUrl()).startsWith(TUM.ssoUrl() + "?SAMLRequest=");
+        String scope = TUM.scopes().get(0);
+        MvcResult done = answer(HOME, TUM, Map.of(ATTR_SCHAC, scope, ATTR_EPPN, "carl@" + scope), TUM.party(), true);
+        assertThat(done.getResponse().getStatus()).isEqualTo(302);
+        HestiaPrincipal carl = principal((MockHttpSession) done.getRequest().getSession(false));
+        assertThat(carl.externalId()).isEqualTo("carl@" + scope);
+        assertThat(carl.admin()).isFalse();
+    }
 
-        String response = TUM.response(SP_ENTITY_ID, ACS, null,
-                Map.of(ATTR_SCHAC, TUM.scopes().get(0), ATTR_EPPN, "carl@" + TUM.scopes().get(0)), TUM.party());
-        MvcResult done = mvc.perform(post("/login/saml2/sso/tum").param("SAMLResponse", encode(response)))
-                .andExpect(status().is3xxRedirection()).andReturn();
-        assertThat(principal((MockHttpSession) done.getRequest().getSession(false)).externalId())
-                .isEqualTo("carl@" + TUM.scopes().get(0));
+    @Test
+    void unsolicitedResponsesAreRejectedForTheHomeLoginAndTheFederation() throws Exception {
+        String tum = TUM.scopes().get(0);
+        String home = TUM.response(SP_ENTITY_ID, ACS, null, Map.of(ATTR_SCHAC, tum, ATTR_EPPN, "carl@" + tum), TUM.party());
+        mvc.perform(post("/login/saml2/sso/tum").param("SAMLResponse", encode(home))).andExpect(status().isForbidden());
+
+        String alpha = ALPHA.scopes().get(0);
+        String federated = ALPHA.response(SP_ENTITY_ID, ACS, null,
+                Map.of(ATTR_SCHAC, alpha, ATTR_EPPN, "ada@" + alpha), ALPHA.party());
+        mvc.perform(post("/login/saml2/sso/tum").param("SAMLResponse", encode(federated))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aResponseCannotBePostedFromAnotherBrowser() throws Exception {
+        // Login CSRF: the attacker's own valid response and RelayState, posted from the victim's browser
+        String alpha = ALPHA.scopes().get(0);
+        MvcResult fromVictim = answer(FederatedRegistrations.registrationId(ALPHA.entityId()), ALPHA,
+                Map.of(ATTR_SCHAC, alpha, ATTR_EPPN, "mallory@" + alpha), ALPHA.party(), false);
+        assertThat(fromVictim.getResponse().getStatus()).isEqualTo(403);
+
+        String tum = TUM.scopes().get(0);
+        MvcResult home = answer(HOME, TUM, Map.of(ATTR_SCHAC, tum, ATTR_EPPN, "mallory@" + tum), TUM.party(), false);
+        assertThat(home.getResponse().getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void onlyTheHomeLoginMakesAPlatformAdmin() throws Exception {
+        String tum = TUM.scopes().get(0);
+        String beta = BETA.scopes().get(0);
+        MvcResult root = answer(HOME, TUM, Map.of(ATTR_SCHAC, tum, ATTR_EPPN, "root@" + tum), TUM.party(), true);
+        assertThat(principal((MockHttpSession) root.getRequest().getSession(false)).admin()).isTrue();
+
+        // Beta names a TUM admin in the NameID and sends no eduPersonPrincipalName
+        MvcResult nameId = answer(FederatedRegistrations.registrationId(BETA.entityId()), BETA,
+                Map.of(ATTR_SCHAC, beta), BETA.party(), true, "root@" + tum);
+        assertThat(nameId.getResponse().getStatus()).isEqualTo(403);
+
+        // A listed id that logs in through the federation is no admin either
+        HestiaPrincipal betaRoot = principal(login(BETA, "root", beta, BETA));
+        assertThat(betaRoot.externalId()).isEqualTo("root@" + beta);
+        assertThat(betaRoot.admin()).isFalse();
     }
 
     @Test
@@ -227,16 +271,36 @@ class FederatedLoginIT {
     }
 
     private MvcResult answer(Idp idp, Map<String, String> attributes, Party signer) throws Exception {
-        MvcResult start = mvc.perform(get("/saml2/authenticate/" + FederatedRegistrations.registrationId(idp.entityId())))
+        return answer(FederatedRegistrations.registrationId(idp.entityId()), idp, attributes, signer, true);
+    }
+
+    private MvcResult answer(String registrationId, Idp idp, Map<String, String> attributes, Party signer,
+            boolean sameBrowser) throws Exception {
+        return answer(registrationId, idp, attributes, signer, sameBrowser, "_n" + UUID.randomUUID());
+    }
+
+    /**
+     * Starts the login at {@code registrationId} and posts {@code idp}'s answer to the ACS without
+     * the session (the cross-site POST), with the nonce cookie of the start if {@code sameBrowser}.
+     */
+    private MvcResult answer(String registrationId, Idp idp, Map<String, String> attributes, Party signer,
+            boolean sameBrowser, String nameId) throws Exception {
+        MvcResult start = mvc.perform(get("/saml2/authenticate/" + registrationId))
                 .andExpect(status().is3xxRedirection()).andReturn();
         assertThat(start.getResponse().getRedirectedUrl()).startsWith(idp.ssoUrl() + "?SAMLRequest=");
         Matcher id = Pattern.compile(" ID=\"([^\"]+)\"").matcher(authnRequest(start));
         assertThat(id.find()).isTrue();
         Matcher relayState = Pattern.compile("RelayState=([^&]+)").matcher(start.getResponse().getRedirectedUrl());
         assertThat(relayState.find()).isTrue();
-        String response = idp.response(SP_ENTITY_ID, ACS, id.group(1), attributes, signer);
-        return mvc.perform(post("/login/saml2/sso/tum").param("SAMLResponse", encode(response))
-                .param("RelayState", URLDecoder.decode(relayState.group(1), StandardCharsets.UTF_8))).andReturn();
+        Cookie nonce = start.getResponse().getCookie(RelayStateAuthenticationRequests.COOKIE);
+        assertThat(nonce).isNotNull();
+        String response = idp.response(SP_ENTITY_ID, ACS, id.group(1), attributes, signer, nameId);
+        var post = post("/login/saml2/sso/tum").param("SAMLResponse", encode(response))
+                .param("RelayState", URLDecoder.decode(relayState.group(1), StandardCharsets.UTF_8));
+        if (sameBrowser) {
+            post.cookie(new Cookie(nonce.getName(), nonce.getValue()));
+        }
+        return mvc.perform(post).andReturn();
     }
 
     private static String authnRequest(MvcResult redirect) throws Exception {

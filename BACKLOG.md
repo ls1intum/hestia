@@ -70,3 +70,18 @@ behaviour below. Until these are built, the tools do not match the published pol
       - `WorkshopService.saveDraft` is not transactional.
       - Course lists stop at `listMine(0, 1000)`.
       - Migration V14 deleted all `teaching.slide_templates` (disposable data at the time).
+
+## Login federation (follow-ups from the review of package 8)
+
+- [ ] **User identity per identity provider** — users are keyed by (organisation, externalId), not
+      by the issuing identity provider's entityID: two identity providers that share a scope share
+      accounts, and a transient NameID (TUM login fallback) makes a new user on every login. Store
+      the issuer with the user and prefer `subject-id`/`pairwise-id` where an identity provider
+      releases them.
+- [ ] **Who may create an organisation** — every member of the federation (also institutes and
+      companies, not only universities) can create an organisation by logging in. Consider an
+      allowlist or a registered entity category (e.g. research and scholarship), or at least a log
+      entry or alert when a new organisation appears.
+- [ ] **Rate limit for `/saml2/authenticate/**`** — the login start is not rate-limited. A loop fills
+      the in-memory request store (10,000 entries) and evicts real users' requests in flight. Limit
+      it per client address like the LLM endpoints.

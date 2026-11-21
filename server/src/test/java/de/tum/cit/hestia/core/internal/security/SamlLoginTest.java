@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,7 +22,7 @@ class SamlLoginTest {
     private final SamlLogin login = new SamlLogin(identities, mock(FederationMetadata.class));
 
     SamlLoginTest() {
-        when(identities.login(any(), any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
+        when(identities.federatedLogin(any(), any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
                 UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false, i.getArgument(3)));
         when(identities.login(any(), any(), any(), any())).thenAnswer(i -> new HestiaPrincipal(
                 UUID.randomUUID(), UUID.randomUUID(), i.getArgument(1), i.getArgument(2), false, i.getArgument(3)));
@@ -67,10 +68,28 @@ class SamlLoginTest {
     @Test
     void aFederationProviderMayAssertItsOwnScopes() {
         login.principal("n", "alpha.test", "ada@alpha.test", "Ada", null, Optional.of(ALPHA));
-        verify(identities).login("alpha.test", "ada@alpha.test", "Ada", null, "Universität Alpha");
+        verify(identities).federatedLogin("alpha.test", "ada@alpha.test", "Ada", null, "Universität Alpha");
 
         login.principal("n", null, "bob@cs.alpha.test", null, null, Optional.of(ALPHA));
-        verify(identities).login("cs.alpha.test", "bob@cs.alpha.test", null, null, "Universität Alpha");
+        verify(identities).federatedLogin("cs.alpha.test", "bob@cs.alpha.test", null, null, "Universität Alpha");
+    }
+
+    @Test
+    void aFederationProviderMustSendAScopedUserIdNotJustTheNameId() {
+        // The NameID could name a TUM admin; it is never used as the user id of a federation login.
+        assertThatThrownBy(() -> login.principal("admin@tum.de", "alpha.test", null, null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class)
+                .hasMessageContaining("no scoped user id");
+        verify(identities, never()).federatedLogin(any(), any(), any(), any(), any());
+        verify(identities, never()).login(any(), any(), any(), any());
+    }
+
+    @Test
+    void aRejectionNamesTheScopeButNotTheUser() {
+        assertThatThrownBy(() -> login.principal("n", "alpha.test", "secret-person@tum.de", null, null, Optional.of(ALPHA)))
+                .isInstanceOf(Saml2AuthenticationException.class)
+                .hasMessageContaining("tum.de")
+                .hasMessageNotContaining("secret-person");
     }
 
     @Test

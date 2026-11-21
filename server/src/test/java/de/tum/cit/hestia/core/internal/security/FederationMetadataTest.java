@@ -127,6 +127,20 @@ class FederationMetadataTest {
     }
 
     @Test
+    void dropsLoadedMetadataOnceItsValidUntilHasPassed() throws Exception {
+        // No refresh comes (6 h), as if every reload had failed since
+        FederationMetadata metadata = load(FederationTestKit.aggregate(federation,
+                Instant.now().plus(Duration.ofSeconds(3)), alpha), federation);
+        assertThat(metadata.find(alpha.entityId())).isPresent();
+
+        Thread.sleep(3_500);
+
+        assertThat(metadata.find(alpha.entityId())).isEmpty();
+        assertThat(metadata.assertingParty(alpha.entityId())).isEmpty();
+        assertThat(metadata.identityProviders()).isEmpty();
+    }
+
+    @Test
     void isOffByDefaultAndNeedsBothLocationsWhenOn() {
         FederationMetadata off = new FederationMetadata(false, "", "", Duration.ofHours(6), new DefaultResourceLoader());
         assertThat(off.enabled()).isFalse();

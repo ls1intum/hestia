@@ -147,6 +147,12 @@ final class FederationTestKit {
          * assertion consumer service {@code acs}, signed with {@code signer}'s key.
          */
         String response(String spEntityId, String acs, String inResponseTo, Map<String, String> attributes, Party signer) {
+            return response(spEntityId, acs, inResponseTo, attributes, signer, "_n" + UUID.randomUUID());
+        }
+
+        /** As above, with the given (persistent) NameID instead of a transient one. */
+        String response(String spEntityId, String acs, String inResponseTo, Map<String, String> attributes, Party signer,
+                String nameId) {
             Instant now = Instant.now();
             String attrs = attributes.entrySet().stream().map(a -> """
                     <saml:Attribute Name="%s" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
@@ -162,7 +168,7 @@ final class FederationTestKit {
                       <saml:Assertion ID="_a%s" Version="2.0" IssueInstant="%s">
                         <saml:Issuer>%s</saml:Issuer>
                         <saml:Subject>
-                          <saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:transient">_n%s</saml:NameID>
+                          <saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:transient">%s</saml:NameID>
                           <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
                             <saml:SubjectConfirmationData NotOnOrAfter="%s" Recipient="%s"%s/>
                           </saml:SubjectConfirmation>
@@ -177,7 +183,7 @@ final class FederationTestKit {
                       </saml:Assertion>
                     </samlp:Response>
                     """.formatted(UUID.randomUUID(), now, acs, irt, entityId, UUID.randomUUID(), now, entityId,
-                    UUID.randomUUID(), now.plusSeconds(300), acs, irt, now.minusSeconds(60), now.plusSeconds(300),
+                    nameId, now.plusSeconds(300), acs, irt, now.minusSeconds(60), now.plusSeconds(300),
                     spEntityId, now, attrs);
             return sign(xml, signer);
         }
