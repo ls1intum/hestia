@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,9 @@ class ConsentService implements ConsentApi {
     /** Current notice version per scope. */
     static final Map<ConsentScope, String> NOTICE_VERSIONS = Map.of(ConsentScope.EXTERNAL_MODELS, "2026-11-20");
 
+    /** An HTML comment with the line break and one blank line after it. */
+    private static final Pattern COMMENT = Pattern.compile("<!--.*?-->[ \\t]*(\\R(?:[ \\t]*\\R)?)?", Pattern.DOTALL);
+
     private final ConsentEventRepository events;
     private final Callers callers;
 
@@ -39,10 +43,18 @@ class ConsentService implements ConsentApi {
         String name = "ai/consent-" + scope.name().toLowerCase(Locale.ROOT).replace('_', '-') + "-" + version + ".md";
         try {
             String text = new ClassPathResource(name).getContentAsString(StandardCharsets.UTF_8);
-            return new Notice(scope, version, text);
+            return new Notice(scope, version, withoutComments(text));
         } catch (IOException e) {
             throw new UncheckedIOException("Consent notice " + name + " missing", e);
         }
+    }
+
+    /**
+     * The notice as users see it: HTML comments are notes for the people who review the text
+     * (e.g. open points for the data protection office) and the markdown view would print them.
+     */
+    static String withoutComments(String markdown) {
+        return COMMENT.matcher(markdown).replaceAll("");
     }
 
     @Override
