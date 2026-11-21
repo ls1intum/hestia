@@ -71,22 +71,6 @@ class CoreAlignmentLink extends OrgScoped {
     static final String GOAL_CHANGED = "GOAL_CHANGED";
     static final String GOAL_REMOVED = "GOAL_REMOVED";
 
-    /** Marks the link for review; a removed goal stays the reason once it was given. */
-    void markForReview(String reason) {
-        if (GOAL_REMOVED.equals(reviewReason) && REVIEW.equals(reviewState)) {
-            return;
-        }
-        reviewState = REVIEW;
-        reviewReason = reason;
-    }
-
-    /** The link was checked against the goal's current version. */
-    void confirm(int currentGoalVersion) {
-        reviewState = OK;
-        reviewReason = null;
-        goalVersionSeen = currentGoalVersion;
-    }
-
     UUID getId() {
         return id;
     }

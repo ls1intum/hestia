@@ -44,8 +44,10 @@ public interface AlignmentApi {
     List<AlignmentReview> openReviews(UUID courseId);
 
     /**
-     * Confirms a link after review: sets it {@code OK} and its seen version to the goal's current
-     * version. Needs {@code EDITOR} in the link's course.
+     * Confirms a link after review: sets it {@code OK} and its seen version to {@code goalVersion},
+     * the goal version the teacher checked ({@link AlignmentReview#goalVersion}). Throws
+     * {@link AlignmentReviewOutdatedException} if the goal has another version by now. Confirming a
+     * link that is not marked does nothing. Needs {@code EDITOR} in the link's course.
      */
-    AlignmentLinkInfo confirm(UUID linkId);
+    AlignmentLinkInfo confirm(UUID linkId, int goalVersion);
 }

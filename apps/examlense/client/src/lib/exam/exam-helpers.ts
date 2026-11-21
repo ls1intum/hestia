@@ -33,6 +33,7 @@ export interface TaskGoalDto {
   bloom_level: BloomLevel | null;
   solo_level: SoloLevel | null;
   course_id: string;
+  goal_version: number;
   review: "GOAL_CHANGED" | "GOAL_REMOVED" | null;
   review_link_id: string | null;
   removed: boolean;

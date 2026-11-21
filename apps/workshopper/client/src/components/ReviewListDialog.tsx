@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { confirmReview, listReviews, errorMessage } from "@/lib/api";
+import { ApiError, confirmReview, listReviews, errorMessage } from "@/lib/api";
 import { reviewReasonLabel, reviewTargetName } from "@/lib/reviews";
 import type { AlignmentReview } from "@/lib/workshop-generator";
 import { useToast } from "@/hooks/use-toast";
@@ -21,25 +21,34 @@ export function ReviewListDialog({ courseId, courseTitle, onOpenChange, onChange
   const [reviews, setReviews] = useState<AlignmentReview[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!courseId) return;
-    setReviews(null);
-    listReviews(courseId)
+  const load = (id: string) =>
+    listReviews(id)
       .then(setReviews)
       .catch(err => {
         setReviews([]);
         toast({ title: "Could not load the review list", description: errorMessage(err, "Please try again."), variant: "destructive" });
       });
+
+  useEffect(() => {
+    if (!courseId) return;
+    setReviews(null);
+    load(courseId);
   }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const confirm = async (review: AlignmentReview) => {
     if (!courseId) return;
     setBusy(review.linkId);
     try {
-      await confirmReview(courseId, review.linkId);
+      await confirmReview(courseId, review.linkId, review.goalVersion);
       setReviews(prev => (prev ?? []).filter(r => r.linkId !== review.linkId));
       onChanged();
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // The goal changed again while the list was open: show its current wording first
+        toast({ title: "The learning goal changed again", description: "The list was reloaded. Check the new wording." });
+        await load(courseId);
+        return;
+      }
       toast({ title: "Could not confirm", description: errorMessage(err, "Please try again."), variant: "destructive" });
     } finally {
       setBusy(null);

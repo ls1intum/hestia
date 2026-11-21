@@ -46,6 +46,8 @@ export interface LearningGoalPlan {
   /** Set by the server when the goal changed or was removed since the session was linked to it or last confirmed */
   review?: ReviewReason;
   reviewLinkId?: string;
+  /** The goal version the marked entry shows, sent when confirming */
+  reviewGoalVersion?: number;
 }
 
 export type ReviewReason = "GOAL_CHANGED" | "GOAL_REMOVED";

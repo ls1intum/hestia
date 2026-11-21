@@ -50,7 +50,17 @@ behaviour below. Until these are built, the tools do not match the published pol
       that session's own link for review too. Confirm the editing session's link right away, or
       leave as is (the other links of the goal must stay marked).
 - [ ] **Removed goals in a session plan** — a plan entry whose goal was removed disappears from the
-      plan; it shows only in the course's review list. Show it in the plan with a "removed" mark.
+      resolved plan; its link stays marked (saving keeps links in review) and shows in the course's
+      review list until confirmed. Show it in the plan with a "removed" mark and let `toStored`
+      accept it.
+- [ ] **Whitespace and label edits create reviews** — `SessionGoals.saveCourseGoals` compares the
+      text without normalising whitespace (materials strips it), and `CoreGoalVersion.sameContent`
+      counts a change of only the short label as a content change, so such edits mark all links.
+- [ ] **"Reviewed" for viewers** — viewers see the confirm buttons (`ReviewListDialog`,
+      `WorkshopGoalEntry`, ExamLense `GradingView`) and get a 403 toast. Hide them by course role,
+      and reload the list after 404 as already after 409.
+- [ ] **Updating a removed goal** — `GoalService.update` still versions a removed goal
+      (`writable()` does not check `removedAt`); answer 400 instead.
 - [ ] **Review marks in more views** — ExamLense shows them only in the grading view; LearningGoalHub
       shows no review list (documents' links are marked as well).
 - [ ] **Smaller points:**

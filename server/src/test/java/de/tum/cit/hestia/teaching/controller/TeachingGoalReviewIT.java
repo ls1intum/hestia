@@ -124,10 +124,45 @@ class TeachingGoalReviewIT {
         assertThat(reviews.get(0).path("targetLabel").asText()).isEqualTo("Session");
         assertThat(reviews.get(0).path("targetId").asText()).isEqualTo(session);
 
-        mvc.perform(post("/core/api/courses/" + course + "/reviews/" + linkId + "/confirm").with(alice()).with(csrf()))
-                .andExpect(status().is2xxSuccessful());
+        assertThat(entry.path("reviewGoalVersion").asInt()).isEqualTo(2);
+        mvc.perform(confirm(course, linkId, 2)).andExpect(status().is2xxSuccessful());
         assertThat(plan(session).get(0).has("review")).isFalse();
         assertThat(openReviews(session)).isZero();
+    }
+
+    @Test
+    @DisplayName("saving a session keeps the review of a removed goal until it is confirmed")
+    void savingKeepsReviewOfRemovedGoal() throws Exception {
+        UUID course = asAlice(() -> courses.create("Algorithms").id());
+        GoalInfo kept = goal(course, "Kept goal");
+        GoalInfo dropped = goal(course, "Goal that will be removed");
+        String session = saveSession(null, course, List.of(kept, dropped));
+
+        asAlice(() -> {
+            goals.remove(dropped.id());
+            return null;
+        });
+        // The resolved plan no longer holds the removed goal, so the client saves the plan without it
+        assertThat(plan(session)).hasSize(1);
+        saveSession(session, course, List.of(kept));
+
+        assertThat(linkedGoals(session)).containsExactlyInAnyOrder(kept.id(), dropped.id());
+        JsonNode reviews = json.readTree(mvc.perform(get("/core/api/courses/" + course + "/reviews").with(alice()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(reviews).hasSize(1);
+        assertThat(reviews.get(0).path("reason").asText()).isEqualTo("GOAL_REMOVED");
+        assertThat(openReviews(session)).isEqualTo(1);
+
+        // Once confirmed, the next save removes the link of the goal that left the plan
+        mvc.perform(confirm(course, reviews.get(0).path("linkId").asText(), reviews.get(0).path("goalVersion").asInt()))
+                .andExpect(status().isOk());
+        saveSession(session, course, List.of(kept));
+        assertThat(linkedGoals(session)).containsExactly(kept.id());
+    }
+
+    private org.springframework.test.web.servlet.RequestBuilder confirm(UUID course, String linkId, int goalVersion) {
+        return post("/core/api/courses/" + course + "/reviews/" + linkId + "/confirm").with(alice()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"goalVersion\":" + goalVersion + "}");
     }
 
     private int openReviews(String session) throws Exception {

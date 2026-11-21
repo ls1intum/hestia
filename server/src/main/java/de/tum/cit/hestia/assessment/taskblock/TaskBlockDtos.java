@@ -35,17 +35,17 @@ public final class TaskBlockDtos {
     /**
      * A learning goal of a task; the id is the {@code core} goal id as a string. {@code review}
      * ({@code GOAL_CHANGED} / {@code GOAL_REMOVED}) is set while the link waits for the teacher's
-     * check, which {@code review_link_id} confirms in core; {@code removed} goals only appear then.
+     * check, which {@code review_link_id} confirms in core for {@code goal_version}; {@code removed} goals only appear then.
      */
     public record LearningGoalDto(
         String id, String text, String bloom_level, String solo_level, String status,
-        String course_id, String review, String review_link_id, boolean removed
+        String course_id, int goal_version, String review, String review_link_id, boolean removed
     ) {
         public static LearningGoalDto from(TaskGoal tg) {
             var g = tg.goal();
             return new LearningGoalDto(g.id().toString(), g.text(), g.bloomLevel(), g.soloLevel(),
                 g.status() == null ? null : g.status().name(), g.courseId().toString(),
-                tg.review(), tg.linkId() == null ? null : tg.linkId().toString(), tg.removed());
+                g.version(), tg.review(), tg.linkId() == null ? null : tg.linkId().toString(), tg.removed());
         }
     }
 

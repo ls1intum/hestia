@@ -309,10 +309,14 @@ interface LearningGoalDto {
   status: "PENDING" | "APPROVED" | null;
 }
 
-/** Marks a goal link of a task as checked (needs EDITOR in the goal's course). */
-export const confirmGoalReview = (courseId: string, linkId: string) =>
+/**
+ * Marks a goal link of a task as checked (needs EDITOR in the goal's course) for the goal version
+ * the user saw; answers 409 (ApiError) if the goal changed again since.
+ */
+export const confirmGoalReview = (courseId: string, linkId: string, goalVersion: number) =>
   apiRequest<unknown>(`/core/api/courses/${courseId}/reviews/${linkId}/confirm`, {
     method: "POST",
+    json: { goalVersion },
     core: true,
   });
 

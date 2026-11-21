@@ -353,11 +353,14 @@ export function listReviews(courseId: string): Promise<AlignmentReview[]> {
   return send(`/courses/${encodeURIComponent(courseId)}/reviews`, {}, CORE_API_BASE).then(res => parseJson<AlignmentReview[]>(res));
 }
 
-/** Confirms a link after review (needs EDITOR in the course). */
-export function confirmReview(courseId: string, linkId: string): Promise<void> {
+/**
+ * Confirms a link after review (needs EDITOR in the course) for the goal version the user saw;
+ * answers 409 (ApiError) if the goal changed again since.
+ */
+export function confirmReview(courseId: string, linkId: string, goalVersion: number): Promise<void> {
   return send(
     `/courses/${encodeURIComponent(courseId)}/reviews/${encodeURIComponent(linkId)}/confirm`,
-    { method: "POST" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goalVersion }) },
     CORE_API_BASE,
   ).then(() => undefined);
 }

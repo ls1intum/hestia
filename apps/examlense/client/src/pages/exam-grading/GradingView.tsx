@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClipboardCheck } from "lucide-react";
-import { confirmGoalReview, patchExam } from "@/lib/api/api-client";
+import { ApiError, confirmGoalReview, patchExam } from "@/lib/api/api-client";
 import { useToast } from "@/hooks/ui/use-toast";
 import { toGoalDisplay } from "@/lib/learning-goals/task-goals";
 import { useQueryClient } from "@tanstack/react-query";
@@ -112,13 +112,19 @@ export const GradingView = ({ examId }: Props) => {
 
   const [confirmingLinkId, setConfirmingLinkId] = useState<string | null>(null);
   const confirmGoal = async (goal: TaskGoalDisplay) => {
-    if (!goal.courseId || !goal.reviewLinkId) return;
+    if (!goal.courseId || !goal.reviewLinkId || goal.goalVersion === undefined) return;
     setConfirmingLinkId(goal.reviewLinkId);
     try {
-      await confirmGoalReview(goal.courseId, goal.reviewLinkId);
+      await confirmGoalReview(goal.courseId, goal.reviewLinkId, goal.goalVersion);
       await qc.invalidateQueries({ queryKey: tasksKey(examId) });
       await qc.invalidateQueries({ queryKey: examLearningGoalsKey(examId) });
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // The goal changed again meanwhile: show the current wording before it is confirmed
+        toast({ title: "Das Lernziel wurde inzwischen erneut geändert. Bitte die neue Fassung prüfen." });
+        await qc.invalidateQueries({ queryKey: tasksKey(examId) });
+        return;
+      }
       toast({ title: "Prüfung konnte nicht bestätigt werden.", variant: "destructive" });
     } finally {
       setConfirmingLinkId(null);

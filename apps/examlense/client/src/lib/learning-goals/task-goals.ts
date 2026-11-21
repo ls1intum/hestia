@@ -11,6 +11,7 @@ export function toGoalDisplay(goal: TaskGoalDto): TaskGoalDisplay {
     review: goal.review,
     reviewLinkId: goal.review_link_id,
     courseId: goal.course_id,
+    goalVersion: goal.goal_version,
     removed: goal.removed,
   };
 }

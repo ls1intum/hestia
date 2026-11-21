@@ -28,6 +28,8 @@ export interface TaskGoalDisplay {
   review?: GoalReviewReason | null;
   reviewLinkId?: string | null;
   courseId?: string | null;
+  /** The goal version shown, sent when confirming the review */
+  goalVersion?: number;
   removed?: boolean;
 }
 

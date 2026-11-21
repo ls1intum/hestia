@@ -183,7 +183,7 @@ class AlignmentReviewIT {
                 .andExpect(jsonPath("$[0].seenText").value("Explain recursion"))
                 .andExpect(jsonPath("$[0].currentText").value("Explain recursion and its base case"));
 
-        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", s.course(), linkId).with(as(uniA, "alice")))
+        mvc.perform(confirm(s.course(), linkId, 2).with(as(uniA, "alice")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reviewState").value("OK"))
                 .andExpect(jsonPath("$.goalVersionSeen").value(2));
@@ -198,10 +198,55 @@ class AlignmentReviewIT {
 
         // a link of another course cannot be confirmed through this course's path
         UUID otherCourse = asAlice(() -> courses.create("Databases").id());
-        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", otherCourse,
-                        asAlice(() -> alignment.openReviews(s.course())).getFirst().linkId())
+        mvc.perform(confirm(otherCourse, asAlice(() -> alignment.openReviews(s.course())).getFirst().linkId(), 2)
                         .with(as(uniA, "alice")))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void confirmingAVersionTheTeacherDidNotSeeIsRefusedAndTheMarkStays() throws Exception {
+        Setup s = linkedGoal();
+        rename(s, "Explain recursion and its base case");
+        AlignmentReview shown = asAlice(() -> alignment.openReviews(s.course())).getFirst();
+        assertThat(shown.goalVersion()).isEqualTo(2);
+
+        // another editor changes the goal again while the teacher looks at version 2
+        GoalInfo v2 = asAlice(() -> goals.goal(s.goal().id()));
+        asAlice(() -> goals.update(v2.id(), v2.asChange().withText("Explain recursion, its base case and depth")));
+
+        mvc.perform(confirm(s.course(), shown.linkId(), shown.goalVersion()).with(as(uniA, "alice")))
+                .andExpect(status().isConflict());
+        AlignmentReview reloaded = asAlice(() -> alignment.openReviews(s.course())).getFirst();
+        assertThat(reloaded.goalVersion()).isEqualTo(3);
+        assertThat(reloaded.goalVersionSeen()).isEqualTo(1);
+        assertThat(reloaded.seenText()).isEqualTo("Explain recursion");
+
+        // with the version now shown it goes through, and confirming again changes nothing
+        asAlice(() -> alignment.confirm(shown.linkId(), 3));
+        AlignmentLinkInfo again = asAlice(() -> alignment.confirm(shown.linkId(), 3));
+        assertThat(again.reviewState()).isEqualTo("OK");
+        assertThat(again.goalVersionSeen()).isEqualTo(3);
+
+        // a later change marks the confirmed link again, keeping the version that was checked
+        GoalInfo v3 = asAlice(() -> goals.goal(s.goal().id()));
+        asAlice(() -> goals.update(v3.id(), v3.asChange().withText("Version 4")));
+        assertThat(asAlice(() -> alignment.openReviews(s.course())))
+                .filteredOn(r -> r.linkId().equals(shown.linkId()))
+                .singleElement().satisfies(r -> {
+                    assertThat(r.goalVersionSeen()).isEqualTo(3);
+                    assertThat(r.goalVersion()).isEqualTo(4);
+                });
+    }
+
+    @Test
+    void confirmingNeedsTheGoalVersion() throws Exception {
+        Setup s = linkedGoal();
+        rename(s, "Explain recursion and its base case");
+        UUID linkId = asAlice(() -> alignment.openReviews(s.course())).getFirst().linkId();
+        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", s.course(), linkId).with(as(uniA, "alice"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().is4xxClientError());
+        assertThat(asAlice(() -> alignment.openReviews(s.course()))).hasSize(2);
     }
 
     @Test
@@ -218,7 +263,7 @@ class AlignmentReviewIT {
         mvc.perform(get("/core/api/courses/{c}/reviews", s.course()).with(as(uniA, "bob")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
-        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", s.course(), linkId).with(as(uniA, "bob")))
+        mvc.perform(confirm(s.course(), linkId, 2).with(as(uniA, "bob")))
                 .andExpect(status().isForbidden());
         TestLogin.runAs(identities, uniA, "bob", () -> {
             assertThatThrownBy(() -> alignment.link(s.goal().id(), DomainModule.TEACHING, "SESSION", "other"))
@@ -231,11 +276,11 @@ class AlignmentReviewIT {
         // no membership: as if the course and the link did not exist; links are not listed either
         mvc.perform(get("/core/api/courses/{c}/reviews", s.course()).with(as(uniA, "carol")))
                 .andExpect(status().isNotFound());
-        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", s.course(), linkId).with(as(uniA, "carol")))
+        mvc.perform(confirm(s.course(), linkId, 2).with(as(uniA, "carol")))
                 .andExpect(status().isNotFound());
         TestLogin.runAs(identities, uniA, "carol", () -> {
             assertThat(alignment.goalsFor(DomainModule.TEACHING, "SESSION", session)).isEmpty();
-            assertThatThrownBy(() -> alignment.confirm(linkId)).isInstanceOf(AlignmentLinkNotFoundException.class);
+            assertThatThrownBy(() -> alignment.confirm(linkId, 2)).isInstanceOf(AlignmentLinkNotFoundException.class);
             return null;
         });
     }
@@ -248,11 +293,11 @@ class AlignmentReviewIT {
 
         mvc.perform(get("/core/api/courses/{c}/reviews", s.course()).with(as(uniB, "alice")))
                 .andExpect(status().isNotFound());
-        mvc.perform(post("/core/api/courses/{c}/reviews/{l}/confirm", s.course(), linkId).with(as(uniB, "alice")))
+        mvc.perform(confirm(s.course(), linkId, 2).with(as(uniB, "alice")))
                 .andExpect(status().isNotFound());
         TestLogin.runAs(identities, uniB, "alice", () -> {
             assertThat(alignment.goalsFor(DomainModule.TEACHING, "SESSION", session)).isEmpty();
-            assertThatThrownBy(() -> alignment.confirm(linkId)).isInstanceOf(AlignmentLinkNotFoundException.class);
+            assertThatThrownBy(() -> alignment.confirm(linkId, 2)).isInstanceOf(AlignmentLinkNotFoundException.class);
             return null;
         });
         assertThat(asAlice(() -> alignment.openReviews(s.course()))).hasSize(2);
@@ -266,6 +311,12 @@ class AlignmentReviewIT {
             return null;
         });
         assertThat(events.stream(CourseDeleted.class)).containsExactly(new CourseDeleted(orgOfAlice(), s.course()));
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder confirm(UUID course, UUID linkId,
+            int goalVersion) {
+        return post("/core/api/courses/{c}/reviews/{l}/confirm", course, linkId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"goalVersion\":" + goalVersion + "}");
     }
 
     private UUID orgOfAlice() {

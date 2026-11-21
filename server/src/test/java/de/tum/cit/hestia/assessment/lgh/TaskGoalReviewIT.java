@@ -65,7 +65,9 @@ class TaskGoalReviewIT extends AbstractIntegrationTest {
         assertThat(reviews).hasSize(1);
         assertThat(reviews.get(0).get("targetLabel").asText()).isEqualTo("Midterm – Explain recursion");
 
-        mvc.perform(post("/core/api/courses/" + course + "/reviews/" + linkId + "/confirm").with(as("alice")))
+        assertThat(marked.get("goal_version").asInt()).isEqualTo(2);
+        mvc.perform(post("/core/api/courses/" + course + "/reviews/" + linkId + "/confirm").with(as("alice"))
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"goalVersion\":2}"))
             .andExpect(status().isOk());
         assertThat(taskGoals(examId).get(0).get("review").isNull()).isTrue();
 

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { LearningGoalPlan, KeptGoal, GoalSuggestion, CourseGoal } from "@/lib/workshop-generator";
-import { refineGoal, fixGoalsGrammar, handleAuthError, confirmReview, errorMessage } from "@/lib/api";
+import { ApiError, refineGoal, fixGoalsGrammar, handleAuthError, confirmReview, errorMessage } from "@/lib/api";
 import type { LeaveGuard } from "@/hooks/useWizardState";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -32,6 +32,7 @@ interface GoalDraft {
   /** The goal changed or was removed since the session was linked to it or last confirmed */
   review?: string;
   reviewLinkId?: string;
+  reviewGoalVersion?: number;
 }
 
 /** The server's limits (UsageGuard): goals per session and characters per goal */
@@ -84,6 +85,7 @@ export default function WorkshopGoalEntry({ initialInput, courseId = null, onBac
         subSkills: g.subSkills,
         review: g.review,
         reviewLinkId: g.reviewLinkId,
+        reviewGoalVersion: g.reviewGoalVersion,
       }));
     }
     return [{ id: "g0", text: "", suggestions: [], checking: false, dirty: false }];
@@ -283,11 +285,15 @@ export default function WorkshopGoalEntry({ initialInput, courseId = null, onBac
   const newDrafts = goals.filter((g) => !isCoreGoalId(g.id));
 
   const confirmGoalReview = async (g: GoalDraft) => {
-    if (!courseId || !g.reviewLinkId) return;
+    if (!courseId || !g.reviewLinkId || g.reviewGoalVersion === undefined) return;
     try {
-      await confirmReview(courseId, g.reviewLinkId);
-      updateGoal(g.id, { review: undefined, reviewLinkId: undefined });
+      await confirmReview(courseId, g.reviewLinkId, g.reviewGoalVersion);
+      updateGoal(g.id, { review: undefined, reviewLinkId: undefined, reviewGoalVersion: undefined });
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        toast({ title: "The learning goal changed again", description: "Reopen the session to see its current wording, then check it again." });
+        return;
+      }
       toast({ title: "Could not confirm", description: errorMessage(err, "Please try again."), variant: "destructive" });
     }
   };

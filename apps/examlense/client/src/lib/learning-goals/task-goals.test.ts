@@ -17,10 +17,11 @@ describe("task goal review", () => {
       bloom_level: "APPLY",
       solo_level: null,
       course_id: "c1",
+      goal_version: 2,
       review: "GOAL_CHANGED",
       review_link_id: "l1",
       removed: false,
     });
-    expect(display).toMatchObject({ id: "g1", review: "GOAL_CHANGED", reviewLinkId: "l1", courseId: "c1" });
+    expect(display).toMatchObject({ id: "g1", review: "GOAL_CHANGED", reviewLinkId: "l1", courseId: "c1", goalVersion: 2 });
   });
 });

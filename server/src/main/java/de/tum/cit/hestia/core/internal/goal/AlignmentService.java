@@ -4,10 +4,13 @@ import de.tum.cit.hestia.core.AlignmentApi;
 import de.tum.cit.hestia.core.AlignmentLinkInfo;
 import de.tum.cit.hestia.core.AlignmentLinkNotFoundException;
 import de.tum.cit.hestia.core.AlignmentReview;
+import de.tum.cit.hestia.core.AlignmentReviewOutdatedException;
 import de.tum.cit.hestia.core.CourseAccess;
 import de.tum.cit.hestia.core.CurrentUser;
 import de.tum.cit.hestia.core.DomainModule;
 import de.tum.cit.hestia.core.spi.AlignmentTargetLabels;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,11 +44,13 @@ class AlignmentService implements AlignmentApi {
     private final CourseAccess access;
     private final CurrentUser currentUser;
     private final ObjectProvider<AlignmentTargetLabels> labels;
+    private final EntityManager entityManager;
     private final Clock clock = Clock.systemUTC();
 
     AlignmentService(AlignmentLinkRepository links, GoalService goalService, GoalRepository goals,
             GoalVersionRepository versions, CourseAccess access, CurrentUser currentUser,
-            ObjectProvider<AlignmentTargetLabels> labels) {
+            ObjectProvider<AlignmentTargetLabels> labels, EntityManager entityManager) {
+        this.entityManager = entityManager;
         this.links = links;
         this.goalService = goalService;
         this.goals = goals;
@@ -155,21 +160,31 @@ class AlignmentService implements AlignmentApi {
 
     @Override
     @Transactional
-    public AlignmentLinkInfo confirm(UUID linkId) {
-        return confirm(null, linkId);
+    public AlignmentLinkInfo confirm(UUID linkId, int goalVersion) {
+        return confirm(null, linkId, goalVersion);
     }
 
-    /** {@link #confirm(UUID)} for a link that must belong to the given course (any course if null). */
+    /**
+     * {@link #confirm(UUID, int)} for a link that must belong to the given course (any course if
+     * null). The goal row is share-locked, so it cannot get a new version (and new marks) between
+     * the version check and the update; the update applies only while the link is still marked.
+     */
     @Transactional
-    AlignmentLinkInfo confirm(UUID courseId, UUID linkId) {
+    AlignmentLinkInfo confirm(UUID courseId, UUID linkId, int goalVersion) {
         CoreAlignmentLink link = links.findById(linkId).orElseThrow(() -> new AlignmentLinkNotFoundException(linkId));
         if ((courseId != null && !courseId.equals(link.getCourseId())) || !access.canRead(link.getCourseId())) {
             throw new AlignmentLinkNotFoundException(linkId);
         }
         access.requireWrite(link.getCourseId());
-        CoreGoal goal = goals.findById(link.getGoalId()).orElseThrow();
-        link.confirm(goal.getCurrentVersion());
-        links.flush();
+        CoreGoal goal = entityManager.find(CoreGoal.class, link.getGoalId(), LockModeType.PESSIMISTIC_READ);
+        entityManager.refresh(goal);
+        entityManager.refresh(link);
+        if (CoreAlignmentLink.REVIEW.equals(link.getReviewState()) && goal.getCurrentVersion() != goalVersion) {
+            throw new AlignmentReviewOutdatedException(linkId, goalVersion, goal.getCurrentVersion());
+        }
+        if (links.confirmReview(linkId, goalVersion) > 0) {
+            entityManager.refresh(link);
+        }
         return info(link);
     }
 

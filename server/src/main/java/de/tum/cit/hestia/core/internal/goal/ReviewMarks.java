@@ -2,6 +2,7 @@ package de.tum.cit.hestia.core.internal.goal;
 
 import de.tum.cit.hestia.core.events.GoalChanged;
 import de.tum.cit.hestia.core.events.GoalRemoved;
+import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -18,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 class ReviewMarks {
 
     private final AlignmentLinkRepository links;
+    private final EntityManager entityManager;
 
-    ReviewMarks(AlignmentLinkRepository links) {
+    ReviewMarks(AlignmentLinkRepository links, EntityManager entityManager) {
         this.links = links;
+        this.entityManager = entityManager;
     }
 
     @EventListener
@@ -35,8 +38,13 @@ class ReviewMarks {
         mark(event.goalId(), CoreAlignmentLink.GOAL_REMOVED);
     }
 
+    /**
+     * One update of the review columns only, so a link loaded earlier in this transaction cannot
+     * write an old seen version back; links already loaded are refreshed to the new state.
+     */
     private void mark(UUID goalId, String reason) {
-        links.findByGoalIdOrderByCreatedAtAscIdAsc(goalId).forEach(l -> l.markForReview(reason));
-        links.flush();
+        if (links.markForReview(goalId, reason) > 0) {
+            links.findByGoalIdOrderByCreatedAtAscIdAsc(goalId).forEach(entityManager::refresh);
+        }
     }
 }
