@@ -15,6 +15,9 @@ import { getAiConsent, grantAiConsent, setConsentHandler } from "@/lib/api/api-c
 import type { AiConsent } from "@/lib/api/api-client";
 import { aiConsentKey } from "@/hooks/data/use-me";
 
+/** The notice starts with its own title; the dialog already shows one. */
+const withoutTitle = (markdown: string) => markdown.replace(/^#\s[^\n]*\n+/, "");
+
 /**
  * Asks for the consent to external AI models when the server refuses a parse or a solve with
  * 428 CONSENT_REQUIRED. Shows the notice; "Zustimmen" records the consent and the refused request
@@ -73,7 +76,7 @@ export const AiConsentDialog = () => {
             Hinweis zur Nutzung externer KI-Modelle und Ihre Einwilligung dazu.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {notice && <MarkdownView content={notice.notice.text} />}
+        {notice && <MarkdownView content={withoutTitle(notice.notice.text)} />}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Abbrechen</AlertDialogCancel>

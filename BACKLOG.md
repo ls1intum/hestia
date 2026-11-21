@@ -71,6 +71,37 @@ behaviour below. Until these are built, the tools do not match the published pol
       - Course lists stop at `listMine(0, 1000)`.
       - Migration V14 deleted all `teaching.slide_templates` (disposable data at the time).
 
+## Prototype run-through (follow-ups from a click-through of the whole flow on staging)
+
+- [ ] **Exam goals do not reuse the course's goals** — confirming a section derives new goals
+      (origin `EXAM`) for its tasks instead of linking the tasks to matching goals the course
+      already has from its material. Slides, sessions and exam tasks therefore never share a goal,
+      and "which goal does no task assess" cannot be answered across the three apps. Match derived
+      goals against the course's goals first (link, or propose a link) and create a goal only for
+      what is left.
+- [ ] **Review mark hidden in ExamLense** — the "review" badge of a task's goal is only visible
+      after expanding "Learning goals (n)" in the grading view; the collapsed header shows nothing.
+      Show a marker on the collapsed header (and open it when a goal is marked).
+- [ ] **Goal picker in Workshopper** — the Goals step lists every goal of the course as one flat
+      list (100+ for a course with seven slide decks) above the session's own goals, so the
+      session's goals and their review notices sit at the very bottom. Group the picker by topic,
+      make it collapsible or searchable, and show the session's goals first.
+- [ ] **Adding material to an existing course** — LearningGoalHub uploads documents only in the
+      create-course dialog; the course page offers no upload for more material.
+- [ ] **Parser model per deployment** — `ParserStrategies.DEFAULT_ID` is fixed; a deployment whose
+      account for the default provider is empty has to rely on the fallback model in
+      `ParseExaminationService.extractWithFallback` on every parse. Make the default configurable.
+- [ ] **Times in Workshopper** — a course created in LearningGoalHub has no `createdAt` in
+      `/api/workshop/courses` and shows "Created 1. Jan."; session times are sent without an offset
+      (`2026-…T00:39:05`) and read as local time, so a session created minutes ago shows "1h ago".
+- [ ] **Mixed languages** — the review labels are German in ExamLense ("prüfen", "Geprüft") and
+      English in Workshopper ("review", "Reviewed") in otherwise English apps; a session planned
+      from German goals gets English block titles.
+- [ ] **Course deletion warning without numbers** — LearningGoalHub's dialog says that sessions and
+      exams go with the course but not how many; Workshopper's names them.
+- [ ] **Results before grading** — ExamLense's results view redirects to grading until every task
+      is graded, so the per-goal overview cannot be shown for a partly graded exam.
+
 ## Login federation (follow-ups from the review of package 8)
 
 - [ ] **User identity per identity provider** — users are keyed by (organisation, externalId), not

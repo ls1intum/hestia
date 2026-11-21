@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySavedGoals, goalInputs, isCoreGoalId, remapMappings } from "./core-goals";
+import { applySavedGoals, fixGrammarOfOwnGoals, goalInputs, isCoreGoalId, remapMappings } from "./core-goals";
 import type { CourseGoal, LearningGoalPlan } from "./workshop-generator";
 
 const CORE_ID = "3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b";
@@ -39,5 +39,34 @@ describe("saving the goals of the Goals step", () => {
     expect(remapMappings([{ method: "Quiz", lgIds: ["g0", "other"] }], { g0: CORE_ID }))
       .toEqual([{ method: "Quiz", lgIds: [CORE_ID, "other"] }]);
     expect(remapMappings(undefined, {})).toBeUndefined();
+  });
+});
+
+describe("fixGrammarOfOwnGoals", () => {
+  it("fixes only goals written in the session and keeps the course's wording", async () => {
+    const seen: string[][] = [];
+    const fix = async (texts: string[]) => { seen.push(texts); return texts.map(t => t.toUpperCase()); };
+
+    const result = await fixGrammarOfOwnGoals(
+      [{ id: CORE_ID, text: "course goal" }, { id: "g1", text: "own goal" }],
+      fix,
+    );
+
+    expect(seen).toEqual([["own goal"]]);
+    expect(result).toEqual(["course goal", "OWN GOAL"]);
+  });
+
+  it("does not call the fix when every goal comes from the course", async () => {
+    let called = false;
+    const result = await fixGrammarOfOwnGoals([{ id: CORE_ID, text: "course goal" }], async t => { called = true; return t; });
+
+    expect(called).toBe(false);
+    expect(result).toEqual(["course goal"]);
+  });
+
+  it("keeps the texts when the fix answers with a different number of goals", async () => {
+    const result = await fixGrammarOfOwnGoals([{ id: "g1", text: "a" }, { id: "g2", text: "b" }], async () => ["only one"]);
+
+    expect(result).toEqual(["a", "b"]);
   });
 });
