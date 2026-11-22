@@ -88,6 +88,25 @@ class OrgContextTest {
     }
 
     @Test
+    void workerThreadGetsItsOwnOrganisationAndLoginBackAfterTheTask() throws Exception {
+        UUID workerOrg = UUID.randomUUID();
+        Authentication workerLogin = login("worker");
+        worker.submit(() -> {
+            OrgContext.set(workerOrg);
+            SecurityContextHolder.getContext().setAuthentication(workerLogin);
+        }).get(5, TimeUnit.SECONDS);
+
+        OrgContext.set(UUID.randomUUID());
+        SecurityContextHolder.getContext().setAuthentication(login("lecturer"));
+        worker.submit(OrgContext.wrap(() -> { })).get(5, TimeUnit.SECONDS);
+
+        Seen afterwards = worker.submit(OrgContextTest::seen).get(5, TimeUnit.SECONDS);
+
+        assertThat(afterwards.org()).contains(workerOrg);
+        assertThat(afterwards.auth()).isSameAs(workerLogin);
+    }
+
+    @Test
     void laterChangesInTheCallerDoNotReachTheTask() throws Exception {
         Authentication lecturer = login("lecturer");
         SecurityContextHolder.getContext().setAuthentication(lecturer);

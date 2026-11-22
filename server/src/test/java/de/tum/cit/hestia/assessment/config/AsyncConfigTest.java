@@ -49,24 +49,4 @@ class AsyncConfigTest {
             ((ThreadPoolTaskExecutor) executor).shutdown();
         }
     }
-
-    @Test
-    void lghExecutorDoesNotLeakLoginToLaterTasks() throws Exception {
-        ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) new AsyncConfig().lghExecutor();
-        executor.setCorePoolSize(1);
-        executor.setMaxPoolSize(1);
-        try {
-            SecurityContextHolder.getContext().setAuthentication(
-                    new TestingAuthenticationToken("lecturer", "n/a", "ROLE_USER"));
-            CompletableFuture.runAsync(() -> { }, executor).get(5, TimeUnit.SECONDS);
-
-            SecurityContextHolder.clearContext();
-            Authentication later = CompletableFuture.supplyAsync(
-                    () -> SecurityContextHolder.getContext().getAuthentication(), executor).get(5, TimeUnit.SECONDS);
-
-            assertThat(later).isNull();
-        } finally {
-            executor.shutdown();
-        }
-    }
 }
