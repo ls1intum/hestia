@@ -42,6 +42,7 @@ All planned work lives in the [GitHub Issues](https://github.com/ls1intum/hestia
 - **One issue per task.** Short title in the imperative ("Show review marks in LearningGoalHub"). Body: *Problem* (what is wrong or missing, with file paths), *Proposal* (if there is one), *Done when* (how to tell it is finished).
 - **Search first** (`gh issue list --search "…" --state all`) and comment on an existing issue instead of opening a duplicate.
 - **Labels:** one type (`bug`, `enhancement`, `documentation`, `question`), one or more areas (`app:examlense`, `app:learninggoalhub`, `app:workshopper`, `module:core`, `module:ai`, `infra`), and where it fits `good first issue`, `thesis-candidate` (big enough for a thesis or project) or `decision-needed` (a maintainer has to decide before anyone builds it).
+- **Board:** every issue goes onto the project board [Hestia](https://github.com/orgs/ls1intum/projects/142) (`gh project item-add 142 --owner ls1intum --url <issue-url>`). Status: *Ideas* (an idea, or `decision-needed`), *Ready* (clear enough to start), *In progress* (someone works on it; assign yourself), *Done*.
 - **Link the pull request** with `Closes #<number>` in its description, so the issue closes on merge. Close an issue you will not do with a one-line reason.
 - **Small leftovers** that come up in a review go into one issue per topic, not into code comments.
 
