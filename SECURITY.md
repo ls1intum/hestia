@@ -8,6 +8,10 @@ If you discover a security vulnerability within Hestia, please DO NOT open a pub
 Instead, please email the project maintainers or the TUM thesis advisors directly. 
 Include detailed steps to reproduce the vulnerability. We will endeavor to respond within 5 business days and coordinate a fix.
 
+Maintainers and contributors track known, unfixed vulnerabilities as draft security advisories
+(repository tab "Security" → "Advisories"), not in issues, pull requests or documents. The people
+working on a fix are added to the advisory; it is published once the fix is merged.
+
 ## Authentication
 Apps that are deployed publicly must authenticate their users. Workshopper, for example, uses TUM single sign-on (SAML 2.0) in production.
 
