@@ -43,6 +43,10 @@ The hook requires `gitleaks` (e.g. `brew install gitleaks`). The same checks run
 
 Never bypass the hook (`--no-verify`). For a deliberate, reviewed binary exception, add the exact path to `.githooks/binary-allowlist` in the same commit.
 
+## Issues Instead of a Backlog File
+
+Planned work lives in GitHub Issues, never in a backlog or to-do file. Follow "Planning Work: Issues" in CONTRIBUTING.md: search before creating, one issue per task, labels, `Closes #<number>` in the pull request. An agent may create, label, comment on and close issues for the work it is doing. Read the list "What never goes into an issue, pull request, commit or document here" in CONTRIBUTING.md before writing any issue, comment or PR text: open security vulnerabilities go into a draft security advisory, never into an issue.
+
 ## Commits and Pull Requests
 
 Use Conventional Commits with the app or module name as scope (e.g. `feat(examlense): ...`, `fix(workshopper): ...`, `refactor(core): ...`). Use short-lived feature branches and open a pull request against `main`; commit directly to `main` only for small documentation or housekeeping changes. See CONTRIBUTING.md for the full workflow.
