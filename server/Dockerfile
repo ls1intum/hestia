@@ -1,9 +1,9 @@
 # Multi-stage build for the Hestia server.
 # Build context is the repository root, where the Gradle wrapper and root build scripts live.
 
-# Both stages pin a fixed Temurin release instead of `21-jdk`/`21-jre`, so a rebuild cannot fall
-# back to a JDK open to Java4Shell (CVE-2026-114938, fixed in 21.0.13.1). Raise both together.
-FROM eclipse-temurin:21.0.13.1_2-jdk AS build
+# The build stage only compiles the jar; the JVM that serves requests is the runtime stage below,
+# which pins a release fixed against Java4Shell (CVE-2026-114938).
+FROM eclipse-temurin:21-jdk AS build
 WORKDIR /workspace
 # Keep the Gradle build memory modest so it fits the small (≈4 GB) deploy VM.
 ENV GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx1024m"
@@ -16,7 +16,14 @@ COPY server server
 
 RUN ./gradlew --no-daemon :server:bootJar -x test
 
-FROM eclipse-temurin:21.0.13.1_2-jre
+# Runtime per platform. amd64 (the deploy VMs) pins the fixed release instead of `21-jre`, so a
+# rebuild cannot fall back to an open JVM. Temurin has not published 21.0.13.1_2 for arm64 yet, which
+# CI also builds; arm64 follows `21-jre` until the pinned tag lists it, then switch it to the pin.
+# BuildKit only pulls the stage the target platform uses.
+FROM eclipse-temurin:21.0.13.1_2-jre AS runtime-amd64
+FROM eclipse-temurin:21-jre AS runtime-arm64
+
+FROM runtime-${TARGETARCH}
 WORKDIR /app
 COPY --from=build /workspace/server/build/libs/hestia-server.jar app.jar
 EXPOSE 8080

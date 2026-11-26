@@ -175,20 +175,25 @@ expects exactly two files:
 /opt/hestia/secrets/saml/certificate.crt
 ```
 
-**Rebuilding a VM under the same host name:** reuse the old key pair if you still have it. Then the
-identity provider's registration stays valid and logins work from the first start. With a new pair,
-the identity provider must get the new certificate, and logins fail until it has it.
+**Rebuilding a VM under the same host name:** the old key pair can be reused if it was never at
+risk; then the registration stays valid and logins work from the first start. If the old VM may have
+been compromised (as with Java4Shell, which can read the server's memory), create a new pair. With a
+new pair the identity provider must get the new certificate, and logins fail until it has it.
 
 Otherwise create the pair on the VM (or on a trusted machine) and register the certificate with the
 identity provider:
 
 ```bash
-sudo openssl req -x509 -newkey rsa:3072 -nodes -days 1825 \
+sudo openssl req -x509 -newkey rsa:4096 -nodes -days 1095 \
   -keyout /opt/hestia/secrets/saml/private-key.pem \
   -out    /opt/hestia/secrets/saml/certificate.crt \
   -subj "/CN=<APP_HOST>"
 sudo chmod 600 /opt/hestia/secrets/saml/private-key.pem
 ```
+
+4096 bits and three years follow the DFN-AAI rules for self-signed certificates
+(<https://doku.tid.dfn.de/de:certificates#selbst-signierte_zertifikate>); a shorter key or a longer
+validity was rejected there once.
 
 The server image has no `USER` instruction, so the container reads the key as root and mode 600 is
 enough. If a future image runs as a non-root user, the key must be readable by that user. A key the
@@ -203,7 +208,14 @@ Register with the identity provider:
   certificate and the assertion consumer URL it shows). The metadata is only reachable once the
   server runs, so the first start happens before the registration is complete. Register **all
   three** prefixes: a prefix the provider does not know ends in an error at the provider, even when
-  the other two work. The registration can take days (**(TUM)** the LRZ), so ask early.
+  the other two work. The registration can take days, so ask early.
+- **(TUM)** The three service providers are registered in the DFN-AAI metadata administration
+  (<https://mdv.aai.dfn.de/login/>), first as "local metadata" (TUM login only), then for DFN-AAI.
+  The first registration goes through the TUM IT-Support (IAM & Cloud team), which names the admins
+  there. After that the admins maintain the entries themselves: the identity provider takes the
+  certificate from there, not from the server's metadata URL, so a **new certificate must be
+  uploaded there** before logins work again. A new admin is added by an existing one or by the IAM
+  team.
 - **Attributes** the identity provider must release: `schacHomeOrganization`,
   `eduPersonPrincipalName`, `displayName`, `mail`.
 - **The identity provider** the server trusts comes from the environment only (no default in the
