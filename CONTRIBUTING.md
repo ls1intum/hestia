@@ -2,6 +2,10 @@
 
 Welcome to Hestia! This repository is an academic monorepo built for the TUM thesis projects under the ls1intum organization.
 
+## Who Contributes
+
+Hestia is developed by the team of the chair and by students who work on it in a thesis, project or course at TUM. We do not take outside contributions at the moment: please do not ask to be assigned to an issue, and we will not review pull requests from outside the team. You are welcome to report bugs or ask questions in an issue. Security problems go to a private advisory, see `SECURITY.md`.
+
 ## Development Workflow
 
 1. **Branching**: Use feature branches off `main` (e.g., `feat/workshopper-feature`, `fix/learninggoalhub-bug`).
