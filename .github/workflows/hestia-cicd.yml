@@ -5,8 +5,10 @@ name: hestia CI/CD
 #
 #   PR                -> all tests + build images (pr-<N> tags), no deploy   [validation]
 #   push to main      -> all tests + build (sha-<commit>) + deploy to Staging + smoke check
-#   workflow_dispatch -> all tests + build + deploy to Staging (optionally an existing image tag)
-#                        + smoke check
+#   release published -> all tests + build (<tag>) + deploy to Production + smoke check
+#                        (the Production environment's required reviewer approves first)
+#   workflow_dispatch -> all tests + build + deploy to the chosen environment (optionally an
+#                        existing image tag) + smoke check
 #   schedule (weekly) -> all tests on ubuntu-latest, no build, no deploy   [early warning]
 #
 # Every job runs on a pinned runner image (ubuntu-24.04) and the ls1intum reusable workflows are
@@ -16,8 +18,11 @@ name: hestia CI/CD
 # configuration in every pull request; the deploy itself only runs after the merge.
 # `scripts/ci-local.sh` runs the same checks locally.
 #
-# Production is not deployed from here yet: it keeps running the three former servers until the
-# single login is released. There is therefore no release trigger and no Production target.
+# Production runs this one server since the Java4Shell fix (CVE-2026-114938); the three former
+# servers and their images are retired. A GitHub release (or a manual run with environment
+# Production) deploys it. The `Production` GitHub environment holds the same secrets and vars as
+# `Staging` and has a required reviewer, so the deploy waits for approval. The landing page reacts
+# to the same release (landing-page-cicd.yml).
 #
 # Images are only built once every test passes, so a red test never deploys. No job needs a real
 # model key: model calls in the tests are answered by fakes.
@@ -30,10 +35,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Environment to deploy to"
+        type: choice
+        options: [Staging, Production]
+        default: Staging
       image-tag:
-        description: "Image tag to deploy to Staging (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
+        description: "Image tag to deploy (must already exist in GHCR); empty = the image this run builds (sha-<commit>)"
         type: string
         default: ""
   schedule:
@@ -180,7 +192,8 @@ jobs:
       docker-file: server/Dockerfile
       # Repo root: the server builds with the root Gradle build.
       docker-context: .
-      tags: type=sha,format=long
+      # A release tags its images with the release tag, everything else with the commit.
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
   build-clients:
     needs: [test-server, test-clients, test-e2e, deploy-preflight]
@@ -194,15 +207,18 @@ jobs:
       image-name: ${{ github.repository }}/${{ matrix.app }}/client
       docker-file: apps/${{ matrix.app }}/client/Dockerfile
       docker-context: apps/${{ matrix.app }}/client
-      tags: type=sha,format=long
+      tags: ${{ github.event_name == 'release' && github.event.release.tag_name || 'type=sha,format=long' }}
 
+  # copy-db-init, deploy and smoke-test share one deploy target: Production for a release or a
+  # manual run that picks it, Staging otherwise.
+  #
   # The deploy reusable copies only the compose file. The postgres container creates the two
   # database roles from infra/postgres/init on its first start, so that folder goes next to it.
   copy-db-init:
     needs: [build-server, build-clients]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: ubuntu-24.04
-    environment: Staging
+    environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
     steps:
       - uses: actions/checkout@v7
       - name: Copy the database init scripts to the VM
@@ -220,18 +236,20 @@ jobs:
 
   deploy:
     needs: [build-server, build-clients, copy-db-init]
-    # PRs only validate the build and the weekly run only tests; pushes to main and manual runs
-    # deploy to Staging.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # PRs only validate the build and the weekly run only tests; pushes to main deploy to Staging,
+    # releases to Production, manual runs to the chosen environment.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     # Runs on a GitHub-hosted runner and SSHes to the VM through the chair's deployment gateway.
+    # The reusable applies the environment's protection rules, so a Production deploy waits for
+    # its required reviewer.
     uses: ls1intum/.github/.github/workflows/deploy-docker-compose.yml@5f645f96873d8b8b3a9b2e52d06626c71377f7ac # main 2026-11-18
     with:
-      environment: Staging
+      environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
       # Not at the repository root: the deploy reusable copies the file to the root first and
       # fails when source and target are the same file.
       docker-compose-file: infra/compose.prod.yaml
       main-image-name: ${{ github.repository }}/server
-      image-tag: ${{ (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
+      image-tag: ${{ (github.event_name == 'release' && github.event.release.tag_name) || (github.event_name == 'workflow_dispatch' && inputs.image-tag) || format('sha-{0}', github.sha) }}
       deployment-base-path: /opt/hestia/app
     # Passes the VM + gateway connection secrets/vars (VM_HOST, VM_USERNAME, VM_SSH_PRIVATE_KEY,
     # DEPLOYMENT_GATEWAY_*) and the app secrets/vars (HESTIA_POSTGRES_PASSWORD,
@@ -246,7 +264,7 @@ jobs:
   smoke-test:
     needs: deploy
     runs-on: ubuntu-24.04
-    environment: Staging
+    environment: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'Production')) && 'Production' || 'Staging' }}
     steps:
       - name: Check the deployed application over SSH
         uses: appleboy/ssh-action@v1.2.5
@@ -278,10 +296,17 @@ jobs:
               curl -fsS -o /dev/null --resolve "${{ vars.APP_HOST }}:443:127.0.0.1" \
                 "https://${{ vars.APP_HOST }}/$prefix/"
             done
-            # Java4Shell mitigation (see server/Dockerfile) must be active in the running JVM.
+            # Java4Shell (CVE-2026-114938, see server/Dockerfile): the running JVM must be a fixed
+            # release and run with the intrinsic off. The server checks the effective value itself
+            # at startup (Java4ShellGuard); this catches a lowered base image or a lost flag.
+            version=$(docker exec hestia-server sh -c 'echo "$JAVA_VERSION"')
+            echo "hestia-server runs Java $version"
+            case "$version" in
+              jdk-21.0.13.1*|jdk-21.0.1[4-9]*|jdk-21.0.[2-9][0-9]*) ;;
+              *) echo "hestia-server runs Java $version, older than 21.0.13.1 (CVE-2026-114938)"; exit 1 ;;
+            esac
             if ! docker exec hestia-server sh -c 'tr "\0" " " < /proc/1/cmdline' | grep -q -- '-XX:-UseBASE64Intrinsics'; then
               echo "hestia-server runs without -XX:-UseBASE64Intrinsics (CVE-2026-114938)"
-              docker exec hestia-server java -version 2>&1 | head -1
               exit 1
             fi
             echo "hestia is up"

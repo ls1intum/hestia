@@ -80,11 +80,15 @@ class CoreSecurityConfig {
         this.env = env;
     }
 
-    /** The development login must never meet production, nor impersonate anyone on a deployment. */
+    /**
+     * The development login must never meet production, nor impersonate anyone on a deployment; and a
+     * deployment must not run a JVM open to Java4Shell.
+     */
     @PostConstruct
     void validateProfiles() {
         DeployGuard.check(Arrays.asList(env.getActiveProfiles()), env.getProperty("HESTIA_DEPLOY_TARGET"),
                 devLoginImpersonation());
+        Java4ShellGuard.check(env.getProperty("HESTIA_DEPLOY_TARGET"));
     }
 
     private boolean devLoginImpersonation() {
